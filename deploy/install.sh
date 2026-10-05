@@ -17,5 +17,6 @@ fi
 
 sudo install -m 0644 "$SOURCE_DIR/deploy/kontur-talent.service" /etc/systemd/system/kontur-talent.service
 sudo systemctl daemon-reload
-sudo systemctl enable --now kontur-talent.service
+sudo systemctl enable kontur-talent.service
+sudo systemctl restart kontur-talent.service
 sudo systemctl status kontur-talent.service --no-pager
