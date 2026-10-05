@@ -21,6 +21,8 @@ import { Route as CandidateSettingsRouteImport } from './routes/candidate/settin
 import { Route as CandidateSkillsRouteImport } from './routes/candidate/skills'
 import { Route as CandidateSourcesRouteImport } from './routes/candidate/sources'
 import { Route as CandidateAssessmentsIndexRouteImport } from './routes/candidate/assessments/index'
+import { Route as CandidateInvitationsIndexRouteImport } from './routes/candidate/invitations/index'
+import { Route as CandidateInvitationsInvitationIdRouteImport } from './routes/candidate/invitations/$invitationId'
 import { Route as CandidateAssessmentsAssessmentIdResultRouteImport } from './routes/candidate/assessments/$assessmentId/result'
 import { Route as CandidateAssessmentsAssessmentIdWorkspaceRouteImport } from './routes/candidate/assessments/$assessmentId/workspace'
 
@@ -85,6 +87,18 @@ const CandidateAssessmentsIndexRoute =
     path: '/assessments/',
     getParentRoute: () => CandidateRouteRoute,
   } as any)
+const CandidateInvitationsIndexRoute =
+  CandidateInvitationsIndexRouteImport.update({
+    id: '/invitations/',
+    path: '/invitations/',
+    getParentRoute: () => CandidateRouteRoute,
+  } as any)
+const CandidateInvitationsInvitationIdRoute =
+  CandidateInvitationsInvitationIdRouteImport.update({
+    id: '/invitations/$invitationId',
+    path: '/invitations/$invitationId',
+    getParentRoute: () => CandidateRouteRoute,
+  } as any)
 const CandidateAssessmentsAssessmentIdResultRoute =
   CandidateAssessmentsAssessmentIdResultRouteImport.update({
     id: '/assessments/$assessmentId/result',
@@ -110,7 +124,9 @@ export interface FileRoutesByFullPath {
   '/candidate/skills': typeof CandidateSkillsRoute
   '/candidate/sources': typeof CandidateSourcesRoute
   '/candidate/': typeof CandidateIndexRoute
+  '/candidate/invitations/$invitationId': typeof CandidateInvitationsInvitationIdRoute
   '/candidate/assessments/': typeof CandidateAssessmentsIndexRoute
+  '/candidate/invitations/': typeof CandidateInvitationsIndexRoute
   '/candidate/assessments/$assessmentId/result': typeof CandidateAssessmentsAssessmentIdResultRoute
   '/candidate/assessments/$assessmentId/workspace': typeof CandidateAssessmentsAssessmentIdWorkspaceRoute
 }
@@ -125,7 +141,9 @@ export interface FileRoutesByTo {
   '/candidate/skills': typeof CandidateSkillsRoute
   '/candidate/sources': typeof CandidateSourcesRoute
   '/candidate': typeof CandidateIndexRoute
+  '/candidate/invitations/$invitationId': typeof CandidateInvitationsInvitationIdRoute
   '/candidate/assessments': typeof CandidateAssessmentsIndexRoute
+  '/candidate/invitations': typeof CandidateInvitationsIndexRoute
   '/candidate/assessments/$assessmentId/result': typeof CandidateAssessmentsAssessmentIdResultRoute
   '/candidate/assessments/$assessmentId/workspace': typeof CandidateAssessmentsAssessmentIdWorkspaceRoute
 }
@@ -142,7 +160,9 @@ export interface FileRoutesById {
   '/candidate/skills': typeof CandidateSkillsRoute
   '/candidate/sources': typeof CandidateSourcesRoute
   '/candidate/': typeof CandidateIndexRoute
+  '/candidate/invitations/$invitationId': typeof CandidateInvitationsInvitationIdRoute
   '/candidate/assessments/': typeof CandidateAssessmentsIndexRoute
+  '/candidate/invitations/': typeof CandidateInvitationsIndexRoute
   '/candidate/assessments/$assessmentId/result': typeof CandidateAssessmentsAssessmentIdResultRoute
   '/candidate/assessments/$assessmentId/workspace': typeof CandidateAssessmentsAssessmentIdWorkspaceRoute
 }
@@ -160,7 +180,9 @@ export interface FileRouteTypes {
     | '/candidate/skills'
     | '/candidate/sources'
     | '/candidate/'
+    | '/candidate/invitations/$invitationId'
     | '/candidate/assessments/'
+    | '/candidate/invitations/'
     | '/candidate/assessments/$assessmentId/result'
     | '/candidate/assessments/$assessmentId/workspace'
   fileRoutesByTo: FileRoutesByTo
@@ -175,7 +197,9 @@ export interface FileRouteTypes {
     | '/candidate/skills'
     | '/candidate/sources'
     | '/candidate'
+    | '/candidate/invitations/$invitationId'
     | '/candidate/assessments'
+    | '/candidate/invitations'
     | '/candidate/assessments/$assessmentId/result'
     | '/candidate/assessments/$assessmentId/workspace'
   id:
@@ -191,7 +215,9 @@ export interface FileRouteTypes {
     | '/candidate/skills'
     | '/candidate/sources'
     | '/candidate/'
+    | '/candidate/invitations/$invitationId'
     | '/candidate/assessments/'
+    | '/candidate/invitations/'
     | '/candidate/assessments/$assessmentId/result'
     | '/candidate/assessments/$assessmentId/workspace'
   fileRoutesById: FileRoutesById
@@ -289,6 +315,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CandidateAssessmentsIndexRouteImport
       parentRoute: typeof CandidateRouteRoute
     }
+    '/candidate/invitations/': {
+      id: '/candidate/invitations/'
+      path: '/invitations'
+      fullPath: '/candidate/invitations/'
+      preLoaderRoute: typeof CandidateInvitationsIndexRouteImport
+      parentRoute: typeof CandidateRouteRoute
+    }
+    '/candidate/invitations/$invitationId': {
+      id: '/candidate/invitations/$invitationId'
+      path: '/invitations/$invitationId'
+      fullPath: '/candidate/invitations/$invitationId'
+      preLoaderRoute: typeof CandidateInvitationsInvitationIdRouteImport
+      parentRoute: typeof CandidateRouteRoute
+    }
     '/candidate/assessments/$assessmentId/result': {
       id: '/candidate/assessments/$assessmentId/result'
       path: '/assessments/$assessmentId/result'
@@ -314,7 +354,9 @@ interface CandidateRouteRouteChildren {
   CandidateSkillsRoute: typeof CandidateSkillsRoute
   CandidateSourcesRoute: typeof CandidateSourcesRoute
   CandidateIndexRoute: typeof CandidateIndexRoute
+  CandidateInvitationsInvitationIdRoute: typeof CandidateInvitationsInvitationIdRoute
   CandidateAssessmentsIndexRoute: typeof CandidateAssessmentsIndexRoute
+  CandidateInvitationsIndexRoute: typeof CandidateInvitationsIndexRoute
   CandidateAssessmentsAssessmentIdResultRoute: typeof CandidateAssessmentsAssessmentIdResultRoute
   CandidateAssessmentsAssessmentIdWorkspaceRoute: typeof CandidateAssessmentsAssessmentIdWorkspaceRoute
 }
@@ -327,7 +369,9 @@ const CandidateRouteRouteChildren: CandidateRouteRouteChildren = {
   CandidateSkillsRoute: CandidateSkillsRoute,
   CandidateSourcesRoute: CandidateSourcesRoute,
   CandidateIndexRoute: CandidateIndexRoute,
+  CandidateInvitationsInvitationIdRoute: CandidateInvitationsInvitationIdRoute,
   CandidateAssessmentsIndexRoute: CandidateAssessmentsIndexRoute,
+  CandidateInvitationsIndexRoute: CandidateInvitationsIndexRoute,
   CandidateAssessmentsAssessmentIdResultRoute:
     CandidateAssessmentsAssessmentIdResultRoute,
   CandidateAssessmentsAssessmentIdWorkspaceRoute:
