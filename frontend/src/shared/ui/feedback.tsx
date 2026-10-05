@@ -53,7 +53,12 @@ export function EmptyState({ icon = 'inbox', title, children, actions }: EmptySt
   );
 }
 
-type ErrorStateProps = { error: unknown; onRetry?: () => void; retrying?: boolean; title?: string };
+type ErrorStateProps = {
+  error: unknown;
+  onRetry?: (() => void) | undefined;
+  retrying?: boolean | undefined;
+  title?: string | undefined;
+};
 
 export function ErrorState({ error, onRetry, retrying, title }: ErrorStateProps) {
   const description = describeError(error);

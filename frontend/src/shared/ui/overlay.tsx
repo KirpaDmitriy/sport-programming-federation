@@ -161,7 +161,7 @@ export function Tabs<T extends string>({ items, value, onChange, label, idPrefix
 
 type SegmentedProps<T extends string> = {
   label: string;
-  options: Array<{ value: T; label: string; disabled?: boolean; title?: string }>;
+  options: Array<{ value: T; label: string; disabled?: boolean | undefined; title?: string | undefined }>;
   value: T;
   onChange: (value: T) => void;
 };

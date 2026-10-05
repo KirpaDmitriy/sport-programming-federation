@@ -116,7 +116,7 @@ export function CandidateInvitationPage({ invitationId }: { invitationId: string
       </div>
       <Card style={{ marginTop: '1.5rem' }}>
         <div className="row" style={{ alignItems: 'flex-start' }}>
-          <Avatar kind="anonymous" size="md" />
+          <Avatar kind="icon" icon="mail" size="md" />
           <div className="stack" style={{ gap: '0.25rem' }}>
             <strong>Как работодатель свяжется с вами</strong>
             <p className="muted">

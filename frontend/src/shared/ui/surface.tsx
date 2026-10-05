@@ -101,6 +101,7 @@ type AvatarProps = { size?: 'sm' | 'md' | 'lg' } & (
   | { kind: 'initials'; text: string }
   | { kind: 'anonymous' }
   | { kind: 'company'; text?: string }
+  | { kind: 'icon'; icon: IconName }
 );
 
 /** Anonymous avatars never derive initials from a person: employers see a neutral icon. */
@@ -125,9 +126,10 @@ export function Avatar(props: AvatarProps) {
       </span>
     );
   }
+  const icon = props.kind === 'icon' ? props.icon : props.kind === 'company' ? 'building' : 'user';
   return (
     <span className={className} aria-hidden="true">
-      <Icon name={props.kind === 'company' ? 'building' : 'user'} size={iconSize} />
+      <Icon name={icon} size={iconSize} />
     </span>
   );
 }
