@@ -63,7 +63,7 @@ Use `openapi-fetch@0.17.0` with the generated `paths` type. This gives typed pat
 
 An actual alternative probe explained why peer metadata alone is insufficient: `@hey-api/openapi-ts@0.99.0` admitted TypeScript 7 in its peer range but crashed when it attempted to read `ts.SyntaxKind.AnyKeyword`. Its generated runtime under TypeScript 6 also failed the chosen `exactOptionalPropertyTypes` setting. The selected route keeps strict frontend checking and avoids editing generated vendor code. See `STACK_VERIFICATION.md` for commands, observed failures, and the successful selected checks. Hey API metadata remains in the research snapshot as evidence; it is not an application dependency or a second implementation option.
 
-`tools/contract-codegen/generate.mjs` rejects unresolved/nonlocal references, generates the declarations from the local contract, and records a deterministic source/output hash. Its `check` command regenerates in memory and fails if the committed output is stale. Each isolated package has its own genuine pnpm lockfile. Do not hoist the generator into the frontend dependency context or force its TypeScript peer to version 7.
+`tools/contract-codegen/generate.mjs` rejects unresolved/nonlocal references, generates the declarations from the local contract, and records a deterministic source/output hash. Its `check` command regenerates in memory and fails if the committed output is stale. Each isolated package has its own genuine lockfile (`bun.lock` since 2026-10-06). Do not hoist the generator into the frontend dependency context or force its TypeScript peer to version 7.
 
 ## Version and installation rules for the implementation agent
 
