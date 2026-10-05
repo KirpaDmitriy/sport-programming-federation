@@ -23,6 +23,10 @@ def test_candidate_controls_profile_visibility_and_cannot_write_employer_profile
         candidates = http.get("/api/v1/candidates").json()
         public_profile = next(item for item in candidates if item["name"] == "Новый кандидат")
         assert "contact_email" not in public_profile
+        assert any(item["name"] == "Новый кандидат" for item in http.get(
+            "/api/v1/candidates?specialization=backend&grade=junior&stack=python&has_fsp=false"
+        ).json())
+        assert http.get("/api/v1/candidates?has_fsp=true&specialization=backend").json() == []
 
 
 def test_employer_owns_vacancy_and_cannot_overwrite_demo_or_foreign_vacancy(tmp_path) -> None:
@@ -32,6 +36,9 @@ def test_employer_owns_vacancy_and_cannot_overwrite_demo_or_foreign_vacancy(tmp_
         "employer": "Выготский Лаб",
         "title": "Python-разработчик",
         "grade": "Junior",
+        "specialization": "Backend",
+        "description": "Разработка сервисов для продуктовой платформы.",
+        "team_description": "Продуктовая команда из пяти инженеров.",
         "work_format": "remote",
         "salary_from": 130000,
         "salary_to": 180000,

@@ -115,6 +115,8 @@ h1 em { font-style: normal; color: var(--lime); }
 .filter-chip.active { background: var(--blue); border-color: var(--blue); color: white; }
 .search-box { width: 280px; padding: 0 16px; display: flex; align-items: center; gap: 8px; border: 1px solid var(--line); border-radius: 15px; background: var(--card); }
 .search-box input { width: 100%; height: 44px; border: 0; outline: 0; background: transparent; }
+.compact-filter { display: grid; gap: 3px; color: var(--muted); font-size: 9px; font-weight: 800; text-transform: uppercase; }
+.compact-filter select { min-width: 112px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 11px; color: var(--ink); background: var(--card); font: inherit; text-transform: none; }
 .candidate-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 16px; }
 .candidate-card { min-height: 330px; padding: 24px; display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 28px; background: var(--card); transition: .28s cubic-bezier(.2,.8,.2,1); overflow: hidden; position: relative; }
 .candidate-card::after { content: ""; position: absolute; width: 140px; height: 140px; border-radius: 50%; right: -70px; top: -70px; background: var(--accent,var(--blue)); opacity: .13; }
@@ -353,6 +355,7 @@ h1 em { font-style: normal; color: var(--lime); }
   .vacancy-list,.candidate-grid { grid-template-columns: 1fr; }
   .match-toolbar { align-items: stretch; flex-direction: column; }
   .search-box { width: 100%; }
+  .compact-filter select { width: 100%; }
   .candidate-topline { align-items: stretch; flex-direction: column; }
   .candidate-dashboard { grid-template-columns: 1fr; }
   .graph-card,.evidence-card { grid-column: span 1; }

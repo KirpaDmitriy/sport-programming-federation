@@ -77,6 +77,9 @@ class Vacancy:
     salary_to: int
     requirements: tuple[Requirement, ...]
     evidence_policy: EvidencePolicy = field(default_factory=EvidencePolicy)
+    specialization: str = "general"
+    description: str = ""
+    team_description: str = ""
 
 
 @dataclass(frozen=True)

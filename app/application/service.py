@@ -26,7 +26,15 @@ class TalentService:
         self.store.upsert_vacancies([vacancy], owner_user_id)
         return asdict(vacancy)
 
-    def candidates(self, category: str | None = None, work_format: str | None = None) -> list[dict]:
+    def candidates(
+        self,
+        category: str | None = None,
+        work_format: str | None = None,
+        specialization: str | None = None,
+        grade: str | None = None,
+        stack: str | None = None,
+        has_fsp: bool | None = None,
+    ) -> list[dict]:
         skills = self.store.skills()
         competitions = self.store.competitions()
         achievements = self.store.achievements()
@@ -42,12 +50,23 @@ class TalentService:
                 continue
             if work_format and candidate.work_format != work_format:
                 continue
+            if specialization and (not account or account["specialization"].casefold() != specialization.casefold()):
+                continue
+            if grade and (not account or (account["verified_grade"] or account["claimed_grade"]).casefold() != grade.casefold()):
+                continue
+            if stack and not any(stack.casefold() in item.casefold() for item in candidate.stack):
+                continue
+            candidate_has_fsp = any(
+                item.source == "fsp" for item in achievements if item.candidate_id == candidate.id
+            )
+            if has_fsp is not None and candidate_has_fsp != has_fsp:
+                continue
             result.append({
                 **asdict(candidate),
                 "profile": asdict(profile),
                 "tested_category": tested_category,
                 "verified_grade": account["verified_grade"] if account else None,
-                "has_fsp_history": any(item.source == "fsp" for item in achievements if item.candidate_id == candidate.id),
+                "has_fsp_history": candidate_has_fsp,
             })
         return result
 

@@ -111,6 +111,9 @@ class VacancyIn(BaseModel):
     employer: str = Field(min_length=2, max_length=100)
     title: str = Field(min_length=3, max_length=120)
     grade: str = Field(min_length=2, max_length=30)
+    specialization: str = Field(min_length=2, max_length=120)
+    description: str = Field(min_length=10, max_length=2000)
+    team_description: str = Field(min_length=10, max_length=2000)
     work_format: Literal["remote", "hybrid", "office"]
     salary_from: int = Field(gt=0)
     salary_to: int = Field(gt=0)
@@ -139,6 +142,9 @@ class VacancyIn(BaseModel):
             self.salary_to,
             tuple(Requirement(item.skill_id, item.level, item.criticality) for item in self.requirements),
             EvidencePolicy(self.evidence_policy.mode, frozenset(self.evidence_policy.competition_ids)),
+            self.specialization,
+            self.description,
+            self.team_description,
         )
 
 

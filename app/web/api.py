@@ -30,9 +30,13 @@ def catalog(talent: TalentService = Depends(service)) -> dict:
 def candidates(
     category: str | None = None,
     work_format: str | None = None,
+    specialization: str | None = None,
+    grade: str | None = None,
+    stack: str | None = None,
+    has_fsp: bool | None = None,
     talent: TalentService = Depends(service),
 ) -> list[dict]:
-    return talent.candidates(category, work_format)
+    return talent.candidates(category, work_format, specialization, grade, stack, has_fsp)
 
 
 @router.get("/candidates/{candidate_id}", tags=["talent"])

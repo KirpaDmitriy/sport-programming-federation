@@ -6,6 +6,9 @@ const state = {
   vacancyId: null,
   category: "Все",
   search: "",
+  specialization: "",
+  grade: "",
+  fsp: "",
   candidateId: "alina",
   user: null,
   accountProfile: null,
@@ -80,7 +83,11 @@ function renderCandidates() {
       || item.match.profile.categories.includes(state.category)
       || item.tested_category === state.category;
     const haystack = [item.name, item.city, item.desired_role, ...item.stack].join(" ").toLocaleLowerCase("ru");
-    return categoryMatch && (!query || haystack.includes(query));
+    const specializationMatch = !state.specialization || item.tested_category?.startsWith(`${state.specialization}:`);
+    const gradeMatch = !state.grade || item.verified_grade === state.grade
+      || item.tested_category?.endsWith(`:${state.grade}`);
+    const fspMatch = !state.fsp || item.has_fsp_history === (state.fsp === "yes");
+    return categoryMatch && specializationMatch && gradeMatch && fspMatch && (!query || haystack.includes(query));
   });
   if (!matches.length) {
     $("#candidate-grid").innerHTML = '<div class="empty-state">В этой категории пока никого. Снимите фильтр или выберите другую вакансию.</div>';
@@ -257,6 +264,9 @@ function bindForms() {
       employer: data.employer,
       title: data.title,
       grade: data.grade,
+      specialization: data.specialization,
+      description: data.description,
+      team_description: data.team_description,
       work_format: data.work_format,
       salary_from: Number(data.salary_from),
       salary_to: Number(data.salary_to),
@@ -599,6 +609,9 @@ $("#logout").addEventListener("click", async () => {
 });
 $("#open-data").addEventListener("click", () => $("#data-dialog").showModal());
 $("#candidate-search").addEventListener("input", (event) => { state.search = event.target.value; renderCandidates(); });
+$("#candidate-specialization").addEventListener("change", (event) => { state.specialization = event.target.value; renderCandidates(); });
+$("#candidate-grade").addEventListener("change", (event) => { state.grade = event.target.value; renderCandidates(); });
+$("#candidate-fsp").addEventListener("change", (event) => { state.fsp = event.target.value; renderCandidates(); });
 $("#persona-select").addEventListener("change", (event) => { state.candidateId = event.target.value; loadCandidateDashboard(); });
 $("#candidate-vacancy").addEventListener("change", loadCandidateDashboard);
 $("#add-requirement").addEventListener("click", () => addRequirement());

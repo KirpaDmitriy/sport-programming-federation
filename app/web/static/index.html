@@ -74,6 +74,9 @@
               <span aria-hidden="true">⌕</span>
               <input id="candidate-search" type="search" placeholder="Имя, город или стек" aria-label="Поиск кандидатов">
             </label>
+            <label class="compact-filter">Специализация<select id="candidate-specialization"><option value="">Все</option><option value="backend">Backend</option><option value="data">Data / ML</option><option value="frontend">Frontend</option></select></label>
+            <label class="compact-filter">Грейд<select id="candidate-grade"><option value="">Все</option><option value="intern">Intern</option><option value="junior">Junior</option><option value="middle">Middle</option><option value="senior">Senior</option></select></label>
+            <label class="compact-filter">История ФСП<select id="candidate-fsp"><option value="">Любая</option><option value="yes">Есть</option><option value="no">Нет</option></select></label>
           </div>
           <div id="candidate-grid" class="candidate-grid" aria-live="polite"></div>
         </section>
@@ -237,9 +240,12 @@
         </div>
         <div class="form-row thirds">
           <label>Грейд<input name="grade" value="Middle" required></label>
+          <label>Специализация<input name="specialization" value="Backend" required></label>
           <label>Формат<select name="work_format"><option value="remote">Удалённо</option><option value="hybrid">Гибрид</option><option value="office">Офис</option></select></label>
           <label>Политика доказательств<select name="policy_mode"><option value="platform_rating">Рейтинг платформы</option><option value="allowlist">Только выбранные соревнования</option></select></label>
         </div>
+        <label>Задача и ожидаемый результат<textarea name="description" minlength="10" required>Развивать продукт и отвечать за измеримый результат.</textarea></label>
+        <label>Команда и рабочий контекст<textarea name="team_description" minlength="10" required>Кросс-функциональная продуктовая команда с сильной инженерной культурой.</textarea></label>
         <div class="form-row">
           <label>Зарплата от<input name="salary_from" type="number" value="180000" min="1" required></label>
           <label>Зарплата до<input name="salary_to" type="number" value="260000" min="1" required></label>

@@ -141,7 +141,10 @@ CREATE TABLE IF NOT EXISTS vacancies (
     salary_to INTEGER NOT NULL CHECK (salary_to >= salary_from),
     requirements_json TEXT NOT NULL,
     policy_mode TEXT NOT NULL,
-    policy_competitions_json TEXT NOT NULL
+    policy_competitions_json TEXT NOT NULL,
+    specialization TEXT NOT NULL DEFAULT 'general',
+    description TEXT NOT NULL DEFAULT '',
+    team_description TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS vacancy_owners (
     vacancy_id TEXT PRIMARY KEY REFERENCES vacancies(id) ON DELETE CASCADE,
@@ -212,6 +215,14 @@ class Store:
     def initialize(self) -> None:
         with self.connection() as connection:
             connection.executescript(SCHEMA)
+            columns = {row["name"] for row in connection.execute("PRAGMA table_info(vacancies)")}
+            for name, definition in (
+                ("specialization", "TEXT NOT NULL DEFAULT 'general'"),
+                ("description", "TEXT NOT NULL DEFAULT ''"),
+                ("team_description", "TEXT NOT NULL DEFAULT ''"),
+            ):
+                if name not in columns:
+                    connection.execute(f"ALTER TABLE vacancies ADD COLUMN {name} {definition}")
 
     def create_user(
         self,
@@ -775,17 +786,26 @@ class Store:
                 json.dumps([vars(item) for item in v.requirements], ensure_ascii=False),
                 v.evidence_policy.mode,
                 json.dumps(sorted(v.evidence_policy.competition_ids)),
+                v.specialization,
+                v.description,
+                v.team_description,
             )
             for v in vacancies
         ]
         with self.connection() as connection:
             connection.executemany(
-                """INSERT INTO vacancies VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """INSERT INTO vacancies(
+                    id, employer, title, grade, work_format, salary_from, salary_to,
+                    requirements_json, policy_mode, policy_competitions_json,
+                    specialization, description, team_description
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET employer=excluded.employer, title=excluded.title,
                 grade=excluded.grade, work_format=excluded.work_format,
                 salary_from=excluded.salary_from, salary_to=excluded.salary_to,
                 requirements_json=excluded.requirements_json, policy_mode=excluded.policy_mode,
-                policy_competitions_json=excluded.policy_competitions_json""",
+                policy_competitions_json=excluded.policy_competitions_json,
+                specialization=excluded.specialization, description=excluded.description,
+                team_description=excluded.team_description""",
                 rows,
             )
             if owner_user_id:
@@ -907,6 +927,7 @@ class Store:
         return Vacancy(
             row["id"], row["employer"], row["title"], row["grade"], row["work_format"],
             row["salary_from"], row["salary_to"], requirements, policy,
+            row["specialization"], row["description"], row["team_description"],
         )
 
     def create_offer(
