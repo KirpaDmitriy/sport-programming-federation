@@ -4,7 +4,11 @@ import openapiTS, { astToString } from 'openapi-typescript';
 import ts from 'typescript';
 
 const contractUrl = new URL('../../contracts/openapi.json', import.meta.url);
-const outputUrl = new URL('../../frontend-reference/src/shared/api/generated/', import.meta.url);
+// The application consumes its own copy; the reference package keeps one so its checks stay runnable.
+const outputUrls = [
+  new URL('../../../frontend/src/shared/api/generated/', import.meta.url),
+  new URL('../../frontend-reference/src/shared/api/generated/', import.meta.url),
+];
 const source = await readFile(contractUrl, 'utf8');
 const contract = JSON.parse(source);
 
@@ -45,14 +49,16 @@ const manifest = `${JSON.stringify({
   outputSha256: createHash('sha256').update(generated).digest('hex'),
 }, null, 2)}\n`;
 
-for (const [name, expected] of [['schema.d.ts', generated], ['manifest.json', manifest]]) {
-  const destination = new URL(name, outputUrl);
-  if (process.argv.includes('--check')) {
-    const actual = await readFile(destination, 'utf8');
-    if (actual !== expected) throw new Error(`Generated output is stale: ${name}`);
-  } else {
-    await mkdir(outputUrl, { recursive: true });
-    await writeFile(destination, expected);
+for (const outputUrl of outputUrls) {
+  for (const [name, expected] of [['schema.d.ts', generated], ['manifest.json', manifest]]) {
+    const destination = new URL(name, outputUrl);
+    if (process.argv.includes('--check')) {
+      const actual = await readFile(destination, 'utf8');
+      if (actual !== expected) throw new Error(`Generated output is stale: ${destination.pathname}`);
+    } else {
+      await mkdir(outputUrl, { recursive: true });
+      await writeFile(destination, expected);
+    }
   }
 }
 
