@@ -209,7 +209,7 @@ A candidate may request a gap plan for a need only after receiving that need in 
 
 ## PDF import and export
 
-Export returns an actual `application/pdf` document generated from the current authenticated candidate profile. PDFKit embeds the included DejaVu Sans font for Russian text. The font license is shipped alongside the font. The canonical sample file, `fixtures/profile-export.pdf`, was generated through the HTTP endpoint, parsed with Poppler, and visually checked.
+Export returns an actual `application/pdf` document generated from the current authenticated candidate profile. PDFKit embeds the included DejaVu Sans font for Russian text. The font license is shipped alongside the font. The canonical sample file, `fixtures/profile-export.pdf`, was generated through the HTTP endpoint, parsed with Poppler, and visually checked; `UPDATE_FIXTURES=1 bun run test` rewrites it.
 
 Import uses `multipart/form-data` with one `file` part, MIME type `application/pdf`, and a maximum size of 2 MiB. The mock checks the signature and PDF end marker. It does not parse the content, run OCR, or claim that extracted fields came from the uploaded file. The asynchronous job returns an explicitly marked `parser: "fixture_preview"` result. Unknown duration is `null`. The candidate reviews/edits the preview and confirms it through the separate endpoint; import cannot change verified fields.
 

@@ -327,7 +327,8 @@ test('PDF export is a real current-profile PDF; fixture import is asynchronous a
   const exported = await request('GET', '/api/v1/me/profile/export', { actor: candidate });
   assert.ok(exported.buffer.subarray(0, 5).equals(Buffer.from('%PDF-'))); assert.ok(exported.buffer.subarray(-1024).includes(Buffer.from('%%EOF')));
   assert.equal(exported.response.headers.get('content-type'), 'application/pdf');
-  await writeFile(new URL('../fixtures/profile-export.pdf', import.meta.url), exported.buffer);
+  // The PDF embeds its creation time, so the sample is rewritten only on request.
+  if (process.env.UPDATE_FIXTURES === '1') await writeFile(new URL('../fixtures/profile-export.pdf', import.meta.url), exported.buffer);
   const form = new FormData(); form.set('file', new Blob([exported.buffer], { type: 'application/pdf' }), 'profile.pdf');
   const imported = (await request('POST', '/api/v1/me/profile/imports', { actor: candidate, raw: form, status: 202 })).body;
   await request('POST', `/api/v1/me/profile/imports/${imported.id}/confirm`, { actor: candidate, body: { profile: { name: 'Имя' } }, status: 409 });
