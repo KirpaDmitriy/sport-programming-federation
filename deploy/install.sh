@@ -6,7 +6,7 @@ APP_DIR=/opt/kontur-talent
 DATA_DIR=/var/lib/kontur-talent
 
 sudo install -d -o dima -g dima "$APP_DIR" "$DATA_DIR"
-cp -R "$SOURCE_DIR/app" "$APP_DIR/"
+cp -R "$SOURCE_DIR/app" "$SOURCE_DIR/deploy" "$APP_DIR/"
 cp "$SOURCE_DIR/pyproject.toml" "$SOURCE_DIR/requirements.txt" "$APP_DIR/"
 
 if [[ ! -x "$APP_DIR/.venv/bin/python" ]]; then
