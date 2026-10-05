@@ -1,6 +1,6 @@
 # Stack and generated-client verification
 
-Verification date: 2026-10-05. This report records commands actually run while preparing the archive. Package availability and peers were read from primary registry metadata; runtime compatibility was then checked on the included contract and reference client. The full application has not been implemented by this package.
+Verification date: 2026-10-05. This report records commands actually run while preparing the archive. On 2026-10-06 the packages moved from pnpm to Bun; current commands are in the package README and the latest run in `../reports/verification-summary.json`. Package availability and peers were read from primary registry metadata; runtime compatibility was then checked on the included contract and reference client. The full application has not been implemented by this package.
 
 ## Environment and selected route
 
