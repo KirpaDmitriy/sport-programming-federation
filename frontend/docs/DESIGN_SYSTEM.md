@@ -1,159 +1,83 @@
-# Application design system
+# Design system
 
-## Status and assets
+The visual language of the app: a dark plum sidebar, a light workspace, purple actions and status colors for
+evidence and decisions. Values live in [`../src/app/styles/tokens.css`](../src/app/styles/tokens.css) (imported by
+`global.css`); [`tokens.json`](../src/app/styles/tokens.json) holds the same values for tooling, so a change goes into
+both. Components use tokens only, never literal colors. The product wordmark is the text «ФСП / Карьера»; there is
+no official logo asset in the app.
 
-The ten mockups define a coherent application direction: dark plum navigation, a light workspace, restrained purple actions, and evidence/status colors. The following tokens are **proposed implementation values**. They are not a reconstruction of an official FSP brandbook.
+## Tokens
 
-Use [`tokens.css`](../../frontend/src/app/styles/tokens.css) in the frontend foundation. [`tokens.json`](../../frontend/src/app/styles/tokens.json) contains the same 63 base token values for tooling and inspection. Keep the files synchronized if values change. The CSS also reduces token-based motion when the user requests reduced motion.
+All names are prefixed `--fsp-`.
 
-Use the system font stack included in the tokens. It supports the local system's Cyrillic fonts and requires no external font service. An optional custom typeface must be bundled with its license before it becomes a runtime dependency. Do not load fonts, logos, or illustration assets from an unlisted CDN.
+| Group | Tokens |
+| --- | --- |
+| Surfaces | `color-canvas` `#f7f5fa` (page), `color-surface` `#ffffff` (cards), `color-surface-subtle` `#f2edf8` (quiet sections, selection) |
+| Text | `color-text` `#181322`, `color-text-secondary` `#5d526a`, `color-text-muted` `#766983` |
+| Borders | `color-border` `#ddd4e8` (decorative), `color-border-strong` `#8d8199` (control boundaries) |
+| Action | `color-primary` `#6500a8`, `color-primary-hover` `#520087`, `color-primary-active` `#41006c`, `color-on-primary` `#ffffff` |
+| Sidebar | `color-sidebar` `#281036`, `color-sidebar-active` `#42204f`, `color-on-sidebar` `#ffffff`, `color-sidebar-muted` `#dbcee6` |
+| Accent | `color-accent` `#d81780`, `color-accent-subtle` `#fff0f7` (navigation marker, «Новое», demo labels) |
+| Status | `color-success` `#187a65`, `color-warning` `#925a00`, `color-danger` `#b4233b`, `color-neutral` `#5d526a`, each with a `-subtle` background |
+| Focus | `color-focus` `#6500a8`, `color-focus-inverse` `#d9b3ff` (on the sidebar); `focus-width` 3px, `focus-offset` 3px |
+| Type | `font-sans` (system UI stack with Cyrillic), `font-mono`; sizes `caption` 0.75rem, `small` 0.875rem, `body` 1rem, `section` 1.25rem, `page` 2rem; line heights 1.5 body, 1.2 headings |
+| Space | `space-1` … `space-12`: 4, 8, 12, 16, 20, 24, 32, 40, 48 px |
+| Radius | `radius-sm` 6px, `radius-control` 8px, `radius-card` 12px, `radius-panel` 16px, `radius-pill` |
+| Size | `control-min-height` and `interactive-min-size` 44px, `sidebar-width` 248px, `header-height` 72px, `content-max-width` 1440px |
+| Elevation | `shadow-card`, `shadow-overlay` |
+| Motion | `motion-fast` 120ms, `motion-normal` 180ms, `motion-easing`; both durations are 0 under `prefers-reduced-motion` |
 
-The working product wordmark is `ФСП / Карьера`. Use supplied official brand assets when available and authorized. Do not treat an image-generated icon or traced screenshot lettering as an official vector logo. A text wordmark is sufficient for the mock frontend.
+The design uses no web fonts, remote images or icon fonts; icons are inline SVG (`shared/ui/icon.tsx`).
 
-## Color roles
+## Layout
 
-| Role | Token suffix | Value | Use |
-|---|---|---|---|
-| Page | `canvas` | `#F7F5FA` | Main background |
-| Card | `surface` | `#FFFFFF` | Forms, tables, inspectors |
-| Quiet background | `surface-subtle` | `#F2EDF8` | Secondary sections and selection context |
-| Main text | `text` | `#181322` | Headings and substantive values |
-| Supporting text | `text-secondary` | `#5D526A` | Descriptions and labels |
-| Muted text | `text-muted` | `#766983` | Secondary metadata; never use opacity to weaken essential text |
-| Decorative border | `border` | `#DDD4E8` | Card separators and nonessential structure |
-| Control boundary | `border-strong` | `#8D8199` | Input/control boundaries where visual identification relies on the border |
-| Primary action | `primary` | `#6500A8` | Main button and links |
-| Sidebar | `sidebar` | `#281036` | Role navigation |
-| Sidebar selection | `sidebar-active` | `#42204F` | Active route background |
-| Accent | `accent` | `#D81780` | Small navigation marker and limited emphasis |
-| Confirmed/success | `success` | `#187A65` | Confirmed result, saved/completed state |
-| Needs attention | `warning` | `#925A00` | Partial evidence, retry condition, incomplete criterion |
-| Failure | `danger` | `#B4233B` | Invalid input and failed operation |
-| Neutral | `neutral` | `#5D526A` | Unknown/unobserved/unstarted states |
+- The shell is a sidebar plus a column with a 72px header and the main region. Below 1024px the sidebar becomes a
+  drawer (up to 18rem or 85% of the width) opened from the header and closed by Escape, the backdrop or navigation.
+- Global layout classes in `global.css`: `stack`, `stack-lg`, `row` for spacing; `split` (main column plus side
+  column, one column below 1100px); `split-even` and `form-grid` (two columns, one below 760px); `table-wrap` for
+  horizontally scrollable tables; `small`, `muted`, `divider`, `visually-hidden`.
+- Pages never scroll horizontally at narrow widths; wide tables scroll inside `table-wrap`.
 
-All suffixes above belong to the `--fsp-color-` namespace. Status background tokens have the same suffix plus `-subtle`.
+## UI kit (`src/shared/ui`)
 
-### Contrast verification
+| Component | Use |
+| --- | --- |
+| `Button`, `ButtonLink` | Variants `primary`, `secondary`, `quiet`, `danger`; sizes `md` (44px) and `sm` (36px); leading or trailing icon; `pending` disables the button, shows a spinner and an optional pending label and sets `aria-busy` |
+| `TextField`, `TextareaField`, `SelectField` | Labelled fields built on `FieldShell` with hint, error, required marker and counter |
+| `Checkbox`, `Switch` | Boolean choices with descriptions; the switch is used for publication consent |
+| `ToggleGroup`, `TokenInput` | Multi-select chips with a maximum (stack), free-text tokens (soft skills) |
+| `Card`, `PageHeader`, `DefinitionList`, `SalaryBlock` | Sections, page title with subtitle and actions, term/value lists, the salary range with its basis |
+| `StatusChip`, `Tag`, `TagList`, `Avatar` | State labels with tone and icon; neutral tags; avatars for initials, the anonymous candidate, a company or an icon |
+| `Callout`, `EmptyState`, `ErrorState`, `LoadingState`, `InlineStatus`, toasts | Notices, empty and error states (with request ID and retry), skeletons, inline progress, confirmations |
+| `Dialog`, `ConfirmDialog`, `Tabs`, `Segmented`, `Pagination` | Native modal `<dialog>` that returns focus to its opener, confirmations, tab lists, segmented switches, page navigation |
+| `UnsavedChangesGuard` | Blocks navigation and reload while a form or draft has unsaved changes |
 
-Relative-luminance calculations for the provided colors give these approximate ratios:
+Tones of `StatusChip` and `Callout`: `success`, `warning`, `danger`, `neutral`, `info`, `accent`.
 
-| Foreground / background | Ratio |
-|---|---:|
-| Main text / white | 18.18:1 |
-| Supporting text / white | 7.29:1 |
-| Muted text / white | 5.10:1 |
-| White / primary | 9.91:1 |
-| Success text / success background | 4.69:1 |
-| Warning text / warning background | 5.19:1 |
-| Danger text / danger background | 5.68:1 |
-| Neutral text / neutral background | 6.33:1 |
-| Strong control border / white | 3.66:1 |
+## Status vocabulary
 
-These checks cover the named pairs only. Recheck rendered combinations, disabled/hover states, graph text, overlays, and opacity. Do not sample pale text from the raster and assume it passes. The decorative border is intentionally unsuitable as the sole identifying boundary of an input.
+One wording per state across the app (`src/shared/lib/labels.ts` and the entities' `ui.tsx`).
 
-## Typography and spacing
+| Domain | Values |
+| --- | --- |
+| Specialization / grade | Бэкенд, Фронтенд, Фулстек / Джуниор, Мидл, Сеньор |
+| Qualification | «Джуниор подтверждён» (success), «Уровень не подтверждён» (neutral), «Цель: Мидл» (target, shown only when it differs) |
+| Skill | Проверено · Есть свидетельства · Найдено в работе · Недостаточно данных |
+| Requirement | Подтверждено · Есть основания, нужна проверка · Недостаточно данных |
+| Match group | Подходят по обязательным требованиям · Требуют дополнительной проверки · Не хватает свидетельств по обязательным требованиям |
+| Assessment | Начата · В работе · Решение отправлено · Решение проверяется · Пройдена · Не пройдена · Сбой оценивания |
+| Check | Пройдено · Доработать · Не запущено |
+| Invitation, candidate view | Ожидает вашего решения · Просмотрено · ждёт решения · Принято · Отклонено · Отозвано компанией |
+| Invitation, employer view | Отправлено · Просмотрено · Принято кандидатом · Отклонено кандидатом · Отозвано |
+| Repository | Обработан · В очереди · Временно недоступен |
+| Work mode | Удалённо · Гибрид · В офисе |
 
-| Element | Proposed size | Treatment |
-|---|---|---|
-| Page title | 32px / 1.2 | Semibold or bold; allow wrapping |
-| Section title | 20px / 1.2 | Semibold |
-| Body/value | 16px / 1.5 | Regular |
-| Label/supporting text | 14px / 1.5 | Regular or medium |
-| Minor metadata | 12px | Use sparingly; not for decisions, errors, salary, or required consent copy |
-| Code | System monospace, adjustable | Preserve whitespace and a clear focus/escape mechanism |
+Salaries read «200 000 – 260 000 ₽/мес» with «До вычета налогов» next to them. Synthetic data is labelled
+(«Демо-источник», «демо-ссылка», «Синтетические данные демонстрации», «Демонстрационный ответ») wherever it appears.
 
-The tokens use `rem` values. Do not reduce the root font size to reproduce the screenshot dimensions. Use the 4px spacing scale: 4, 8, 12, 16, 20, 24, 32, 40, 48. Typical card padding is 24px, form gaps 16–24px, and page gaps 24–32px. Cards use 12–16px corner radii; controls use 8px. Shadows are subtle and reserved mainly for elevated content.
+## Accessibility
 
-Controls and icon-button hit areas have a **44px minimum target** in this project's design target. A 20px icon may sit within that area. Dense tables can retain compact row text while keeping the bookmark/open actions independently accessible.
-
-## Application shell
-
-**Desktop:** persistent sidebar, 72px header, main region with flexible content width and 24–32px padding. The nominal sidebar token is 248px. Treat it as a layout starting point, not a rule to squeeze a form into unreadable columns.
-
-**Candidate navigation:** Обзор, Профиль, Источники, Навыки, Проверки, Приглашения, Настройки.
-
-**Employer navigation:** Обзор, Потребности, Кандидаты, Подборки, Приглашения, Компания, Настройки.
-
-Keep only implemented routes in navigation. An optional vacancy route must not replace the reverse-hiring journey. If there is no meaningful employer overview yet, route its entry to a working needs/summary view or omit the duplicate destination.
-
-The header contains breadcrumbs or a concise page context, demo status, and account menu. A notification icon must lead to implemented invitation/notification state or be omitted. Demo account switching is a testing facility; do not present it as production authorization.
-
-Use `header`, `nav`, `main`, and appropriate complementary regions. Mark the current route accessibly. A skip link moves focus to the main content. The page title and focus update on navigation; a sidebar click must not leave the screen reader at stale content.
-
-## Shared component behavior
-
-| Component | Required behavior |
-|---|---|
-| Button | Primary, secondary, quiet, destructive variants; visible focus; pending label; duplicate-submit protection where needed. A disabled action has a nearby reason when that affects the task. |
-| Text field/select/combobox | Persistent label; help/error association; required indication; keyboard support; preserved value after a failed save. |
-| Form section | Groups related fields; one clear save action; form-level error summary when multiple fields fail. |
-| Status chip | Text plus icon. Domain-specific label is independent of visual color. |
-| Evidence row | Skill, reference level, evidence state, evidence type, expandable grounds, limitation. Never encode “verified” in a color alone. |
-| Category badge | Verified specialization/grade only. Selected grade is a separate target badge. |
-| Candidate summary | Uses the role/tenant-specific DTO. Neutral avatar for anonymous profiles; no generated personal initials. |
-| Salary block | Both bounds, RUB, period, and tax basis. Same formatting in form preview, invitation, and history. |
-| Search filters | Labeled inputs, removable chips, clear-all, URL/state persistence, accessible mobile dialog. |
-| Shortlist bookmark | Membership-driven selected state; accessible label such as `Удалить кандидата №024 из подборки`; visible save failure/rollback. |
-| Data table | Real table semantics for tabular data; header associations; clearly labeled row actions. Do not make an entire row a nested interactive element. |
-| Tabs | Keyboard navigation, selected state, associated panels. Content loaded lazily may expose its own loading indicator. |
-| Dialog/drawer | Visible title; suitable initial focus; focus contained while modal; escape/close handling; focus returns to the invoking control. Dirty-form closing requires a clear save/discard choice. |
-| Job status | Distinguishes queued/running/succeeded/failed/canceled meanings according to wire states; progress is real or explicitly indeterminate. |
-| Toast/banner | Toast for supplemental confirmation. Persist important errors or required decisions in the page. Async status updates are announced without taking focus. |
-| Graph inspector | Same data and selection as list view; readable nodes; keyboard-accessible alternatives; no identifying employer data hidden in tooltips. |
-
-Use the project's chosen accessible primitive library consistently. Avoid mixing incompatible dialog, focus, form, and select behaviors from multiple ad hoc kits. Foundation components should support the required screens; do not build a general-purpose design platform first.
-
-## State and icon vocabulary
-
-| Semantic meaning | Russian copy examples | Visual treatment |
-|---|---|---|
-| Qualification confirmed | `Грейд подтверждён`, `Джуниор подтверждён` | Green check with text |
-| Assessment target | `Цель: Мидл`, `Грейд для проверки` | Neutral/purple target marker |
-| Observed technology | `Найдено в работе` | Neutral eye with text |
-| Supporting evidence exists | `Есть свидетельства` | Amber evidence indicator |
-| Need partly supported | `Есть основания`, `Нужна проверка` | Amber; show the actual missing condition |
-| Insufficient information | `Недостаточно данных` | Neutral indicator; not a red rejection |
-| Criterion not passed | `Требует доработки` | Error/attention treatment with reason |
-| Source unavailable | `Временно недоступен` | Neutral/attention state with retry guidance |
-| Processing | `Анализ продолжается`, `Решение проверяется` | Text with unobtrusive progress |
-| Invitation awaiting decision | `Ожидает вашего решения` | Attention state |
-| Invitation accepted/rejected | `Принято`, `Отклонено` | Explicit terminal label |
-
-These are presentation examples. Do not create wire enum values by translating this table. Use the shared contract's semantics and a centralized Russian label map.
-
-## Copy and formatting
-
-- Use direct action labels: `Сохранить профиль`, `Найти кандидатов`, `Отправить приглашение`, `Принять и открыть контакты`.
-- Use `Бэкенд`, `Фронтенд`, `Джуниор`, `Мидл` consistently. Do not alternate with invented category names or imply unsupported Senior assessments.
-- Display the employer as `Север Тех` consistently. `Кандидат №024` is an alias, not an account's numeric database key.
-- Format currency and dates with locale-aware formatters. Store and transport timestamps according to the contract; display the timezone when a cutoff or eligibility time could be ambiguous.
-- Keep salary bounds and tax basis visible at the decision point. Do not replace the range with `От 200 000`, `По договорённости`, or a concealed tooltip.
-- Use actual field-length validation and counters. Numbers painted into a mockup are not a character-count specification.
-- Explain uncertainty: `Нет достаточных свидетельств` means an evidence gap, not proof of incompetence.
-- Expose simulated infrastructure clearly in demo mode. Do not claim that GitHub was analyzed, a model ran, an email was delivered, or Rust code was executed when the mock returned a fixture.
-- Product-facing errors describe recovery. Provider names, DSPy/Bifrost routes, correlation internals, and stack traces belong in appropriate diagnostics, not routine candidate screens.
-
-## Accessibility implementation target
-
-Target WCAG 2.2 AA for the implemented flow. This is a design/testing target, not a certification. Relevant requirements include text/control contrast, keyboard operation, visible and unobscured focus, reflow, labeled inputs, meaningful structure, and announced status changes. See the [W3C WCAG 2.2 quick reference](https://www.w3.org/WAI/WCAG22/quickref/). The project's 44px target size is an explicit design choice.
-
-For modal focus behavior, follow the [W3C modal dialog pattern](https://www.w3.org/WAI/ARIA/apg/patterns/dialog-modal/). Prefer existing accessible primitives and verify their integration rather than adding ARIA attributes to nonsemantic controls.
-
-Practical checks for this product:
-
-- Complete registration, filters, shortlist, and invitation decision using only the keyboard.
-- Read the evidence graph through its list/detail alternative.
-- Test dialog open/close and validation focus with a screen reader.
-- Verify high-value states with text as well as color.
-- Allow browser zoom and long Russian labels without clipping the primary actions.
-- Keep the code editor escapable; explain any editor-specific keyboard command.
-- Verify motion reduction and avoid loading shimmer that is needed to interpret status.
-- Preserve a readable order when three assessment panes become tabs or stacked regions.
-
-The external references above were read on 2026-10-05. Package/library versions are documented in the technical handoff; this document intentionally does not invent a “latest” UI library release.
-
-## Visual review before completion
-
-Review one screenshot for each of the ten canonical states, plus initial onboarding, failed upgrade, empty search, API failure, and accepted invitation. Check text overflow, clipping, table alignment, status consistency, selected bookmarks, empty-state actions, and privacy projection. Compare against the PNG layout while applying `MOCKUP_CORRECTIONS.md`.
-
-Visual similarity alone is insufficient: a screenshot with a green badge does not establish qualification, and a blurred email does not establish privacy. The same review must include the corresponding API response and state transition for sensitive screens.
+Every control has a visible label, errors are linked to their fields and announced, focus rings use the focus
+tokens, standard controls are at least 44px high (small buttons 36px), status is never conveyed by color alone (chips
+carry text and an icon), the graph has a keyboard-operable list equivalent, and motion respects
+`prefers-reduced-motion`.
