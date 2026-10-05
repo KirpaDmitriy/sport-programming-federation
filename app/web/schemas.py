@@ -58,6 +58,14 @@ class EmployerProfileIn(BaseModel):
     contact_method: str = Field(min_length=5, max_length=254)
 
 
+class AssessmentStartIn(BaseModel):
+    target_grade: Literal["intern", "junior", "middle", "senior"]
+
+
+class AssessmentSubmitIn(BaseModel):
+    answers: dict[str, int] = Field(min_length=1, max_length=20)
+
+
 class RequirementIn(BaseModel):
     skill_id: str = Field(min_length=1)
     level: UnitInterval

@@ -90,6 +90,35 @@ CREATE TABLE IF NOT EXISTS candidate_profiles (
     consent_publication INTEGER NOT NULL DEFAULT 0,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+CREATE TABLE IF NOT EXISTS assessment_attempts (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    candidate_id TEXT NOT NULL REFERENCES candidates(id) ON DELETE CASCADE,
+    specialization TEXT NOT NULL,
+    target_grade TEXT NOT NULL,
+    question_ids_json TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('active', 'completed')),
+    score REAL,
+    outcome TEXT,
+    recommended_grade TEXT,
+    started_at TEXT NOT NULL,
+    completed_at TEXT
+);
+CREATE TABLE IF NOT EXISTS assessment_answers (
+    attempt_id TEXT NOT NULL REFERENCES assessment_attempts(id) ON DELETE CASCADE,
+    question_id TEXT NOT NULL,
+    selected_index INTEGER NOT NULL,
+    correct INTEGER NOT NULL,
+    PRIMARY KEY (attempt_id, question_id)
+);
+CREATE TABLE IF NOT EXISTS candidate_test_skills (
+    candidate_id TEXT NOT NULL REFERENCES candidates(id) ON DELETE CASCADE,
+    attempt_id TEXT NOT NULL REFERENCES assessment_attempts(id) ON DELETE CASCADE,
+    skill_id TEXT NOT NULL REFERENCES skills(id),
+    level REAL NOT NULL CHECK (level BETWEEN 0 AND 1),
+    confidence REAL NOT NULL CHECK (confidence BETWEEN 0 AND 1),
+    PRIMARY KEY (candidate_id, skill_id)
+);
 CREATE TABLE IF NOT EXISTS achievements (
     id TEXT PRIMARY KEY,
     candidate_id TEXT NOT NULL REFERENCES candidates(id),
@@ -396,6 +425,136 @@ class Store:
             ).fetchone()
         return dict(row) if row else None
 
+    def create_assessment_attempt(
+        self,
+        attempt_id: str,
+        user_id: str,
+        candidate_id: str,
+        specialization: str,
+        target_grade: str,
+        question_ids: list[str],
+        started_at: str,
+    ) -> None:
+        with self.connection() as connection:
+            connection.execute(
+                """INSERT INTO assessment_attempts(
+                    id, user_id, candidate_id, specialization, target_grade,
+                    question_ids_json, status, started_at
+                ) VALUES (?, ?, ?, ?, ?, ?, 'active', ?)""",
+                (
+                    attempt_id,
+                    user_id,
+                    candidate_id,
+                    specialization,
+                    target_grade,
+                    json.dumps(question_ids),
+                    started_at,
+                ),
+            )
+
+    def assessment_attempt(self, attempt_id: str, user_id: str) -> dict | None:
+        with self.connection() as connection:
+            row = connection.execute(
+                "SELECT * FROM assessment_attempts WHERE id = ? AND user_id = ?",
+                (attempt_id, user_id),
+            ).fetchone()
+        if row is None:
+            return None
+        result = dict(row)
+        result["question_ids"] = json.loads(result.pop("question_ids_json"))
+        return result
+
+    def complete_assessment(
+        self,
+        attempt_id: str,
+        user_id: str,
+        target_grade: str,
+        answers: dict[str, int],
+        result: dict,
+        completed_at: str,
+    ) -> None:
+        with self.connection() as connection:
+            row = connection.execute(
+                """SELECT candidate_id, status FROM assessment_attempts
+                WHERE id = ? AND user_id = ?""",
+                (attempt_id, user_id),
+            ).fetchone()
+            if row is None or row["status"] != "active":
+                raise ValueError("Assessment is missing or already completed")
+            connection.executemany(
+                """INSERT INTO assessment_answers(
+                    attempt_id, question_id, selected_index, correct
+                ) VALUES (?, ?, ?, ?)""",
+                [
+                    (attempt_id, question_id, selected_index, int(result["correct"][question_id]))
+                    for question_id, selected_index in answers.items()
+                ],
+            )
+            connection.execute(
+                """UPDATE assessment_attempts SET status='completed', score=?, outcome=?,
+                recommended_grade=?, completed_at=? WHERE id=?""",
+                (
+                    result["score"],
+                    result["outcome"],
+                    result["recommended_grade"],
+                    completed_at,
+                    attempt_id,
+                ),
+            )
+            if result["passed"]:
+                connection.executemany(
+                    """INSERT INTO candidate_test_skills(
+                        candidate_id, attempt_id, skill_id, level, confidence
+                    ) VALUES (?, ?, ?, ?, ?)
+                    ON CONFLICT(candidate_id, skill_id) DO UPDATE SET
+                        attempt_id=excluded.attempt_id,
+                        level=excluded.level,
+                        confidence=excluded.confidence""",
+                    [
+                        (
+                            row["candidate_id"],
+                            attempt_id,
+                            skill_id,
+                            signal["level"],
+                            signal["confidence"],
+                        )
+                        for skill_id, signal in result["skill_signals"].items()
+                    ],
+                )
+                connection.execute(
+                    """UPDATE candidate_profiles SET
+                    verified_grade=?,
+                    grade_changed_at=CASE
+                        WHEN verified_grade IS NULL OR verified_grade != ? THEN ?
+                        ELSE grade_changed_at
+                    END,
+                    updated_at=CURRENT_TIMESTAMP
+                    WHERE user_id=?""",
+                    (target_grade, target_grade, completed_at, user_id),
+                )
+
+    def assessment_history(self, user_id: str) -> list[dict]:
+        with self.connection() as connection:
+            rows = connection.execute(
+                """SELECT id, specialization, target_grade, status, score, outcome,
+                recommended_grade, started_at, completed_at
+                FROM assessment_attempts WHERE user_id = ? ORDER BY started_at DESC""",
+                (user_id,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def test_skill_signals(self, candidate_id: str) -> dict[str, tuple[float, float, str]]:
+        with self.connection() as connection:
+            rows = connection.execute(
+                """SELECT skill_id, level, confidence, attempt_id
+                FROM candidate_test_skills WHERE candidate_id = ?""",
+                (candidate_id,),
+            ).fetchall()
+        return {
+            row["skill_id"]: (row["level"], row["confidence"], f"test:{row['attempt_id']}")
+            for row in rows
+        }
+
     def upsert_achievements(self, achievements: Iterable[Achievement], connection: sqlite3.Connection | None = None) -> None:
         rows = [
             (
@@ -598,7 +757,8 @@ class Store:
     def count(self, table: str) -> int:
         if table not in {
             "users", "sessions", "candidate_profiles", "employer_profiles",
-            "skills", "competitions", "candidates", "achievements", "vacancies", "offers",
+            "assessment_attempts", "candidate_test_skills", "skills", "competitions",
+            "candidates", "achievements", "vacancies", "offers",
         }:
             raise ValueError("Unknown table")
         with self.connection() as connection:

@@ -29,12 +29,23 @@ class TalentService:
         achievements = self.store.achievements()
         result = []
         for candidate in self.store.candidates():
-            profile = build_profile(candidate.id, skills, competitions, achievements)
-            if category and category not in profile.categories:
+            test_signals = self.store.test_skill_signals(candidate.id)
+            profile = build_profile(candidate.id, skills, competitions, achievements, test_signals=test_signals)
+            account = self.store.candidate_profile_by_candidate(candidate.id)
+            tested_category = None
+            if account:
+                tested_category = f"{account['specialization']}:{account['verified_grade'] or 'unverified'}"
+            if category and category not in profile.categories and category != tested_category:
                 continue
             if work_format and candidate.work_format != work_format:
                 continue
-            result.append({**asdict(candidate), "profile": asdict(profile)})
+            result.append({
+                **asdict(candidate),
+                "profile": asdict(profile),
+                "tested_category": tested_category,
+                "verified_grade": account["verified_grade"] if account else None,
+                "has_fsp_history": any(item.source == "fsp" for item in achievements if item.candidate_id == candidate.id),
+            })
         return result
 
     def candidate_detail(self, candidate_id: str, vacancy_id: str | None = None) -> dict | None:
@@ -44,7 +55,9 @@ class TalentService:
         skills = self.store.skills()
         competitions = self.store.competitions()
         achievements = self.store.achievements(candidate_id)
-        profile = build_profile(candidate.id, skills, competitions, achievements)
+        test_signals = self.store.test_skill_signals(candidate.id)
+        profile = build_profile(candidate.id, skills, competitions, achievements, test_signals=test_signals)
+        account = self.store.candidate_profile_by_candidate(candidate.id)
         evidence = []
         for achievement in achievements:
             competition = competitions[achievement.competition_id]
@@ -77,11 +90,19 @@ class TalentService:
             "evidence": evidence,
             "graph": {"nodes": graph_nodes, "edges": graph_edges},
             "offers": self.store.offers(candidate_id),
+            "tested_category": (
+                f"{account['specialization']}:{account['verified_grade'] or 'unverified'}"
+                if account else None
+            ),
+            "verified_grade": account["verified_grade"] if account else None,
+            "has_fsp_history": any(item.source == "fsp" for item in achievements),
         }
         if vacancy_id:
             vacancy = self.store.vacancy(vacancy_id)
             if vacancy:
-                match = match_candidate(candidate.id, vacancy, skills, competitions, achievements)
+                match = match_candidate(
+                    candidate.id, vacancy, skills, competitions, achievements, test_signals,
+                )
                 result["match"] = asdict(match)
                 result["recommendations"] = [
                     asdict(item)
@@ -98,8 +119,23 @@ class TalentService:
         achievements = self.store.achievements()
         candidates: list[tuple[Candidate, dict]] = []
         for candidate in self.store.candidates():
-            match = match_candidate(candidate.id, vacancy, skills, competitions, achievements)
-            if category and category not in match.profile.categories:
+            test_signals = self.store.test_skill_signals(candidate.id)
+            match = match_candidate(
+                candidate.id, vacancy, skills, competitions, achievements, test_signals,
+            )
+            account = self.store.candidate_profile_by_candidate(candidate.id)
+            tested_category = None
+            if account:
+                tested_category = f"{account['specialization']}:{account['verified_grade'] or 'unverified'}"
+            if category and category not in match.profile.categories and category != tested_category:
                 continue
-            candidates.append((candidate, {**asdict(candidate), "match": asdict(match)}))
+            candidates.append((candidate, {
+                **asdict(candidate),
+                "match": asdict(match),
+                "tested_category": tested_category,
+                "verified_grade": account["verified_grade"] if account else None,
+                "has_fsp_history": any(
+                    item.source == "fsp" for item in achievements if item.candidate_id == candidate.id
+                ),
+            }))
         return [item for _, item in sorted(candidates, key=lambda pair: (-pair[1]["match"]["score"], pair[0].name))]

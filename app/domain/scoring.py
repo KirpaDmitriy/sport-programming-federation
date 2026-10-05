@@ -83,9 +83,14 @@ def build_profile(
     competitions: dict[str, Competition],
     achievements: list[Achievement],
     policy: EvidencePolicy | None = None,
+    test_signals: dict[str, tuple[float, float, str]] | None = None,
 ) -> Profile:
     active_policy = policy or EvidencePolicy()
     signals: dict[str, list[tuple[float, float, str]]] = defaultdict(list)
+
+    for skill_id, signal in (test_signals or {}).items():
+        if skill_id in skills:
+            signals[skill_id].append(signal)
 
     for achievement in achievements:
         if achievement.candidate_id != candidate_id:
@@ -136,6 +141,7 @@ def match_candidate(
     skills: dict[str, Skill],
     competitions: dict[str, Competition],
     achievements: list[Achievement],
+    test_signals: dict[str, tuple[float, float, str]] | None = None,
 ) -> Match:
     profile = build_profile(
         candidate_id,
@@ -143,6 +149,7 @@ def match_candidate(
         competitions,
         achievements,
         vacancy.evidence_policy,
+        test_signals,
     )
     weighted_coverage = 0.0
     weighted_strength = 0.0

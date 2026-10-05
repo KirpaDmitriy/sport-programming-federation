@@ -27,6 +27,15 @@
       "command": ".venv/bin/pytest tests/test_api.py --junitxml=experiments/artifacts/api-scenarios-v1.junit.xml",
       "artifact": "experiments/artifacts/api-scenarios-v1.junit.xml",
       "status": "passed"
+    },
+    {
+      "id": "assessment-blueprint-v1",
+      "change": "Добавить один алгоритм калиброванного blueprint-теста: вариант формулировки меняется внутри эквивалентного семейства, а результат подтверждает грейд без автоматического понижения.",
+      "expected_effect": "Разные попытки сохраняют одинаковые семейства, грейды и навыки при разных формулировках; успешный тест создаёт профиль без ФСП, провал лишь рекомендует нижний уровень, смена подтверждённого грейда блокируется на 90 дней.",
+      "failure_condition": "Покрытие вариантов различается, провал меняет подтверждённый грейд, кандидат без ФСП остаётся без профиля либо cooldown можно обойти.",
+      "command": ".venv/bin/pytest tests/test_assessment.py --junitxml=experiments/artifacts/assessment-blueprint-v1.junit.xml",
+      "artifact": "experiments/artifacts/assessment-blueprint-v1.junit.xml",
+      "status": "passed"
     }
   ]
 }

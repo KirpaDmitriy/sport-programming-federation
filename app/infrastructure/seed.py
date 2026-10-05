@@ -25,6 +25,8 @@ SKILLS = (
     Skill("security", "Информационная безопасность", "Кибербезопасность"),
     Skill("product", "Продуктовое мышление", "Product Engineering"),
     Skill("teamwork", "Командная разработка", "Product Engineering"),
+    Skill("javascript", "JavaScript / TypeScript", "Frontend"),
+    Skill("frontend", "Архитектура frontend", "Frontend", ("javascript",)),
 )
 
 FSP_DEMO_PAYLOAD = {
