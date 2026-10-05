@@ -43,7 +43,9 @@ python3 tools/experiments.py check
 Границы MVP и критерии готовности зафиксированы в
 [docs/product-scope.md](docs/product-scope.md), архитектурное решение — в
 [docs/architecture.md](docs/architecture.md), развёртывание — в
-[docs/deployment.md](docs/deployment.md). Машиночитаемая OpenAPI-схема хранится
+[docs/deployment.md](docs/deployment.md), контракт ФСП — в
+[docs/fsp-integration.md](docs/fsp-integration.md), текущая готовность — в
+[docs/submission-checklist.md](docs/submission-checklist.md). Машиночитаемая OpenAPI-схема хранится
 в [docs/openapi.json](docs/openapi.json).
 
 ## Основные маршруты
