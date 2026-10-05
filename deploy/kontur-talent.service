@@ -1,0 +1,21 @@
+[Unit]
+Description=Kontur verified talent platform
+After=network.target
+
+[Service]
+Type=simple
+User=dima
+Group=dima
+WorkingDirectory=/opt/kontur-talent
+Environment=KONTUR_DATABASE=/var/lib/kontur-talent/kontur.sqlite3
+ExecStart=/opt/kontur-talent/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8010 --workers 1
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/kontur-talent
+
+[Install]
+WantedBy=multi-user.target

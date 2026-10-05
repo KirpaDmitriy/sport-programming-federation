@@ -1,0 +1,890 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Контур API",
+    "summary": "Подтверждённые компетенции и обратный подбор в ИТ",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/api/v1/health": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Health",
+        "operationId": "health_api_v1_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Health Api V1 Health Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/catalog": {
+      "get": {
+        "tags": [
+          "catalog"
+        ],
+        "summary": "Catalog",
+        "operationId": "catalog_api_v1_catalog_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Catalog Api V1 Catalog Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/candidates": {
+      "get": {
+        "tags": [
+          "talent"
+        ],
+        "summary": "Candidates",
+        "operationId": "candidates_api_v1_candidates_get",
+        "parameters": [
+          {
+            "name": "category",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Category"
+            }
+          },
+          {
+            "name": "work_format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Work Format"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": true
+                  },
+                  "title": "Response Candidates Api V1 Candidates Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/candidates/{candidate_id}": {
+      "get": {
+        "tags": [
+          "talent"
+        ],
+        "summary": "Candidate",
+        "operationId": "candidate_api_v1_candidates__candidate_id__get",
+        "parameters": [
+          {
+            "name": "candidate_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Candidate Id"
+            }
+          },
+          {
+            "name": "vacancy_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Vacancy Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Candidate Api V1 Candidates  Candidate Id  Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/candidates/{candidate_id}/offers": {
+      "get": {
+        "tags": [
+          "offers"
+        ],
+        "summary": "Candidate Offers",
+        "operationId": "candidate_offers_api_v1_candidates__candidate_id__offers_get",
+        "parameters": [
+          {
+            "name": "candidate_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Candidate Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": true
+                  },
+                  "title": "Response Candidate Offers Api V1 Candidates  Candidate Id  Offers Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/vacancies": {
+      "get": {
+        "tags": [
+          "matching"
+        ],
+        "summary": "Vacancies",
+        "operationId": "vacancies_api_v1_vacancies_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "type": "array",
+                  "title": "Response Vacancies Api V1 Vacancies Get"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "matching"
+        ],
+        "summary": "Create Vacancy",
+        "operationId": "create_vacancy_api_v1_vacancies_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VacancyIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Create Vacancy Api V1 Vacancies Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/vacancies/{vacancy_id}/matches": {
+      "get": {
+        "tags": [
+          "matching"
+        ],
+        "summary": "Matches",
+        "operationId": "matches_api_v1_vacancies__vacancy_id__matches_get",
+        "parameters": [
+          {
+            "name": "vacancy_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Vacancy Id"
+            }
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Category"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": true
+                  },
+                  "title": "Response Matches Api V1 Vacancies  Vacancy Id  Matches Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/offers": {
+      "post": {
+        "tags": [
+          "offers"
+        ],
+        "summary": "Create Offer",
+        "operationId": "create_offer_api_v1_offers_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OfferIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Create Offer Api V1 Offers Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/integrations/fsp/sync": {
+      "post": {
+        "tags": [
+          "integrations"
+        ],
+        "summary": "Sync Fsp",
+        "operationId": "sync_fsp_api_v1_integrations_fsp_sync_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FspPayloadIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Sync Fsp Api V1 Integrations Fsp Sync Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "EvidencePolicyIn": {
+        "properties": {
+          "mode": {
+            "$ref": "#/components/schemas/EvidencePolicyMode",
+            "default": "platform_rating"
+          },
+          "competition_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "uniqueItems": true,
+            "title": "Competition Ids",
+            "default": []
+          }
+        },
+        "type": "object",
+        "title": "EvidencePolicyIn"
+      },
+      "EvidencePolicyMode": {
+        "type": "string",
+        "enum": [
+          "platform_rating",
+          "allowlist"
+        ],
+        "title": "EvidencePolicyMode"
+      },
+      "FspCompetitionIn": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "discipline_id": {
+            "type": "string",
+            "title": "Discipline Id"
+          },
+          "participants": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Participants"
+          },
+          "difficulty": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Difficulty"
+          },
+          "official": {
+            "type": "boolean",
+            "title": "Official",
+            "default": true
+          },
+          "skills": {
+            "additionalProperties": {
+              "type": "number",
+              "maximum": 1.0,
+              "minimum": 0.0
+            },
+            "type": "object",
+            "title": "Skills"
+          },
+          "starts_on": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Starts On"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "discipline_id",
+          "participants",
+          "difficulty",
+          "skills"
+        ],
+        "title": "FspCompetitionIn"
+      },
+      "FspDisciplineIn": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "FspDisciplineIn"
+      },
+      "FspParticipantIn": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "city": {
+            "type": "string",
+            "title": "City",
+            "default": "Не указан"
+          },
+          "work_format": {
+            "type": "string",
+            "title": "Work Format",
+            "default": "remote"
+          },
+          "desired_role": {
+            "type": "string",
+            "title": "Desired Role",
+            "default": "ИТ-специалист"
+          },
+          "about": {
+            "type": "string",
+            "title": "About",
+            "default": "Профиль импортирован из ФСП"
+          },
+          "stack": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Stack",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "FspParticipantIn"
+      },
+      "FspPayloadIn": {
+        "properties": {
+          "disciplines": {
+            "items": {
+              "$ref": "#/components/schemas/FspDisciplineIn"
+            },
+            "type": "array",
+            "title": "Disciplines"
+          },
+          "participants": {
+            "items": {
+              "$ref": "#/components/schemas/FspParticipantIn"
+            },
+            "type": "array",
+            "title": "Participants"
+          },
+          "competitions": {
+            "items": {
+              "$ref": "#/components/schemas/FspCompetitionIn"
+            },
+            "type": "array",
+            "title": "Competitions"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/FspResultIn"
+            },
+            "type": "array",
+            "title": "Results"
+          }
+        },
+        "type": "object",
+        "required": [
+          "disciplines",
+          "participants",
+          "competitions",
+          "results"
+        ],
+        "title": "FspPayloadIn"
+      },
+      "FspResultIn": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "participant_id": {
+            "type": "string",
+            "title": "Participant Id"
+          },
+          "competition_id": {
+            "type": "string",
+            "title": "Competition Id"
+          },
+          "placement": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Placement"
+          },
+          "participants": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Participants"
+          },
+          "role": {
+            "type": "string",
+            "title": "Role"
+          },
+          "rank": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rank"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "participant_id",
+          "competition_id",
+          "placement",
+          "participants",
+          "role"
+        ],
+        "title": "FspResultIn"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "OfferIn": {
+        "properties": {
+          "candidate_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Candidate Id"
+          },
+          "vacancy_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Vacancy Id"
+          },
+          "salary_from": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Salary From"
+          },
+          "salary_to": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Salary To"
+          },
+          "message": {
+            "type": "string",
+            "maxLength": 1000,
+            "minLength": 10,
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "candidate_id",
+          "vacancy_id",
+          "salary_from",
+          "salary_to",
+          "message"
+        ],
+        "title": "OfferIn"
+      },
+      "RequirementIn": {
+        "properties": {
+          "skill_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Skill Id"
+          },
+          "level": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Level"
+          },
+          "criticality": {
+            "type": "integer",
+            "maximum": 5.0,
+            "minimum": 1.0,
+            "title": "Criticality"
+          }
+        },
+        "type": "object",
+        "required": [
+          "skill_id",
+          "level",
+          "criticality"
+        ],
+        "title": "RequirementIn"
+      },
+      "VacancyIn": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9-]+$",
+            "title": "Id"
+          },
+          "employer": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 2,
+            "title": "Employer"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 3,
+            "title": "Title"
+          },
+          "grade": {
+            "type": "string",
+            "maxLength": 30,
+            "minLength": 2,
+            "title": "Grade"
+          },
+          "work_format": {
+            "type": "string",
+            "enum": [
+              "remote",
+              "hybrid",
+              "office"
+            ],
+            "title": "Work Format"
+          },
+          "salary_from": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Salary From"
+          },
+          "salary_to": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Salary To"
+          },
+          "requirements": {
+            "items": {
+              "$ref": "#/components/schemas/RequirementIn"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Requirements"
+          },
+          "evidence_policy": {
+            "$ref": "#/components/schemas/EvidencePolicyIn",
+            "default": {
+              "mode": "platform_rating",
+              "competition_ids": []
+            }
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "employer",
+          "title",
+          "grade",
+          "work_format",
+          "salary_from",
+          "salary_to",
+          "requirements"
+        ],
+        "title": "VacancyIn"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    }
+  }
+}
