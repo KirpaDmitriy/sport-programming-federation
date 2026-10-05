@@ -86,6 +86,15 @@ class InvitationStatusIn(BaseModel):
     status: Literal["accepted", "rejected"]
 
 
+class ApplicationIn(BaseModel):
+    vacancy_id: str = Field(min_length=1)
+    message: str = Field(min_length=10, max_length=1500)
+
+
+class ApplicationStatusIn(BaseModel):
+    status: Literal["accepted", "rejected"]
+
+
 class RequirementIn(BaseModel):
     skill_id: str = Field(min_length=1)
     level: UnitInterval

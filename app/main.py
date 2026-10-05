@@ -14,6 +14,7 @@ from app.web.auth import router as auth_router
 from app.web.account import router as account_router
 from app.web.assessments import router as assessments_router
 from app.web.invitations import router as invitations_router
+from app.web.applications import router as applications_router
 
 
 def create_app(database_path: str | Path | None = None) -> FastAPI:
@@ -44,6 +45,7 @@ def create_app(database_path: str | Path | None = None) -> FastAPI:
     app.include_router(account_router)
     app.include_router(assessments_router)
     app.include_router(invitations_router)
+    app.include_router(applications_router)
     static_dir = Path(__file__).parent / "web" / "static"
     app.mount("/assets", StaticFiles(directory=static_dir), name="assets")
 

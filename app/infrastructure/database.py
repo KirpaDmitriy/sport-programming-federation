@@ -172,11 +172,24 @@ CREATE TABLE IF NOT EXISTS invitations (
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+CREATE TABLE IF NOT EXISTS applications (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    candidate_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    candidate_id TEXT NOT NULL REFERENCES candidates(id) ON DELETE CASCADE,
+    vacancy_id TEXT NOT NULL REFERENCES vacancies(id) ON DELETE CASCADE,
+    message TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'submitted'
+        CHECK (status IN ('submitted', 'viewed', 'accepted', 'rejected')),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (candidate_id, vacancy_id)
+);
 CREATE INDEX IF NOT EXISTS achievements_candidate_idx ON achievements(candidate_id);
 CREATE INDEX IF NOT EXISTS offers_candidate_idx ON offers(candidate_id);
 CREATE INDEX IF NOT EXISTS sessions_user_idx ON sessions(user_id);
 CREATE INDEX IF NOT EXISTS invitations_candidate_idx ON invitations(candidate_id);
 CREATE INDEX IF NOT EXISTS invitations_employer_idx ON invitations(employer_user_id);
+CREATE INDEX IF NOT EXISTS applications_vacancy_idx ON applications(vacancy_id);
 """
 
 
@@ -659,6 +672,70 @@ class Store:
             ).fetchone()
         return dict(updated)
 
+    def create_application(self, user_id: str, candidate_id: str, vacancy_id: str, message: str) -> int:
+        with self.connection() as connection:
+            cursor = connection.execute(
+                """INSERT INTO applications(candidate_user_id, candidate_id, vacancy_id, message)
+                VALUES (?, ?, ?, ?)""",
+                (user_id, candidate_id, vacancy_id, message),
+            )
+            return int(cursor.lastrowid)
+
+    def candidate_applications(self, user_id: str) -> list[dict]:
+        with self.connection() as connection:
+            rows = connection.execute(
+                """SELECT applications.*, vacancies.title, vacancies.employer,
+                vacancies.salary_from, vacancies.salary_to
+                FROM applications JOIN vacancies ON vacancies.id = applications.vacancy_id
+                WHERE applications.candidate_user_id = ? ORDER BY applications.id DESC""",
+                (user_id,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def employer_applications(self, user_id: str, mark_viewed: bool = False) -> list[dict]:
+        with self.connection() as connection:
+            if mark_viewed:
+                connection.execute(
+                    """UPDATE applications SET status='viewed', updated_at=CURRENT_TIMESTAMP
+                    WHERE status='submitted' AND vacancy_id IN (
+                        SELECT vacancy_id FROM vacancy_owners WHERE user_id = ?
+                    )""",
+                    (user_id,),
+                )
+            rows = connection.execute(
+                """SELECT applications.*, vacancies.title, candidates.name AS candidate_name,
+                candidate_profiles.contact_email AS candidate_contact
+                FROM applications
+                JOIN vacancy_owners ON vacancy_owners.vacancy_id = applications.vacancy_id
+                JOIN vacancies ON vacancies.id = applications.vacancy_id
+                JOIN candidates ON candidates.id = applications.candidate_id
+                JOIN candidate_profiles ON candidate_profiles.candidate_id = applications.candidate_id
+                WHERE vacancy_owners.user_id = ? ORDER BY applications.id DESC""",
+                (user_id,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def set_application_status(self, application_id: int, user_id: str, new_status: str) -> dict | None:
+        with self.connection() as connection:
+            row = connection.execute(
+                """SELECT applications.* FROM applications
+                JOIN vacancy_owners ON vacancy_owners.vacancy_id = applications.vacancy_id
+                WHERE applications.id = ? AND vacancy_owners.user_id = ?""",
+                (application_id, user_id),
+            ).fetchone()
+            if row is None:
+                return None
+            if row["status"] in {"accepted", "rejected"}:
+                raise ValueError("Application already has a final status")
+            connection.execute(
+                """UPDATE applications SET status=?, updated_at=CURRENT_TIMESTAMP WHERE id=?""",
+                (new_status, application_id),
+            )
+            updated = connection.execute(
+                "SELECT * FROM applications WHERE id = ?", (application_id,),
+            ).fetchone()
+        return dict(updated)
+
     def upsert_achievements(self, achievements: Iterable[Achievement], connection: sqlite3.Connection | None = None) -> None:
         rows = [
             (
@@ -862,7 +939,7 @@ class Store:
         if table not in {
             "users", "sessions", "candidate_profiles", "employer_profiles",
             "assessment_attempts", "candidate_test_skills", "skills", "competitions",
-            "candidates", "achievements", "vacancies", "offers", "invitations",
+            "candidates", "achievements", "vacancies", "offers", "invitations", "applications",
         }:
             raise ValueError("Unknown table")
         with self.connection() as connection:
