@@ -17,6 +17,27 @@ from app.domain.models import (
 
 
 SCHEMA = """
+CREATE TABLE IF NOT EXISTS users (
+    id TEXT PRIMARY KEY,
+    email TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
+    role TEXT NOT NULL CHECK (role IN ('candidate', 'employer')),
+    display_name TEXT NOT NULL,
+    email_verified INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS email_verifications (
+    user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    code_hash TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    attempts INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS sessions (
+    token_hash TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    expires_at TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
 CREATE TABLE IF NOT EXISTS skills (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
@@ -79,6 +100,7 @@ CREATE TABLE IF NOT EXISTS offers (
 );
 CREATE INDEX IF NOT EXISTS achievements_candidate_idx ON achievements(candidate_id);
 CREATE INDEX IF NOT EXISTS offers_candidate_idx ON offers(candidate_id);
+CREATE INDEX IF NOT EXISTS sessions_user_idx ON sessions(user_id);
 """
 
 
@@ -101,6 +123,93 @@ class Store:
     def initialize(self) -> None:
         with self.connection() as connection:
             connection.executescript(SCHEMA)
+
+    def create_user(
+        self,
+        user_id: str,
+        email: str,
+        password_hash: str,
+        role: str,
+        display_name: str,
+        verification_hash: str,
+        verification_expires_at: str,
+    ) -> dict:
+        with self.connection() as connection:
+            connection.execute(
+                """INSERT INTO users(id, email, password_hash, role, display_name)
+                VALUES (?, ?, ?, ?, ?)""",
+                (user_id, email, password_hash, role, display_name),
+            )
+            connection.execute(
+                """INSERT INTO email_verifications(user_id, code_hash, expires_at)
+                VALUES (?, ?, ?)""",
+                (user_id, verification_hash, verification_expires_at),
+            )
+        return self.user(user_id)
+
+    def user(self, user_id: str) -> dict | None:
+        with self.connection() as connection:
+            row = connection.execute(
+                """SELECT id, email, password_hash, role, display_name, email_verified, created_at
+                FROM users WHERE id = ?""",
+                (user_id,),
+            ).fetchone()
+        return dict(row) if row else None
+
+    def user_by_email(self, email: str) -> dict | None:
+        with self.connection() as connection:
+            row = connection.execute(
+                """SELECT id, email, password_hash, role, display_name, email_verified, created_at
+                FROM users WHERE email = ?""",
+                (email,),
+            ).fetchone()
+        return dict(row) if row else None
+
+    def verification(self, user_id: str) -> dict | None:
+        with self.connection() as connection:
+            row = connection.execute(
+                "SELECT * FROM email_verifications WHERE user_id = ?",
+                (user_id,),
+            ).fetchone()
+        return dict(row) if row else None
+
+    def record_verification_failure(self, user_id: str) -> None:
+        with self.connection() as connection:
+            connection.execute(
+                "UPDATE email_verifications SET attempts = attempts + 1 WHERE user_id = ?",
+                (user_id,),
+            )
+
+    def verify_user(self, user_id: str) -> None:
+        with self.connection() as connection:
+            connection.execute("UPDATE users SET email_verified = 1 WHERE id = ?", (user_id,))
+            connection.execute("DELETE FROM email_verifications WHERE user_id = ?", (user_id,))
+
+    def create_session(self, token_hash: str, user_id: str, expires_at: str) -> None:
+        with self.connection() as connection:
+            connection.execute(
+                "INSERT INTO sessions(token_hash, user_id, expires_at) VALUES (?, ?, ?)",
+                (token_hash, user_id, expires_at),
+            )
+
+    def user_for_session(self, token_hash: str, now: str) -> dict | None:
+        with self.connection() as connection:
+            row = connection.execute(
+                """SELECT users.id, users.email, users.password_hash, users.role,
+                users.display_name, users.email_verified, users.created_at
+                FROM sessions JOIN users ON users.id = sessions.user_id
+                WHERE sessions.token_hash = ? AND sessions.expires_at > ?""",
+                (token_hash, now),
+            ).fetchone()
+        return dict(row) if row else None
+
+    def delete_session(self, token_hash: str) -> None:
+        with self.connection() as connection:
+            connection.execute("DELETE FROM sessions WHERE token_hash = ?", (token_hash,))
+
+    def delete_expired_sessions(self, now: str) -> None:
+        with self.connection() as connection:
+            connection.execute("DELETE FROM sessions WHERE expires_at <= ?", (now,))
 
     def _executemany(self, query: str, rows: list[tuple], connection: sqlite3.Connection | None = None) -> None:
         if connection is not None:
@@ -326,7 +435,10 @@ class Store:
         return [dict(row) for row in rows]
 
     def count(self, table: str) -> int:
-        if table not in {"skills", "competitions", "candidates", "achievements", "vacancies", "offers"}:
+        if table not in {
+            "users", "sessions", "skills", "competitions", "candidates",
+            "achievements", "vacancies", "offers",
+        }:
             raise ValueError("Unknown table")
         with self.connection() as connection:
             return int(connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0])

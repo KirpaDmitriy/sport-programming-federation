@@ -10,6 +10,7 @@ from app.application.service import TalentService
 from app.infrastructure.database import Store
 from app.infrastructure.seed import seed_store
 from app.web.api import router
+from app.web.auth import router as auth_router
 
 
 def create_app(database_path: str | Path | None = None) -> FastAPI:
@@ -36,6 +37,7 @@ def create_app(database_path: str | Path | None = None) -> FastAPI:
         lifespan=lifespan,
     )
     app.include_router(router)
+    app.include_router(auth_router)
     static_dir = Path(__file__).parent / "web" / "static"
     app.mount("/assets", StaticFiles(directory=static_dir), name="assets")
 

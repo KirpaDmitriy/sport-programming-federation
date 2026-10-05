@@ -8,6 +8,23 @@ from app.domain.models import EvidencePolicy, EvidencePolicyMode, Requirement, V
 UnitInterval = Annotated[float, Field(ge=0, le=1)]
 
 
+class RegisterIn(BaseModel):
+    email: str = Field(pattern=r"^[^\s@]+@[^\s@]+\.[^\s@]+$", max_length=254)
+    password: str = Field(min_length=10, max_length=128)
+    role: Literal["candidate", "employer"]
+    display_name: str = Field(min_length=2, max_length=120)
+
+
+class VerifyEmailIn(BaseModel):
+    email: str = Field(pattern=r"^[^\s@]+@[^\s@]+\.[^\s@]+$", max_length=254)
+    code: str = Field(pattern=r"^\d{6}$")
+
+
+class LoginIn(BaseModel):
+    email: str = Field(pattern=r"^[^\s@]+@[^\s@]+\.[^\s@]+$", max_length=254)
+    password: str = Field(min_length=1, max_length=128)
+
+
 class RequirementIn(BaseModel):
     skill_id: str = Field(min_length=1)
     level: UnitInterval
