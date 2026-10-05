@@ -216,7 +216,9 @@ function Workspace({ assessment }: { assessment: Assessment }) {
 
   const latest = useRef(answer);
   latest.current = answer;
-  const persist = useMutation({ mutationFn: (value: AssessmentAnswer) => saveAnswer(assessment.id, value) });
+  const { mutateAsync: persistAnswer } = useMutation({
+    mutationFn: (value: AssessmentAnswer) => saveAnswer(assessment.id, value),
+  });
 
   const flush = useCallback(
     async (value: AssessmentAnswer) => {
@@ -224,7 +226,7 @@ function Workspace({ assessment }: { assessment: Assessment }) {
       if (serialized === lastSaved.current) return true;
       setSave((current) => ({ ...current, status: 'saving' }));
       try {
-        const updated = await persist.mutateAsync(value);
+        const updated = await persistAnswer(value);
         lastSaved.current = serialized;
         queryClient.setQueryData(assessmentKey(scope, assessment.id), updated);
         setSave({ status: serialized === JSON.stringify(latest.current) ? 'saved' : 'dirty', at: new Date() });
@@ -236,12 +238,14 @@ function Workspace({ assessment }: { assessment: Assessment }) {
         return false;
       }
     },
-    [assessment.id, persist, queryClient, scope],
+    [assessment.id, persistAnswer, queryClient, scope],
   );
 
   useEffect(() => {
     if (JSON.stringify(answer) === lastSaved.current) return;
-    setSave((current) => (current.status === 'saving' ? current : { ...current, status: 'dirty' }));
+    setSave((current) =>
+      current.status === 'saving' || current.status === 'dirty' ? current : { ...current, status: 'dirty' },
+    );
     window.clearTimeout(timer.current);
     timer.current = window.setTimeout(() => void flush(latest.current), AUTOSAVE_DELAY);
     return () => window.clearTimeout(timer.current);

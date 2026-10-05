@@ -95,6 +95,12 @@ export function LoginPage({ redirectTo, expired }: Props) {
   });
 
   const enterCabinet = async (session: Session) => {
+    await openCabinet(session);
+    // The sign-in form is gone; start keyboard navigation from the new page's main content.
+    document.getElementById('main')?.focus();
+  };
+
+  const openCabinet = async (session: Session) => {
     await queryClient.cancelQueries();
     queryClient.clear();
     queryClient.setQueryData(sessionQueryOptions().queryKey, session);

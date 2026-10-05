@@ -117,6 +117,8 @@ export default function CompetenceGraph({ graph, selectedId, highlight, onSelect
           nodesFocusable={false}
           edgesFocusable={false}
           elementsSelectable={false}
+          // Nodes without click handling are made inert by React Flow; this keeps pointer selection working.
+          onNodeClick={(_, node) => onSelect(node.id)}
           zoomOnScroll={false}
           preventScrolling={false}
           proOptions={{ hideAttribution: false }}

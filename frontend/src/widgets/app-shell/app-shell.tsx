@@ -74,19 +74,17 @@ export function AppShell({ children }: { children: ReactNode }) {
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const [drawerOpen, setDrawerOpen] = useState(false);
   const mainRef = useRef<HTMLElement>(null);
-  const firstRender = useRef(true);
+  const shownPath = useRef(pathname);
   useActorChangeGuard(session.actorId);
 
   const section = [...config.items, config.settings].find((item) => pathname.startsWith(String(item.to)));
 
   useEffect(() => {
+    if (shownPath.current === pathname) return;
+    shownPath.current = pathname;
     setDrawerOpen(false);
-    if (firstRender.current) {
-      firstRender.current = false;
-      return;
-    }
     // Move focus with the view so keyboard and screen-reader users are not left on a stale control.
-    if (pathname) mainRef.current?.focus({ preventScroll: true });
+    mainRef.current?.focus({ preventScroll: true });
   }, [pathname]);
 
   useEffect(() => {
@@ -142,7 +140,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           >
             <Icon name="menu" size={24} />
           </button>
-          <nav aria-label="Навигационная цепочка">
+          <nav aria-label="Навигационная цепочка" className={styles.crumbsNav}>
             <ol className={styles.crumbs}>
               <li>{session.role === 'employer' ? `${config.cabinet} · ${session.displayName}` : config.cabinet}</li>
               {section && <li aria-current="page">{section.label}</li>}

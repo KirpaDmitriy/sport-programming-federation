@@ -23,9 +23,20 @@ export async function loadSession(queryClient: QueryClient) {
   }
 }
 
+/**
+ * Revalidates the session on every protected navigation, so an expired cookie is noticed before cached
+ * private data is shown again.
+ */
 export async function requireRole(queryClient: QueryClient, role: Session['role'], href: string) {
-  const session = await loadSession(queryClient);
-  if (!session) throw redirect({ to: '/login', search: { redirect: href } });
+  const hadSession = queryClient.getQueryData(sessionQueryOptions().queryKey) !== undefined;
+  let session: Session;
+  try {
+    session = await queryClient.fetchQuery({ ...sessionQueryOptions(), staleTime: 0 });
+  } catch (error) {
+    if (!isApiError(error, 401)) throw error;
+    queryClient.clear();
+    throw redirect({ to: '/login', search: { redirect: href, ...(hadSession ? { reason: 'expired' as const } : {}) } });
+  }
   if (session.role !== role) throw new RoleMismatchError(session.role);
   return session;
 }
