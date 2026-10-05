@@ -1,0 +1,177 @@
+.page {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 34rem);
+  min-height: 100vh;
+}
+
+.brand {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: var(--fsp-space-10);
+  padding: var(--fsp-space-12);
+  background: var(--fsp-color-sidebar);
+  color: var(--fsp-color-on-sidebar);
+}
+
+.mark {
+  display: grid;
+  line-height: 1.1;
+}
+
+.markTitle {
+  font-size: 2.5rem;
+  font-weight: 900;
+}
+
+.markName {
+  color: var(--fsp-color-sidebar-muted);
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.pitch {
+  display: grid;
+  gap: var(--fsp-space-6);
+  max-width: 36rem;
+}
+
+.pitchTitle {
+  margin: 0;
+  font-size: 2.25rem;
+}
+
+.points {
+  display: grid;
+  gap: var(--fsp-space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--fsp-color-sidebar-muted);
+}
+
+.points li {
+  display: flex;
+  gap: var(--fsp-space-3);
+}
+
+.points svg {
+  flex: none;
+  color: var(--fsp-color-accent);
+  margin-top: 2px;
+}
+
+.footnote {
+  color: var(--fsp-color-sidebar-muted);
+  font-size: var(--fsp-font-size-small);
+}
+
+.panel {
+  display: grid;
+  align-content: center;
+  gap: var(--fsp-space-6);
+  padding: var(--fsp-space-10) var(--fsp-space-8);
+}
+
+.title {
+  margin: 0;
+  font-size: var(--fsp-font-size-page);
+}
+
+.form {
+  display: grid;
+  gap: var(--fsp-space-5);
+}
+
+.roles {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--fsp-space-3);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.roles legend {
+  margin-bottom: var(--fsp-space-2);
+  font-size: var(--fsp-font-size-small);
+  font-weight: 600;
+}
+
+.roleOption {
+  position: relative;
+  display: grid;
+  gap: var(--fsp-space-1);
+  padding: var(--fsp-space-4);
+  border: 1.5px solid var(--fsp-color-border-strong);
+  border-radius: var(--fsp-radius-card);
+  background: var(--fsp-color-surface);
+  cursor: pointer;
+}
+
+.roleOption:has(input:checked) {
+  border-color: var(--fsp-color-primary);
+  background: var(--fsp-color-surface-subtle);
+}
+
+.roleOption:has(input:focus-visible) {
+  outline: var(--fsp-focus-width) solid var(--fsp-color-focus);
+  outline-offset: 2px;
+}
+
+.roleOption input {
+  position: absolute;
+  opacity: 0;
+}
+
+.roleTitle {
+  display: flex;
+  align-items: center;
+  gap: var(--fsp-space-2);
+  font-weight: 700;
+}
+
+.roleText {
+  color: var(--fsp-color-text-secondary);
+  font-size: var(--fsp-font-size-small);
+}
+
+.codeInput {
+  min-height: 3.25rem;
+  font-family: var(--fsp-font-mono);
+  font-size: 1.5rem;
+  letter-spacing: 0.4em;
+}
+
+.accounts {
+  display: grid;
+  gap: var(--fsp-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.accounts li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--fsp-space-3);
+}
+
+@media (max-width: 900px) {
+  .page {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .brand {
+    padding: var(--fsp-space-8) var(--fsp-space-6);
+  }
+
+  .pitchTitle {
+    font-size: 1.75rem;
+  }
+
+  .panel {
+    padding: var(--fsp-space-8) var(--fsp-space-4);
+  }
+}
