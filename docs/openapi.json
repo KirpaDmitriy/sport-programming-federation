@@ -1,7 +1,7 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "КодРазряд API",
+    "title": "Выготский API",
     "summary": "Подтверждённые компетенции и обратный подбор в ИТ",
     "version": "0.1.0"
   },
@@ -90,6 +90,70 @@
                 }
               ],
               "title": "Work Format"
+            }
+          },
+          {
+            "name": "specialization",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Specialization"
+            }
+          },
+          {
+            "name": "grade",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Grade"
+            }
+          },
+          {
+            "name": "stack",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Stack"
+            }
+          },
+          {
+            "name": "has_fsp",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Has Fsp"
             }
           }
         ],
@@ -409,11 +473,115 @@
         ],
         "summary": "Sync Fsp",
         "operationId": "sync_fsp_api_v1_integrations_fsp_sync_post",
+        "parameters": [
+          {
+            "name": "X-Integration-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Integration-Key"
+            }
+          }
+        ],
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/FspPayloadIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Sync Fsp Api V1 Integrations Fsp Sync Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/register": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Register",
+        "operationId": "register_api_v1_auth_register_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Register Api V1 Auth Register Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/verify-email": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Verify Email",
+        "operationId": "verify_email_api_v1_auth_verify_email_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifyEmailIn"
               }
             }
           },
@@ -427,7 +595,624 @@
                 "schema": {
                   "additionalProperties": true,
                   "type": "object",
-                  "title": "Response Sync Fsp Api V1 Integrations Fsp Sync Post"
+                  "title": "Response Verify Email Api V1 Auth Verify Email Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/login": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Login",
+        "operationId": "login_api_v1_auth_login_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Login Api V1 Auth Login Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/logout": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Logout",
+        "operationId": "logout_api_v1_auth_logout_post",
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/v1/auth/me": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Me",
+        "operationId": "me_api_v1_auth_me_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Me Api V1 Auth Me Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/session": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Session",
+        "operationId": "session_api_v1_auth_session_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Session Api V1 Auth Session Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/account/profile": {
+      "get": {
+        "tags": [
+          "account"
+        ],
+        "summary": "Profile",
+        "operationId": "profile_api_v1_account_profile_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Profile Api V1 Account Profile Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/account/candidate-profile": {
+      "put": {
+        "tags": [
+          "account"
+        ],
+        "summary": "Update Candidate Profile",
+        "operationId": "update_candidate_profile_api_v1_account_candidate_profile_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CandidateProfileIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Update Candidate Profile Api V1 Account Candidate Profile Put"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/account/employer-profile": {
+      "put": {
+        "tags": [
+          "account"
+        ],
+        "summary": "Update Employer Profile",
+        "operationId": "update_employer_profile_api_v1_account_employer_profile_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmployerProfileIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Update Employer Profile Api V1 Account Employer Profile Put"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/account/vacancies": {
+      "get": {
+        "tags": [
+          "account"
+        ],
+        "summary": "Account Vacancies",
+        "operationId": "account_vacancies_api_v1_account_vacancies_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "type": "array",
+                  "title": "Response Account Vacancies Api V1 Account Vacancies Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/account/profile.pdf": {
+      "get": {
+        "tags": [
+          "account"
+        ],
+        "summary": "Profile Pdf",
+        "operationId": "profile_pdf_api_v1_account_profile_pdf_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/api/v1/assessments/start": {
+      "post": {
+        "tags": [
+          "assessments"
+        ],
+        "summary": "Start Assessment",
+        "operationId": "start_assessment_api_v1_assessments_start_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssessmentStartIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Start Assessment Api V1 Assessments Start Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/assessments/{attempt_id}/submit": {
+      "post": {
+        "tags": [
+          "assessments"
+        ],
+        "summary": "Submit Assessment",
+        "operationId": "submit_assessment_api_v1_assessments__attempt_id__submit_post",
+        "parameters": [
+          {
+            "name": "attempt_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Attempt Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssessmentSubmitIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Submit Assessment Api V1 Assessments  Attempt Id  Submit Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/assessments/history": {
+      "get": {
+        "tags": [
+          "assessments"
+        ],
+        "summary": "Assessment History",
+        "operationId": "assessment_history_api_v1_assessments_history_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "type": "array",
+                  "title": "Response Assessment History Api V1 Assessments History Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/invitations": {
+      "get": {
+        "tags": [
+          "invitations"
+        ],
+        "summary": "Invitations",
+        "operationId": "invitations_api_v1_invitations_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "type": "array",
+                  "title": "Response Invitations Api V1 Invitations Get"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "invitations"
+        ],
+        "summary": "Create Invitation",
+        "operationId": "create_invitation_api_v1_invitations_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InvitationIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Create Invitation Api V1 Invitations Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/invitations/{invitation_id}/status": {
+      "patch": {
+        "tags": [
+          "invitations"
+        ],
+        "summary": "Update Invitation Status",
+        "operationId": "update_invitation_status_api_v1_invitations__invitation_id__status_patch",
+        "parameters": [
+          {
+            "name": "invitation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Invitation Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InvitationStatusIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Update Invitation Status Api V1 Invitations  Invitation Id  Status Patch"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/applications": {
+      "get": {
+        "tags": [
+          "applications"
+        ],
+        "summary": "Applications",
+        "operationId": "applications_api_v1_applications_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "type": "array",
+                  "title": "Response Applications Api V1 Applications Get"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "applications"
+        ],
+        "summary": "Create Application",
+        "operationId": "create_application_api_v1_applications_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApplicationIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Create Application Api V1 Applications Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/applications/{application_id}/status": {
+      "patch": {
+        "tags": [
+          "applications"
+        ],
+        "summary": "Update Application Status",
+        "operationId": "update_application_status_api_v1_applications__application_id__status_patch",
+        "parameters": [
+          {
+            "name": "application_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Application Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApplicationStatusIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Update Application Status Api V1 Applications  Application Id  Status Patch"
                 }
               }
             }
@@ -448,6 +1233,255 @@
   },
   "components": {
     "schemas": {
+      "ApplicationIn": {
+        "properties": {
+          "vacancy_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Vacancy Id"
+          },
+          "message": {
+            "type": "string",
+            "maxLength": 1500,
+            "minLength": 10,
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "vacancy_id",
+          "message"
+        ],
+        "title": "ApplicationIn"
+      },
+      "ApplicationStatusIn": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "accepted",
+              "rejected"
+            ],
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "ApplicationStatusIn"
+      },
+      "AssessmentStartIn": {
+        "properties": {
+          "target_grade": {
+            "type": "string",
+            "enum": [
+              "intern",
+              "junior",
+              "middle",
+              "senior"
+            ],
+            "title": "Target Grade"
+          }
+        },
+        "type": "object",
+        "required": [
+          "target_grade"
+        ],
+        "title": "AssessmentStartIn"
+      },
+      "AssessmentSubmitIn": {
+        "properties": {
+          "answers": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "maxProperties": 20,
+            "minProperties": 1,
+            "title": "Answers"
+          }
+        },
+        "type": "object",
+        "required": [
+          "answers"
+        ],
+        "title": "AssessmentSubmitIn"
+      },
+      "CandidateProfileIn": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 2,
+            "title": "Name"
+          },
+          "city": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 2,
+            "title": "City"
+          },
+          "work_format": {
+            "type": "string",
+            "enum": [
+              "remote",
+              "hybrid",
+              "office"
+            ],
+            "title": "Work Format"
+          },
+          "desired_role": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 2,
+            "title": "Desired Role"
+          },
+          "about": {
+            "type": "string",
+            "maxLength": 2000,
+            "minLength": 10,
+            "title": "About"
+          },
+          "stack": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 30,
+            "minItems": 1,
+            "title": "Stack"
+          },
+          "industry": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 2,
+            "title": "Industry"
+          },
+          "specialization": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 2,
+            "title": "Specialization"
+          },
+          "claimed_grade": {
+            "type": "string",
+            "enum": [
+              "intern",
+              "junior",
+              "middle",
+              "senior"
+            ],
+            "title": "Claimed Grade"
+          },
+          "fsp_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fsp Id"
+          },
+          "contact_email": {
+            "type": "string",
+            "maxLength": 254,
+            "pattern": "^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$",
+            "title": "Contact Email"
+          },
+          "years_experience": {
+            "type": "integer",
+            "maximum": 70.0,
+            "minimum": 0.0,
+            "title": "Years Experience"
+          },
+          "roles": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Roles"
+          },
+          "soft_skills": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 30,
+            "title": "Soft Skills"
+          },
+          "profile_visible": {
+            "type": "boolean",
+            "title": "Profile Visible",
+            "default": false
+          },
+          "consent_processing": {
+            "type": "boolean",
+            "title": "Consent Processing"
+          },
+          "consent_publication": {
+            "type": "boolean",
+            "title": "Consent Publication",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "city",
+          "work_format",
+          "desired_role",
+          "about",
+          "stack",
+          "industry",
+          "specialization",
+          "claimed_grade",
+          "contact_email",
+          "years_experience",
+          "consent_processing"
+        ],
+        "title": "CandidateProfileIn"
+      },
+      "EmployerProfileIn": {
+        "properties": {
+          "company_name": {
+            "type": "string",
+            "maxLength": 160,
+            "minLength": 2,
+            "title": "Company Name"
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 2000,
+            "minLength": 10,
+            "title": "Description"
+          },
+          "industry": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 2,
+            "title": "Industry"
+          },
+          "contact_method": {
+            "type": "string",
+            "maxLength": 254,
+            "minLength": 5,
+            "title": "Contact Method"
+          }
+        },
+        "type": "object",
+        "required": [
+          "company_name",
+          "description",
+          "industry",
+          "contact_method"
+        ],
+        "title": "EmployerProfileIn"
+      },
       "EvidencePolicyIn": {
         "properties": {
           "mode": {
@@ -705,6 +1739,104 @@
         "type": "object",
         "title": "HTTPValidationError"
       },
+      "InvitationIn": {
+        "properties": {
+          "candidate_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Candidate Id"
+          },
+          "vacancy_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vacancy Id"
+          },
+          "position_title": {
+            "type": "string",
+            "maxLength": 160,
+            "minLength": 3,
+            "title": "Position Title"
+          },
+          "salary_from": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Salary From"
+          },
+          "salary_to": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Salary To"
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 2000,
+            "minLength": 10,
+            "title": "Description"
+          },
+          "contact_method": {
+            "type": "string",
+            "maxLength": 254,
+            "minLength": 5,
+            "title": "Contact Method"
+          }
+        },
+        "type": "object",
+        "required": [
+          "candidate_id",
+          "position_title",
+          "salary_from",
+          "salary_to",
+          "description",
+          "contact_method"
+        ],
+        "title": "InvitationIn"
+      },
+      "InvitationStatusIn": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "accepted",
+              "rejected"
+            ],
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "InvitationStatusIn"
+      },
+      "LoginIn": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "maxLength": 254,
+            "pattern": "^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$",
+            "title": "Email"
+          },
+          "password": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Password"
+          }
+        },
+        "type": "object",
+        "required": [
+          "email",
+          "password"
+        ],
+        "title": "LoginIn"
+      },
       "OfferIn": {
         "properties": {
           "candidate_id": {
@@ -743,6 +1875,44 @@
           "message"
         ],
         "title": "OfferIn"
+      },
+      "RegisterIn": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "maxLength": 254,
+            "pattern": "^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$",
+            "title": "Email"
+          },
+          "password": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 10,
+            "title": "Password"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "candidate",
+              "employer"
+            ],
+            "title": "Role"
+          },
+          "display_name": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 2,
+            "title": "Display Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "email",
+          "password",
+          "role",
+          "display_name"
+        ],
+        "title": "RegisterIn"
       },
       "RequirementIn": {
         "properties": {
@@ -797,6 +1967,24 @@
             "minLength": 2,
             "title": "Grade"
           },
+          "specialization": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 2,
+            "title": "Specialization"
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 2000,
+            "minLength": 10,
+            "title": "Description"
+          },
+          "team_description": {
+            "type": "string",
+            "maxLength": 2000,
+            "minLength": 10,
+            "title": "Team Description"
+          },
           "work_format": {
             "type": "string",
             "enum": [
@@ -838,6 +2026,9 @@
           "employer",
           "title",
           "grade",
+          "specialization",
+          "description",
+          "team_description",
           "work_format",
           "salary_from",
           "salary_to",
@@ -884,6 +2075,27 @@
           "type"
         ],
         "title": "ValidationError"
+      },
+      "VerifyEmailIn": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "maxLength": 254,
+            "pattern": "^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$",
+            "title": "Email"
+          },
+          "code": {
+            "type": "string",
+            "pattern": "^\\d{6}$",
+            "title": "Code"
+          }
+        },
+        "type": "object",
+        "required": [
+          "email",
+          "code"
+        ],
+        "title": "VerifyEmailIn"
       }
     }
   }

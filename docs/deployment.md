@@ -10,6 +10,18 @@
 - HTTP: `0.0.0.0:8010`;
 - один worker, CPU-only.
 
+## Переменные эксплуатации
+
+- `VYGOTSKY_DATABASE` — путь к SQLite;
+- `VYGOTSKY_COOKIE_SECURE=1` — только при публикации за HTTPS;
+- `VYGOTSKY_INTEGRATION_KEY` — длинный случайный ключ импорта ФСП;
+- `VYGOTSKY_DEMO_AUTH=1` — прозрачный demo-outbox для стенда;
+- `VYGOTSKY_DEMO_AUTH=0` и `VYGOTSKY_SMTP_*` — настоящая email-доставка.
+
+Секреты задаются через отдельный root-readable `EnvironmentFile` systemd и не
+попадают в репозиторий. Техническое имя unit сохранено ради безопасного обновления;
+пользовательское название сервиса везде — «Выготский».
+
 Сервис не использует `/opt/metroguard`, порт `8000`, `metroguard.service`,
 `/var/lib/metroguard`, конфигурацию Nginx или сертификаты.
 

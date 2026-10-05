@@ -8,6 +8,8 @@ User=dima
 Group=dima
 WorkingDirectory=/opt/kontur-talent
 Environment=VYGOTSKY_DATABASE=/var/lib/kontur-talent/kontur.sqlite3
+Environment=VYGOTSKY_DEMO_AUTH=1
+EnvironmentFile=-/etc/kontur-talent.env
 ExecStart=/opt/kontur-talent/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8010 --workers 1
 Restart=on-failure
 RestartSec=3
