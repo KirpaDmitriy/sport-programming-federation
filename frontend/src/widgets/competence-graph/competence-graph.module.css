@@ -1,0 +1,74 @@
+.frame {
+  position: relative;
+  height: 30rem;
+  border: 1px solid var(--fsp-color-border);
+  border-radius: var(--fsp-radius-card);
+  background: var(--fsp-color-surface);
+  overflow: hidden;
+}
+
+.toolbar {
+  position: absolute;
+  top: var(--fsp-space-3);
+  right: var(--fsp-space-3);
+  z-index: 5;
+  display: flex;
+  gap: var(--fsp-space-2);
+}
+
+.node {
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: var(--fsp-space-1);
+  width: 140px;
+  height: 96px;
+  padding: var(--fsp-space-2);
+  border: 1.5px solid var(--fsp-color-border);
+  border-radius: var(--fsp-radius-card);
+  background: var(--fsp-color-surface);
+  color: var(--fsp-color-text);
+  font: inherit;
+  text-align: center;
+  cursor: pointer;
+  box-shadow: var(--fsp-shadow-card);
+}
+
+.node:hover {
+  border-color: var(--fsp-color-border-strong);
+}
+
+.node[aria-pressed="true"] {
+  border: 2.5px solid var(--fsp-color-primary);
+  box-shadow: 0 0 0 4px var(--fsp-color-surface-subtle);
+}
+
+.dimmed {
+  opacity: 0.35;
+}
+
+.role {
+  background: var(--fsp-color-surface-subtle);
+}
+
+.evidence {
+  justify-items: start;
+  text-align: left;
+}
+
+.label {
+  font-weight: 700;
+  font-size: var(--fsp-font-size-small);
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.meta {
+  font-size: var(--fsp-font-size-caption);
+  line-height: 1.3;
+}
+
+.handle {
+  opacity: 0;
+  pointer-events: none;
+}

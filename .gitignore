@@ -7,3 +7,7 @@ __pycache__/
 .DS_Store
 dist/
 tmp/
+
+# Local infrastructure state and secrets (never commit)
+.fsp-infra/
+node_modules/

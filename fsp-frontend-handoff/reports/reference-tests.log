@@ -1,0 +1,14 @@
+Command: pnpm test
+Working directory: frontend-reference
+Exit code: 0
+
+
+ RUN  v5.0.3 /workspace/scratch/59a243f6c678/fsp-frontend-handoff/frontend-reference
+
+
+ Test Files  2 passed (2)
+      Tests  9 passed (9)
+   Start at  21:22:46
+   Duration  236ms (transform 54%, import 27%, tests 14%, worker 4%)
+
+$ vitest run

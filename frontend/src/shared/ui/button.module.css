@@ -1,0 +1,104 @@
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--fsp-space-2);
+  min-height: var(--fsp-control-min-height);
+  padding: 0 var(--fsp-space-5);
+  border: 1px solid transparent;
+  border-radius: var(--fsp-radius-control);
+  font: inherit;
+  font-weight: 600;
+  line-height: 1.2;
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    background-color var(--fsp-motion-fast) var(--fsp-motion-easing),
+    border-color var(--fsp-motion-fast) var(--fsp-motion-easing);
+  white-space: nowrap;
+}
+
+.button:disabled,
+.button[aria-disabled="true"] {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.sm {
+  min-height: 2.25rem;
+  padding: 0 var(--fsp-space-3);
+  font-size: var(--fsp-font-size-small);
+}
+
+.block {
+  width: 100%;
+}
+
+.primary {
+  background: var(--fsp-color-primary);
+  color: var(--fsp-color-on-primary);
+}
+
+.primary:hover:not(:disabled) {
+  background: var(--fsp-color-primary-hover);
+}
+
+.primary:active:not(:disabled) {
+  background: var(--fsp-color-primary-active);
+}
+
+.secondary {
+  background: var(--fsp-color-surface);
+  color: var(--fsp-color-primary);
+  border-color: var(--fsp-color-border-strong);
+}
+
+.secondary:hover:not(:disabled) {
+  background: var(--fsp-color-surface-subtle);
+}
+
+.quiet {
+  background: transparent;
+  color: var(--fsp-color-primary);
+  padding-inline: var(--fsp-space-2);
+}
+
+.quiet:hover:not(:disabled) {
+  background: var(--fsp-color-surface-subtle);
+}
+
+.danger {
+  background: var(--fsp-color-surface);
+  color: var(--fsp-color-danger);
+  border-color: var(--fsp-color-danger);
+}
+
+.danger:hover:not(:disabled) {
+  background: var(--fsp-color-danger-subtle);
+}
+
+.iconOnly {
+  padding: 0;
+  width: var(--fsp-interactive-min-size);
+}
+
+.spinner {
+  width: 1em;
+  height: 1em;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation-duration: 2.4s;
+  }
+}

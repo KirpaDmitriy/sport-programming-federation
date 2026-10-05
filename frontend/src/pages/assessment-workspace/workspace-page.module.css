@@ -1,0 +1,208 @@
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--fsp-space-4);
+  margin-bottom: var(--fsp-space-4);
+}
+
+.title {
+  margin: 0;
+  font-size: var(--fsp-font-size-page);
+}
+
+.badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--fsp-space-3);
+}
+
+.steps {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--fsp-space-3);
+  margin: var(--fsp-space-2) 0 var(--fsp-space-4);
+}
+
+.panes {
+  display: grid;
+  grid-template-columns: minmax(16rem, 0.9fr) minmax(0, 1.6fr) minmax(16rem, 0.9fr);
+  gap: var(--fsp-space-4);
+  align-items: start;
+}
+
+.pane {
+  min-width: 0;
+}
+
+.criteria {
+  display: grid;
+  gap: var(--fsp-space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: criteria;
+}
+
+.criteria li {
+  display: grid;
+  grid-template-columns: 2rem minmax(0, 1fr);
+  gap: var(--fsp-space-3);
+  counter-increment: criteria;
+}
+
+.criteria li::before {
+  content: counter(criteria);
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  background: var(--fsp-color-surface-subtle);
+  color: var(--fsp-color-primary);
+  font-weight: 700;
+}
+
+.editorHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--fsp-space-3);
+  margin-bottom: var(--fsp-space-2);
+}
+
+.editor {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  height: 22rem;
+  border: 1px solid var(--fsp-color-border-strong);
+  border-radius: var(--fsp-radius-control);
+  overflow: hidden;
+  background: #fcfbfe;
+}
+
+.editor:focus-within {
+  outline: var(--fsp-focus-width) solid var(--fsp-color-focus);
+  outline-offset: 2px;
+}
+
+.gutter {
+  margin: 0;
+  padding: var(--fsp-space-3) var(--fsp-space-2);
+  overflow: hidden;
+  border-right: 1px solid var(--fsp-color-border);
+  color: var(--fsp-color-text-muted);
+  font-family: var(--fsp-font-mono);
+  font-size: 0.875rem;
+  line-height: 1.5;
+  text-align: right;
+  user-select: none;
+}
+
+.code {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: var(--fsp-space-3);
+  border: 0;
+  outline: none;
+  resize: none;
+  background: transparent;
+  color: var(--fsp-color-text);
+  font-family: var(--fsp-font-mono);
+  font-size: 0.875rem;
+  line-height: 1.5;
+  white-space: pre;
+  tab-size: 4;
+}
+
+.checks {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.check {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--fsp-space-3);
+  padding: var(--fsp-space-3) 0;
+  border-top: 1px solid var(--fsp-color-border);
+}
+
+.chat {
+  display: grid;
+  gap: var(--fsp-space-3);
+  max-height: 24rem;
+  margin: 0 0 var(--fsp-space-3);
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.message {
+  padding: var(--fsp-space-3);
+  border-radius: var(--fsp-radius-card);
+  font-size: var(--fsp-font-size-small);
+  white-space: pre-wrap;
+}
+
+.fromUser {
+  justify-self: end;
+  max-width: 90%;
+  background: var(--fsp-color-surface-subtle);
+}
+
+.fromAssistant {
+  background: var(--fsp-color-accent-subtle);
+}
+
+.footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--fsp-space-3);
+  margin: var(--fsp-space-6) calc(-1 * var(--fsp-space-8)) calc(-1 * var(--fsp-space-8));
+  padding: var(--fsp-space-4) var(--fsp-space-8);
+  background: var(--fsp-color-surface);
+  box-shadow: 0 -1px 0 var(--fsp-color-border);
+}
+
+.footerActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--fsp-space-3);
+  margin-left: auto;
+}
+
+.saveError {
+  color: var(--fsp-color-danger);
+}
+
+@media (max-width: 1279px) {
+  .panes {
+    grid-template-columns: minmax(0, 1fr) minmax(16rem, 0.8fr);
+  }
+
+  .pane:first-child {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 900px) {
+  .panes {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .footer {
+    margin-inline: calc(-1 * var(--fsp-space-4));
+    margin-bottom: calc(-1 * var(--fsp-space-6));
+    padding-inline: var(--fsp-space-4);
+  }
+}

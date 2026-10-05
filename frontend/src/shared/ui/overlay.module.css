@@ -1,0 +1,141 @@
+.dialog {
+  width: min(40rem, calc(100vw - 2rem));
+  max-height: calc(100vh - 2rem);
+  padding: 0;
+  border: 0;
+  border-radius: var(--fsp-radius-panel);
+  background: var(--fsp-color-surface);
+  color: var(--fsp-color-text);
+  box-shadow: var(--fsp-shadow-overlay);
+}
+
+.wide {
+  width: min(56rem, calc(100vw - 2rem));
+}
+
+.dialog::backdrop {
+  background: rgb(24 19 34 / 0.48);
+}
+
+.dialogInner {
+  display: grid;
+  gap: var(--fsp-space-5);
+  padding: var(--fsp-space-6);
+}
+
+.dialogHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--fsp-space-4);
+}
+
+.dialogTitle {
+  margin: 0;
+  font-size: var(--fsp-font-size-section);
+}
+
+.dialogDescription {
+  margin: var(--fsp-space-1) 0 0;
+  color: var(--fsp-color-text-secondary);
+}
+
+.dialogFooter {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--fsp-space-3);
+}
+
+.tabs {
+  display: flex;
+  gap: var(--fsp-space-1);
+  overflow-x: auto;
+  border-bottom: 1px solid var(--fsp-color-border);
+}
+
+.tab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--fsp-space-2);
+  min-height: var(--fsp-control-min-height);
+  padding: 0 var(--fsp-space-4);
+  border: 0;
+  background: transparent;
+  color: var(--fsp-color-text-secondary);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.tab[aria-selected="true"] {
+  color: var(--fsp-color-primary);
+}
+
+.tab[aria-selected="true"]::after {
+  content: "";
+  position: absolute;
+  inset: auto var(--fsp-space-2) -1px;
+  height: 3px;
+  border-radius: 3px 3px 0 0;
+  background: var(--fsp-color-primary);
+}
+
+.segmented {
+  display: inline-flex;
+  padding: var(--fsp-space-1);
+  border: 1px solid var(--fsp-color-border);
+  border-radius: var(--fsp-radius-card);
+  background: var(--fsp-color-surface);
+}
+
+.segment {
+  min-height: 2.5rem;
+  padding: 0 var(--fsp-space-5);
+  border: 0;
+  border-radius: var(--fsp-radius-control);
+  background: transparent;
+  color: var(--fsp-color-text-secondary);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.segment[aria-selected="true"],
+.segment[aria-pressed="true"] {
+  background: var(--fsp-color-primary);
+  color: var(--fsp-color-on-primary);
+}
+
+.segment:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 1.5rem;
+  height: 1.5rem;
+  padding: 0 var(--fsp-space-1);
+  border-radius: var(--fsp-radius-pill);
+  background: var(--fsp-color-surface-subtle);
+  font-size: var(--fsp-font-size-caption);
+}
+
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--fsp-space-3);
+  padding-top: var(--fsp-space-4);
+  color: var(--fsp-color-text-secondary);
+  font-size: var(--fsp-font-size-small);
+}
+
+.paginationButtons {
+  display: flex;
+  gap: var(--fsp-space-2);
+}

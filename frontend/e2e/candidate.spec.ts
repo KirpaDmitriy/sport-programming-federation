@@ -1,0 +1,187 @@
+import { readFile } from 'node:fs/promises';
+import { expect, test } from '@playwright/test';
+import { ALEXEY, latestCode, requestCode, resetMock, signIn } from './support';
+
+async function submitCurrentAttempt(page: import('@playwright/test').Page) {
+  await expect(page.getByRole('heading', { name: /Проверка/ })).toBeVisible();
+  await page.getByLabel('Код решения на Rust').fill('pub fn create_order() { /* transaction + unique key */ }');
+  await expect(page.getByText(/Черновик сохранён в/)).toBeVisible();
+  await page.getByRole('button', { name: /3\. Объяснение/ }).click();
+  await page
+    .getByLabel('Объяснение')
+    .fill('Ключ идемпотентности и заказ записываются в одной транзакции с уникальным индексом.');
+  await page.getByRole('button', { name: 'Отправить решение' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Отправить' }).click();
+  await page.waitForURL(/\/result$/);
+}
+
+test('UI-02 UI-07 a new candidate completes the questionnaire and gets a verified category without FSP', async ({
+  page,
+}) => {
+  await resetMock('baseline');
+  const email = `junior-${Date.now()}@example.com`;
+  await requestCode(page, email, 'candidate');
+  await page.getByLabel('Код из письма').fill(await latestCode(email));
+  await page.getByRole('button', { name: 'Подтвердить и войти' }).click();
+  await page.waitForURL('**/candidate/onboarding');
+
+  // Consent changes are server-confirmed, so the box flips only after the response.
+  await page.getByLabel('Согласен на обработку данных').click();
+  await expect(page.getByLabel('Согласен на обработку данных')).toBeChecked();
+  await page.getByRole('switch', { name: 'Показывать профиль работодателям' }).click();
+  await expect(page.getByRole('switch', { name: 'Показывать профиль работодателям' })).toHaveAttribute(
+    'aria-checked',
+    'true',
+  );
+
+  await page.getByLabel('Имя и фамилия').fill('Мария Новикова');
+  await page.getByLabel('Грейд для проверки').selectOption('junior');
+  await page.getByRole('button', { name: 'Rust' }).click();
+  await page.getByLabel('Стаж, месяцев').fill('0');
+  await page.getByRole('textbox', { name: 'Опыт', exact: true }).fill('Учебные проекты на Rust.');
+  await page.getByLabel('Роль в команде').fill('Разработчик');
+  await page.getByRole('button', { name: 'Сохранить анкету' }).click();
+  await expect(page.getByText('Профиль сохранён')).toBeVisible();
+  await expect(page.getByText('Указать ФСП ID')).toHaveCount(0);
+
+  await page.getByRole('button', { name: 'Подтвердить уровень' }).click();
+  await page.waitForURL(/\/workspace$/);
+  await submitCurrentAttempt(page);
+  await expect(page.getByRole('heading', { name: 'Джуниор подтверждён' })).toBeVisible();
+  await expect(page.getByText('Профиль обновлён автоматически')).toBeVisible();
+  await page.getByRole('link', { name: 'Открыть профиль' }).click();
+  await expect(page.getByText('Джуниор подтверждён').first()).toBeVisible();
+  await expect(page.getByText(/Для работодателей:/)).toBeVisible();
+});
+
+test('UI-10 UI-12 UI-05 draft survives reload, upgrade updates every view and the PDF is real', async ({ page }) => {
+  await resetMock('baseline');
+  await signIn(page, ALEXEY, 'candidate');
+  await page.getByRole('button', { name: 'Начать проверку' }).click();
+  await page.waitForURL(/\/workspace$/);
+  const url = page.url();
+  await page.getByLabel('Код решения на Rust').fill('pub fn draft() {}');
+  await expect(page.getByText(/Черновик сохранён в/)).toBeVisible();
+  await page.reload();
+  await expect(page.getByLabel('Код решения на Rust')).toHaveValue('pub fn draft() {}');
+  expect(page.url()).toBe(url);
+  await page.goto('/candidate/assessments');
+  await expect(page.getByRole('link', { name: 'Продолжить', exact: true })).toHaveCount(1);
+  await page.getByRole('link', { name: 'Продолжить', exact: true }).click();
+
+  await submitCurrentAttempt(page);
+  await expect(page.getByRole('heading', { name: 'Мидл подтверждён' })).toBeVisible();
+  await expect(page.getByText('Профиль обновлён автоматически')).toBeVisible();
+  await expect(page.getByText('Было:')).toContainText('Джуниор');
+  await page.goto('/candidate/overview');
+  await expect(page.getByText('Мидл подтверждён').first()).toBeVisible();
+  await page.goto('/candidate/skills?node=skill-postgresql');
+  await expect(page.getByRole('complementary').getByText('Подтверждено для уровня «Мидл»')).toBeVisible();
+
+  const downloadPromise = page.waitForEvent('download');
+  await page.goto('/candidate/overview');
+  await page.getByRole('button', { name: 'Скачать PDF' }).click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe('fsp-profile.pdf');
+  const bytes = await readFile((await download.path()) as string);
+  expect(bytes.subarray(0, 5).toString()).toBe('%PDF-');
+});
+
+test('UI-13 a failed upgrade keeps the verified Junior grade', async ({ page }) => {
+  await resetMock('assessment_failure');
+  await signIn(page, ALEXEY, 'candidate');
+  await page.getByRole('button', { name: 'Начать проверку' }).click();
+  await submitCurrentAttempt(page);
+  await expect(page.getByRole('heading', { name: 'Мидл пока не подтверждён' })).toBeVisible();
+  await expect(page.getByText(/Джуниор» остаётся в профиле/)).toBeVisible();
+  await page.goto('/candidate/overview');
+  await expect(page.getByText('Джуниор подтверждён').first()).toBeVisible();
+});
+
+test('UI-14 a service failure is retryable and carries no penalty', async ({ page }) => {
+  await resetMock('service_failure');
+  await signIn(page, ALEXEY, 'candidate');
+  await page.getByRole('button', { name: 'Начать проверку' }).click();
+  await submitCurrentAttempt(page);
+  await expect(page.getByRole('heading', { name: 'Оценка не получена' })).toBeVisible();
+  await expect(page.getByText(/Штрафа и дополнительного ожидания нет/)).toBeVisible();
+  await expect(page.getByRole('button', { name: /Начать новую попытку/ })).toBeVisible();
+  await page.goto('/candidate/overview');
+  await expect(page.getByText('Джуниор подтверждён').first()).toBeVisible();
+});
+
+test('UI-15 cooldown comes from the server', async ({ page }) => {
+  await resetMock('qualified');
+  await signIn(page, ALEXEY, 'candidate');
+  await page.goto('/candidate/profile');
+  await page.getByLabel('Грейд для проверки').selectOption('senior');
+  await page.getByRole('button', { name: 'Сохранить профиль' }).click();
+  await expect(page.getByText('Профиль сохранён')).toBeVisible();
+  await page.goto('/candidate/overview');
+  await expect(page.getByRole('heading', { name: 'Смена грейда пока недоступна' })).toBeVisible();
+  await expect(page.getByText(/Доступно с/)).toBeVisible();
+});
+
+test('UI-06 UI-07 sources enrich automatically; empty FSP history is valid', async ({ page }) => {
+  await resetMock('baseline');
+  await signIn(page, ALEXEY, 'candidate');
+  await page.goto('/candidate/sources');
+  const stats = page.getByRole('definition');
+  await expect(page.getByText('Обновлено', { exact: false })).toBeVisible();
+  const counts = (await stats.allTextContents()).map(Number);
+  const [found = 0, processed = 0, queued = 0, unavailable = 0] = counts;
+  expect(counts).toHaveLength(4);
+  expect(found).toBe(12);
+  expect(processed + queued + unavailable).toBe(found);
+  expect([processed, queued, unavailable]).toEqual([11, 0, 1]);
+
+  await page.getByRole('button', { name: 'Указать ФСП ID' }).click();
+  await page.getByLabel('ФСП ID').fill('FSP-UNKNOWN-1');
+  await page.getByRole('button', { name: 'Подключить' }).click();
+  await expect(page.getByText('Истории ФСП нет')).toBeVisible();
+});
+
+test('UI-06 a verified FSP record appears as a labelled demo source', async ({ page }) => {
+  await resetMock('baseline');
+  await signIn(page, ALEXEY, 'candidate');
+  await page.goto('/candidate/sources');
+  await page.getByRole('button', { name: 'Указать ФСП ID' }).click();
+  await page.getByLabel('ФСП ID').fill('FSP-DEMO-024');
+  await page.getByRole('button', { name: 'Подключить' }).click();
+  await expect(page.getByText('Подтверждённое участие')).toBeVisible();
+  await expect(page.getByText(/синтетическое событие/)).toBeVisible();
+});
+
+test('UI-08 UI-09 graph and list share one selection and the list is keyboard-operable', async ({ page }) => {
+  await resetMock('baseline');
+  await signIn(page, ALEXEY, 'candidate');
+  await page.goto('/candidate/skills?view=graph');
+  await page.getByRole('button', { name: /Навык: PostgreSQL/ }).click();
+  const inspector = page.getByRole('complementary', { name: 'Подробности выбранного элемента' });
+  await expect(inspector.getByRole('heading', { name: 'PostgreSQL' })).toBeVisible();
+  await expect(inspector.getByText('Для уровня «Мидл» нужна проверка')).toBeVisible();
+  await page.getByRole('button', { name: 'Список' }).click();
+  await expect(page.getByRole('button', { name: /PostgreSQL/, pressed: true })).toBeVisible();
+  await page.getByRole('button', { name: /^Docker/ }).focus();
+  await page.keyboard.press('Enter');
+  await expect(inspector.getByRole('heading', { name: 'Docker' })).toBeVisible();
+});
+
+test('UI-04 PDF import previews fixture data and applies it only on confirmation', async ({ page }) => {
+  await resetMock('baseline');
+  await signIn(page, ALEXEY, 'candidate');
+  await page.goto('/candidate/profile');
+  await page.getByRole('button', { name: 'Импортировать PDF' }).click();
+  const dialog = page.getByRole('dialog');
+  await dialog
+    .locator('input[type=file]')
+    .setInputFiles({ name: 'cv.txt', mimeType: 'text/plain', buffer: Buffer.from('hello') });
+  await expect(dialog.getByText('Выберите файл в формате PDF.')).toBeVisible();
+  const pdf = Buffer.from('%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n');
+  await dialog.locator('input[type=file]').setInputFiles({ name: 'cv.pdf', mimeType: 'application/pdf', buffer: pdf });
+  await expect(dialog.getByText('Демонстрационное извлечение', { exact: true })).toBeVisible();
+  await expect(dialog.getByLabel('Стаж, месяцев')).toHaveValue('');
+  await dialog.getByLabel('Имя и фамилия').fill('Алексей Морозов');
+  await dialog.getByRole('button', { name: 'Применить к профилю' }).click();
+  await expect(page.getByText('Данные из PDF применены к профилю')).toBeVisible();
+});

@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ФСП / Карьера · Макеты фронтенда</title>
+<style>
+:root{color-scheme:light;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#251631;background:#f7f5fa}*{box-sizing:border-box}body{margin:0}header{padding:40px max(24px,calc((100vw - 1440px)/2));background:#281036;color:white}header p{max-width:960px;line-height:1.65;color:#e1d5ec}h1{font-size:clamp(28px,4vw,44px);margin:0 0 12px}main{max-width:1488px;margin:auto;padding:32px 24px 48px}.note{border-left:4px solid #650da0;padding:16px 20px;background:white;line-height:1.6;margin-bottom:28px}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px}article{border:1px solid #e4ddec;border-radius:14px;background:white;overflow:hidden}.preview{display:block;background:#ece6f3;line-height:0}img{width:100%;height:auto}h2{font-size:18px;margin:0 0 6px}code{font-size:12px;overflow-wrap:anywhere;color:#655371}.caption{display:flex;align-items:center;gap:14px;padding:20px}.caption>div{flex:1;min-width:0}.number{font-weight:750;color:#650da0}.open{color:#520978;min-height:44px;display:inline-flex;align-items:center;padding:0 10px}a:focus-visible{outline:3px solid #a16bdf;outline-offset:4px}footer{margin-top:30px;color:#655371;line-height:1.6}@media(max-width:980px){.grid{grid-template-columns:1fr}}@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto}}
+</style></head><body>
+<header><h1>ФСП / Карьера</h1><p>10 макетов для реализации фронтенда. Кандидат подтверждает квалификацию, работодатель находит его по требованиям и направляет предложение с открытой зарплатой.</p></header>
+<main><div class="note"><strong>Как пользоваться.</strong> Откройте изображение для просмотра в исходном размере. Точное поведение, поля и состояния описаны в документах пакета. Даты и подписи в изображениях не заменяют API-контракт. Страницы 01–05 показывают профиль до повышения, 06–10 продолжают сценарий после подтверждения уровня Мидл.</div><section class="grid">
+<article>
+  <a class="preview" href="01-candidate-overview.png"><img src="01-candidate-overview.png" alt="Обзор профиля кандидата" loading="eager"></a>
+  <div class="caption"><span class="number">01</span><div><h2>Обзор профиля кандидата</h2><code>/candidate/overview</code></div><a class="open" href="01-candidate-overview.png">Открыть</a></div>
+</article>
+
+<article>
+  <a class="preview" href="02-profile-goals.png"><img src="02-profile-goals.png" alt="Профиль и цели" loading="eager"></a>
+  <div class="caption"><span class="number">02</span><div><h2>Профиль и цели</h2><code>/candidate/profile</code></div><a class="open" href="02-profile-goals.png">Открыть</a></div>
+</article>
+
+<article>
+  <a class="preview" href="03-profile-sources.png"><img src="03-profile-sources.png" alt="Источники профиля" loading="lazy"></a>
+  <div class="caption"><span class="number">03</span><div><h2>Источники профиля</h2><code>/candidate/sources</code></div><a class="open" href="03-profile-sources.png">Открыть</a></div>
+</article>
+
+<article>
+  <a class="preview" href="04-skills-evidence.png"><img src="04-skills-evidence.png" alt="Навыки и подтверждения" loading="lazy"></a>
+  <div class="caption"><span class="number">04</span><div><h2>Навыки и подтверждения</h2><code>/candidate/skills</code></div><a class="open" href="04-skills-evidence.png">Открыть</a></div>
+</article>
+
+<article>
+  <a class="preview" href="05-assessment-workspace.png"><img src="05-assessment-workspace.png" alt="Практическая проверка" loading="lazy"></a>
+  <div class="caption"><span class="number">05</span><div><h2>Практическая проверка</h2><code>/candidate/assessments/:assessmentId/workspace</code></div><a class="open" href="05-assessment-workspace.png">Открыть</a></div>
+</article>
+
+<article>
+  <a class="preview" href="06-assessment-result.png"><img src="06-assessment-result.png" alt="Результат проверки" loading="lazy"></a>
+  <div class="caption"><span class="number">06</span><div><h2>Результат проверки</h2><code>/candidate/assessments/:assessmentId/result</code></div><a class="open" href="06-assessment-result.png">Открыть</a></div>
+</article>
+
+<article>
+  <a class="preview" href="07-employer-need.png"><img src="07-employer-need.png" alt="Создание потребности" loading="lazy"></a>
+  <div class="caption"><span class="number">07</span><div><h2>Создание потребности</h2><code>/employer/needs/new</code></div><a class="open" href="07-employer-need.png">Открыть</a></div>
+</article>
+
+<article>
+  <a class="preview" href="08-candidate-search.png"><img src="08-candidate-search.png" alt="Поиск кандидатов и подборка" loading="lazy"></a>
+  <div class="caption"><span class="number">08</span><div><h2>Поиск кандидатов и подборка</h2><code>/employer/candidates</code></div><a class="open" href="08-candidate-search.png">Открыть</a></div>
+</article>
+
+<article>
+  <a class="preview" href="09-candidate-employer-view.png"><img src="09-candidate-employer-view.png" alt="Профиль глазами работодателя" loading="lazy"></a>
+  <div class="caption"><span class="number">09</span><div><h2>Профиль глазами работодателя</h2><code>/employer/candidates/:candidateId</code></div><a class="open" href="09-candidate-employer-view.png">Открыть</a></div>
+</article>
+
+<article>
+  <a class="preview" href="10-candidate-invitation.png"><img src="10-candidate-invitation.png" alt="Приглашение и решение кандидата" loading="lazy"></a>
+  <div class="caption"><span class="number">10</span><div><h2>Приглашение и решение кандидата</h2><code>/candidate/invitations/:invitationId</code></div><a class="open" href="10-candidate-invitation.png">Открыть</a></div>
+</article></section>
+<footer>Это визуальные референсы. Регистрация, подтверждение почты, ошибки, история и другие обязательные состояния дополнительно описаны в <code>docs/SCREEN_SPECIFICATION.md</code>. Исправления и приоритет текстовых правил перечислены в <code>docs/MOCKUP_CORRECTIONS.md</code>.</footer></main></body></html>

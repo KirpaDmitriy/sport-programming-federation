@@ -1,0 +1,30 @@
+.page {
+  display: grid;
+  place-items: center;
+  min-height: 70vh;
+  padding: var(--fsp-space-8);
+}
+
+.panel {
+  display: grid;
+  gap: var(--fsp-space-4);
+  max-width: 36rem;
+  text-align: center;
+  justify-items: center;
+}
+
+.code {
+  margin: 0;
+  color: var(--fsp-color-primary);
+  font-size: 3rem;
+  font-weight: 800;
+}
+
+.title {
+  margin: 0;
+  font-size: var(--fsp-font-size-page);
+}
+
+.pending {
+  padding: var(--fsp-space-8);
+}

@@ -1,0 +1,18 @@
+{
+  "name": "fsp-frontend-handoff",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=24.19 <25" },
+  "scripts": {
+    "mock:install": "npm --prefix mock-server ci",
+    "mock": "npm --prefix mock-server start",
+    "mock:test": "npm --prefix mock-server test",
+    "codegen": "pnpm --dir tools/contract-codegen generate",
+    "codegen:check": "pnpm --dir tools/contract-codegen check",
+    "reference:check": "pnpm --dir frontend-reference verify",
+    "gallery": "node scripts/build-gallery.mjs",
+    "api:index": "node scripts/build-api-index.mjs",
+    "verify": "node scripts/verify-package.mjs"
+  }
+}
