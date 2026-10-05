@@ -36,5 +36,5 @@ backend, stand).
 | Python MVP | Python 3.12 | `pytest`, `python tools/offline_smoke.py`, `python tools/experiments.py check` |
 | backend | Rust, pinned by the backend owner | defined with the backend |
 
-`just` lists the tasks for the JS modules and the stand. CI: `.github/workflows/tests.yml` (Python MVP) and
+`just` lists the tasks for the JS modules and the stand. CI: `.github/workflows/test.yml` (Python MVP) and
 `.github/workflows/platform.yml` (contract, mock, frontend).
