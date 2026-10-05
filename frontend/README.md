@@ -95,41 +95,11 @@ context per actor; the public suite only uses public flows and fresh accounts.
 | `VITE_DEMO_EMAIL_CODE` | unset | Shown next to the code field when the server reports `delivery: mock_mailbox` |
 | `VITE_API_ORIGIN` | empty (same origin) | Tests set an absolute origin because Node cannot resolve relative URLs |
 
-## Demo stand deployment
+## Demo stand
 
-The stand is one DigitalOcean droplet (`fsp-career-demo`, Ubuntu 24.04) serving HTTPS on its IP address with a
-Let's Encrypt IP certificate (shortlived profile, 160 hours). nginx serves the built SPA with an `index.html`
-fallback, forwards only `/api/v1/` to the mock on `127.0.0.1:4010` with a loopback `Host`, marks the session cookie
-`Secure` and answers `/__mock__` with 404. The mock runs as the `fsp` user under `fsp-mock-api.service` with
-`FSP_MOCK_DEV_ROUTES=0` and the stand's origin in `FSP_MOCK_ALLOWED_ORIGINS`. The host has Bun only (`/opt/bun`, checksum
-verified at provisioning); releases are installed with `bun install --frozen-lockfile` and built with `bun run build`.
-
-Access material (SSH key, droplet metadata) lives in the git-ignored `../.fsp-infra/`.
-
-```sh
-# one-time, idempotent host setup (packages, pinned Bun, certbot, firewall, nginx, unit, certificate)
-scp -F .fsp-infra/ssh/config -r frontend/deploy fsp-demo:/root/fsp-deploy
-ssh -F .fsp-infra/ssh/config fsp-demo 'bash /root/fsp-deploy/provision.sh 188.166.88.183'
-
-# build a git ref on the host and switch /opt/fsp/current atomically (default ref: main)
-frontend/deploy/deploy.sh main
-
-# roll back to a previous release (the last five are kept)
-ssh -F .fsp-infra/ssh/config fsp-demo 'ls -1dt /opt/fsp/releases/*'
-ssh -F .fsp-infra/ssh/config fsp-demo 'ln -sfn /opt/fsp/releases/<sha> /opt/fsp/current && systemctl restart fsp-mock-api'
-```
-
-Operations on the host:
-
-| Task | Command |
-| --- | --- |
-| API status / logs | `systemctl status fsp-mock-api`, `journalctl -u fsp-mock-api -n 100` |
-| Reset demo data | `systemctl restart fsp-mock-api` (state is in memory; seeded `baseline` scenario) |
-| Certificate | `certbot certificates`; renewal by `snap.certbot.renew.timer`, three days before expiry, then `systemctl reload nginx` |
-| Renewal dry run | `certbot renew --cert-name fsp-demo --dry-run` |
-
-The demo API is shared by every visitor and keeps state only until restart. It is not production authentication:
-codes are fixed, there is no rate limiting beyond the mock's attempt counter, and data is synthetic.
+The stand at <https://188.166.88.183> builds this app on the host and serves it with nginx; the API behind it is
+still the mock. Provisioning, deployment, rollback and host operations are described in
+[`../infra/README.md`](../infra/README.md).
 
 ## Known limits
 
