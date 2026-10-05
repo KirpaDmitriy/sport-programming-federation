@@ -163,9 +163,11 @@ export function LoginPage({ redirectTo, expired }: Props) {
         <div className="stack">
           <h1 className={styles.title}>{challenge ? 'Подтвердите почту' : 'Вход и регистрация'}</h1>
           <p className="muted">
-            {challenge
-              ? `Мы отправили шестизначный код на ${challenge.email}.`
-              : 'Новый адрес создаёт аккаунт выбранной роли, существующий — открывает ваш кабинет.'}
+            {!challenge
+              ? 'Новый адрес создаёт аккаунт выбранной роли, существующий — открывает ваш кабинет.'
+              : challenge.delivery === 'mock_mailbox'
+                ? `Шестизначный код для ${challenge.email} выдан в демонстрационный почтовый ящик.`
+                : `Мы отправили шестизначный код на ${challenge.email}.`}
           </p>
         </div>
 
