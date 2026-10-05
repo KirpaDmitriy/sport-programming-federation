@@ -94,6 +94,7 @@ context per actor; the public suite only uses public flows and fresh accounts.
 | `VITE_DEMO_STAND` | unset (implied in `vite` dev mode) | Adds demo-stand copy and the seeded account hints to a production build |
 | `VITE_DEMO_EMAIL_CODE` | unset | Shown next to the code field when the server reports `delivery: mock_mailbox` |
 | `VITE_API_ORIGIN` | empty (same origin) | Tests set an absolute origin because Node cannot resolve relative URLs |
+| `FSP_API_TARGET` | `http://127.0.0.1:4010` (the mock) | Where `bun run dev` and `bun run preview` proxy `/api`, e.g. a backend on another port |
 
 ## Demo stand
 
