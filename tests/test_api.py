@@ -27,6 +27,7 @@ def test_browser_shell_and_assets_are_served(tmp_path) -> None:
         page = http.get("/")
         script = http.get("/assets/app.js")
         styles = http.get("/assets/styles.css")
+        logo = http.get("/assets/fsp-logo-black.png")
 
     assert page.status_code == 200
     assert "Найм начинается" in page.text
@@ -36,6 +37,9 @@ def test_browser_shell_and_assets_are_served(tmp_path) -> None:
     assert 'id="requirement-builder"' in page.text
     assert 'id="competition-policy"' in page.text
     assert 'id="data-dialog"' in page.text
+    assert "Выготский от ФСП" in page.text
+    assert logo.status_code == 200
+    assert logo.headers["content-type"] == "image/png"
     assert "async function boot" in script.text
     assert "[data-open-data]" in script.text
     assert "prefers-reduced-motion" in styles.text

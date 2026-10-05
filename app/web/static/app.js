@@ -199,10 +199,22 @@ function renderGraph(graph) {
   }).join("");
   const nodes = graph.nodes.map((node) => {
     const point = positions.get(node.id);
-    const radius = 28 + node.level * 24;
+    const radius = Math.max(44, 30 + node.level * 23);
     const color = colors[node.category] || "#315cff";
-    const label = node.label.length > 18 ? `${node.label.slice(0, 16)}…` : node.label;
-    return `<g class="graph-node" transform="translate(${point.x} ${point.y})"><circle r="${radius}" fill="${color}" stroke="rgba(255,255,255,${node.confidence})"/><text y="-2">${html(label)}</text><text class="graph-score" y="15">${percent(node.level)} · ${percent(node.confidence)}</text></g>`;
+    const words = node.label.split(" ");
+    const lines = words.reduce((result, word) => {
+      const current = result.at(-1);
+      if (!current || (current.length + word.length + 1 > 15 && result.length < 2)) result.push(word);
+      else result[result.length - 1] = `${current} ${word}`;
+      return result;
+    }, []);
+    if (lines[1]?.length > 15) lines[1] = `${lines[1].slice(0, 14)}…`;
+    const fontSize = node.label.length > 24 ? 10 : 11;
+    const labelY = lines.length === 1 ? -4 : -11;
+    const label = lines.map((line, index) => `<tspan x="0" dy="${index ? 13 : 0}">${html(line)}</tspan>`).join("");
+    const scoreY = lines.length === 1 ? 15 : 21;
+    const lightNode = node.category === "Product Engineering" || node.category === "Кибербезопасность";
+    return `<g class="graph-node${lightNode ? " graph-node-light" : ""}" transform="translate(${point.x} ${point.y})"><circle r="${radius}" fill="${color}" stroke="rgba(255,255,255,${node.confidence})"/><text class="graph-label" y="${labelY}" style="font-size:${fontSize}px">${label}</text><text class="graph-score" y="${scoreY}">${percent(node.level)} · ${percent(node.confidence)}</text></g>`;
   }).join("");
   svg.innerHTML = `${edges}${nodes}`;
 }
