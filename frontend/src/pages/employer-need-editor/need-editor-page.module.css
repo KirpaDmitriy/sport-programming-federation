@@ -1,0 +1,113 @@
+.triple {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--fsp-space-4);
+}
+
+.salary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) minmax(10rem, 0.8fr);
+  gap: var(--fsp-space-4);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.salary legend {
+  margin-bottom: var(--fsp-space-2);
+  font-size: var(--fsp-font-size-small);
+  font-weight: 600;
+}
+
+.basis {
+  display: grid;
+  align-content: end;
+  gap: 2px;
+  padding-bottom: var(--fsp-space-2);
+}
+
+.requirements {
+  display: grid;
+  gap: var(--fsp-space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.requirements[data-invalid="true"] {
+  outline: 2px solid var(--fsp-color-danger);
+  outline-offset: 4px;
+  border-radius: var(--fsp-radius-card);
+}
+
+.requirement {
+  display: grid;
+  gap: var(--fsp-space-2);
+  padding: var(--fsp-space-4);
+  border: 1px solid var(--fsp-color-border);
+  border-radius: var(--fsp-radius-card);
+}
+
+.requirementRow {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--fsp-space-3);
+  align-items: end;
+}
+
+.rowFooter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--fsp-space-2);
+}
+
+.rowActions {
+  display: flex;
+  gap: var(--fsp-space-1);
+}
+
+.policy {
+  padding: var(--fsp-space-4);
+  border-radius: var(--fsp-radius-card);
+  background: var(--fsp-color-surface-subtle);
+}
+
+.defaults {
+  padding: var(--fsp-space-3) var(--fsp-space-4);
+  border: 1px dashed var(--fsp-color-border-strong);
+  border-radius: var(--fsp-radius-card);
+}
+
+.defaults summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.summary {
+  display: grid;
+  gap: var(--fsp-space-4);
+  margin: 0 0 var(--fsp-space-4);
+  padding: 0;
+  list-style: none;
+}
+
+.summary li {
+  display: grid;
+  grid-template-columns: 1.5rem minmax(0, 1fr);
+  gap: var(--fsp-space-3);
+}
+
+.summary svg {
+  color: var(--fsp-color-primary);
+  margin-top: 2px;
+}
+
+@media (max-width: 900px) {
+  .triple,
+  .salary,
+  .requirementRow {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

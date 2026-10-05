@@ -1,0 +1,99 @@
+{
+  "schema_version": 1,
+  "kind": "raster_design_references",
+  "text_spec_overrides_pixels": true,
+  "screens": [
+    {
+      "id": "01-candidate-overview",
+      "title_ru": "Обзор профиля кандидата",
+      "file": "01-candidate-overview.png",
+      "route": "/candidate/overview",
+      "status": "final_selected",
+      "sha256": "bdb1f43e25cf7832253b90bf6eca9c793c2bf427189297941fbcce09ff547b7a",
+      "source_generation": "exec-dc12fa5a-ea93-492f-a929-c0b9952472c8.png"
+    },
+    {
+      "id": "02-profile-goals",
+      "title_ru": "Профиль и цели",
+      "file": "02-profile-goals.png",
+      "route": "/candidate/profile",
+      "status": "final_selected",
+      "sha256": "223a51e7e846a47595a4532e63ca8a4c6c65db7667953963e7525e1d7e16671e",
+      "source_generation": "exec-2f75a332-2916-4883-86fd-10f56464f222.png"
+    },
+    {
+      "id": "03-profile-sources",
+      "title_ru": "Источники профиля",
+      "file": "03-profile-sources.png",
+      "route": "/candidate/sources",
+      "status": "final_selected",
+      "sha256": "8d6e1142de4d7ab80dc9056766fe3f09621a8e4fafd3aad5831db78884aeecc9",
+      "source_generation": "exec-6f85f6bf-fada-4ecf-889d-3e477b45699d.png"
+    },
+    {
+      "id": "04-skills-evidence",
+      "title_ru": "Навыки и подтверждения",
+      "file": "04-skills-evidence.png",
+      "route": "/candidate/skills",
+      "status": "final_selected",
+      "sha256": "501524698cacec8dfa333750eef3ccf67275355f73662b62a1ab42dbf07175dd",
+      "source_generation": "exec-19bd6c83-2a5a-4c2f-a21e-5b7f9974a425.png"
+    },
+    {
+      "id": "05-assessment-workspace",
+      "title_ru": "Практическая проверка",
+      "file": "05-assessment-workspace.png",
+      "route": "/candidate/assessments/:assessmentId/workspace",
+      "status": "final_selected",
+      "sha256": "c9ab293aeaf7c5b22eeb427359764f1d6f1a3666e52fdfd6e0cdcb52f808dbb6",
+      "source_generation": "exec-82743605-64ed-4970-9f55-de732450411d.png"
+    },
+    {
+      "id": "06-assessment-result",
+      "title_ru": "Результат проверки",
+      "file": "06-assessment-result.png",
+      "route": "/candidate/assessments/:assessmentId/result",
+      "status": "final_selected",
+      "sha256": "dfabf83dfcc7ebf5cd0630398883f44b1b6af7f82a0d96ee00748063e2dc05ef",
+      "source_generation": "exec-297eb622-ad7d-4ec2-9b83-51b98519cb8e.png"
+    },
+    {
+      "id": "07-employer-need",
+      "title_ru": "Создание потребности",
+      "file": "07-employer-need.png",
+      "route": "/employer/needs/new",
+      "status": "final_selected",
+      "sha256": "665ce3effd4f303548c8c3f950fdfb126014212099eb501ef6a9baa47f9bbbde",
+      "source_generation": "exec-7020a36b-7d41-4a35-a9b2-49cf9e5afc6c.png"
+    },
+    {
+      "id": "08-candidate-search",
+      "title_ru": "Поиск кандидатов и подборка",
+      "file": "08-candidate-search.png",
+      "route": "/employer/candidates",
+      "status": "final_selected",
+      "sha256": "4271edd38f952af55f8be92789b7bc84f872a92a560dda76896fc217dd30bd1c",
+      "source_generation": "exec-3b2f13a7-db2c-42a3-b9b9-3eedf3f1fea1.png",
+      "revision": "handoff-review-2026-10-05"
+    },
+    {
+      "id": "09-candidate-employer-view",
+      "title_ru": "Профиль глазами работодателя",
+      "file": "09-candidate-employer-view.png",
+      "route": "/employer/candidates/:candidateId",
+      "status": "final_selected",
+      "sha256": "5dd2159ab77aa4d4a19bf1741f32c5dae0765d54b312185e6afb5a52a9b497a1",
+      "source_generation": "exec-2140a7ff-037e-4f59-b618-4d42276298ca.png"
+    },
+    {
+      "id": "10-candidate-invitation",
+      "title_ru": "Приглашение и решение кандидата",
+      "file": "10-candidate-invitation.png",
+      "route": "/candidate/invitations/:invitationId",
+      "status": "final_selected",
+      "sha256": "e4ff5fa22ba8936c504e1917c1a65c31bd0e12a7f80429393416624839105401",
+      "source_generation": "exec-a03a5a77-d15b-4b27-b232-1fdb25a72d0d.png",
+      "revision": "handoff-review-2026-10-05"
+    }
+  ]
+}

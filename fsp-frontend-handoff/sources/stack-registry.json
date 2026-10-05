@@ -1,0 +1,985 @@
+{
+  "retrievedAt": "2026-10-05T17:39:54.735445+00:00",
+  "purpose": "Primary npm registry latest-tag snapshot. Does not prove runtime compatibility or a completed install.",
+  "packages": [
+    {
+      "package": "react",
+      "registryUrl": "https://registry.npmjs.org/react/latest",
+      "name": "react",
+      "version": "19.3.0",
+      "engines": {
+        "node": ">=0.10.0"
+      },
+      "repository": {
+        "url": "git+https://github.com/react/react.git",
+        "type": "git",
+        "directory": "packages/react"
+      },
+      "license": "MIT",
+      "dist": {
+        "integrity": "sha512-E8LUcbtBWt20bbl2YoHfx4ZDBdxVTfOKtCZn9cDSJ4l6/nuoApcpIBcj47t2wZoVX8g2ZHuMHbiShgCR1T5Sog==",
+        "tarball": "https://registry.npmjs.org/react/-/react-19.3.0.tgz"
+      }
+    },
+    {
+      "package": "react-dom",
+      "registryUrl": "https://registry.npmjs.org/react-dom/latest",
+      "name": "react-dom",
+      "version": "19.3.0",
+      "peerDependencies": {
+        "react": "^19.3.0"
+      },
+      "dependencies": {
+        "scheduler": "^0.28.0"
+      },
+      "repository": {
+        "url": "git+https://github.com/react/react.git",
+        "type": "git",
+        "directory": "packages/react-dom"
+      },
+      "license": "MIT",
+      "dist": {
+        "integrity": "sha512-JDk8dgif51OjFoDE70+OT9ICyYr+69HlmihNwp1+Nsfbna3t5sIiCa9ZJktDmQ4/1b/rn26hIAR2uYXDMr5r0Q==",
+        "tarball": "https://registry.npmjs.org/react-dom/-/react-dom-19.3.0.tgz"
+      }
+    },
+    {
+      "package": "@tanstack/react-router",
+      "registryUrl": "https://registry.npmjs.org/@tanstack%2freact-router/latest",
+      "name": "@tanstack/react-router",
+      "version": "1.170.41",
+      "engines": {
+        "node": ">=20.19"
+      },
+      "peerDependencies": {
+        "react": ">=18.0.0 || >=19.0.0",
+        "react-dom": ">=18.0.0 || >=19.0.0"
+      },
+      "dependencies": {
+        "isbot": "^5.1.22",
+        "@tanstack/history": "1.162.4",
+        "@tanstack/react-store": "^0.11.2",
+        "@tanstack/router-core": "1.171.34"
+      },
+      "repository": {
+        "url": "git+https://github.com/TanStack/router.git",
+        "type": "git",
+        "directory": "packages/react-router"
+      },
+      "license": "MIT",
+      "dist": {
+        "integrity": "sha512-Mpvw8Wm5MGDbTqI8Yc9flLKxbOHwoWocv0H2aGKcgw2a017oK5nZWqa954P+DrUx/8fI98YNywnHP5XcD3tQ9w==",
+        "tarball": "https://registry.npmjs.org/@tanstack/react-router/-/react-router-1.170.41.tgz"
+      }
+    },
+    {
+      "package": "@tanstack/router-plugin",
+      "registryUrl": "https://registry.npmjs.org/@tanstack%2frouter-plugin/latest",
+      "name": "@tanstack/router-plugin",
+      "version": "1.168.42",
+      "engines": {
+        "node": ">=20.19"
+      },
+      "peerDependencies": {
+        "vite": ">=5.0.0 || >=6.0.0 || >=7.0.0 || >=8.0.0",
+        "webpack": ">=5.92.0",
+        "@rsbuild/core": ">=1.0.2 || ^2.0.0",
+        "vite-plugin-solid": "^2.11.10 || ^3.0.0-0",
+        "@tanstack/react-router": "^1.170.41"
+      },
+      "peerDependenciesMeta": {
+        "vite": {
+          "optional": true
+        },
+        "webpack": {
+          "optional": true
+        },
+        "@rsbuild/core": {
+          "optional": true
+        },
+        "vite-plugin-solid": {
+          "optional": true
+        },
+        "@tanstack/react-router": {
+          "optional": true
+        }
+      },
+      "dependencies": {
+        "zod": "^4.5.4",
+        "chokidar": "^5.0.0",
+        "unplugin": "^3.3.0",
+        "@babel/core": "^7.29.7",
+        "@babel/types": "^7.29.8",
+        "@babel/template": "^7.29.7",
+        "@tanstack/router-core": "1.171.34",
+        "@tanstack/router-utils": "1.162.3",
+        "@tanstack/router-generator": "1.167.40"
+      },
+      "repository": {
+        "url": "git+https://github.com/TanStack/router.git",
+        "type": "git",
+        "directory": "packages/router-plugin"
+      },
+      "license": "MIT",
+      "dist": {
+        "integrity": "sha512-vAR5WXJh/ErseEWQftDhsJcr2c++ucRQ6FbqN3ygMO44+ZxxRfW3sIpZmddHROVSmBk8jc6MrwjTPNjVhd62Vw==",
+        "tarball": "https://registry.npmjs.org/@tanstack/router-plugin/-/router-plugin-1.168.42.tgz"
+      }
+    },
+    {
+      "package": "@tanstack/react-query",
+      "registryUrl": "https://registry.npmjs.org/@tanstack%2freact-query/latest",
+      "name": "@tanstack/react-query",
+      "version": "5.104.1",
+      "peerDependencies": {
+        "react": "^18 || ^19"
+      },
+      "dependencies": {
+        "@tanstack/query-core": "5.104.1"
+      },
+      "repository": {
+        "url": "git+https://github.com/TanStack/query.git",
+        "type": "git",
+        "directory": "packages/react-query"
+      },
+      "license": "MIT",
+      "dist": {
+        "integrity": "sha512-Zz70EgjahNI7aCz8BZxM3vUGU44ycxEAzMuCUjLeA7SVhhOkg3ZgPjPJPvHjs6Rmky/dtmnu1WzjGHNHmhCoZQ==",
+        "tarball": "https://registry.npmjs.org/@tanstack/react-query/-/react-query-5.104.1.tgz"
+      }
+    },
+    {
+      "package": "@tanstack/react-form",
+      "registryUrl": "https://registry.npmjs.org/@tanstack%2freact-form/latest",
+      "name": "@tanstack/react-form",
+      "version": "1.33.5",
+      "peerDependencies": {
+        "react": "^17.0.0 || ^18.0.0 || ^19.0.0"
+      },
+      "peerDependenciesMeta": {
+        "@tanstack/react-start": {
+          "optional": true
+        }
+      },
+      "dependencies": {
+        "@tanstack/form-core": "1.33.5",
+        "@tanstack/react-store": "^0.11.0"
+      },
+      "repository": {
+        "url": "git+https://github.com/TanStack/form.git",
+        "type": "git",
+        "directory": "packages/react-form"
+      },
+      "license": "MIT",
+      "dist": {
+        "integrity": "sha512-LlRB28qJwO/QCGaHvWnbdh4haBgTFiZVmzA2uzxSBS3YA7/IqrQ6HOBK70CkFQ+DbflZ7NawsmSln13h5iIdTA==",
+        "tarball": "https://registry.npmjs.org/@tanstack/react-form/-/react-form-1.33.5.tgz"
+      }
+    },
+    {
+      "package": "@tanstack/react-table",
+      "registryUrl": "https://registry.npmjs.org/@tanstack%2freact-table/latest",
+      "name": "@tanstack/react-table",
+      "version": "9.2.6",
+      "engines": {
+        "node": ">=20"
+      },
+      "peerDependencies": {
+        "react": ">=18"
+      },
+      "dependencies": {
+        "@tanstack/table-core": "9.2.6",
+        "@tanstack/react-store": "^0.11.2"
+      },
+      "repository": {
+        "url": "https://github.com/TanStack/table.git",
+        "type": "git",
+        "directory": "packages/react-table"
+      },
+      "license": "MIT",
+      "dist": {
+        "integrity": "sha512-Wmt3sbzwz+5CtB0pqIxGw2FrNW9mF4AhJ9KnS1/VGZ8cDAEg51S4ixru2dnF0xQnY407kdYNLer3ms+n8zCN6w==",
+        "tarball": "https://registry.npmjs.org/@tanstack/react-table/-/react-table-9.2.6.tgz"
+      }
+    },
+    {
+      "package": "vite",
+      "registryUrl": "https://registry.npmjs.org/vite/latest",
+      "name": "vite",
+      "version": "8.3.2",
+      "engines": {
+        "node": "^20.19.0 || >=22.12.0"
+      },
+      "peerDependencies": {
+        "tsx": "^4.8.1",
+        "jiti": ">=1.21.0",
+        "less": "^4.0.0",
+        "sass": "^1.70.0",
+        "yaml": "^2.4.2",
+        "stylus": ">=0.54.8",
+        "terser": "^5.16.0",
+        "esbuild": "^0.27.0 || ^0.28.0",
+        "sugarss": "^5.0.0",
+        "@types/node": "^20.19.0 || >=22.12.0",
+        "sass-embedded": "^1.70.0",
+        "@vitejs/devtools": "^0.7.1"
+      },
+      "peerDependenciesMeta": {
+        "tsx": {
+          "optional": true
+        },
+        "jiti": {
+          "optional": true
+        },
+        "less": {
+          "optional": true
+        },
+        "sass": {
+          "optional": true
+        },
+        "yaml": {
+          "optional": true
+        },
+        "stylus": {
+          "optional": true
+        },
+        "terser": {
+          "optional": true
+        },
+        "esbuild": {
+          "optional": true
+        },
+        "sugarss": {
+          "optional": true
+        },
+        "@types/node": {
+          "optional": true
+        },
+        "sass-embedded": {
+          "optional": true
+        },
+        "@vitejs/devtools": {
+          "optional": true
+        }
+      },
+      "dependencies": {
+        "postcss": "^8.5.28",
+        "rolldown": "~1.2.11",
+        "picomatch": "^4.0.7",
+        "tinyglobby": "^0.2.17",
+        "lightningcss": "^1.33.0"
+      },
+      "optionalDependencies": {
+        "fsevents": "~2.3.3"
+      },
+      "repository": {
+        "url": "git+https://github.com/vitejs/vite.git",
+        "type": "git",
+        "directory": "packages/vite"
+      },
+      "license": "MIT",
+      "dist": {
+        "integrity": "sha512-SQr1x6W5vVSbROg7vsyXIaxK9b0G7zsT68acdWWRmnBUsgDieLCRG+Rep9WdZgcposvv/GSnr4GUUBqB3vXq6w==",
+        "tarball": "https://registry.npmjs.org/vite/-/vite-8.3.2.tgz"
+      }
+    },
+    {
+      "package": "@vitejs/plugin-react",
+      "registryUrl": "https://registry.npmjs.org/@vitejs%2fplugin-react/latest",
+      "name": "@vitejs/plugin-react",
+      "version": "6.1.2",
+      "engines": {
+        "node": "^20.19.0 || >=22.12.0"
+      },
+      "peerDependencies": {
+        "vite": "^8.0.0",
+        "oxc-transform-react": "^0.152.0",
+        "@rolldown/plugin-babel": "^0.1.7 || ^0.2.0",
+        "babel-plugin-react-compiler": "^1.0.0"
+      },
+      "peerDependenciesMeta": {
+        "oxc-transform-react": {
+          "optional": true
+        },
+        "@rolldown/plugin-babel": {
+          "optional": true
+        },
+        "babel-plugin-react-compiler": {
+          "optional": true
+        }
+      },
+      "dependencies": {
+        "@rolldown/pluginutils": "^1.0.1"
+      },
+      "repository": {
+        "url": "git+https://github.com/vitejs/vite-plugin-react.git",
+        "type": "git",
+        "directory": "packages/plugin-react"
+      },
+      "license": "MIT",
+      "dist": {
+        "integrity": "sha512-fhJNGUdscQa4HkI0xFxwonWyhnVReCPDbXI7FH7jmzpnVCrFQI7PRrhWecO263610vOrs9tr2Y4xcf8uAdFxbw==",
+        "tarball": "https://registry.npmjs.org/@vitejs/plugin-react/-/plugin-react-6.1.2.tgz"
+      }
+    },
+    {
+      "package": "typescript",
+      "registryUrl": "https://registry.npmjs.org/typescript/latest",
+      "name": "typescript",
+      "version": "7.0.2",
+      "engines": {
+        "node": ">=16.20.0"
+      },
+      "dependencies": {
+        "@typescript/typescript-aix-ppc64": "7.0.2",
+        "@typescript/typescript-linux-arm": "7.0.2",
+        "@typescript/typescript-linux-x64": "7.0.2",
+        "@typescript/typescript-sunos-x64": "7.0.2",
+        "@typescript/typescript-win32-x64": "7.0.2",
+        "@typescript/typescript-darwin-x64": "7.0.2",
+        "@typescript/typescript-netbsd-x64": "7.0.2",
+        "@typescript/typescript-freebsd-x64": "7.0.2",
+        "@typescript/typescript-linux-arm64": "7.0.2",
+        "@typescript/typescript-linux-ppc64": "7.0.2",
+        "@typescript/typescript-linux-s390x": "7.0.2",
+        "@typescript/typescript-openbsd-x64": "7.0.2",
+        "@typescript/typescript-win32-arm64": "7.0.2",
+        "@typescript/typescript-darwin-arm64": "7.0.2",
+        "@typescript/typescript-netbsd-arm64": "7.0.2",
+        "@typescript/typescript-freebsd-arm64": "7.0.2",
+        "@typescript/typescript-linux-loong64": "7.0.2",
+        "@typescript/typescript-linux-riscv64": "7.0.2",
+        "@typescript/typescript-openbsd-arm64": "7.0.2",
+        "@typescript/typescript-linux-mips64el": "7.0.2"
+      },
+      "optionalDependencies": {
+        "@typescript/typescript-aix-ppc64": "7.0.2",
+        "@typescript/typescript-linux-arm": "7.0.2",
+        "@typescript/typescript-linux-x64": "7.0.2",
+        "@typescript/typescript-sunos-x64": "7.0.2",
+        "@typescript/typescript-win32-x64": "7.0.2",
+        "@typescript/typescript-darwin-x64": "7.0.2",
+        "@typescript/typescript-netbsd-x64": "7.0.2",
+        "@typescript/typescript-freebsd-x64": "7.0.2",
+        "@typescript/typescript-linux-arm64": "7.0.2",
+        "@typescript/typescript-linux-ppc64": "7.0.2",
+        "@typescript/typescript-linux-s390x": "7.0.2",
+        "@typescript/typescript-openbsd-x64": "7.0.2",
+        "@typescript/typescript-win32-arm64": "7.0.2",
+        "@typescript/typescript-darwin-arm64": "7.0.2",
+        "@typescript/typescript-netbsd-arm64": "7.0.2",
+        "@typescript/typescript-freebsd-arm64": "7.0.2",
+        "@typescript/typescript-linux-loong64": "7.0.2",
+        "@typescript/typescript-linux-riscv64": "7.0.2",
+        "@typescript/typescript-openbsd-arm64": "7.0.2",
+        "@typescript/typescript-linux-mips64el": "7.0.2"
+      },
+      "repository": {
+        "url": "git+https://github.com/microsoft/TypeScript.git",
+        "type": "git"
+      },
+      "license": "Apache-2.0",
+      "dist": {
+        "integrity": "sha512-8FYau96o3NKOhbjKi/qNvG/W5jhzxkbdm5sj9AbZ/5T5sWqn3hJgLfGx27sRKZWTvyzCP8dLRBTf5tBTSRVUNA==",
+        "tarball": "https://registry.npmjs.org/typescript/-/typescript-7.0.2.tgz"
+      }
+    },
+    {
+      "package": "pnpm",
+      "registryUrl": "https://registry.npmjs.org/pnpm/latest",
+      "name": "pnpm",
+      "version": "12.9.1",
+      "engines": {
+        "node": ">=18.*"
+      },
+      "optionalDependencies": {
+        "@pnpm/exe.linux-x64": "12.9.1",
+        "@pnpm/exe.win32-x64": "12.9.1",
+        "@pnpm/exe.darwin-x64": "12.9.1",
+        "@pnpm/exe.android-x64": "12.9.1",
+        "@pnpm/exe.freebsd-x64": "12.9.1",
+        "@pnpm/exe.linux-arm64": "12.9.1",
+        "@pnpm/exe.linux-ppc64": "12.9.1",
+        "@pnpm/exe.linux-s390x": "12.9.1",
+        "@pnpm/exe.win32-arm64": "12.9.1",
+        "@pnpm/exe.darwin-arm64": "12.9.1",
+        "@pnpm/exe.android-arm64": "12.9.1",
+        "@pnpm/exe.linux-riscv64": "12.9.1",
+        "@pnpm/exe.linux-x64-musl": "12.9.1",
+        "@pnpm/exe.linux-arm64-musl": "12.9.1"
+      },
+      "repository": {
+        "url": "https://github.com/pnpm/pnpm",
+        "type": "git",
+        "directory": "pnpm/npm/pnpm"
+      },
+      "license": "MIT",
+      "dist": {
+        "integrity": "sha512-BrBV//XNINwSeB3hc87TMQzglRvy7GICEaFgRdVETVyTpmMhB2TvKaZTphBFm6A2jw50+E2AxUcjz5Wq57wNbQ==",
+        "tarball": "https://registry.npmjs.org/pnpm/-/pnpm-12.9.1.tgz"
+      }
+    },
+    {
+      "package": "msw",
+      "registryUrl": "https://registry.npmjs.org/msw/latest",
+      "name": "msw",
+      "version": "3.0.2",
+      "engines": {
+        "node": ">=22.12.0"
+      },
+      "peerDependencies": {
+        "vite": ">=6",
+        "graphql": ">=16",
+        "typescript": ">=5.9.x"
+      },
+      "peerDependenciesMeta": {
+        "vite": {
+          "optional": true
+        },
+        "graphql": {
+          "optional": true
+        },
+        "typescript": {
+          "optional": true
+        }
+      },
+      "dependencies": {
+        "yargs": "^18.2.0",
+        "cookie": "^2.0.1",
+        "rettime": "^0.11.12",
+        "@msw/url": "^0.1.2",
+        "type-fest": "^5.5.0",
+        "outvariant": "^1.4.3",
+        "until-async": "^3.0.2",
+        "tough-cookie": "^6.0.2",
+        "is-node-process": "^1.2.0",
+        "headers-polyfill": "^5.0.1",
+        "@inquirer/confirm": "^6.0.11",
+        "@mswjs/interceptors": "^0.45.6"
+      },
+      "repository": {
+        "url": "git+https://github.com/mswjs/msw.git",
+        "type": "git"
+      },
+      "license": "MIT",
+      "dist": {
+        "integrity": "sha512-/74rddlgCmlHvrXUkuYKoUjDJTiP4Nrz2uyIpOTLtxJNCS+2yY+DlLfzzRUc61cvRjCo6Jvi2+vRNZyZQa1j4A==",
+        "tarball": "https://registry.npmjs.org/msw/-/msw-3.0.2.tgz"
+      }
+    },
+    {
+      "package": "vitest",
+      "registryUrl": "https://registry.npmjs.org/vitest/latest",
+      "name": "vitest",
+      "version": "5.0.3",
+      "engines": {
+        "node": "^22.12.0 || ^24.0.0 || >=26.0.0"
+      },
+      "peerDependencies": {
+        "vite": "^6.4.0 || ^7.0.0 || ^8.0.0",
+        "jsdom": "*",
+        "happy-dom": "*",
+        "@vitest/ui": "5.0.3",
+        "@types/node": "^22.0.0 || >=24.0.0",
+        "@edge-runtime/vm": "*",
+        "@opentelemetry/api": "^1.9.0",
+        "@vitest/coverage-v8": "5.0.3",
+        "@vitest/browser-preview": "5.0.3",
+        "@vitest/coverage-istanbul": "5.0.3",
+        "@vitest/browser-playwright": "5.0.3",
+        "@vitest/browser-webdriverio": "^5.0.0-beta.5 || >=5.0.0"
+      },
+      "peerDependenciesMeta": {
+        "vite": {
+          "optional": false
+        },
+        "jsdom": {
+          "optional": true
+        },
+        "happy-dom": {
+          "optional": true
+        },
+        "@vitest/ui": {
+          "optional": true
+        },
+        "@types/node": {
+          "optional": true
+        },
+        "@edge-runtime/vm": {
+          "optional": true
+        },
+        "@opentelemetry/api": {
+          "optional": true
+        },
+        "@vitest/coverage-v8": {
+          "optional": true
+        },
+        "@vitest/browser-preview": {
+          "optional": true
+        },
+        "@vitest/coverage-istanbul": {
+          "optional": true
+        },
+        "@vitest/browser-playwright": {
+          "optional": true
+        },
+        "@vitest/browser-webdriverio": {
+          "optional": true
+        }
+      },
+      "dependencies": {
+        "chai": "^6.2.2",
+        "obug": "^2.1.4",
+        "std-env": "^4.2.0",
+        "tinyexec": "^1.3.0",
+        "picomatch": "^4.0.7",
+        "tinybench": "^6.1.4",
+        "tinyglobby": "^0.2.17",
+        "@types/chai": "^5.2.2",
+        "expect-type": "^1.4.0",
+        "magic-string": "^1.2.3",
+        "@vitest/mocker": "5.0.3",
+        "es-module-lexer": "^2.3.2",
+        "why-is-node-running": "3.2.1"
+      },
+      "repository": {
+        "url": "git+https://github.com/vitest-dev/vitest.git",
+        "type": "git",
+        "directory": "packages/vitest"
+      },
+      "license": "MIT",
+      "dist": {
+        "integrity": "sha512-xMw97S3rjdtj5dkVat7jCsqWBpvchs3RlpQctUqwJD0KkERk40vz2fJ77lDwW/Vzh/pk18eItYAzkodhSes3jQ==",
+        "tarball": "https://registry.npmjs.org/vitest/-/vitest-5.0.3.tgz"
+      }
+    },
+    {
+      "package": "@playwright/test",
+      "registryUrl": "https://registry.npmjs.org/@playwright%2ftest/latest",
+      "name": "@playwright/test",
+      "version": "1.63.0",
+      "engines": {
+        "node": ">=20"
+      },
+      "dependencies": {
+        "playwright": "1.63.0"
+      },
+      "repository": {
+        "url": "git+https://github.com/microsoft/playwright.git",
+        "type": "git"
+      },
+      "license": "Apache-2.0",
+      "dist": {
+        "integrity": "sha512-oxMK4vllB9RK5NQ2l1pq1IfOf2AvnEuj/vYGDj0H2nMtmtZpKtCwt/l00GEO6xjGfpBNAvjovvYdCm50dRQkpQ==",
+        "tarball": "https://registry.npmjs.org/@playwright/test/-/test-1.63.0.tgz"
+      }
+    },
+    {
+      "package": "openapi-typescript",
+      "registryUrl": "https://registry.npmjs.org/openapi-typescript/latest",
+      "name": "openapi-typescript",
+      "version": "7.13.0",
+      "peerDependencies": {
+        "typescript": "^5.x"
+      },
+      "dependencies": {
+        "parse-json": "^8.3.0",
+        "ansi-colors": "^4.1.3",
+        "change-case": "^5.4.4",
+        "yargs-parser": "^21.1.1",
+        "supports-color": "^10.2.2",
+        "@redocly/openapi-core": "^1.34.6"
+      },
+      "repository": {
+        "url": "git+https://github.com/openapi-ts/openapi-typescript.git",
+        "type": "git",
+        "directory": "packages/openapi-typescript"
+      },
+      "license": "MIT",
+      "dist": {
+        "integrity": "sha512-EFP392gcqXS7ntPvbhBzbF8TyBA+baIYEm791Hy5YkjDYKTnk/Tn5OQeKm5BIZvJihpp8Zzr4hzx0Irde1LNGQ==",
+        "tarball": "https://registry.npmjs.org/openapi-typescript/-/openapi-typescript-7.13.0.tgz"
+      }
+    },
+    {
+      "package": "openapi-fetch",
+      "registryUrl": "https://registry.npmjs.org/openapi-fetch/latest",
+      "name": "openapi-fetch",
+      "version": "0.17.0",
+      "dependencies": {
+        "openapi-typescript-helpers": "^0.1.0"
+      },
+      "repository": {
+        "url": "git+https://github.com/openapi-ts/openapi-typescript.git",
+        "type": "git",
+        "directory": "packages/openapi-fetch"
+      },
+      "license": "MIT",
+      "dist": {
+        "integrity": "sha512-PsbZR1wAPcG91eEthKhN+Zn92FMHxv+/faECIwjXdxfTODGSGegYv0sc1Olz+HYPvKOuoXfp+0pA2XVt2cI0Ig==",
+        "tarball": "https://registry.npmjs.org/openapi-fetch/-/openapi-fetch-0.17.0.tgz"
+      }
+    },
+    {
+      "package": "zod",
+      "registryUrl": "https://registry.npmjs.org/zod/latest",
+      "name": "zod",
+      "version": "4.6.5",
+      "repository": {
+        "url": "git+https://github.com/colinhacks/zod.git",
+        "type": "git"
+      },
+      "license": "MIT",
+      "dist": {
+        "integrity": "sha512-v5l/aFXZQeai4awLbOpSoHecE9UiMrnfx75tEXLjNonXVARxQ5mOeipTjROUchszUNCqnE+hqAMujRsRHsut2Q==",
+        "tarball": "https://registry.npmjs.org/zod/-/zod-4.6.5.tgz"
+      }
+    },
+    {
+      "package": "@hey-api/openapi-ts",
+      "registryUrl": "https://registry.npmjs.org/@hey-api%2fopenapi-ts/latest",
+      "name": "@hey-api/openapi-ts",
+      "version": "0.99.0",
+      "engines": {
+        "node": ">=22.18.0"
+      },
+      "peerDependencies": {
+        "typescript": ">=5.5.3 || >=6.0.0 || 6.0.1-rc"
+      },
+      "dependencies": {
+        "commander": "15.0.0",
+        "@lukeed/ms": "2.0.2",
+        "ansi-colors": "4.1.3",
+        "get-tsconfig": "4.14.0",
+        "color-support": "1.1.3",
+        "@hey-api/types": "0.1.4",
+        "@hey-api/shared": "0.5.0",
+        "@hey-api/spec-types": "0.2.0",
+        "@hey-api/codegen-core": "0.9.1",
+        "@hey-api/json-schema-ref-parser": "1.4.4"
+      },
+      "repository": {
+        "url": "git+https://github.com/hey-api/hey-api.git",
+        "type": "git",
+        "directory": "packages/openapi-ts"
+      },
+      "license": "MIT",
+      "dist": {
+        "integrity": "sha512-SePU/5oEWWkvUBYmvzdYRctseoLuskyhs4ET0RvLIcmzc8yLQoA2R+KtBIQ8bPsoSUB0m4E5SmBnl6aGSA0szQ==",
+        "tarball": "https://registry.npmjs.org/@hey-api/openapi-ts/-/openapi-ts-0.99.0.tgz"
+      }
+    },
+    {
+      "package": "@hey-api/client-fetch",
+      "registryUrl": "https://registry.npmjs.org/@hey-api%2fclient-fetch/latest",
+      "name": "@hey-api/client-fetch",
+      "version": "0.13.1",
+      "peerDependencies": {
+        "@hey-api/openapi-ts": "< 2"
+      },
+      "repository": {
+        "url": "git+https://github.com/hey-api/openapi-ts.git",
+        "type": "git"
+      },
+      "license": "MIT",
+      "dist": {
+        "integrity": "sha512-29jBRYNdxVGlx5oewFgOrkulZckpIpBIRHth3uHFn1PrL2ucMy52FvWOY3U3dVx2go1Z3kUmMi6lr07iOpUqqA==",
+        "tarball": "https://registry.npmjs.org/@hey-api/client-fetch/-/client-fetch-0.13.1.tgz"
+      }
+    },
+    {
+      "package": "ajv",
+      "registryUrl": "https://registry.npmjs.org/ajv/latest",
+      "name": "ajv",
+      "version": "8.20.0",
+      "dependencies": {
+        "fast-uri": "^3.0.1",
+        "fast-deep-equal": "^3.1.3",
+        "require-from-string": "^2.0.2",
+        "json-schema-traverse": "^1.0.0"
+      },
+      "repository": {
+        "url": "git+https://github.com/ajv-validator/ajv.git",
+        "type": "git"
+      },
+      "license": "MIT",
+      "dist": {
+        "integrity": "sha512-Thbli+OlOj+iMPYFBVBfJ3OmCAnaSyNn4M1vz9T6Gka5Jt9ba/HIR56joy65tY6kx/FCF5VXNB819Y7/GUrBGA==",
+        "tarball": "https://registry.npmjs.org/ajv/-/ajv-8.20.0.tgz"
+      }
+    },
+    {
+      "package": "ajv-formats",
+      "registryUrl": "https://registry.npmjs.org/ajv-formats/latest",
+      "name": "ajv-formats",
+      "version": "3.0.1",
+      "peerDependencies": {
+        "ajv": "^8.0.0"
+      },
+      "peerDependenciesMeta": {
+        "ajv": {
+          "optional": true
+        }
+      },
+      "dependencies": {
+        "ajv": "^8.0.0"
+      },
+      "repository": {
+        "url": "git+https://github.com/ajv-validator/ajv-formats.git",
+        "type": "git"
+      },
+      "license": "MIT",
+      "dist": {
+        "integrity": "sha512-8iUql50EUR+uUcdRQ3HDqa6EVyo3docL8g5WJ3FNcWmu62IbkGUue/pEyLBW8VGKKucTPgqeks4fIU1DA4yowQ==",
+        "tarball": "https://registry.npmjs.org/ajv-formats/-/ajv-formats-3.0.1.tgz"
+      }
+    },
+    {
+      "package": "@axe-core/playwright",
+      "registryUrl": "https://registry.npmjs.org/@axe-core%2fplaywright/latest",
+      "name": "@axe-core/playwright",
+      "version": "4.13.0",
+      "peerDependencies": {
+        "playwright-core": ">= 1.0.0"
+      },
+      "dependencies": {
+        "axe-core": "~4.13.0"
+      },
+      "repository": {
+        "url": "git+https://github.com/dequelabs/axe-core-npm.git",
+        "type": "git"
+      },
+      "license": "MPL-2.0",
+      "dist": {
+        "integrity": "sha512-6YLx+kxXu5GJceG4ozFg+33a2EMTdjYwWGloJ3sb9Kta5pp+ZNS53uxGVog5JetIY8s++P5UrtX+cri+u0VAVg==",
+        "tarball": "https://registry.npmjs.org/@axe-core/playwright/-/playwright-4.13.0.tgz"
+      }
+    },
+    {
+      "package": "@xyflow/react",
+      "registryUrl": "https://registry.npmjs.org/@xyflow%2freact/latest",
+      "name": "@xyflow/react",
+      "version": "12.12.0",
+      "peerDependencies": {
+        "react": ">=17",
+        "react-dom": ">=17",
+        "@types/react": ">=17",
+        "@types/react-dom": ">=17"
+      },
+      "peerDependenciesMeta": {
+        "@types/react": {
+          "optional": true
+        },
+        "@types/react-dom": {
+          "optional": true
+        }
+      },
+      "dependencies": {
+        "zustand": "^4.4.0",
+        "classcat": "^5.0.3",
+        "@xyflow/system": "0.0.83"
+      },
+      "repository": {
+        "url": "git+https://github.com/xyflow/xyflow.git",
+        "type": "git",
+        "directory": "packages/react"
+      },
+      "license": "MIT",
+      "dist": {
+        "integrity": "sha512-74oXI0Rgm1Eu33cHQAd74J6oVgCH9mbFyTVQbsGgp2kmWwh0HdtBr2VP04z8mbPD+M/xO69nqG5dDEt7/EN2rQ==",
+        "tarball": "https://registry.npmjs.org/@xyflow/react/-/react-12.12.0.tgz"
+      }
+    },
+    {
+      "package": "@types/react",
+      "registryUrl": "https://registry.npmjs.org/@types%2freact/latest",
+      "name": "@types/react",
+      "version": "19.3.0",
+      "peerDependencies": {},
+      "dependencies": {
+        "csstype": "^3.2.2"
+      },
+      "repository": {
+        "url": "https://github.com/DefinitelyTyped/DefinitelyTyped.git",
+        "type": "git",
+        "directory": "types/react"
+      },
+      "license": "MIT",
+      "dist": {
+        "integrity": "sha512-N0rFCuH9YoxG9/m61l9MfpJKfmLOVU0em7ipIz6TRgSSkvReLB9vL85GB+yr8Bs5leqpvg96JSwF4ZS1s4viQg==",
+        "tarball": "https://registry.npmjs.org/@types/react/-/react-19.3.0.tgz"
+      }
+    },
+    {
+      "package": "@types/react-dom",
+      "registryUrl": "https://registry.npmjs.org/@types%2freact-dom/latest",
+      "name": "@types/react-dom",
+      "version": "19.3.0",
+      "peerDependencies": {
+        "@types/react": "^19.3.0"
+      },
+      "dependencies": {},
+      "repository": {
+        "url": "https://github.com/DefinitelyTyped/DefinitelyTyped.git",
+        "type": "git",
+        "directory": "types/react-dom"
+      },
+      "license": "MIT",
+      "dist": {
+        "integrity": "sha512-ZI7bU42mZXXKHn/qNLEw2IrbiINU7X5+vfgdixBHkCNpYWXjKgfQ/P+uyGb5CjOLB9UcnTeg3rylQtV2hym44Q==",
+        "tarball": "https://registry.npmjs.org/@types/react-dom/-/react-dom-19.3.0.tgz"
+      }
+    },
+    {
+      "package": "@testing-library/react",
+      "registryUrl": "https://registry.npmjs.org/@testing-library%2freact/latest",
+      "name": "@testing-library/react",
+      "version": "16.3.3",
+      "engines": {
+        "node": ">=18"
+      },
+      "peerDependencies": {
+        "react": "^18.0.0 || ^19.0.0",
+        "react-dom": "^18.0.0 || ^19.0.0",
+        "@types/react": "^18.0.0 || ^19.0.0",
+        "@types/react-dom": "^18.0.0 || ^19.0.0",
+        "@testing-library/dom": "^10.0.0"
+      },
+      "peerDependenciesMeta": {
+        "@types/react": {
+          "optional": true
+        },
+        "@types/react-dom": {
+          "optional": true
+        }
+      },
+      "dependencies": {
+        "@babel/runtime": "^7.12.5"
+      },
+      "repository": {
+        "url": "git+https://github.com/testing-library/react-testing-library.git",
+        "type": "git"
+      },
+      "license": "MIT",
+      "dist": {
+        "integrity": "sha512-Uo193NgQbPMz6lrrhtRQQFcMC6Re/ELLFbbuVL30WDlZxlpZf9/lMHTAVxPRLw1q1iu9OJmR1c2BLiENRstdBg==",
+        "tarball": "https://registry.npmjs.org/@testing-library/react/-/react-16.3.3.tgz"
+      }
+    },
+    {
+      "package": "@testing-library/user-event",
+      "registryUrl": "https://registry.npmjs.org/@testing-library%2fuser-event/latest",
+      "name": "@testing-library/user-event",
+      "version": "14.6.7",
+      "engines": {
+        "npm": ">=6",
+        "node": ">=12"
+      },
+      "peerDependencies": {
+        "@testing-library/dom": ">=7.21.4"
+      },
+      "dependencies": {},
+      "repository": {
+        "url": "git+https://github.com/testing-library/user-event.git",
+        "type": "git"
+      },
+      "license": "MIT",
+      "dist": {
+        "integrity": "sha512-MPCpX8bxe8zS+JmmTwLp8jd0dy1rAm60Te/SL8JrQM3qvQJcBOs1d7IefJMyZzqM3EWBrDn/LWDt1BCGu4ASfg==",
+        "tarball": "https://registry.npmjs.org/@testing-library/user-event/-/user-event-14.6.7.tgz"
+      }
+    },
+    {
+      "package": "jsdom",
+      "registryUrl": "https://registry.npmjs.org/jsdom/latest",
+      "name": "jsdom",
+      "version": "30.1.2",
+      "engines": {
+        "node": "^22.22.2 || ^24.15.0 || >=26.0.0"
+      },
+      "peerDependencies": {
+        "canvas": "^3.2.3"
+      },
+      "peerDependenciesMeta": {
+        "canvas": {
+          "optional": true
+        }
+      },
+      "dependencies": {
+        "saxes": "^6.0.0",
+        "parse5": "^8.0.1",
+        "undici": "^8.11.2",
+        "css-tree": "^3.2.1",
+        "data-urls": "^8.0.0",
+        "lru-cache": "^11.5.3",
+        "decimal.js": "^10.6.0",
+        "whatwg-url": "^17.2.0",
+        "tough-cookie": "^6.0.2",
+        "@exodus/bytes": "^1.16.0",
+        "whatwg-mimetype": "^5.0.0",
+        "w3c-xmlserializer": "^6.0.0",
+        "webidl-conversions": "^8.0.1",
+        "xml-name-validator": "^5.0.0",
+        "@bramus/specificity": "^2.4.2",
+        "@asamuzakjp/css-color": "^7.1.3",
+        "html-encoding-sniffer": "^7.0.0",
+        "@asamuzakjp/dom-selector": "^9.2.4",
+        "is-potential-custom-element-name": "^1.0.1",
+        "@csstools/css-syntax-patches-for-csstree": "^1.1.15"
+      },
+      "repository": {
+        "url": "git+https://github.com/jsdom/jsdom.git",
+        "type": "git"
+      },
+      "license": "MIT",
+      "dist": {
+        "integrity": "sha512-0FFE/jE1rppmVfUrJUgxqXjcwolZYIGtAgj1pTussMhNZxIxi7W/PvfWaMNroGi2B36X1IKHbexpZ9DhkoOPiQ==",
+        "tarball": "https://registry.npmjs.org/jsdom/-/jsdom-30.1.2.tgz"
+      }
+    }
+  ],
+  "selectedCompatibilityDependencies": [
+    {
+      "package": "typescript",
+      "selection": "Isolated codegen compiler; satisfies openapi-typescript ^5.x peer. Not the application compiler.",
+      "registryUrl": "https://registry.npmjs.org/typescript/5.9.3",
+      "retrievedAt": "2026-10-05T18:02:38.000469+00:00",
+      "name": "typescript",
+      "version": "5.9.3",
+      "engines": {
+        "node": ">=14.17"
+      },
+      "repository": {
+        "url": "git+https://github.com/microsoft/TypeScript.git",
+        "type": "git"
+      },
+      "license": "Apache-2.0",
+      "dist": {
+        "integrity": "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw==",
+        "tarball": "https://registry.npmjs.org/typescript/-/typescript-5.9.3.tgz"
+      }
+    },
+    {
+      "package": "@types/node",
+      "selection": "Node 24 declaration series for the installed reference package.",
+      "registryUrl": "https://registry.npmjs.org/@types%2fnode/24.19.1",
+      "retrievedAt": "2026-10-05T18:02:38.002434+00:00",
+      "name": "@types/node",
+      "version": "24.19.1",
+      "peerDependencies": {},
+      "dependencies": {
+        "undici-types": ">=7.24.0 <7.24.7"
+      },
+      "repository": {
+        "url": "https://github.com/DefinitelyTyped/DefinitelyTyped.git",
+        "type": "git",
+        "directory": "types/node"
+      },
+      "license": "MIT",
+      "dist": {
+        "integrity": "sha512-aS3/DG0oM05K0RIXXP+hKjinGG5IgSSVGzswZxW3O0sS3pH4/fycXundUC9XsszgKCk4gHXylTEK6hyFxVxnoQ==",
+        "tarball": "https://registry.npmjs.org/@types/node/-/node-24.19.1.tgz"
+      }
+    }
+  ]
+}

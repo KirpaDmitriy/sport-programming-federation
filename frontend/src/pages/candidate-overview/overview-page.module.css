@@ -1,0 +1,112 @@
+.hero {
+  display: grid;
+  gap: var(--fsp-space-5);
+}
+
+.identity {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--fsp-space-6);
+}
+
+.identityText {
+  display: grid;
+  gap: var(--fsp-space-2);
+  flex: 1 1 18rem;
+  min-width: 0;
+}
+
+.name {
+  margin: 0;
+  font-size: 1.75rem;
+}
+
+.visibility {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--fsp-space-3);
+  padding-top: var(--fsp-space-4);
+  border-top: 1px solid var(--fsp-color-border);
+}
+
+.visibility > a {
+  margin-left: auto;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.7fr) minmax(18rem, 1fr);
+  gap: var(--fsp-space-6);
+  align-items: start;
+  margin-top: var(--fsp-space-6);
+}
+
+.sources {
+  display: grid;
+  gap: var(--fsp-space-3);
+  margin: var(--fsp-space-4) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sourceRow {
+  display: grid;
+  grid-template-columns: 2rem 7rem minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--fsp-space-3);
+  padding: var(--fsp-space-3) var(--fsp-space-4);
+  border: 1px solid var(--fsp-color-border);
+  border-radius: var(--fsp-radius-card);
+  color: inherit;
+  text-decoration: none;
+}
+
+.sourceRow:hover {
+  background: var(--fsp-color-surface-subtle);
+}
+
+.next {
+  display: grid;
+  gap: var(--fsp-space-3);
+}
+
+.nextTitle {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.history {
+  display: grid;
+  gap: var(--fsp-space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.historyItem {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--fsp-space-2);
+  padding: var(--fsp-space-3) var(--fsp-space-4);
+  border-radius: var(--fsp-radius-card);
+  background: var(--fsp-color-surface-subtle);
+}
+
+@media (max-width: 1100px) {
+  .grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .sourceRow {
+    grid-template-columns: 2rem minmax(0, 1fr) auto;
+  }
+
+  .sourceRow > :nth-child(3) {
+    grid-column: 2 / 3;
+  }
+}

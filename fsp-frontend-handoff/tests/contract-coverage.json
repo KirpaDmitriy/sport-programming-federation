@@ -1,0 +1,509 @@
+{
+  "contractVersion": "0.1.0",
+  "routeCount": 58,
+  "coveredOperationCount": 58,
+  "operations": [
+    {
+      "operationId": "getHealth",
+      "method": "GET",
+      "path": "/health",
+      "observedStatuses": [
+        200
+      ]
+    },
+    {
+      "operationId": "getMeta",
+      "method": "GET",
+      "path": "/api/v1/meta",
+      "observedStatuses": [
+        200
+      ]
+    },
+    {
+      "operationId": "createEmailChallenge",
+      "method": "POST",
+      "path": "/api/v1/auth/email/challenges",
+      "observedStatuses": [
+        201,
+        403,
+        409
+      ]
+    },
+    {
+      "operationId": "verifyEmail",
+      "method": "POST",
+      "path": "/api/v1/auth/email/verify",
+      "observedStatuses": [
+        200,
+        400,
+        409
+      ]
+    },
+    {
+      "operationId": "logout",
+      "method": "DELETE",
+      "path": "/api/v1/auth/session",
+      "observedStatuses": [
+        204
+      ]
+    },
+    {
+      "operationId": "getSession",
+      "method": "GET",
+      "path": "/api/v1/session",
+      "observedStatuses": [
+        200,
+        401
+      ]
+    },
+    {
+      "operationId": "getMyProfile",
+      "method": "GET",
+      "path": "/api/v1/me/profile",
+      "observedStatuses": [
+        200,
+        403
+      ]
+    },
+    {
+      "operationId": "updateMyProfile",
+      "method": "PATCH",
+      "path": "/api/v1/me/profile",
+      "observedStatuses": [
+        200,
+        400,
+        415
+      ]
+    },
+    {
+      "operationId": "importMyProfile",
+      "method": "POST",
+      "path": "/api/v1/me/profile/imports",
+      "observedStatuses": [
+        202,
+        422
+      ]
+    },
+    {
+      "operationId": "confirmProfileImport",
+      "method": "POST",
+      "path": "/api/v1/me/profile/imports/{jobId}/confirm",
+      "observedStatuses": [
+        200,
+        409
+      ]
+    },
+    {
+      "operationId": "exportMyProfile",
+      "method": "GET",
+      "path": "/api/v1/me/profile/export",
+      "observedStatuses": [
+        200
+      ]
+    },
+    {
+      "operationId": "getMySources",
+      "method": "GET",
+      "path": "/api/v1/me/sources",
+      "observedStatuses": [
+        200
+      ]
+    },
+    {
+      "operationId": "connectMySource",
+      "method": "POST",
+      "path": "/api/v1/me/sources/{provider}/connect",
+      "observedStatuses": [
+        200,
+        404
+      ]
+    },
+    {
+      "operationId": "syncMySource",
+      "method": "POST",
+      "path": "/api/v1/me/sources/{sourceId}/sync",
+      "observedStatuses": [
+        202
+      ]
+    },
+    {
+      "operationId": "getMySkills",
+      "method": "GET",
+      "path": "/api/v1/me/skills",
+      "observedStatuses": [
+        200
+      ]
+    },
+    {
+      "operationId": "getMyGraph",
+      "method": "GET",
+      "path": "/api/v1/me/graph",
+      "observedStatuses": [
+        200
+      ]
+    },
+    {
+      "operationId": "getMyGapPlan",
+      "method": "GET",
+      "path": "/api/v1/me/gap-plan",
+      "observedStatuses": [
+        200,
+        404
+      ]
+    },
+    {
+      "operationId": "listMyAssessments",
+      "method": "GET",
+      "path": "/api/v1/me/assessments",
+      "observedStatuses": [
+        200
+      ]
+    },
+    {
+      "operationId": "startAssessment",
+      "method": "POST",
+      "path": "/api/v1/me/assessments",
+      "observedStatuses": [
+        201,
+        409,
+        422
+      ]
+    },
+    {
+      "operationId": "getAssessment",
+      "method": "GET",
+      "path": "/api/v1/me/assessments/{assessmentId}",
+      "observedStatuses": [
+        200
+      ]
+    },
+    {
+      "operationId": "saveAssessmentAnswer",
+      "method": "PUT",
+      "path": "/api/v1/me/assessments/{assessmentId}/answer",
+      "observedStatuses": [
+        200,
+        409
+      ]
+    },
+    {
+      "operationId": "runAssessmentChecks",
+      "method": "POST",
+      "path": "/api/v1/me/assessments/{assessmentId}/checks",
+      "observedStatuses": [
+        202
+      ]
+    },
+    {
+      "operationId": "askAssessmentAssistant",
+      "method": "POST",
+      "path": "/api/v1/me/assessments/{assessmentId}/assistant",
+      "observedStatuses": [
+        200
+      ]
+    },
+    {
+      "operationId": "submitAssessment",
+      "method": "POST",
+      "path": "/api/v1/me/assessments/{assessmentId}/submit",
+      "observedStatuses": [
+        202,
+        422
+      ]
+    },
+    {
+      "operationId": "getJob",
+      "method": "GET",
+      "path": "/api/v1/jobs/{jobId}",
+      "observedStatuses": [
+        200,
+        404
+      ]
+    },
+    {
+      "operationId": "listMyInvitations",
+      "method": "GET",
+      "path": "/api/v1/me/invitations",
+      "observedStatuses": [
+        200
+      ]
+    },
+    {
+      "operationId": "getMyInvitation",
+      "method": "GET",
+      "path": "/api/v1/me/invitations/{invitationId}",
+      "observedStatuses": [
+        200,
+        404
+      ]
+    },
+    {
+      "operationId": "viewMyInvitation",
+      "method": "POST",
+      "path": "/api/v1/me/invitations/{invitationId}/view",
+      "observedStatuses": [
+        200
+      ]
+    },
+    {
+      "operationId": "acceptMyInvitation",
+      "method": "POST",
+      "path": "/api/v1/me/invitations/{invitationId}/accept",
+      "observedStatuses": [
+        200,
+        409
+      ]
+    },
+    {
+      "operationId": "declineMyInvitation",
+      "method": "POST",
+      "path": "/api/v1/me/invitations/{invitationId}/decline",
+      "observedStatuses": [
+        200,
+        409
+      ]
+    },
+    {
+      "operationId": "getCompany",
+      "method": "GET",
+      "path": "/api/v1/company",
+      "observedStatuses": [
+        200
+      ]
+    },
+    {
+      "operationId": "updateCompany",
+      "method": "PATCH",
+      "path": "/api/v1/company",
+      "observedStatuses": [
+        200
+      ]
+    },
+    {
+      "operationId": "listNeeds",
+      "method": "GET",
+      "path": "/api/v1/needs",
+      "observedStatuses": [
+        200
+      ]
+    },
+    {
+      "operationId": "createNeed",
+      "method": "POST",
+      "path": "/api/v1/needs",
+      "observedStatuses": [
+        201,
+        400,
+        422
+      ]
+    },
+    {
+      "operationId": "getNeed",
+      "method": "GET",
+      "path": "/api/v1/needs/{needId}",
+      "observedStatuses": [
+        200,
+        404
+      ]
+    },
+    {
+      "operationId": "updateNeed",
+      "method": "PATCH",
+      "path": "/api/v1/needs/{needId}",
+      "observedStatuses": [
+        200
+      ]
+    },
+    {
+      "operationId": "deleteNeed",
+      "method": "DELETE",
+      "path": "/api/v1/needs/{needId}",
+      "observedStatuses": [
+        204
+      ]
+    },
+    {
+      "operationId": "getNeedGraph",
+      "method": "GET",
+      "path": "/api/v1/needs/{needId}/graph",
+      "observedStatuses": [
+        200
+      ]
+    },
+    {
+      "operationId": "searchCandidates",
+      "method": "GET",
+      "path": "/api/v1/candidates",
+      "observedStatuses": [
+        200,
+        400,
+        403,
+        422,
+        503
+      ]
+    },
+    {
+      "operationId": "getCandidate",
+      "method": "GET",
+      "path": "/api/v1/candidates/{candidateId}",
+      "observedStatuses": [
+        200,
+        404
+      ]
+    },
+    {
+      "operationId": "getCandidateGraph",
+      "method": "GET",
+      "path": "/api/v1/candidates/{candidateId}/graph",
+      "observedStatuses": [
+        200
+      ]
+    },
+    {
+      "operationId": "getCandidateGapPlan",
+      "method": "GET",
+      "path": "/api/v1/candidates/{candidateId}/gap-plan",
+      "observedStatuses": [
+        200
+      ]
+    },
+    {
+      "operationId": "getCandidateDisclosure",
+      "method": "GET",
+      "path": "/api/v1/candidates/{candidateId}/disclosure",
+      "observedStatuses": [
+        200
+      ]
+    },
+    {
+      "operationId": "listShortlists",
+      "method": "GET",
+      "path": "/api/v1/shortlists",
+      "observedStatuses": [
+        200
+      ]
+    },
+    {
+      "operationId": "createShortlist",
+      "method": "POST",
+      "path": "/api/v1/shortlists",
+      "observedStatuses": [
+        201
+      ]
+    },
+    {
+      "operationId": "getShortlist",
+      "method": "GET",
+      "path": "/api/v1/shortlists/{shortlistId}",
+      "observedStatuses": [
+        200,
+        404
+      ]
+    },
+    {
+      "operationId": "updateShortlist",
+      "method": "PATCH",
+      "path": "/api/v1/shortlists/{shortlistId}",
+      "observedStatuses": [
+        200
+      ]
+    },
+    {
+      "operationId": "deleteShortlist",
+      "method": "DELETE",
+      "path": "/api/v1/shortlists/{shortlistId}",
+      "observedStatuses": [
+        204
+      ]
+    },
+    {
+      "operationId": "addShortlistMember",
+      "method": "PUT",
+      "path": "/api/v1/shortlists/{shortlistId}/members/{candidateId}",
+      "observedStatuses": [
+        200
+      ]
+    },
+    {
+      "operationId": "removeShortlistMember",
+      "method": "DELETE",
+      "path": "/api/v1/shortlists/{shortlistId}/members/{candidateId}",
+      "observedStatuses": [
+        200
+      ]
+    },
+    {
+      "operationId": "listInvitations",
+      "method": "GET",
+      "path": "/api/v1/invitations",
+      "observedStatuses": [
+        200
+      ]
+    },
+    {
+      "operationId": "createInvitation",
+      "method": "POST",
+      "path": "/api/v1/invitations",
+      "observedStatuses": [
+        201,
+        400,
+        409,
+        422
+      ]
+    },
+    {
+      "operationId": "getInvitation",
+      "method": "GET",
+      "path": "/api/v1/invitations/{invitationId}",
+      "observedStatuses": [
+        200,
+        404
+      ]
+    },
+    {
+      "operationId": "withdrawInvitation",
+      "method": "POST",
+      "path": "/api/v1/invitations/{invitationId}/withdraw",
+      "observedStatuses": [
+        200,
+        409
+      ]
+    },
+    {
+      "operationId": "mockSelectSession",
+      "method": "POST",
+      "path": "/__mock__/session",
+      "observedStatuses": [
+        200,
+        403,
+        404
+      ]
+    },
+    {
+      "operationId": "mockReset",
+      "method": "POST",
+      "path": "/__mock__/reset",
+      "observedStatuses": [
+        200,
+        404
+      ]
+    },
+    {
+      "operationId": "mockEmailCodes",
+      "method": "GET",
+      "path": "/__mock__/email-codes",
+      "observedStatuses": [
+        200,
+        404
+      ]
+    },
+    {
+      "operationId": "mockAdvanceClock",
+      "method": "POST",
+      "path": "/__mock__/clock",
+      "observedStatuses": [
+        200
+      ]
+    }
+  ]
+}

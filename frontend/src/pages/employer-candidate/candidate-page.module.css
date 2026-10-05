@@ -1,0 +1,34 @@
+.hero {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--fsp-space-6);
+}
+
+.needPicker {
+  flex: 0 1 20rem;
+  min-width: 14rem;
+}
+
+.detailCell {
+  background: var(--fsp-color-surface-subtle);
+}
+
+.skill {
+  display: grid;
+  gap: var(--fsp-space-1);
+  padding: var(--fsp-space-3) var(--fsp-space-4);
+  border: 1px solid var(--fsp-color-border);
+  border-radius: var(--fsp-radius-card);
+}
+
+.skill[aria-current="true"] {
+  border-color: var(--fsp-color-primary);
+}
+
+.disclosure {
+  padding: var(--fsp-space-4);
+  border-radius: var(--fsp-radius-card);
+  background: var(--fsp-color-surface);
+  border: 1px solid var(--fsp-color-success);
+}

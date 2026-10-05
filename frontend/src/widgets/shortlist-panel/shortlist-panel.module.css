@@ -1,0 +1,35 @@
+.members {
+  display: grid;
+  gap: var(--fsp-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.member {
+  display: grid;
+  grid-template-columns: 2.5rem minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--fsp-space-3);
+  padding: var(--fsp-space-2) 0;
+}
+
+.shape {
+  display: grid;
+  place-items: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  background: var(--fsp-color-surface-subtle);
+  color: var(--fsp-color-primary);
+}
+
+.note {
+  display: flex;
+  gap: var(--fsp-space-2);
+  padding: var(--fsp-space-3);
+  border-radius: var(--fsp-radius-card);
+  background: var(--fsp-color-surface-subtle);
+  color: var(--fsp-color-text-secondary);
+  font-size: var(--fsp-font-size-small);
+}

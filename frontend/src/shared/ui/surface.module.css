@@ -1,0 +1,201 @@
+.card {
+  min-width: 0;
+  padding: var(--fsp-space-6);
+  border: 1px solid var(--fsp-color-border);
+  border-radius: var(--fsp-radius-panel);
+  background: var(--fsp-color-surface);
+  box-shadow: var(--fsp-shadow-card);
+}
+
+.cardTinted {
+  background: var(--fsp-color-accent-subtle);
+  border-color: #f7d3e6;
+}
+
+.cardHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--fsp-space-4);
+  margin-bottom: var(--fsp-space-4);
+}
+
+.cardTitle {
+  margin: 0;
+  font-size: var(--fsp-font-size-section);
+  line-height: var(--fsp-line-height-heading);
+}
+
+.cardSubtitle {
+  margin: var(--fsp-space-1) 0 0;
+  color: var(--fsp-color-text-secondary);
+  font-size: var(--fsp-font-size-small);
+}
+
+.pageHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--fsp-space-4);
+  margin-bottom: var(--fsp-space-6);
+}
+
+.pageTitle {
+  margin: 0;
+  font-size: var(--fsp-font-size-page);
+  line-height: var(--fsp-line-height-heading);
+  letter-spacing: -0.01em;
+}
+
+.pageSubtitle {
+  margin: var(--fsp-space-2) 0 0;
+  color: var(--fsp-color-text-secondary);
+  font-size: 1.125rem;
+}
+
+.pageActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--fsp-space-3);
+}
+
+.pageMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--fsp-space-2);
+  margin-top: var(--fsp-space-3);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--fsp-space-2);
+  max-width: 100%;
+  padding: var(--fsp-space-1) var(--fsp-space-3);
+  border-radius: var(--fsp-radius-pill);
+  font-size: var(--fsp-font-size-small);
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.chip svg {
+  flex: none;
+}
+
+.chip.plain {
+  padding: 0;
+  background: transparent;
+}
+
+.success {
+  background: var(--fsp-color-success-subtle);
+  color: var(--fsp-color-success);
+}
+
+.warning {
+  background: var(--fsp-color-warning-subtle);
+  color: var(--fsp-color-warning);
+}
+
+.danger {
+  background: var(--fsp-color-danger-subtle);
+  color: var(--fsp-color-danger);
+}
+
+.neutral {
+  background: var(--fsp-color-neutral-subtle);
+  color: var(--fsp-color-neutral);
+}
+
+.info {
+  background: var(--fsp-color-surface-subtle);
+  color: var(--fsp-color-primary);
+}
+
+.accent {
+  background: var(--fsp-color-accent-subtle);
+  color: #a10f5f;
+}
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.75rem;
+  padding: 0 var(--fsp-space-3);
+  border-radius: var(--fsp-radius-sm);
+  background: var(--fsp-color-neutral-subtle);
+  color: var(--fsp-color-text);
+  font-size: var(--fsp-font-size-small);
+}
+
+.tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--fsp-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.avatar {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--fsp-color-surface-subtle);
+  color: var(--fsp-color-primary);
+  font-weight: 700;
+}
+
+.avatarSm {
+  width: 2.5rem;
+  height: 2.5rem;
+  font-size: 0.875rem;
+}
+
+.avatarMd {
+  width: 3.5rem;
+  height: 3.5rem;
+  font-size: 1.125rem;
+}
+
+.avatarLg {
+  width: 6.5rem;
+  height: 6.5rem;
+  font-size: 2rem;
+}
+
+.dl {
+  display: grid;
+  grid-template-columns: minmax(8rem, max-content) 1fr;
+  gap: var(--fsp-space-2) var(--fsp-space-6);
+  margin: 0;
+}
+
+.dl dt {
+  color: var(--fsp-color-text-secondary);
+  font-size: var(--fsp-font-size-small);
+}
+
+.dl dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.salary {
+  display: grid;
+  gap: 2px;
+}
+
+.salaryAmount {
+  font-size: 1.5rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.salaryBasis {
+  color: var(--fsp-color-text-secondary);
+  font-size: var(--fsp-font-size-small);
+}
