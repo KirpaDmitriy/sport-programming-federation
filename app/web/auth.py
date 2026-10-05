@@ -135,3 +135,12 @@ def logout(request: Request, database: Store = Depends(store)) -> Response:
 @router.get("/me")
 def me(user: dict = Depends(current_user)) -> dict:
     return public_user(user)
+
+
+@router.get("/session")
+def session(request: Request, database: Store = Depends(store)) -> dict:
+    token = request.cookies.get(SESSION_COOKIE)
+    user = None
+    if token:
+        user = database.user_for_session(token_digest(token), datetime.now(UTC).isoformat())
+    return {"authenticated": user is not None, "user": public_user(user) if user else None}

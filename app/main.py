@@ -49,6 +49,7 @@ def create_app(database_path: str | Path | None = None) -> FastAPI:
     app.include_router(applications_router)
     static_dir = Path(__file__).parent / "web" / "static"
     app.mount("/assets", StaticFiles(directory=static_dir), name="assets")
+    app.mount("/fonts", StaticFiles(directory=Path(__file__).parent / "assets" / "fonts"), name="fonts")
 
     @app.get("/", include_in_schema=False)
     def index():

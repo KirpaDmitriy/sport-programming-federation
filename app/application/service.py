@@ -17,7 +17,10 @@ class TalentService:
         }
 
     def vacancies(self) -> list[dict]:
-        return [asdict(item) for item in self.store.vacancies()]
+        return [
+            {**asdict(item), "accepts_applications": self.store.vacancy_owner(item.id) is not None}
+            for item in self.store.vacancies()
+        ]
 
     def save_vacancy(self, vacancy: Vacancy, owner_user_id: str | None = None) -> dict:
         self.store.upsert_vacancies([vacancy], owner_user_id)

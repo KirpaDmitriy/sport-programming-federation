@@ -96,6 +96,7 @@ def test_expired_session_and_verification_attempt_limit_are_rejected(tmp_path) -
 
 def test_duplicate_email_and_wrong_credentials_are_rejected(tmp_path) -> None:
     with TestClient(create_app(tmp_path / "auth.sqlite3")) as http:
+        assert http.get("/api/v1/auth/session").json() == {"authenticated": False, "user": None}
         email, _ = register(http)
         duplicate = http.post(
             "/api/v1/auth/register",
