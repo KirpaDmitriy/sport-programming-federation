@@ -87,8 +87,8 @@
         <div class="candidate-dashboard">
           <article class="profile-card" id="profile-summary"></article>
           <article class="graph-card">
-            <div class="card-title"><div><span class="live-dot"></span> Граф компетенций</div><small>размер = уровень · обводка = доверие</small></div>
-            <svg id="skill-graph" viewBox="0 0 720 400" role="img" aria-label="Граф подтверждённых компетенций"></svg>
+            <div class="card-title"><div><span class="live-dot"></span> Путь к вакансии</div><small>слева направо: от базы к целевым навыкам</small></div>
+            <svg id="skill-graph" viewBox="0 0 720 400" role="img" aria-label="Путь от базовых компетенций к требованиям вакансии"></svg>
           </article>
           <article class="compare-card">
             <div class="card-title"><div>Цель</div><select id="candidate-vacancy" aria-label="Целевая вакансия"></select></div>
@@ -138,7 +138,7 @@
                 <label>О себе<textarea name="about" minlength="10" required></textarea></label>
                 <div class="form-row"><label>Стек, через запятую<input name="stack" required></label><label>Опыт, лет<input name="years_experience" type="number" min="0" max="70" value="0" required></label></div>
                 <div class="form-row"><label>Роли, через запятую<input name="roles"></label><label>Soft skills, через запятую<input name="soft_skills"></label></div>
-                <div class="form-row"><label>Контактный email<input name="contact_email" type="email" required></label><label>ФСП ID, если есть<input name="fsp_id"></label></div>
+                <div class="form-row"><label>Контактный email<input name="contact_email" type="email" required></label><div class="fsp-connect-field"><label>ФСП ID<input name="fsp_id" placeholder="Не подключён" readonly></label><button class="button button-soft" id="connect-fsp" type="button">Подключить ФСП ID</button><small>Импортирует подтверждённые результаты соревнований</small></div></div>
                 <div class="consent-box">
                   <label><input name="consent_processing" type="checkbox" required> Согласен на обработку данных профиля</label>
                   <label><input name="consent_publication" type="checkbox"> Разрешаю публикацию профиля работодателям</label>
@@ -239,6 +239,7 @@
           <label>Политика доказательств<select name="policy_mode"><option value="platform_rating">Рейтинг платформы</option><option value="allowlist">Только выбранные соревнования</option></select></label>
         </div>
         <label>Задача и ожидаемый результат<textarea name="description" minlength="10" required>Развивать продукт и отвечать за измеримый результат.</textarea></label>
+        <div class="graph-draft-action"><div><strong>Граф из описания</strong><span>Выделим навыки и предварительно настроим уровни и критичность.</span></div><button class="button button-soft" type="button" id="draft-vacancy-graph">Собрать автоматически</button></div>
         <label>Команда и рабочий контекст<textarea name="team_description" minlength="10" required>Кросс-функциональная продуктовая команда с сильной инженерной культурой.</textarea></label>
         <div class="form-row">
           <label>Зарплата от<input name="salary_from" type="number" value="180000" min="1" required></label>

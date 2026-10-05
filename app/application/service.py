@@ -2,6 +2,7 @@ from dataclasses import asdict
 from datetime import date
 
 from app.domain.models import Candidate, Vacancy
+from app.domain.graph import comparison_graph
 from app.domain.scoring import build_profile, match_candidate, recommend_competitions
 from app.infrastructure.database import Store
 
@@ -89,28 +90,16 @@ class TalentService:
                 "discipline": competition.discipline,
                 "official": competition.official,
             })
-        graph_nodes = [
-            {
-                "id": skill.id,
-                "label": skill.name,
-                "category": skill.category,
-                "level": profile.skills.get(skill.id).level if skill.id in profile.skills else 0,
-                "confidence": profile.skills.get(skill.id).confidence if skill.id in profile.skills else 0,
-            }
-            for skill in skills.values()
-            if skill.id in profile.skills
-        ]
-        graph_edges = [
-            {"from": prerequisite, "to": skill.id}
-            for skill in skills.values()
-            for prerequisite in skill.prerequisites
-            if skill.id in profile.skills and prerequisite in profile.skills
-        ]
+        vacancy = self.store.vacancy(vacancy_id) if vacancy_id else None
+        match = (
+            match_candidate(candidate.id, vacancy, skills, competitions, achievements, test_signals)
+            if vacancy else None
+        )
         result = {
             **asdict(candidate),
             "profile": asdict(profile),
             "evidence": evidence,
-            "graph": {"nodes": graph_nodes, "edges": graph_edges},
+            "graph": comparison_graph(skills, profile, vacancy, match),
             "tested_category": (
                 f"{account['specialization']}:{account['verified_grade'] or 'unverified'}"
                 if account else None
@@ -118,17 +107,12 @@ class TalentService:
             "verified_grade": account["verified_grade"] if account else None,
             "has_fsp_history": any(item.source == "fsp" for item in achievements),
         }
-        if vacancy_id:
-            vacancy = self.store.vacancy(vacancy_id)
-            if vacancy:
-                match = match_candidate(
-                    candidate.id, vacancy, skills, competitions, achievements, test_signals,
-                )
-                result["match"] = asdict(match)
-                result["recommendations"] = [
-                    asdict(item)
-                    for item in recommend_competitions(match, vacancy, competitions, date.today())
-                ]
+        if vacancy and match:
+            result["match"] = asdict(match)
+            result["recommendations"] = [
+                asdict(item)
+                for item in recommend_competitions(match, vacancy, competitions, date.today())
+            ]
         return result
 
     def matches(self, vacancy_id: str, category: str | None = None) -> list[dict] | None:

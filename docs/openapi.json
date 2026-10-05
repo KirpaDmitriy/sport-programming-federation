@@ -423,6 +423,110 @@
         }
       }
     },
+    "/api/v1/graph/vacancy-draft": {
+      "post": {
+        "tags": [
+          "matching"
+        ],
+        "summary": "Vacancy Graph Draft",
+        "operationId": "vacancy_graph_draft_api_v1_graph_vacancy_draft_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GraphDraftIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Vacancy Graph Draft Api V1 Graph Vacancy Draft Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/graph/competition-draft": {
+      "post": {
+        "tags": [
+          "integrations"
+        ],
+        "summary": "Competition Graph Draft",
+        "operationId": "competition_graph_draft_api_v1_graph_competition_draft_post",
+        "parameters": [
+          {
+            "name": "X-Integration-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Integration-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GraphDraftIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Competition Graph Draft Api V1 Graph Competition Draft Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/offers": {
       "post": {
         "tags": [
@@ -1229,6 +1333,163 @@
           }
         }
       }
+    },
+    "/api/v1/integrations/fsp/connect/start": {
+      "post": {
+        "tags": [
+          "fsp-sandbox"
+        ],
+        "summary": "Start Connection",
+        "operationId": "start_connection_api_v1_integrations_fsp_connect_start_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Start Connection Api V1 Integrations Fsp Connect Start Post"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/fsp-id/oauth/authorize": {
+      "get": {
+        "tags": [
+          "fsp-sandbox"
+        ],
+        "summary": "Authorize Page",
+        "operationId": "authorize_page_fsp_id_oauth_authorize_get",
+        "parameters": [
+          {
+            "name": "request_token",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 20,
+              "maxLength": 4000,
+              "title": "Request Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "fsp-sandbox"
+        ],
+        "summary": "Authorize",
+        "operationId": "authorize_fsp_id_oauth_authorize_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SandboxAuthorizeIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Authorize Fsp Id Oauth Authorize Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/integrations/fsp/connect/callback": {
+      "get": {
+        "tags": [
+          "fsp-sandbox"
+        ],
+        "summary": "Connection Callback",
+        "operationId": "connection_callback_api_v1_integrations_fsp_connect_callback_get",
+        "parameters": [
+          {
+            "name": "code",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Code"
+            }
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "State"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1726,6 +1987,21 @@
         ],
         "title": "FspResultIn"
       },
+      "GraphDraftIn": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "maxLength": 10000,
+            "minLength": 20,
+            "title": "Text"
+          }
+        },
+        "type": "object",
+        "required": [
+          "text"
+        ],
+        "title": "GraphDraftIn"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -1941,6 +2217,35 @@
           "criticality"
         ],
         "title": "RequirementIn"
+      },
+      "SandboxAuthorizeIn": {
+        "properties": {
+          "request_token": {
+            "type": "string",
+            "maxLength": 4000,
+            "minLength": 20,
+            "title": "Request Token"
+          },
+          "participant_id": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Participant Id"
+          },
+          "pin": {
+            "type": "string",
+            "maxLength": 20,
+            "minLength": 4,
+            "title": "Pin"
+          }
+        },
+        "type": "object",
+        "required": [
+          "request_token",
+          "participant_id",
+          "pin"
+        ],
+        "title": "SandboxAuthorizeIn"
       },
       "VacancyIn": {
         "properties": {

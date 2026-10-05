@@ -203,3 +203,7 @@ class FspPayloadIn(BaseModel):
     participants: list[FspParticipantIn]
     competitions: list[FspCompetitionIn]
     results: list[FspResultIn]
+
+
+class GraphDraftIn(BaseModel):
+    text: str = Field(min_length=20, max_length=10_000)

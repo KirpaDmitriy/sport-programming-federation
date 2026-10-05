@@ -16,7 +16,7 @@ def test_health_catalog_and_ranked_matches(tmp_path) -> None:
         catalog = http.get("/api/v1/catalog").json()
         matches = http.get("/api/v1/vacancies/ml-engineer/matches").json()
 
-    assert len(catalog["skills"]) == 12
+    assert {"decision-trees", "random-forests", "gradient-boosting"} <= {item["id"] for item in catalog["skills"]}
     assert len(matches) == 5
     assert matches[0]["match"]["score"] >= matches[-1]["match"]["score"]
     assert "gaps" in matches[0]["match"]

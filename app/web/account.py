@@ -28,6 +28,10 @@ def update_candidate_profile(
     user: dict = Depends(require_role("candidate")),
     database=Depends(store),
 ) -> dict:
+    saved = database.candidate_profile(user["id"])
+    profile_data = payload.model_dump()
+    # FSP ID is written only after the signed connection flow; profile edits cannot spoof it.
+    profile_data["fsp_id"] = saved["fsp_id"] if saved else None
     candidate = Candidate(
         user["id"],
         payload.name.strip(),
@@ -39,7 +43,7 @@ def update_candidate_profile(
     )
     if not candidate.stack:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Stack cannot be empty")
-    database.save_candidate_profile(user["id"], candidate, payload.model_dump())
+    database.save_candidate_profile(user["id"], candidate, profile_data)
     return {"role": "candidate", "profile": database.candidate_profile(user["id"])}
 
 

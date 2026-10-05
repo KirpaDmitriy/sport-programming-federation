@@ -187,12 +187,26 @@ CREATE TABLE IF NOT EXISTS applications (
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE (candidate_id, vacancy_id)
 );
+CREATE TABLE IF NOT EXISTS fsp_oauth_codes (
+    code_hash TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    participant_id TEXT NOT NULL,
+    state TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    consumed INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS fsp_connections (
+    user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    participant_id TEXT NOT NULL,
+    connected_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
 CREATE INDEX IF NOT EXISTS achievements_candidate_idx ON achievements(candidate_id);
 CREATE INDEX IF NOT EXISTS offers_candidate_idx ON offers(candidate_id);
 CREATE INDEX IF NOT EXISTS sessions_user_idx ON sessions(user_id);
 CREATE INDEX IF NOT EXISTS invitations_candidate_idx ON invitations(candidate_id);
 CREATE INDEX IF NOT EXISTS invitations_employer_idx ON invitations(employer_user_id);
 CREATE INDEX IF NOT EXISTS applications_vacancy_idx ON applications(vacancy_id);
+CREATE INDEX IF NOT EXISTS fsp_codes_user_idx ON fsp_oauth_codes(user_id);
 """
 
 
@@ -440,6 +454,48 @@ class Store:
                 (candidate_id,),
             ).fetchone()
         return dict(row) if row else None
+
+    def set_candidate_fsp_id(self, user_id: str, participant_id: str) -> None:
+        with self.connection() as connection:
+            updated = connection.execute(
+                "UPDATE candidate_profiles SET fsp_id = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?",
+                (participant_id, user_id),
+            )
+            if updated.rowcount != 1:
+                raise ValueError("Candidate profile is required before connecting FSP ID")
+            connection.execute(
+                """INSERT INTO fsp_connections(user_id, participant_id) VALUES (?, ?)
+                ON CONFLICT(user_id) DO UPDATE SET participant_id=excluded.participant_id,
+                connected_at=CURRENT_TIMESTAMP""",
+                (user_id, participant_id),
+            )
+
+    def create_fsp_oauth_code(
+        self, code_hash: str, user_id: str, participant_id: str, state: str, expires_at: str,
+    ) -> None:
+        with self.connection() as connection:
+            connection.execute(
+                """INSERT INTO fsp_oauth_codes(
+                    code_hash, user_id, participant_id, state, expires_at
+                ) VALUES (?, ?, ?, ?, ?)""",
+                (code_hash, user_id, participant_id, state, expires_at),
+            )
+
+    def consume_fsp_oauth_code(self, code_hash: str, user_id: str, state: str, now: str) -> dict | None:
+        with self.connection() as connection:
+            row = connection.execute(
+                """SELECT * FROM fsp_oauth_codes
+                WHERE code_hash = ? AND user_id = ? AND state = ?
+                AND expires_at > ? AND consumed = 0""",
+                (code_hash, user_id, state, now),
+            ).fetchone()
+            if row is None:
+                return None
+            connection.execute(
+                "UPDATE fsp_oauth_codes SET consumed = 1 WHERE code_hash = ?",
+                (code_hash,),
+            )
+        return dict(row)
 
     def save_employer_profile(self, user_id: str, profile: dict) -> None:
         with self.connection() as connection:

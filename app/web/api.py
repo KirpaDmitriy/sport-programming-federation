@@ -5,10 +5,12 @@ from dataclasses import asdict
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 
 from app.application.service import TalentService
+from app.application.graph_extraction import extract_skill_drafts
 from app.infrastructure.fsp import sync_fsp_payload
+from app.infrastructure.yandex_gpt import YandexGptError, YandexGptGraphExtractor
 
 from .auth import require_role
-from .schemas import FspPayloadIn, OfferIn, VacancyIn
+from .schemas import FspPayloadIn, GraphDraftIn, OfferIn, VacancyIn
 
 
 router = APIRouter(prefix="/api/v1")
@@ -105,6 +107,41 @@ def matches(
     if result is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Vacancy not found")
     return result
+
+
+def graph_draft(payload: GraphDraftIn, talent: TalentService, purpose: str) -> dict:
+    skills = talent.store.skills()
+    extractor = YandexGptGraphExtractor()
+    try:
+        drafts = extractor.extract(payload.text, skills, purpose) if extractor.available else extract_skill_drafts(payload.text, skills)
+    except YandexGptError as error:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(error)) from error
+    return {
+        "provider": "yandexgpt" if extractor.available else "offline_rules",
+        "requirements": [asdict(item) for item in drafts],
+        "warnings": [] if drafts else ["В тексте не найдены компетенции из текущего каталога"],
+    }
+
+
+@router.post("/graph/vacancy-draft", tags=["matching"])
+def vacancy_graph_draft(
+    payload: GraphDraftIn,
+    talent: TalentService = Depends(service),
+    user: dict = Depends(require_role("employer")),
+) -> dict:
+    return graph_draft(payload, talent, "требования вакансии")
+
+
+@router.post("/graph/competition-draft", tags=["integrations"])
+def competition_graph_draft(
+    payload: GraphDraftIn,
+    talent: TalentService = Depends(service),
+    integration_key: str | None = Header(default=None, alias="X-Integration-Key"),
+) -> dict:
+    expected_key = os.environ.get("VYGOTSKY_INTEGRATION_KEY")
+    if not expected_key or not integration_key or not hmac.compare_digest(integration_key, expected_key):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid integration key")
+    return graph_draft(payload, talent, "задачи и факты соревнования")
 
 
 @router.post("/offers", status_code=status.HTTP_201_CREATED, tags=["offers"])

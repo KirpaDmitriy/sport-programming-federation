@@ -157,7 +157,8 @@ h1 em { font-style: normal; color: var(--lime); }
 .card-title small { color: var(--muted); font-weight: 500; }
 .card-title select { max-width: 210px; border: 0; padding: 8px; border-radius: 10px; background: #f2f2f3; font-size: 12px; font-weight: 700; }
 #skill-graph { width: 100%; height: 390px; }
-.graph-edge { stroke: #41414b; stroke-width: 2; stroke-dasharray: 4 5; }
+.graph-edge { fill: none; stroke: #5a5a67; stroke-width: 2; }
+#graph-arrow path { fill: #777784; }
 .graph-node circle { stroke-width: 5; transition: .3s ease; }
 .graph-node:hover circle { transform: scale(1.05); transform-origin: center; }
 .graph-node text { fill: white; font-weight: 760; text-anchor: middle; pointer-events: none; }
@@ -165,6 +166,11 @@ h1 em { font-style: normal; color: var(--lime); }
 .graph-node .graph-score { fill: #d4d4dd; font-size: 9px; font-weight: 600; }
 .graph-node-light .graph-label { fill: #17171b; stroke: rgba(255,255,255,.16); }
 .graph-node-light .graph-score { fill: #4b4527; }
+.graph-gap circle { stroke: var(--coral); stroke-dasharray: 6 5; }
+.graph-prerequisite_gap circle { stroke: #777784; stroke-dasharray: 4 5; }
+.graph-ready circle { stroke: var(--lime); }
+.graph-confirmed circle { stroke: rgba(255,255,255,.7); }
+.graph-node .graph-target { fill: var(--lime); stroke: none; font-size: 8px; font-weight: 850; letter-spacing: .12em; text-transform: uppercase; }
 .compare-card { background: #edf0ff !important; }
 .match-big { margin: 24px 0; display: flex; align-items: end; gap: 10px; }
 .match-big strong { font-size: 66px; line-height: .8; letter-spacing: -.08em; }
@@ -208,10 +214,17 @@ h1 em { font-style: normal; color: var(--lime); }
 .form-dialog input:focus,.form-dialog select:focus,.form-dialog textarea:focus { border-color: var(--blue); box-shadow: 0 0 0 3px var(--blue-soft); }
 .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .form-row.thirds { grid-template-columns: repeat(3,1fr); }
+.fsp-connect-field { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: end; }
+.fsp-connect-field small { grid-column: 1 / -1; color: var(--muted); }
+.fsp-connect-field .button { white-space: nowrap; }
 .sliders { padding: 16px; display: grid; gap: 15px; border-radius: 18px; background: var(--blue-soft); }
 .sliders label { grid-template-columns: 1fr auto; }
 .sliders input { grid-column: 1/-1; padding: 0; accent-color: var(--blue); }
 .requirement-section { padding: 16px; border-radius: 20px; background: var(--blue-soft); }
+.graph-draft-action { padding: 16px 18px; display: flex; align-items: center; justify-content: space-between; gap: 18px; border: 1px solid #d8c3e0; border-radius: 18px; background: #f8f2fa; }
+.graph-draft-action strong,.graph-draft-action span { display: block; }
+.graph-draft-action span { margin-top: 4px; color: var(--muted); font-size: 11px; line-height: 1.4; }
+.graph-draft-action .button { flex: none; }
 .builder-title { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
 .builder-title button { border: 0; padding: 8px 11px; border-radius: 10px; color: white; background: var(--blue); font-size: 11px; font-weight: 750; }
 #requirement-builder { display: grid; gap: 9px; }
@@ -387,6 +400,9 @@ h1 em { font-style: normal; color: var(--lime); }
   .account-grid { grid-template-columns: 1fr; }
   .account-card { padding: 21px; }
   .assessment-start,.assessment-outcome,.employer-cta,.real-vacancy { align-items: stretch; flex-direction: column; }
+  .graph-draft-action { align-items: stretch; flex-direction: column; }
+  .fsp-connect-field { grid-template-columns: 1fr; }
+  .fsp-connect-field .button { width: 100%; }
   .real-vacancy .button { width: 100%; }
 }
 

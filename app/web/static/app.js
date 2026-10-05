@@ -187,20 +187,33 @@ function renderGraph(graph) {
   const width = 720;
   const height = 390;
   const colors = { Backend: "#315cff", "AI / ML": "#9b7bff", "Системная разработка": "#ff654f", "Product Engineering": "#caff49", "Кибербезопасность": "#ffb52e" };
-  const positions = new Map(graph.nodes.map((node, index) => {
-    const angle = index / Math.max(graph.nodes.length, 1) * Math.PI * 2 - Math.PI / 2;
-    const radius = graph.nodes.length < 4 ? 120 : 145;
-    return [node.id, { x: width / 2 + Math.cos(angle) * radius, y: height / 2 + Math.sin(angle) * radius }];
-  }));
+  const maxDepth = Math.max(...graph.nodes.map((node) => node.depth || 0), 0);
+  const columns = new Map();
+  graph.nodes.forEach((node) => {
+    const depth = node.depth || 0;
+    if (!columns.has(depth)) columns.set(depth, []);
+    columns.get(depth).push(node);
+  });
+  const positions = new Map();
+  [...columns.entries()].forEach(([depth, nodes]) => {
+    nodes.sort((left, right) => left.label.localeCompare(right.label, "ru"));
+    const x = maxDepth ? 72 + depth * ((width - 144) / maxDepth) : width / 2;
+    const spacing = Math.min(106, (height - 74) / Math.max(nodes.length, 1));
+    const startY = height / 2 - spacing * (nodes.length - 1) / 2;
+    nodes.forEach((node, index) => positions.set(node.id, { x, y: startY + index * spacing }));
+  });
   const edges = graph.edges.map((edge) => {
     const from = positions.get(edge.from);
     const to = positions.get(edge.to);
-    return from && to ? `<line class="graph-edge" x1="${from.x}" y1="${from.y}" x2="${to.x}" y2="${to.y}"/>` : "";
+    if (!from || !to) return "";
+    const middle = (from.x + to.x) / 2;
+    return `<path class="graph-edge" d="M ${from.x + 43} ${from.y} C ${middle} ${from.y}, ${middle} ${to.y}, ${to.x - 49} ${to.y}" marker-end="url(#graph-arrow)"/>`;
   }).join("");
   const nodes = graph.nodes.map((node) => {
     const point = positions.get(node.id);
-    const radius = Math.max(44, 30 + node.level * 23);
-    const color = colors[node.category] || "#315cff";
+    const radius = 45;
+    const missing = node.status === "gap" || node.status === "prerequisite_gap";
+    const color = missing ? "#292930" : (colors[node.category] || "#315cff");
     const words = node.label.split(" ");
     const lines = words.reduce((result, word) => {
       const current = result.at(-1);
@@ -213,10 +226,13 @@ function renderGraph(graph) {
     const labelY = lines.length === 1 ? -4 : -11;
     const label = lines.map((line, index) => `<tspan x="0" dy="${index ? 13 : 0}">${html(line)}</tspan>`).join("");
     const scoreY = lines.length === 1 ? 15 : 21;
-    const lightNode = node.category === "Product Engineering" || node.category === "Кибербезопасность";
-    return `<g class="graph-node${lightNode ? " graph-node-light" : ""}" transform="translate(${point.x} ${point.y})"><circle r="${radius}" fill="${color}" stroke="rgba(255,255,255,${node.confidence})"/><text class="graph-label" y="${labelY}" style="font-size:${fontSize}px">${label}</text><text class="graph-score" y="${scoreY}">${percent(node.level)} · ${percent(node.confidence)}</text></g>`;
+    const lightNode = !missing && (node.category === "Product Engineering" || node.category === "Кибербезопасность");
+    const score = node.is_requirement
+      ? `${percent(node.confirmed_level)} / ${percent(node.required_level)}`
+      : node.status === "confirmed" ? `${percent(node.confirmed_level)} подтверждено` : "нужен пререквизит";
+    return `<g class="graph-node graph-${node.status}${lightNode ? " graph-node-light" : ""}" transform="translate(${point.x} ${point.y})"><circle r="${radius}" fill="${color}"/><text class="graph-label" y="${labelY}" style="font-size:${fontSize}px">${label}</text><text class="graph-score" y="${scoreY}">${score}</text>${node.is_requirement ? '<text class="graph-target" y="-53">цель</text>' : ""}</g>`;
   }).join("");
-  svg.innerHTML = `${edges}${nodes}`;
+  svg.innerHTML = `<defs><marker id="graph-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z"/></marker></defs>${edges}${nodes}`;
 }
 
 async function loadCandidateDashboard() {
@@ -321,6 +337,25 @@ function renderCompetitionOptions() {
   $("#competition-options").innerHTML = state.catalog.competitions.map((item) => `
     <label><input type="checkbox" name="competition_ids" value="${html(item.id)}"> <span>${html(item.name)}</span></label>
   `).join("");
+}
+
+async function draftVacancyGraph() {
+  const form = $("#vacancy-form");
+  const status = $(".form-status", form);
+  const text = [form.title.value, form.grade.value, form.specialization.value, form.description.value, form.team_description.value].join(". ");
+  status.textContent = "Собираем граф требований…";
+  try {
+    const draft = await api("/api/v1/graph/vacancy-draft", { method: "POST", body: JSON.stringify({ text }) });
+    if (!draft.requirements.length) {
+      status.textContent = draft.warnings[0];
+      return;
+    }
+    $("#requirement-builder").innerHTML = "";
+    draft.requirements.forEach((item) => addRequirement(item.skill_id, Math.round(item.level * 100), item.criticality));
+    status.textContent = `Граф собран: ${draft.requirements.length} навыков. Проверьте настройки перед сохранением.`;
+  } catch (error) {
+    status.textContent = error.message;
+  }
 }
 
 function setAuthTab(tab) {
@@ -535,6 +570,16 @@ function bindAccountForms() {
       await loadAccountState();
     } catch (error) { $(".form-status", form).textContent = error.message; }
   });
+  $("#connect-fsp").addEventListener("click", async () => {
+    try {
+      if (!state.accountProfile) {
+        toast("Сначала сохраните профиль кандидата");
+        return;
+      }
+      const connection = await api("/api/v1/integrations/fsp/connect/start", { method: "POST" });
+      window.location.assign(connection.authorize_url);
+    } catch (error) { toast(error.message); }
+  });
   $("#employer-profile-form").addEventListener("submit", async (event) => {
     event.preventDefault();
     const form = event.currentTarget;
@@ -593,6 +638,11 @@ async function boot() {
     renderVacancies();
     await selectVacancy(state.vacancyId);
     await restoreSession();
+    if (new URLSearchParams(window.location.search).get("fsp") === "connected") {
+      window.history.replaceState({}, "", window.location.pathname);
+      toast("ФСП ID подключён, результаты соревнований импортированы");
+      await openAccount();
+    }
   } catch (error) {
     $("#candidate-grid").innerHTML = `<div class="empty-state">${html(error.message)}. Обновите страницу.</div>`;
   }
@@ -625,6 +675,7 @@ $("#candidate-fsp").addEventListener("change", (event) => { state.fsp = event.ta
 $("#persona-select").addEventListener("change", (event) => { state.candidateId = event.target.value; loadCandidateDashboard(); });
 $("#candidate-vacancy").addEventListener("change", loadCandidateDashboard);
 $("#add-requirement").addEventListener("click", () => addRequirement());
+$("#draft-vacancy-graph").addEventListener("click", draftVacancyGraph);
 $("#vacancy-form [name=policy_mode]").addEventListener("change", (event) => {
   $("#competition-policy").hidden = event.target.value !== "allowlist";
 });

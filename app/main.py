@@ -9,13 +9,14 @@ from fastapi.staticfiles import StaticFiles
 from app.application.service import TalentService
 from app.infrastructure.database import Store
 from app.infrastructure.mailer import SmtpMailer
-from app.infrastructure.seed import seed_store
+from app.infrastructure.seed import SKILLS, seed_store
 from app.web.api import router
 from app.web.auth import router as auth_router
 from app.web.account import router as account_router
 from app.web.assessments import router as assessments_router
 from app.web.invitations import router as invitations_router
 from app.web.applications import router as applications_router
+from app.web.fsp_sandbox import router as fsp_sandbox_router
 
 
 def create_app(database_path: str | Path | None = None) -> FastAPI:
@@ -33,6 +34,8 @@ def create_app(database_path: str | Path | None = None) -> FastAPI:
         store.initialize()
         if store.count("skills") == 0:
             seed_store(store)
+        else:
+            store.upsert_skills(SKILLS)
         app.state.service = TalentService(store)
         app.state.mailer = SmtpMailer()
         yield
@@ -49,6 +52,7 @@ def create_app(database_path: str | Path | None = None) -> FastAPI:
     app.include_router(assessments_router)
     app.include_router(invitations_router)
     app.include_router(applications_router)
+    app.include_router(fsp_sandbox_router)
     static_dir = Path(__file__).parent / "web" / "static"
     app.mount("/assets", StaticFiles(directory=static_dir), name="assets")
     app.mount("/fonts", StaticFiles(directory=Path(__file__).parent / "assets" / "fonts"), name="fonts")
