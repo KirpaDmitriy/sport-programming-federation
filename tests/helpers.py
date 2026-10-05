@@ -27,7 +27,7 @@ def authenticated_client(
     ).status_code == 200
 
 
-def employer_profile(http: TestClient, company_name: str = "Выготский Лаб") -> None:
+def employer_profile(http: TestClient, company_name: str = "Карьера Лаб") -> None:
     response = http.put(
         "/api/v1/account/employer-profile",
         json={

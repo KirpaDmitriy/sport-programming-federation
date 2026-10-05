@@ -1,5 +1,5 @@
 [Unit]
-Description=Vygotsky verified talent platform
+Description=FSP Career verified talent platform
 After=network.target
 
 [Service]

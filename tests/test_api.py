@@ -31,13 +31,13 @@ def test_browser_shell_and_assets_are_served(tmp_path) -> None:
 
     assert page.status_code == 200
     assert "Найм начинается" in page.text
-    assert "Выготский — найм по подтверждённым навыкам" in page.text
+    assert "ФСП / Карьера — найм по подтверждённым навыкам" in page.text
     assert "Как считаем навыки" in page.text
     assert "Откуда берутся навыки" in page.text
     assert 'id="requirement-builder"' in page.text
     assert 'id="competition-policy"' in page.text
     assert 'id="data-dialog"' in page.text
-    assert "Выготский от ФСП" in page.text
+    assert "ФСП / Карьера — на главную" in page.text
     assert logo.status_code == 200
     assert logo.headers["content-type"] == "image/png"
     assert "async function boot" in script.text
@@ -63,7 +63,7 @@ def test_candidate_graph_and_recommendations(tmp_path) -> None:
 def test_create_vacancy_and_legacy_offer_boundary(tmp_path) -> None:
     vacancy = {
         "id": "python-intern",
-        "employer": "Выготский Лаб",
+        "employer": "Карьера Лаб",
         "title": "Python-разработчик",
         "grade": "Junior",
         "specialization": "Backend",
@@ -83,7 +83,7 @@ def test_create_vacancy_and_legacy_offer_boundary(tmp_path) -> None:
     }
     with client(tmp_path) as http:
         authenticated_client(http, "employer@example.test", "employer")
-        employer_profile(http, "Выготский Лаб")
+        employer_profile(http, "Карьера Лаб")
         assert http.post("/api/v1/vacancies", json=vacancy).status_code == 201
         legacy_offer = http.post(
             "/api/v1/offers",

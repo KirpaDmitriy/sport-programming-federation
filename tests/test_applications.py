@@ -8,7 +8,7 @@ from .helpers import authenticated_client, candidate_profile, employer_profile
 def vacancy_payload() -> dict:
     return {
         "id": "published-backend",
-        "employer": "Выготский Лаб",
+        "employer": "Карьера Лаб",
         "title": "Backend-разработчик",
         "grade": "Junior",
         "specialization": "Backend",

@@ -1,4 +1,4 @@
-@font-face { font-family: "Roboto Vygotsky"; src: url("/fonts/Roboto.ttf") format("truetype"); font-display: swap; font-weight: 100 900; }
+@font-face { font-family: "Roboto Career"; src: url("/fonts/Roboto.ttf") format("truetype"); font-display: swap; font-weight: 100 900; }
 
 :root {
   --ink: #111114;
@@ -13,7 +13,7 @@
   --violet: #9d4edd;
   --radius: 28px;
   --shadow: 0 22px 70px rgba(28, 31, 42, .11);
-  font-family: "Roboto Vygotsky", "SF Pro Display", "Segoe UI", system-ui, sans-serif;
+  font-family: "Roboto Career", "SF Pro Display", "Segoe UI", system-ui, sans-serif;
   color: var(--ink);
   background: var(--paper);
   font-synthesis: none;

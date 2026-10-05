@@ -16,12 +16,12 @@ class SmtpMailer:
         if not self.host or not self.sender:
             raise RuntimeError("SMTP is not configured")
         message = EmailMessage()
-        message["Subject"] = "Код подтверждения — Выготский"
+        message["Subject"] = "Код подтверждения — ФСП / Карьера"
         message["From"] = self.sender
         message["To"] = recipient
         message.set_content(
             f"Ваш код подтверждения: {code}\n\n"
-            "Код действует 30 минут. Если вы не регистрировались в сервисе «Выготский», проигнорируйте письмо."
+            "Код действует 30 минут. Если вы не регистрировались в сервисе «ФСП / Карьера», проигнорируйте письмо."
         )
         with smtplib.SMTP(self.host, self.port, timeout=15) as smtp:
             if self.use_tls:
