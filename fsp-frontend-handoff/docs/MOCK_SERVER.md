@@ -52,10 +52,14 @@ Configuration:
 | `PORT` | `4010` | HTTP port. |
 | `FSP_MOCK_SCENARIO` | `baseline` | Initial fixture scenario. |
 | `FSP_GRADE_CHANGE_COOLDOWN_DAYS` | `90` | Integer from 0 to 365. The API returns the resulting eligibility and dates. |
+| `FSP_MOCK_ALLOWED_ORIGINS` | `http://localhost:5173,http://127.0.0.1:5173` | Comma-separated browser origins accepted on requests that carry `Origin`. A public demo sets its exact HTTPS origin. |
+| `FSP_MOCK_DEV_ROUTES` | `1` | `0` answers every `/__mock__` route with `404`. |
 
 For browser development, proxy `/api` and `/__mock__` from Vite to `http://127.0.0.1:4010`. Requests use the browser's same-origin cookies. The API paths already include `/api/v1`; do not prepend that segment a second time. `http://localhost:5173` and `http://127.0.0.1:5173` are accepted development origins. The mock intentionally does not expose permissive CORS.
 
 This package is for local development. Do not publish the development controls or reuse this session implementation as production authentication. A later deployment must explicitly choose its allowed origin and access boundary; removing the loopback checks is not part of the frontend handoff.
+
+Behind a reverse proxy every request arrives from loopback, so the loopback check alone no longer protects `/__mock__`. A public demonstration stand therefore runs with `FSP_MOCK_DEV_ROUTES=0`, sets `FSP_MOCK_ALLOWED_ORIGINS` to its own origin, forwards only `/api/v1/` with a loopback `Host` header and keeps the server bound to loopback. It is still a shared in-memory demo, not production authentication.
 
 ## Seed actors and scenarios
 

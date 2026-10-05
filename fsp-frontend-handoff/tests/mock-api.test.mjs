@@ -90,6 +90,15 @@ test('health, request validation, session, role, origin and host boundaries', as
   await request('GET', '/api/v1/session', { actor: candidate, status: 401 });
 });
 
+test('deployment configuration admits only the configured origin and removes development routes', async (t) => {
+  const { request } = await setup(t, { allowedOrigins: ['https://demo.example'], devRoutes: false });
+  await request('POST', '/__mock__/session', { body: { actor: 'candidate024' }, status: 404 });
+  await request('GET', '/__mock__/email-codes', { status: 404 });
+  await request('POST', '/__mock__/reset', { body: { scenario: 'baseline' }, status: 404 });
+  await request('POST', '/api/v1/auth/email/challenges', { body: { email: 'alexey@example.com', role: 'candidate' }, headers: { Origin: 'https://demo.example' }, status: 201 });
+  await request('POST', '/api/v1/auth/email/challenges', { body: { email: 'alexey@example.com', role: 'candidate' }, headers: { Origin: 'http://localhost:5173' }, status: 403 });
+});
+
 test('email verification creates role-bound candidate and employer accounts; expiry is authoritative', async (t) => {
   const { request, client } = await setup(t);
   let challenge = (await request('POST', '/api/v1/auth/email/challenges', { body: { email: 'new-person@example.com', role: 'candidate' }, status: 201 })).body;

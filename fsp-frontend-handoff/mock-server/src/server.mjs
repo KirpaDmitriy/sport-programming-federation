@@ -44,7 +44,7 @@ async function parseMultipart(request) {
   return { file: { size: file.size } };
 }
 
-export function createMockServer({ port = 4010, host = '127.0.0.1', scenario = 'baseline', gradeChangeCooldownDays = 90, allowedOrigins = ['http://localhost:5173', 'http://127.0.0.1:5173'] } = {}) {
+export function createMockServer({ port = 4010, host = '127.0.0.1', scenario = 'baseline', gradeChangeCooldownDays = 90, allowedOrigins = ['http://localhost:5173', 'http://127.0.0.1:5173'], devRoutes = true } = {}) {
   if (!['127.0.0.1', '::1', 'localhost'].includes(host)) throw new Error('The mock server may bind only to loopback');
   const domain = new MockDomain({ scenario, gradeChangeCooldownDays });
   const server = createServer(async (request, response) => {
@@ -59,6 +59,7 @@ export function createMockServer({ port = 4010, host = '127.0.0.1', scenario = '
       const found = matchers.find(({ route, regex }) => route.method === request.method.toLowerCase() && regex.test(url.pathname));
       if (!found) throw new ApiError(404, 'not_found', 'Маршрут не найден');
       const { route, regex, keys } = found;
+      if (route.dev && !devRoutes) throw new ApiError(404, 'not_found', 'Маршрут не найден');
       if (route.dev && !isLoopback(request.socket.remoteAddress)) throw new ApiError(403, 'development_only', 'Маршрут доступен только локально');
       const hostHeader = request.headers.host ?? '';
       if (!/^(localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/.test(hostHeader)) throw new ApiError(403, 'host_not_allowed', 'Мок-сервер принимает только локальные запросы');
@@ -136,8 +137,15 @@ export function createMockServer({ port = 4010, host = '127.0.0.1', scenario = '
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
-  const app = createMockServer({ port: Number(process.env.PORT ?? 4010), host: process.env.HOST ?? '127.0.0.1', scenario: process.env.FSP_MOCK_SCENARIO ?? 'baseline', gradeChangeCooldownDays: Number(process.env.FSP_GRADE_CHANGE_COOLDOWN_DAYS ?? 90) });
+  const app = createMockServer({
+    port: Number(process.env.PORT ?? 4010),
+    host: process.env.HOST ?? '127.0.0.1',
+    scenario: process.env.FSP_MOCK_SCENARIO ?? 'baseline',
+    gradeChangeCooldownDays: Number(process.env.FSP_GRADE_CHANGE_COOLDOWN_DAYS ?? 90),
+    allowedOrigins: process.env.FSP_MOCK_ALLOWED_ORIGINS?.split(',').map((origin) => origin.trim()).filter(Boolean),
+    devRoutes: process.env.FSP_MOCK_DEV_ROUTES !== '0',
+  });
   const url = await app.listen();
-  console.log(`FSP mock API 0.1.0: ${url} (synthetic data only)`);
+  console.log(`FSP mock API 0.1.0: ${url} (synthetic data only${process.env.FSP_MOCK_DEV_ROUTES === '0' ? ', development routes disabled' : ''})`);
   for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => app.close().then(() => process.exit(0)));
 }

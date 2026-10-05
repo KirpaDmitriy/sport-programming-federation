@@ -25,6 +25,7 @@
       "path": "/api/v1/auth/email/challenges",
       "observedStatuses": [
         201,
+        403,
         409
       ]
     },
@@ -474,7 +475,8 @@
       "path": "/__mock__/session",
       "observedStatuses": [
         200,
-        403
+        403,
+        404
       ]
     },
     {
@@ -482,7 +484,8 @@
       "method": "POST",
       "path": "/__mock__/reset",
       "observedStatuses": [
-        200
+        200,
+        404
       ]
     },
     {
@@ -490,7 +493,8 @@
       "method": "GET",
       "path": "/__mock__/email-codes",
       "observedStatuses": [
-        200
+        200,
+        404
       ]
     },
     {
