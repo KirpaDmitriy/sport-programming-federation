@@ -1,12 +1,15 @@
 {
-  "checked_at": "2026-10-05T09:24:11Z",
+  "checked_at": "2026-10-05T09:34:17Z",
   "host": "93.77.179.211",
-  "release_commit": "35c0288",
+  "release_commit": "7a2a628",
   "public_url": "http://93.77.179.211:8010",
   "checks": {
     "internal_smoke": "passed",
     "external_smoke": "passed",
     "openapi_public": "passed",
+    "public_brand": "КодРазряд",
+    "demo_data_label": "present",
+    "visual_layout_owner_review": "passed",
     "application_service": "kontur-talent.service: active",
     "metroguard_service": "active",
     "nginx_service": "active"
