@@ -1,0 +1,6 @@
+Command: pnpm check
+Working directory: tools/contract-codegen
+Exit code: 0
+
+Generated types match the source contract.
+$ node generate.mjs --check

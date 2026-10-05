@@ -1,0 +1,350 @@
+import test, { after } from 'node:test';
+import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
+import { request as rawHttpRequest } from 'node:http';
+import { readFile, writeFile } from 'node:fs/promises';
+import { createMockServer } from '../mock-server/src/server.mjs';
+import { routes, buildOpenApi } from '../mock-server/src/contract.mjs';
+import { validators } from '../mock-server/src/validation.mjs';
+
+const coverage = new Map();
+const operationFor = (method, path) => routes.find((route) => route.method === method.toLowerCase() && new RegExp(`^${route.path.replace(/\{[^}]+\}/g, '[^/]+')}$`).test(path.split('?')[0]));
+async function setup(t, options = {}) {
+  const app = createMockServer({ port: 0, ...options }); const url = await app.listen();
+  t.after(() => app.close());
+  const client = (cookie = '') => ({ cookie });
+  async function request(method, path, { actor = client(), body, raw, contentType, key, status = 200, headers = {} } = {}) {
+    const operation = operationFor(method, path);
+    if (operation?.idempotent && key !== null) headers['Idempotency-Key'] = key ?? randomUUID();
+    if (actor.cookie) headers.Cookie = actor.cookie;
+    if (body !== undefined) headers['Content-Type'] = 'application/json';
+    if (contentType) headers['Content-Type'] = contentType;
+    const response = await fetch(`${url}${path}`, { method, headers, body: body === undefined ? raw : JSON.stringify(body) });
+    const cookie = response.headers.get('set-cookie'); if (cookie) actor.cookie = cookie.split(';')[0];
+    const buffer = Buffer.from(await response.arrayBuffer());
+    let data = null;
+    if (response.headers.get('content-type')?.includes('application/json')) data = JSON.parse(buffer.toString());
+    assert.equal(response.status, status, `${method} ${path}: ${JSON.stringify(data)}`);
+    if (operation) {
+      coverage.set(operation.operationId, [...new Set([...(coverage.get(operation.operationId) ?? []), status])]);
+      if (status >= 400) assert.ok(validators.Error(data), JSON.stringify(validators.Error.errors));
+      else if (operation.response) assert.ok(validators[operation.response](data), JSON.stringify(validators[operation.response].errors));
+    }
+    return { body: data, response, buffer, actor };
+  }
+  async function login(actorName) { const actor = client(); await request('POST', '/__mock__/session', { actor, body: { actor: actorName } }); return actor; }
+  async function job(id, actor) {
+    let value;
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      value = (await request('GET', `/api/v1/jobs/${id}`, { actor })).body;
+      if (['succeeded', 'failed'].includes(value.status)) return value;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    assert.fail(`Job ${id} did not finish: ${JSON.stringify(value)}`);
+  }
+  return { app, url, request, login, job, client };
+}
+const answer = { code: 'pub fn demo() {}', explanation: 'Уникальный ключ и запись результата сохраняются атомарно.', externalAiUsed: true };
+const forbiddenKeys = new Set(['name', 'email', 'initials', 'avatarUrl', 'accountLabel', 'handle', 'githubHandle', 'url', 'reference', 'sha', 'sourceLinks']);
+function assertAnonymous(value) {
+  if (!value || typeof value !== 'object') return;
+  for (const [key, child] of Object.entries(value)) { assert.ok(!forbiddenKeys.has(key), `Private key leaked: ${key}`); assertAnonymous(child); }
+  const serialized = JSON.stringify(value);
+  for (const privateText of ['Алексей', 'Морозов', 'alexey@', 'PR #17', 'order-api', 'https://']) assert.ok(!serialized.includes(privateText), `Private text leaked: ${privateText}`);
+}
+function assertGraph(graph) { const ids = new Set(graph.nodes.map((item) => item.id)); assert.equal(ids.size, graph.nodes.length); for (const edge of graph.edges) { assert.ok(ids.has(edge.from)); assert.ok(ids.has(edge.to)); } }
+
+test('canonical contract matches generator and all declared routes have explicit operation IDs', async () => {
+  const file = JSON.parse(await readFile(new URL('../contracts/openapi.json', import.meta.url), 'utf8'));
+  assert.deepEqual(file, buildOpenApi());
+  assert.equal(new Set(routes.map((route) => route.operationId)).size, routes.length);
+  assert.equal(file.openapi, '3.1.0');
+  for (const route of routes.filter((entry) => entry.dev)) assert.equal(file.paths[route.path][route.method]['x-mock-only'], true);
+});
+
+test('health, request validation, session, role, origin and host boundaries', async (t) => {
+  const { request, login, url } = await setup(t);
+  await request('GET', '/health');
+  const meta = (await request('GET', '/api/v1/meta')).body;
+  assert.equal(meta.mode, 'mock'); assert.equal(meta.capabilities.chat, false); assert.equal(meta.capabilities.realCodeExecution, false);
+  await request('GET', '/api/v1/session', { status: 401 });
+  await request('GET', '/api/v1/not-real', { status: 404 });
+  const candidate = await login('candidate024'); const employer = await login('employer-a');
+  await request('GET', '/api/v1/session', { actor: candidate });
+  await request('GET', '/api/v1/candidates', { actor: candidate, status: 403 });
+  await request('GET', '/api/v1/me/profile', { actor: employer, status: 403 });
+  await request('PATCH', '/api/v1/me/profile', { actor: candidate, body: { verifiedGrade: 'senior' }, status: 400 });
+  await request('PATCH', '/api/v1/me/profile', { actor: candidate, raw: '{bad', contentType: 'application/json', status: 400 });
+  await request('PATCH', '/api/v1/me/profile', { actor: candidate, raw: '{}', contentType: 'text/plain', status: 415 });
+  await request('GET', '/api/v1/candidates?page=-1', { actor: employer, status: 400 });
+  await request('GET', '/api/v1/candidates?grade=middle&grade=junior', { actor: employer, status: 400 });
+  await request('GET', '/api/v1/candidates?companyId=company-b', { actor: employer, status: 400 });
+  await request('POST', '/__mock__/session', { body: { actor: 'candidate024' }, headers: { Origin: 'https://untrusted.example' }, status: 403 });
+  await new Promise((resolve, reject) => {
+    const raw = rawHttpRequest(`${url}/health`, { headers: { Host: 'untrusted.example' } }, (response) => {
+      try { assert.equal(response.statusCode, 403); response.resume(); response.on('end', resolve); } catch (error) { reject(error); }
+    });
+    raw.on('error', reject); raw.end();
+  });
+  await request('DELETE', '/api/v1/auth/session', { actor: candidate, status: 204 });
+  await request('GET', '/api/v1/session', { actor: candidate, status: 401 });
+});
+
+test('email verification creates role-bound candidate and employer accounts; expiry is authoritative', async (t) => {
+  const { request, client } = await setup(t);
+  let challenge = (await request('POST', '/api/v1/auth/email/challenges', { body: { email: 'new-person@example.com', role: 'candidate' }, status: 201 })).body;
+  const mailbox = (await request('GET', '/__mock__/email-codes')).body; assert.equal(mailbox.items[0].code, '123456');
+  await request('POST', '/api/v1/auth/email/verify', { body: { challengeId: challenge.challengeId, code: '000000' }, status: 400 });
+  const candidate = client();
+  await request('POST', '/api/v1/auth/email/verify', { actor: candidate, body: { challengeId: challenge.challengeId, code: '123456' } });
+  const profile = (await request('GET', '/api/v1/me/profile', { actor: candidate })).body;
+  assert.equal(profile.emailVerified, true); assert.equal(profile.verifiedGrade, null); assert.equal(profile.category.eligible, false);
+  await request('POST', '/api/v1/auth/email/challenges', { body: { email: 'new-person@example.com', role: 'employer' }, status: 409 });
+  await request('POST', '/api/v1/auth/email/verify', { body: { challengeId: challenge.challengeId, code: '123456' }, status: 409 });
+  challenge = (await request('POST', '/api/v1/auth/email/challenges', { body: { email: 'new-hr@example.com', role: 'employer' }, status: 201 })).body;
+  const employer = client();
+  await request('POST', '/api/v1/auth/email/verify', { actor: employer, body: { challengeId: challenge.challengeId, code: '123456' } });
+  let company = (await request('GET', '/api/v1/company', { actor: employer })).body; assert.equal(company.readyToInvite, false);
+  await request('POST', '/api/v1/invitations', { actor: employer, body: { candidateId: 'candidate024', needId: 'need-001', message: 'Приглашение' }, status: 422 });
+  company = (await request('PATCH', '/api/v1/company', { actor: employer, body: { displayName: 'Новая компания', businessArea: 'Разработка ПО', description: 'Разрабатываем веб-сервисы.' } })).body;
+  assert.equal(company.readyToInvite, true); assert.notEqual(company.id, 'company-a');
+  await request('GET', '/api/v1/needs/need-001', { actor: employer, status: 404 });
+  challenge = (await request('POST', '/api/v1/auth/email/challenges', { body: { email: 'expire@example.com', role: 'candidate' }, status: 201 })).body;
+  await request('POST', '/__mock__/clock', { body: { advanceSeconds: 901 } });
+  await request('POST', '/api/v1/auth/email/verify', { body: { challengeId: challenge.challengeId, code: '123456' }, status: 400 });
+});
+
+test('profile category is server-owned and publication consent does not replace qualification', async (t) => {
+  const { request, login } = await setup(t);
+  const candidate = await login('candidate024'); const employer = await login('employer-a');
+  let profile = (await request('PATCH', '/api/v1/me/profile', { actor: candidate, body: { selectedGrade: 'senior', experienceMonths: null } })).body;
+  assert.equal(profile.selectedGrade, 'senior'); assert.equal(profile.verifiedGrade, 'junior'); assert.equal(profile.category.grade, 'junior');
+  profile = (await request('PATCH', '/api/v1/me/profile', { actor: candidate, body: { consents: { processing: true, publication: false } } })).body;
+  assert.equal(profile.onboarding.visibleToEmployers, false);
+  await request('GET', '/api/v1/candidates/candidate024', { actor: employer, status: 404 });
+  const fresh = await login('candidate-new');
+  await request('PATCH', '/api/v1/me/profile', { actor: fresh, body: { name: 'Новый участник', industry: 'it', specialization: 'backend', selectedGrade: 'middle', stack: ['rust'], teamRole: 'Разработчик', experienceMonths: 0, experience: 'Учебные проекты', softSkills: [], consents: { processing: true, publication: true } } });
+  await request('POST', '/api/v1/me/assessments', { actor: fresh, body: { specialization: 'backend', grade: 'middle' }, status: 409 });
+  await request('GET', '/api/v1/candidates/candidate-new', { actor: employer, status: 404 });
+});
+
+test('source enrichment is automatic, asynchronous, private and does not infer hours or grades', async (t) => {
+  const { request, login, job } = await setup(t);
+  const candidate = await login('candidate024'); const other = await login('candidate-new'); const employer = await login('employer-a');
+  let sources = (await request('GET', '/api/v1/me/sources', { actor: candidate })).body.items;
+  const github = sources.find((source) => source.provider === 'github');
+  assert.deepEqual(github.counts, { found: 12, processed: 8, queued: 3, unavailable: 1 }); assert.ok(github.activeJobId);
+  for (const key of Object.keys(github)) assert.ok(!/hours/i.test(key));
+  await request('GET', `/api/v1/jobs/${github.activeJobId}`, { actor: other, status: 404 });
+  await request('GET', `/api/v1/jobs/${github.activeJobId}`, { actor: employer, status: 404 });
+  const completed = await job(github.activeJobId, candidate); assert.equal(completed.status, 'succeeded');
+  assert.deepEqual(completed.result.source.counts, { found: 12, processed: 11, queued: 0, unavailable: 1 });
+  const refreshed = (await request('POST', `/api/v1/me/sources/${github.id}/sync`, { actor: candidate, status: 202 })).body;
+  await job(refreshed.id, candidate);
+  const connected = (await request('POST', '/api/v1/me/sources/fsp/connect', { actor: candidate, body: { account: 'FSP-DEMO-024' } })).body;
+  assert.equal(connected.synthetic, true); assert.ok(connected.activeJobId); await job(connected.activeJobId, candidate);
+  await request('POST', '/api/v1/me/sources/not-provider/connect', { actor: candidate, body: { account: 'x' }, status: 404 });
+  const graph = (await request('GET', '/api/v1/me/graph', { actor: candidate })).body; assertGraph(graph);
+  const skills = (await request('GET', '/api/v1/me/skills', { actor: candidate })).body.items;
+  assert.ok(skills.some((skill) => skill.evidence.some((evidence) => evidence.reference === 'PR #17')));
+  assert.equal((await request('GET', '/api/v1/me/profile', { actor: candidate })).body.verifiedGrade, 'junior');
+});
+
+test('assessment workflow uses jobs, preserves unrelated evidence, and applies a successful grade change', async (t) => {
+  const { request, login, job } = await setup(t);
+  const candidate = await login('candidate024');
+  const before = (await request('GET', '/api/v1/me/skills', { actor: candidate })).body.items;
+  const key = 'assessment-start-key';
+  const item = (await request('POST', '/api/v1/me/assessments', { actor: candidate, body: { specialization: 'backend', grade: 'middle' }, key, status: 201 })).body;
+  const replay = await request('POST', '/api/v1/me/assessments', { actor: candidate, body: { grade: 'middle', specialization: 'backend' }, key, status: 201 });
+  assert.equal(replay.body.id, item.id); assert.equal(replay.response.headers.get('x-idempotent-replay'), 'true');
+  await request('POST', '/api/v1/me/assessments', { actor: candidate, body: { specialization: 'backend', grade: 'senior' }, key, status: 409 });
+  await request('GET', `/api/v1/me/assessments/${item.id}`, { actor: candidate });
+  await request('POST', `/api/v1/me/assessments/${item.id}/submit`, { actor: candidate, status: 422 });
+  await request('PUT', `/api/v1/me/assessments/${item.id}/answer`, { actor: candidate, body: answer });
+  const reply = (await request('POST', `/api/v1/me/assessments/${item.id}/assistant`, { actor: candidate, body: { message: 'Как обработать конкуренцию?' } })).body;
+  assert.equal(reply.simulation, true); assert.equal(reply.externalAiAllowed, true);
+  const checksJob = (await request('POST', `/api/v1/me/assessments/${item.id}/checks`, { actor: candidate, status: 202 })).body;
+  assert.equal(checksJob.status, 'queued'); assert.equal((await job(checksJob.id, candidate)).result.checks.length, 4);
+  const submitted = (await request('POST', `/api/v1/me/assessments/${item.id}/submit`, { actor: candidate, key: 'submit-immutable-key', status: 202 })).body;
+  const evaluated = await job(submitted.id, candidate); assert.equal(evaluated.status, 'succeeded'); assert.equal(evaluated.result.assessment.status, 'passed');
+  const result = evaluated.result.assessment.result; assert.equal(result.gradeChanged, true); assert.equal(result.nextEligibleAt, '2027-01-03T12:00:00.000Z');
+  const profile = (await request('GET', '/api/v1/me/profile', { actor: candidate })).body; assert.equal(profile.verifiedGrade, 'middle');
+  assert.equal(profile.assessmentEligibility.canStartUpgrade, false); assert.equal(profile.assessmentEligibility.canStartSelected, true);
+  const afterSkills = (await request('GET', '/api/v1/me/skills', { actor: candidate })).body.items;
+  for (const id of ['docker', 'redis']) assert.deepEqual(afterSkills.find((skill) => skill.skillId === id), before.find((skill) => skill.skillId === id));
+  const postgres = afterSkills.find((skill) => skill.skillId === 'postgresql'); assert.equal(postgres.status, 'confirmed'); assert.ok(postgres.evidence.some((evidence) => evidence.reference === 'PR #17'));
+  await request('POST', '/api/v1/me/assessments', { actor: candidate, body: { specialization: 'backend', grade: 'senior' }, status: 409 });
+  await request('PUT', `/api/v1/me/assessments/${item.id}/answer`, { actor: candidate, body: answer, status: 409 });
+  const history = (await request('GET', '/api/v1/me/assessments', { actor: candidate })).body.items; assert.equal(history.length, 2);
+});
+
+test('failed and unavailable assessment scenarios preserve grades and allow retry without a penalty', async (t) => {
+  for (const scenario of ['assessment_failure', 'service_failure']) await t.test(scenario, async (subtest) => {
+    const { request, login, job } = await setup(subtest, { scenario }); const candidate = await login('candidate024');
+    const item = (await request('POST', '/api/v1/me/assessments', { actor: candidate, body: { specialization: 'backend', grade: 'middle' }, status: 201 })).body;
+    await request('PUT', `/api/v1/me/assessments/${item.id}/answer`, { actor: candidate, body: answer });
+    const submitted = (await request('POST', `/api/v1/me/assessments/${item.id}/submit`, { actor: candidate, status: 202 })).body;
+    const outcome = await job(submitted.id, candidate); const result = outcome.result.assessment.result;
+    assert.equal(result.confirmedGrade, 'junior'); assert.equal(result.gradeChanged, false); assert.equal(result.nextEligibleAt, '2026-08-30T12:00:00.000Z');
+    if (scenario === 'service_failure') { assert.equal(outcome.status, 'failed'); assert.equal(result.rubric.length, 0); assert.equal(result.checks.length, 0); }
+    assert.equal((await request('GET', '/api/v1/me/profile', { actor: candidate })).body.assessmentEligibility.canStartSelected, true);
+    await request('POST', '/api/v1/me/assessments', { actor: candidate, body: { specialization: 'backend', grade: 'middle' }, status: 201 });
+  });
+});
+
+test('same-grade retry is allowed; downgrade is refused; cooldown configuration is server-owned', async (t) => {
+  const { request, login } = await setup(t, { scenario: 'qualified', gradeChangeCooldownDays: 7 }); const candidate = await login('candidate024');
+  let profile = (await request('GET', '/api/v1/me/profile', { actor: candidate })).body;
+  assert.equal(profile.assessmentEligibility.cooldownDays, 7); assert.equal(profile.assessmentEligibility.nextEligibleAt, '2026-10-12T12:00:00.000Z');
+  assert.equal(profile.assessmentEligibility.canStartSelected, true);
+  await request('POST', '/api/v1/me/assessments', { actor: candidate, body: { specialization: 'backend', grade: 'junior' }, status: 422 });
+  profile = (await request('PATCH', '/api/v1/me/profile', { actor: candidate, body: { selectedGrade: 'senior' } })).body;
+  assert.equal(profile.assessmentEligibility.canStartSelected, false);
+  await request('POST', '/__mock__/clock', { body: { advanceSeconds: 7 * 86400 } });
+  await request('POST', '/api/v1/me/assessments', { actor: candidate, body: { specialization: 'backend', grade: 'senior' }, status: 201 });
+});
+
+test('stale check jobs and revoked processing consent cannot write grades or outdated results', async (t) => {
+  const { request, login, job } = await setup(t); const candidate = await login('candidate024');
+  const item = (await request('POST', '/api/v1/me/assessments', { actor: candidate, body: { specialization: 'backend', grade: 'middle' }, status: 201 })).body;
+  const pending = (await request('POST', `/api/v1/me/assessments/${item.id}/checks`, { actor: candidate, status: 202 })).body;
+  await request('PUT', `/api/v1/me/assessments/${item.id}/answer`, { actor: candidate, body: answer });
+  assert.equal((await job(pending.id, candidate)).error.code, 'stale_input');
+  const submitted = (await request('POST', `/api/v1/me/assessments/${item.id}/submit`, { actor: candidate, status: 202 })).body;
+  await request('PATCH', '/api/v1/me/profile', { actor: candidate, body: { consents: { processing: false, publication: true } } });
+  assert.equal((await job(submitted.id, candidate)).error.code, 'processing_consent_revoked');
+  assert.equal((await request('GET', '/api/v1/me/profile', { actor: candidate })).body.verifiedGrade, 'junior');
+});
+
+test('need CRUD validates salary and evidence policies without tenant crossover or ID collisions', async (t) => {
+  const { request, login } = await setup(t); const a = await login('employer-a'); const b = await login('employer-b');
+  const original = (await request('GET', '/api/v1/needs/need-001', { actor: a })).body;
+  const input = Object.fromEntries(['title', 'specialization', 'grade', 'workMode', 'salary', 'description', 'requirements'].map((key) => [key, original[key]]));
+  await request('GET', '/api/v1/needs/need-001', { actor: b, status: 404 });
+  await request('POST', '/api/v1/needs', { actor: a, body: { ...input, salary: { ...input.salary, from: 300000, to: 200000 } }, status: 422 });
+  await request('POST', '/api/v1/needs', { actor: a, body: { ...input, salary: { ...input.salary, currency: 'USD' } }, status: 400 });
+  await request('POST', '/api/v1/needs', { actor: a, body: { ...input, salary: { ...input.salary, from: 0 } }, status: 400 });
+  await request('POST', '/api/v1/needs', { actor: a, body: { ...input, requirements: [input.requirements[0], input.requirements[0]] }, status: 422 });
+  const item = (await request('POST', '/api/v1/needs', { actor: b, body: input, status: 201 })).body;
+  assert.notEqual(item.id, 'need-001'); assert.equal(item.published, false);
+  assert.deepEqual((await request('GET', '/api/v1/needs/need-001', { actor: a })).body, original);
+  await request('PATCH', `/api/v1/needs/${item.id}`, { actor: b, body: { title: 'Новая потребность' } });
+  const graph = (await request('GET', `/api/v1/needs/${item.id}/graph`, { actor: b })).body; assertGraph(graph);
+  await request('GET', '/api/v1/needs', { actor: b });
+  await request('DELETE', `/api/v1/needs/${item.id}`, { actor: b, status: 204 });
+  await request('GET', `/api/v1/needs/${item.id}`, { actor: b, status: 404 });
+});
+
+test('candidate bank is anonymous, deterministic and distinguishes qualification from skill evidence', async (t) => {
+  const { request, login } = await setup(t, { scenario: 'qualified' }); const employer = await login('employer-a');
+  const page = (await request('GET', '/api/v1/candidates?mode=recommended&needId=need-001&grade=middle&specialization=backend', { actor: employer })).body;
+  assertAnonymous(page); assert.deepEqual(page.items.map((item) => item.id), ['candidate031', 'candidate024', 'candidate018']);
+  assert.equal(page.items[2].verifiedGrade, 'middle'); assert.equal(page.items[2].match.requirements.find((item) => item.skillId === 'postgresql').status, 'not_evidenced');
+  const fsp = (await request('GET', '/api/v1/candidates?fsp=verified', { actor: employer })).body;
+  assert.deepEqual(fsp.items.map((item) => item.id), ['candidate031']);
+  const first = (await request('GET', '/api/v1/candidates?page=1&pageSize=2', { actor: employer })).body;
+  const second = (await request('GET', '/api/v1/candidates?page=2&pageSize=2', { actor: employer })).body;
+  assert.equal(new Set([...first.items, ...second.items].map((item) => item.id)).size, 4);
+  const candidate = (await request('GET', '/api/v1/candidates/candidate024?needId=need-001', { actor: employer })).body; assertAnonymous(candidate); assert.equal(candidate.match.requiredMet, 2);
+  const graph = (await request('GET', '/api/v1/candidates/candidate024/graph', { actor: employer })).body; assertAnonymous(graph); assertGraph(graph);
+  const plan = (await request('GET', '/api/v1/candidates/candidate018/gap-plan?needId=need-001', { actor: employer })).body;
+  assert.ok(plan.items.some((item) => item.skillId === 'postgresql' && item.acceptedCompetitionIds.includes('competition-demo-api')));
+  await request('GET', '/api/v1/candidates?mode=recommended', { actor: employer, status: 422 });
+});
+
+test('shortlists persist across filters and preserve each company membership', async (t) => {
+  const { request, login } = await setup(t); const a = await login('employer-a'); const b = await login('employer-b');
+  let list = (await request('GET', '/api/v1/shortlists/shortlist-001', { actor: a })).body; assert.equal(list.count, 3);
+  await request('GET', '/api/v1/candidates?specialization=backend&grade=middle', { actor: a });
+  assert.deepEqual((await request('GET', '/api/v1/shortlists/shortlist-001', { actor: a })).body.members, list.members);
+  await request('GET', '/api/v1/shortlists/shortlist-001', { actor: b, status: 404 });
+  list = (await request('PUT', '/api/v1/shortlists/shortlist-001/members/candidate031', { actor: a })).body; assert.equal(list.count, 4);
+  list = (await request('PUT', '/api/v1/shortlists/shortlist-001/members/candidate031', { actor: a })).body; assert.equal(list.count, 4);
+  list = (await request('DELETE', '/api/v1/shortlists/shortlist-001/members/candidate031', { actor: a })).body; assert.equal(list.count, 3);
+  const other = (await request('POST', '/api/v1/shortlists', { actor: b, body: { title: 'Отдельный список' }, status: 201 })).body; assert.notEqual(other.id, 'shortlist-001');
+  await request('PATCH', `/api/v1/shortlists/${other.id}`, { actor: b, body: { title: 'Новый заголовок' } });
+  await request('GET', '/api/v1/shortlists', { actor: b });
+  await request('DELETE', `/api/v1/shortlists/${other.id}`, { actor: b, status: 204 });
+  assert.equal((await request('GET', '/api/v1/shortlists/shortlist-001', { actor: a })).body.count, 3);
+});
+
+test('direct invitations freeze terms, are idempotent, and disclose only selected fields to the accepting company', async (t) => {
+  const { request, login } = await setup(t); const a = await login('employer-a'); const b = await login('employer-b'); const candidate = await login('candidate024'); const other = await login('candidate-new');
+  await request('GET', '/api/v1/me/gap-plan?needId=need-001', { actor: candidate, status: 404 });
+  let disclosure = (await request('GET', '/api/v1/candidates/candidate024/disclosure', { actor: a })).body; assert.equal(disclosure.granted, false);
+  const input = { candidateId: 'candidate024', needId: 'need-001', message: 'Приглашаем обсудить разработку API.' };
+  await request('POST', '/api/v1/invitations', { actor: a, body: input, key: null, status: 400 });
+  const invite = (await request('POST', '/api/v1/invitations', { actor: a, body: input, key: 'invite-key-a-001', status: 201 })).body;
+  const replay = (await request('POST', '/api/v1/invitations', { actor: a, body: input, key: 'invite-key-a-001', status: 201 })).body; assert.equal(replay.id, invite.id);
+  await request('POST', '/api/v1/invitations', { actor: a, body: { ...input, message: 'Изменено' }, key: 'invite-key-a-001', status: 409 });
+  await request('POST', '/api/v1/invitations', { actor: a, body: input, status: 409 });
+  await request('PATCH', '/api/v1/needs/need-001', { actor: a, body: { salary: { from: 300000, to: 400000, currency: 'RUB', period: 'month', taxBasis: 'gross' } } });
+  assert.equal((await request('GET', `/api/v1/invitations/${invite.id}`, { actor: a })).body.need.salary.from, 200000);
+  await request('GET', `/api/v1/invitations/${invite.id}`, { actor: b, status: 404 });
+  await request('GET', `/api/v1/me/invitations/${invite.id}`, { actor: other, status: 404 });
+  await request('GET', `/api/v1/me/invitations/${invite.id}`, { actor: candidate });
+  assert.equal((await request('POST', `/api/v1/me/invitations/${invite.id}/view`, { actor: candidate })).body.status, 'viewed');
+  await request('GET', '/api/v1/me/gap-plan?needId=need-001', { actor: candidate });
+  await request('GET', '/api/v1/me/invitations', { actor: candidate });
+  await request('GET', '/api/v1/invitations', { actor: a });
+  const accepted = (await request('POST', `/api/v1/me/invitations/${invite.id}/accept`, { actor: candidate, body: { disclose: ['name', 'email'] } })).body; assert.equal(accepted.status, 'accepted');
+  await request('POST', `/api/v1/me/invitations/${invite.id}/accept`, { actor: candidate, body: { disclose: ['email', 'name'] } });
+  await request('POST', `/api/v1/me/invitations/${invite.id}/accept`, { actor: candidate, body: { disclose: ['sourceLinks'] }, status: 409 });
+  await request('POST', `/api/v1/invitations/${invite.id}/withdraw`, { actor: a, status: 409 });
+  await request('POST', `/api/v1/me/invitations/${invite.id}/decline`, { actor: candidate, status: 409 });
+  disclosure = (await request('GET', '/api/v1/candidates/candidate024/disclosure', { actor: a })).body;
+  assert.deepEqual(disclosure.fields, { name: 'Алексей Морозов', email: 'alexey@example.com' });
+  const hidden = (await request('GET', '/api/v1/candidates/candidate024/disclosure', { actor: b })).body; assert.deepEqual(hidden.fields, {});
+  assertAnonymous((await request('GET', '/api/v1/candidates/candidate024', { actor: a })).body);
+});
+
+test('declining and withdrawing never grant contacts and terminal transitions remain stable', async (t) => {
+  const { request, login } = await setup(t); const a = await login('employer-a'); const candidate = await login('candidate024');
+  const input = { candidateId: 'candidate024', needId: 'need-001', message: 'Обсудим вакансию.' };
+  let invite = (await request('POST', '/api/v1/invitations', { actor: a, body: input, status: 201 })).body;
+  await request('POST', `/api/v1/me/invitations/${invite.id}/decline`, { actor: candidate });
+  await request('POST', `/api/v1/me/invitations/${invite.id}/decline`, { actor: candidate });
+  assert.equal((await request('GET', '/api/v1/candidates/candidate024/disclosure', { actor: a })).body.granted, false);
+  await request('POST', `/api/v1/me/invitations/${invite.id}/accept`, { actor: candidate, body: { disclose: ['email'] }, status: 409 });
+  invite = (await request('POST', '/api/v1/invitations', { actor: a, body: input, status: 201 })).body;
+  await request('POST', `/api/v1/invitations/${invite.id}/withdraw`, { actor: a });
+  await request('POST', `/api/v1/invitations/${invite.id}/withdraw`, { actor: a });
+  await request('POST', `/api/v1/me/invitations/${invite.id}/accept`, { actor: candidate, body: { disclose: ['email'] }, status: 409 });
+});
+
+test('PDF export is a real current-profile PDF; fixture import is asynchronous and explicitly confirmed', async (t) => {
+  const { request, login, job } = await setup(t); const candidate = await login('candidate024');
+  const exported = await request('GET', '/api/v1/me/profile/export', { actor: candidate });
+  assert.ok(exported.buffer.subarray(0, 5).equals(Buffer.from('%PDF-'))); assert.ok(exported.buffer.subarray(-1024).includes(Buffer.from('%%EOF')));
+  assert.equal(exported.response.headers.get('content-type'), 'application/pdf');
+  await writeFile(new URL('../mock-server/fixtures/profile-export.pdf', import.meta.url), exported.buffer);
+  const form = new FormData(); form.set('file', new Blob([exported.buffer], { type: 'application/pdf' }), 'profile.pdf');
+  const imported = (await request('POST', '/api/v1/me/profile/imports', { actor: candidate, raw: form, status: 202 })).body;
+  await request('POST', `/api/v1/me/profile/imports/${imported.id}/confirm`, { actor: candidate, body: { profile: { name: 'Имя' } }, status: 409 });
+  const result = await job(imported.id, candidate); assert.equal(result.result.parser, 'fixture_preview'); assert.equal(result.result.preview.experienceMonths, null);
+  await request('POST', `/api/v1/me/profile/imports/${imported.id}/confirm`, { actor: candidate, body: { profile: result.result.preview } });
+  await request('POST', `/api/v1/me/profile/imports/${imported.id}/confirm`, { actor: candidate, body: { profile: { name: 'Повтор' } }, status: 409 });
+  const invalid = new FormData(); invalid.set('file', new Blob(['not-a-pdf'], { type: 'application/pdf' }), 'bad.pdf');
+  await request('POST', '/api/v1/me/profile/imports', { actor: candidate, raw: invalid, status: 422 });
+});
+
+test('scenario reset clears sessions and supports no-FSP, empty and error states', async (t) => {
+  const { request, login } = await setup(t); let employer = await login('employer-a');
+  await request('POST', '/__mock__/reset', { body: { scenario: 'no_fsp' } });
+  await request('GET', '/api/v1/session', { actor: employer, status: 401 }); employer = await login('employer-a');
+  assert.equal((await request('GET', '/api/v1/candidates?fsp=verified', { actor: employer })).body.total, 0);
+  assert.ok((await request('GET', '/api/v1/candidates', { actor: employer })).body.total > 0);
+  await request('POST', '/__mock__/reset', { body: { scenario: 'empty_bank' } }); employer = await login('employer-a');
+  assert.equal((await request('GET', '/api/v1/candidates', { actor: employer })).body.total, 0);
+  assert.equal((await request('GET', '/api/v1/shortlists/shortlist-001', { actor: employer })).body.count, 3);
+  await request('POST', '/__mock__/reset', { body: { scenario: 'api_error' } }); employer = await login('employer-a');
+  await request('GET', '/api/v1/candidates', { actor: employer, status: 503 });
+});
+
+after(async () => {
+  const report = { contractVersion: '0.1.0', routeCount: routes.length, coveredOperationCount: coverage.size, operations: routes.map((route) => ({ operationId: route.operationId, method: route.method.toUpperCase(), path: route.path, observedStatuses: (coverage.get(route.operationId) ?? []).sort((a, b) => a - b) })) };
+  await writeFile(new URL('contract-coverage.json', import.meta.url), `${JSON.stringify(report, null, 2)}\n`);
+  const missing = report.operations.filter((entry) => !entry.observedStatuses.length);
+  assert.deepEqual(missing.map((entry) => entry.operationId), [], 'Every declared operation must be exercised');
+});
