@@ -1,0 +1,34 @@
+[Unit]
+Description=FSP demo API (stateful HTTP mock with synthetic data)
+After=network.target
+
+[Service]
+Type=simple
+User=fsp
+Group=fsp
+WorkingDirectory=/opt/fsp/current/mock-server
+Environment=NODE_ENV=production
+# The filesystem is read-only for the service, so Bun's transpiler cache stays off.
+Environment=BUN_RUNTIME_TRANSPILER_CACHE_PATH=0
+Environment=HOST=127.0.0.1
+Environment=PORT=4010
+Environment=FSP_MOCK_SCENARIO=baseline
+Environment=FSP_MOCK_DEV_ROUTES=0
+EnvironmentFile=/etc/fsp/mock-api.env
+ExecStart=/opt/bun/bin/bun src/server.mjs
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+LockPersonality=yes
+MemoryMax=1G
+
+[Install]
+WantedBy=multi-user.target

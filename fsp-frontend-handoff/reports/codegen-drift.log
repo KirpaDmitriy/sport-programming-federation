@@ -1,6 +1,0 @@
-Command: bun run check
-Working directory: tools/contract-codegen
-Exit code: 0
-
-Generated types match the source contract.
-$ bun generate.mjs --check

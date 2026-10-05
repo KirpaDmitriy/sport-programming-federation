@@ -20,7 +20,7 @@ export default defineConfig({
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 } } }],
   webServer: [
     {
-      command: 'bun run --cwd ../fsp-frontend-handoff/mock-server start',
+      command: 'bun run --cwd ../mock-server start',
       url: 'http://127.0.0.1:4010/health',
       reuseExistingServer: true,
     },
