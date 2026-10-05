@@ -4,7 +4,7 @@ This isolated package generates TypeScript declarations and the [operation index
 
 ## Toolchain
 
-Use Bun 1.4.2 or newer. The application uses TypeScript 7.0.2; this tool deliberately uses TypeScript 5.9.3 to satisfy `openapi-typescript@7.13.0`'s declared `^5.x` peer. Keep this package isolated from the application compiler. The real generated `bun.lock` is included.
+Use Bun 1.4.2 or newer. The application uses TypeScript 7.0.2; this tool deliberately uses TypeScript 5.9.3 to satisfy `openapi-typescript@7.13.0`'s declared `^5.x` peer. Keep this package isolated from the application compiler; its dependencies are pinned in `bun.lock`.
 
 From the repository root:
 
@@ -14,8 +14,8 @@ bun run --cwd contracts/codegen generate
 bun run --cwd contracts/codegen check
 ```
 
-`bun run codegen` and `bun run codegen:check` in `frontend/` call the same scripts.
-
+`bun run codegen` and `bun run codegen:check` in `frontend/` call the same scripts; `just contract` rebuilds the
+contract from the mock and then runs `generate`.
 
 ## Outputs and checks
 
