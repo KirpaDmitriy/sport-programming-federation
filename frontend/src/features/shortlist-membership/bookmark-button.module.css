@@ -1,0 +1,7 @@
+.member {
+  color: var(--fsp-color-primary);
+}
+
+.member svg {
+  fill: currentColor;
+}
