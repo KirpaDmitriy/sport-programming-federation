@@ -1,5 +1,5 @@
 [Unit]
-Description=KodRazryad verified talent platform
+Description=Vygotsky verified talent platform
 After=network.target
 
 [Service]
@@ -7,7 +7,7 @@ Type=simple
 User=dima
 Group=dima
 WorkingDirectory=/opt/kontur-talent
-Environment=KODRAZRYAD_DATABASE=/var/lib/kontur-talent/kontur.sqlite3
+Environment=VYGOTSKY_DATABASE=/var/lib/kontur-talent/kontur.sqlite3
 ExecStart=/opt/kontur-talent/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8010 --workers 1
 Restart=on-failure
 RestartSec=3

@@ -2,7 +2,7 @@
 
 ## Целевая схема
 
-«КодРазряд» запускается под сохранённым техническим unit `kontur-talent.service`:
+«Выготский» запускается под сохранённым техническим unit `kontur-talent.service`:
 
 - код: `/opt/kontur-talent`;
 - виртуальное окружение: `/opt/kontur-talent/.venv`;

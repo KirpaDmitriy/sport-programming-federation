@@ -18,7 +18,7 @@ def service(request: Request) -> TalentService:
 
 @router.get("/health", tags=["system"])
 def health() -> dict:
-    return {"status": "ok", "service": "kodrazryad", "offline": True}
+    return {"status": "ok", "service": "vygotsky", "offline": True}
 
 
 @router.get("/catalog", tags=["catalog"])

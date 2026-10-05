@@ -20,8 +20,9 @@ from app.web.applications import router as applications_router
 def create_app(database_path: str | Path | None = None) -> FastAPI:
     path = Path(
         database_path
+        or os.environ.get("VYGOTSKY_DATABASE")
         or os.environ.get("KODRAZRYAD_DATABASE")
-        or os.environ.get("KONTUR_DATABASE", "data/kodrazryad.sqlite3")
+        or os.environ.get("KONTUR_DATABASE", "data/vygotsky.sqlite3")
     )
 
     @asynccontextmanager
@@ -35,7 +36,7 @@ def create_app(database_path: str | Path | None = None) -> FastAPI:
         yield
 
     app = FastAPI(
-        title="КодРазряд API",
+        title="Выготский API",
         summary="Подтверждённые компетенции и обратный подбор в ИТ",
         version="0.1.0",
         lifespan=lifespan,

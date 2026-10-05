@@ -1,1 +1,1 @@
-"""KodRazryad talent platform."""
+"""Vygotsky talent platform."""
