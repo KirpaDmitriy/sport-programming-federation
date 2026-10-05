@@ -2,7 +2,7 @@
 
 ## Целевая схема
 
-«Контур» запускается отдельным unit `kontur-talent.service`:
+«КодРазряд» запускается под сохранённым техническим unit `kontur-talent.service`:
 
 - код: `/opt/kontur-talent`;
 - виртуальное окружение: `/opt/kontur-talent/.venv`;

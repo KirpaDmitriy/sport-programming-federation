@@ -72,7 +72,7 @@ function renderCandidates() {
     return categoryMatch && (!query || haystack.includes(query));
   });
   if (!matches.length) {
-    $("#candidate-grid").innerHTML = '<div class="empty-state">В этом контуре пока никого. Снимите фильтр или выберите другую вакансию.</div>';
+    $("#candidate-grid").innerHTML = '<div class="empty-state">В этой категории пока никого. Снимите фильтр или выберите другую вакансию.</div>';
     return;
   }
   $("#candidate-grid").innerHTML = matches.map((candidate) => {
@@ -180,7 +180,7 @@ async function loadCandidateDashboard() {
   const gaps = candidate.match.gaps.slice(0, 4);
   $("#candidate-match").innerHTML = `<div class="match-big"><strong>${Math.round(candidate.match.score)}</strong><span>/ 100 match</span></div><div class="progress"><i style="width:${candidate.match.score}%"></i></div><div class="gap-list">${gaps.length ? gaps.map((gap) => `<div class="gap-item"><span>${html(skillById(gap.skill_id)?.name)}</span><span>−${percent(gap.deficit)}</span></div>`).join("") : '<p class="quiet">Все требования подтверждены. Можно идти на интервью.</p>'}</div><p class="quiet">${html(vacancy.title)} · ${html(vacancy.employer)}</p>`;
   $("#recommendations").innerHTML = candidate.recommendations.length ? candidate.recommendations.slice(0, 2).map((item) => { const competition = competitionById(item.competition_id); return `<div class="recommendation"><strong>${html(competition?.name || item.competition_id)}</strong><span>Подтвердит: ${item.closes_skills.map((id) => html(skillById(id)?.name)).join(", ")}</span></div>`; }).join("") : '<p class="quiet">Граф цели закрыт. Выберите более сложную вакансию — найдём следующий шаг.</p>';
-  $("#evidence-list").innerHTML = candidate.evidence.map((item) => `<div class="evidence-row"><div class="place">#${item.placement}</div><div><strong>${html(item.competition)}</strong><span>${html(item.discipline)} · роль: ${html(item.role)}${item.rank ? ` · разряд ${html(item.rank)}` : ""}</span></div><span class="verified">${item.official ? "ФСП ✓" : html(item.source)}</span></div>`).join("");
+  $("#evidence-list").innerHTML = candidate.evidence.map((item) => `<div class="evidence-row"><div class="place">#${item.placement}</div><div><strong>${html(item.competition)}</strong><span>${html(item.discipline)} · роль: ${html(item.role)}${item.rank ? ` · разряд ${html(item.rank)}` : ""}</span></div><span class="verified">${item.source === "fsp" ? "ФСП · mock" : html(item.source)}</span></div>`).join("");
   $("#offer-count").textContent = candidate.offers.length;
   $("#offer-list").innerHTML = candidate.offers.length ? candidate.offers.map((item) => `<div class="offer-item"><strong>${html(item.title)}</strong><span>${html(item.employer)} · ${money(item.salary_from)} — ${money(item.salary_to)}</span></div>`).join("") : '<p class="quiet">Новых предложений пока нет. Профиль уже виден работодателям.</p>';
 }

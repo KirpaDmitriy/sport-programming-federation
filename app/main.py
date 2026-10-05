@@ -13,7 +13,11 @@ from app.web.api import router
 
 
 def create_app(database_path: str | Path | None = None) -> FastAPI:
-    path = Path(database_path or os.environ.get("KONTUR_DATABASE", "data/kontur.sqlite3"))
+    path = Path(
+        database_path
+        or os.environ.get("KODRAZRYAD_DATABASE")
+        or os.environ.get("KONTUR_DATABASE", "data/kodrazryad.sqlite3")
+    )
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -26,7 +30,7 @@ def create_app(database_path: str | Path | None = None) -> FastAPI:
         yield
 
     app = FastAPI(
-        title="Контур API",
+        title="КодРазряд API",
         summary="Подтверждённые компетенции и обратный подбор в ИТ",
         version="0.1.0",
         lifespan=lifespan,

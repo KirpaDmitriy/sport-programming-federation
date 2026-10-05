@@ -1,1 +1,1 @@
-"""Kontur talent platform."""
+"""KodRazryad talent platform."""

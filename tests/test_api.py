@@ -10,7 +10,7 @@ def client(tmp_path):
 
 def test_health_catalog_and_ranked_matches(tmp_path) -> None:
     with client(tmp_path) as http:
-        assert http.get("/api/v1/health").json()["status"] == "ok"
+        assert http.get("/api/v1/health").json() == {"status": "ok", "service": "kodrazryad", "offline": True}
         catalog = http.get("/api/v1/catalog").json()
         matches = http.get("/api/v1/vacancies/ml-engineer/matches").json()
 
@@ -28,6 +28,8 @@ def test_browser_shell_and_assets_are_served(tmp_path) -> None:
 
     assert page.status_code == 200
     assert "Ищите доказательства" in page.text
+    assert "КодРазряд — таланты с доказательствами" in page.text
+    assert "Демо · контракт ФСП" in page.text
     assert 'id="requirement-builder"' in page.text
     assert 'id="competition-policy"' in page.text
     assert 'id="data-dialog"' in page.text
@@ -52,7 +54,7 @@ def test_candidate_graph_and_recommendations(tmp_path) -> None:
 def test_create_vacancy_and_offer_end_to_end(tmp_path) -> None:
     vacancy = {
         "id": "python-intern",
-        "employer": "Контур Лаб",
+        "employer": "КодРазряд Лаб",
         "title": "Python-разработчик",
         "grade": "Junior",
         "work_format": "remote",

@@ -7,13 +7,13 @@
     "internal_smoke": "passed",
     "external_smoke": "passed",
     "openapi_public": "passed",
-    "kontur_talent_service": "active",
+    "application_service": "kontur-talent.service: active",
     "metroguard_service": "active",
     "nginx_service": "active"
   },
   "runtime": {
-    "kontur_memory_bytes": 34988032,
-    "kontur_port": 8010,
+    "application_memory_bytes": 34988032,
+    "application_port": 8010,
     "metroguard_port": 8000,
     "metroguard_best_algorithm": "memory_hybrid"
   }

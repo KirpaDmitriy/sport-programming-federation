@@ -4,23 +4,23 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#111114">
-    <meta name="description" content="Контур — доказательный подбор ИТ-специалистов по результатам соревнований.">
-    <title>Контур — таланты с доказательствами</title>
+    <meta name="description" content="КодРазряд — доказательный подбор ИТ-специалистов по результатам соревнований.">
+    <title>КодРазряд — таланты с доказательствами</title>
     <link rel="stylesheet" href="/assets/styles.css">
   </head>
   <body>
     <div class="ambient ambient-one"></div>
     <div class="ambient ambient-two"></div>
     <header class="topbar">
-      <a class="brand" href="#" aria-label="Контур — на главную">
+      <a class="brand" href="#" aria-label="КодРазряд — на главную">
         <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
-        <span>контур</span>
+        <span>кодразряд</span>
       </a>
       <nav class="role-switch" aria-label="Режим приложения">
         <button class="role-button active" data-view="employer">Работодатель</button>
         <button class="role-button" data-view="candidate">Кандидат</button>
       </nav>
-      <button class="source-pill" id="open-data"><span></span> Данные ФСП синхронизированы</button>
+      <button class="source-pill" id="open-data"><span></span> Демо · контракт ФСП</button>
     </header>
 
     <main>
@@ -29,7 +29,7 @@
           <div class="hero-copy">
             <p class="eyebrow">Обратный подбор для ИТ</p>
             <h1>Ищите не резюме.<br><em>Ищите доказательства.</em></h1>
-            <p class="hero-lead">Результаты соревнований превращаются в понятный граф навыков. Вы задаёте критичность — Контур показывает, кто действительно подходит.</p>
+            <p class="hero-lead">Результаты соревнований превращаются в понятный граф навыков. Вы задаёте критичность — КодРазряд показывает, кто действительно подходит.</p>
             <div class="hero-actions">
               <button class="button button-lime" id="start-search">Смотреть кандидатов <span>↗</span></button>
               <button class="button button-ghost" id="open-vacancy">+ Новая вакансия</button>
@@ -44,11 +44,11 @@
             <span class="orbit-node node-c">Data</span>
             <span class="orbit-node node-d">Product</span>
           </div>
-          <div class="hero-proof"><strong>ФСП</strong><span>официальные результаты<br>как карьерный капитал</span></div>
+          <div class="hero-proof"><strong>ФСП</strong><span>готовы подключить<br>официальный API</span></div>
         </section>
 
         <section class="trust-strip shell" aria-label="Показатели платформы">
-          <div><strong id="candidate-count">—</strong><span>проверенных профилей</span></div>
+          <div><strong id="candidate-count">—</strong><span>демо-профилей</span></div>
           <div><strong id="competition-count">—</strong><span>источников доказательств</span></div>
           <div><strong>100%</strong><span>объяснимый мэтчинг</span></div>
           <div class="trust-note">Без ключевых слов<br>и слепых откликов</div>
@@ -77,7 +77,7 @@
       <section id="candidate-view" class="view shell candidate-page">
         <div class="candidate-topline">
           <div>
-            <p class="eyebrow coral">Личный карьерный контур</p>
+            <p class="eyebrow coral">Карта карьерного роста</p>
             <h1>Ваши навыки.<br><em>Теперь с доказательствами.</em></h1>
           </div>
           <label class="persona-select">Демо-профиль<select id="persona-select" aria-label="Выбрать демо-профиль"></select></label>
@@ -109,7 +109,7 @@
     </main>
 
     <footer class="footer shell">
-      <div><span class="brand small"><span class="brand-mark"><i></i><i></i><i></i></span>контур</span><p>Спортивные достижения → карьерные возможности</p></div>
+      <div><span class="brand small"><span class="brand-mark"><i></i><i></i><i></i></span>кодразряд</span><p>Спортивные достижения → карьерные возможности</p></div>
       <div><span>Данные</span><strong>ФСП · Codeforces · хакатоны</strong></div>
       <div><span>Для жюри</span><a href="/docs">OpenAPI ↗</a></div>
     </footer>
@@ -148,7 +148,7 @@
         <div class="form-row thirds">
           <label>Грейд<input name="grade" value="Middle" required></label>
           <label>Формат<select name="work_format"><option value="remote">Удалённо</option><option value="hybrid">Гибрид</option><option value="office">Офис</option></select></label>
-          <label>Политика доказательств<select name="policy_mode"><option value="platform_rating">Рейтинг Контура</option><option value="allowlist">Только выбранные соревнования</option></select></label>
+          <label>Политика доказательств<select name="policy_mode"><option value="platform_rating">Рейтинг платформы</option><option value="allowlist">Только выбранные соревнования</option></select></label>
         </div>
         <div class="form-row">
           <label>Зарплата от<input name="salary_from" type="number" value="180000" min="1" required></label>
@@ -163,7 +163,7 @@
           <div id="competition-options"></div>
         </fieldset>
         <div class="policy-note">
-          <strong>Рейтинг Контура</strong>
+          <strong>Рейтинг платформы</strong>
           <span>Учитывает официальность, массовость, сложность и тематическую близость соревнования.</span>
         </div>
         <button class="button button-dark" type="submit">Создать и начать подбор</button>
@@ -174,14 +174,14 @@
     <dialog id="data-dialog" class="dialog data-dialog">
       <button class="dialog-close" data-close aria-label="Закрыть">×</button>
       <p class="eyebrow blue">Прозрачность данных</p>
-      <h2>Что считает Контур</h2>
+      <h2>Что считает КодРазряд</h2>
       <p>ФСП — основной доверенный источник спортивных результатов: дисциплина, соревнование, место, роль в команде и спортивный разряд. В демо официальный API заменён версионированным мок-контрактом той же структуры.</p>
       <div class="source-grid">
         <div><strong>ФСП</strong><span>официальность · разряды · роли</span></div>
         <div><strong>Codeforces</strong><span>массовость · алгоритмы</span></div>
         <div><strong>Хакатоны</strong><span>продукт · ML · команда</span></div>
       </div>
-      <p class="quiet">Контур не смешивает уровень навыка и достоверность: в профиле видны обе величины и каждое исходное доказательство. Демонстрационные имена и компании вымышлены.</p>
+      <p class="quiet">КодРазряд не смешивает уровень навыка и достоверность: в профиле видны обе величины и каждое исходное доказательство. Все показанные имена, компании и результаты вымышлены.</p>
     </dialog>
 
     <div id="toast" class="toast" role="status"></div>
