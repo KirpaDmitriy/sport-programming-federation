@@ -46,6 +46,11 @@ ufw --force enable >/dev/null
 cat > /etc/fsp/mock-api.env <<EOF
 FSP_MOCK_ALLOWED_ORIGINS=https://$PUBLIC_IP
 EOF
+# The public stand runs on the synthetic mock: the UI explains that and shows its fixed demo code.
+cat > /etc/fsp/frontend-build.env <<EOF
+VITE_DEMO_STAND=1
+VITE_DEMO_EMAIL_CODE=123456
+EOF
 install -m 644 "$HERE/fsp-mock-api.service" /etc/systemd/system/fsp-mock-api.service
 systemctl daemon-reload
 systemctl enable fsp-mock-api.service >/dev/null
