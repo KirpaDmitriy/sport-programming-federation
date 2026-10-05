@@ -25,7 +25,7 @@
 | [`frontend/`](frontend/README.md) | React-приложение «ФСП / Карьера» |
 | [`mock-server/`](mock-server/README.md) | HTTP-мок контракта: среда разработки фронтенда и эталон поведения для бэкенда |
 | [`infra/`](infra/README.md) | демо-стенд <https://188.166.88.183>: подготовка сервера, деплой, nginx |
-| [`docs/product/`](docs/product/PRODUCT_RULES.md) | правила продукта, матрица требований, решения и материалы организаторов |
+| [`docs/product/`](docs/product/BUSINESS_RULES.md) | бизнес-правила платформы, матрица требований и ТЗ организаторов |
 
 Владельцы модулей и правила работы — в [AGENTS.md](AGENTS.md); `just` показывает команды модульной версии.
 

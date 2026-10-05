@@ -14,7 +14,7 @@ backend, stand).
 | [`mock-server/`](mock-server/README.md) | Данил | Stateful HTTP mock of the contract: frontend dev server and behavior reference for the backend |
 | [`frontend/`](frontend/README.md) | Данил | React/TypeScript/TanStack application (FSD); its own rules are in [`frontend/AGENTS.md`](frontend/AGENTS.md) |
 | [`infra/`](infra/README.md) | Данил | Demo stand on one DigitalOcean droplet: provisioning, deployment, nginx |
-| [`docs/product/`](docs/product/PRODUCT_RULES.md) | shared | Product rules, requirements traceability, decisions, organizer source material |
+| [`docs/product/`](docs/product/BUSINESS_RULES.md) | shared | Business rules as implemented, requirements traceability, the organizer's specification |
 
 ## Rules
 
