@@ -3,9 +3,8 @@
 React application for the FSP reverse-hiring platform: candidates confirm a specialization and grade through an
 assessment and receive salary-bearing invitations; employers describe needs, search an anonymous categorized bank,
 keep shortlists and invite a specific person. The UI talks to the proposed OpenAPI contract in
-[`../fsp-frontend-handoff/contracts/openapi.json`](../fsp-frontend-handoff/contracts/openapi.json). Today that
-contract is served by the stateful HTTP mock from the handoff package; the Rust backend can replace it behind the
-same `/api/v1` boundary.
+[`../contracts/openapi.json`](../contracts/openapi.json). Today that contract is served by the stateful HTTP mock
+in [`../mock-server`](../mock-server/README.md); the Rust backend replaces it behind the same `/api/v1` boundary.
 
 Everything shown by the mock is synthetic: GitHub/FSP data, checks, assistant answers and assessment results are
 scenario fixtures, e-mail is a demo mailbox. The UI says so wherever it matters.
@@ -50,7 +49,7 @@ self-application, chat, recurring tasks) have no controls.
 ```sh
 cd frontend
 bun install --frozen-lockfile
-bun install --cwd ../fsp-frontend-handoff/mock-server --frozen-lockfile   # once
+bun install --cwd ../mock-server --frozen-lockfile   # once
 bun run mock      # terminal 1: mock API on 127.0.0.1:4010
 bun run dev       # terminal 2: http://127.0.0.1:5173
 ```
@@ -64,8 +63,8 @@ actors, reset mock scenarios (`baseline`, `qualified`, `assessment_failure`, `se
 
 ## Contract types
 
-Types come from the isolated generator in the handoff package, which writes the same output here and into the
-reference package:
+Types come from the isolated generator in [`../contracts/codegen`](../contracts/codegen/README.md), which also
+rewrites the contract's operation index:
 
 ```sh
 bun run codegen         # regenerate after a contract change
@@ -95,42 +94,13 @@ context per actor; the public suite only uses public flows and fresh accounts.
 | `VITE_DEMO_STAND` | unset (implied in `vite` dev mode) | Adds demo-stand copy and the seeded account hints to a production build |
 | `VITE_DEMO_EMAIL_CODE` | unset | Shown next to the code field when the server reports `delivery: mock_mailbox` |
 | `VITE_API_ORIGIN` | empty (same origin) | Tests set an absolute origin because Node cannot resolve relative URLs |
+| `FSP_API_TARGET` | `http://127.0.0.1:4010` (the mock) | Where `bun run dev` and `bun run preview` proxy `/api`, e.g. a backend on another port |
 
-## Demo stand deployment
+## Demo stand
 
-The stand is one DigitalOcean droplet (`fsp-career-demo`, Ubuntu 24.04) serving HTTPS on its IP address with a
-Let's Encrypt IP certificate (shortlived profile, 160 hours). nginx serves the built SPA with an `index.html`
-fallback, forwards only `/api/v1/` to the mock on `127.0.0.1:4010` with a loopback `Host`, marks the session cookie
-`Secure` and answers `/__mock__` with 404. The mock runs as the `fsp` user under `fsp-mock-api.service` with
-`FSP_MOCK_DEV_ROUTES=0` and the stand's origin in `FSP_MOCK_ALLOWED_ORIGINS`. The host has Bun only (`/opt/bun`, checksum
-verified at provisioning); releases are installed with `bun install --frozen-lockfile` and built with `bun run build`.
-
-Access material (SSH key, droplet metadata) lives in the git-ignored `../.fsp-infra/`.
-
-```sh
-# one-time, idempotent host setup (packages, pinned Bun, certbot, firewall, nginx, unit, certificate)
-scp -F .fsp-infra/ssh/config -r frontend/deploy fsp-demo:/root/fsp-deploy
-ssh -F .fsp-infra/ssh/config fsp-demo 'bash /root/fsp-deploy/provision.sh 188.166.88.183'
-
-# build a git ref on the host and switch /opt/fsp/current atomically (default ref: main)
-frontend/deploy/deploy.sh main
-
-# roll back to a previous release (the last five are kept)
-ssh -F .fsp-infra/ssh/config fsp-demo 'ls -1dt /opt/fsp/releases/*'
-ssh -F .fsp-infra/ssh/config fsp-demo 'ln -sfn /opt/fsp/releases/<sha> /opt/fsp/current && systemctl restart fsp-mock-api'
-```
-
-Operations on the host:
-
-| Task | Command |
-| --- | --- |
-| API status / logs | `systemctl status fsp-mock-api`, `journalctl -u fsp-mock-api -n 100` |
-| Reset demo data | `systemctl restart fsp-mock-api` (state is in memory; seeded `baseline` scenario) |
-| Certificate | `certbot certificates`; renewal by `snap.certbot.renew.timer`, three days before expiry, then `systemctl reload nginx` |
-| Renewal dry run | `certbot renew --cert-name fsp-demo --dry-run` |
-
-The demo API is shared by every visitor and keeps state only until restart. It is not production authentication:
-codes are fixed, there is no rate limiting beyond the mock's attempt counter, and data is synthetic.
+The stand at <https://188.166.88.183> builds this app on the host and serves it with nginx; the API behind it is
+still the mock. Provisioning, deployment, rollback and host operations are described in
+[`../infra/README.md`](../infra/README.md).
 
 ## Known limits
 

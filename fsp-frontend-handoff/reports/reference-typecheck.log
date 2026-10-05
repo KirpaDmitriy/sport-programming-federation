@@ -1,5 +1,0 @@
-Command: bun run typecheck
-Working directory: frontend-reference
-Exit code: 0
-
-$ tsc --noEmit
