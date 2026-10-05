@@ -35,6 +35,7 @@ def test_browser_shell_and_assets_are_served(tmp_path) -> None:
     assert 'id="data-dialog"' in page.text
     assert "async function boot" in script.text
     assert "prefers-reduced-motion" in styles.text
+    assert "max-width: 420px" in styles.text
 
 
 def test_candidate_graph_and_recommendations(tmp_path) -> None:

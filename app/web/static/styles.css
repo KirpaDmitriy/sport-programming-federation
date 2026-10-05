@@ -280,6 +280,12 @@ h1 em { font-style: normal; color: var(--lime); }
   .detail-skills { grid-template-columns: 1fr; }
 }
 
+@media (max-width: 420px) {
+  .topbar { grid-template-columns: auto 1fr; gap: 8px; }
+  .topbar > .brand > span:last-child { display: none; }
+  .role-switch { justify-self: end; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,*::before,*::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; transition-duration: .01ms !important; }
 }
