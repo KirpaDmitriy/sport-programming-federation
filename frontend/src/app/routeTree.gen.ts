@@ -13,6 +13,8 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as CandidateRouteRouteImport } from './routes/candidate/route'
 import { Route as EmployerRouteRouteImport } from './routes/employer/route'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as CandidateOnboardingRouteImport } from './routes/candidate/onboarding'
+import { Route as CandidateProfileRouteImport } from './routes/candidate/profile'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -34,37 +36,72 @@ const LoginRoute = LoginRouteImport.update({
   path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
+const CandidateOnboardingRoute = CandidateOnboardingRouteImport.update({
+  id: '/onboarding',
+  path: '/onboarding',
+  getParentRoute: () => CandidateRouteRoute,
+} as any)
+const CandidateProfileRoute = CandidateProfileRouteImport.update({
+  id: '/profile',
+  path: '/profile',
+  getParentRoute: () => CandidateRouteRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/candidate': typeof CandidateRouteRoute
+  '/candidate': typeof CandidateRouteRouteWithChildren
   '/employer': typeof EmployerRouteRoute
   '/login': typeof LoginRoute
+  '/candidate/onboarding': typeof CandidateOnboardingRoute
+  '/candidate/profile': typeof CandidateProfileRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/candidate': typeof CandidateRouteRoute
+  '/candidate': typeof CandidateRouteRouteWithChildren
   '/employer': typeof EmployerRouteRoute
   '/login': typeof LoginRoute
+  '/candidate/onboarding': typeof CandidateOnboardingRoute
+  '/candidate/profile': typeof CandidateProfileRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/candidate': typeof CandidateRouteRoute
+  '/candidate': typeof CandidateRouteRouteWithChildren
   '/employer': typeof EmployerRouteRoute
   '/login': typeof LoginRoute
+  '/candidate/onboarding': typeof CandidateOnboardingRoute
+  '/candidate/profile': typeof CandidateProfileRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/candidate' | '/employer' | '/login'
+  fullPaths:
+    | '/'
+    | '/candidate'
+    | '/employer'
+    | '/login'
+    | '/candidate/onboarding'
+    | '/candidate/profile'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/candidate' | '/employer' | '/login'
-  id: '__root__' | '/' | '/candidate' | '/employer' | '/login'
+  to:
+    | '/'
+    | '/candidate'
+    | '/employer'
+    | '/login'
+    | '/candidate/onboarding'
+    | '/candidate/profile'
+  id:
+    | '__root__'
+    | '/'
+    | '/candidate'
+    | '/employer'
+    | '/login'
+    | '/candidate/onboarding'
+    | '/candidate/profile'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  CandidateRouteRoute: typeof CandidateRouteRoute
+  CandidateRouteRoute: typeof CandidateRouteRouteWithChildren
   EmployerRouteRoute: typeof EmployerRouteRoute
   LoginRoute: typeof LoginRoute
 }
@@ -99,12 +136,40 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/candidate/onboarding': {
+      id: '/candidate/onboarding'
+      path: '/onboarding'
+      fullPath: '/candidate/onboarding'
+      preLoaderRoute: typeof CandidateOnboardingRouteImport
+      parentRoute: typeof CandidateRouteRoute
+    }
+    '/candidate/profile': {
+      id: '/candidate/profile'
+      path: '/profile'
+      fullPath: '/candidate/profile'
+      preLoaderRoute: typeof CandidateProfileRouteImport
+      parentRoute: typeof CandidateRouteRoute
+    }
   }
 }
 
+interface CandidateRouteRouteChildren {
+  CandidateOnboardingRoute: typeof CandidateOnboardingRoute
+  CandidateProfileRoute: typeof CandidateProfileRoute
+}
+
+const CandidateRouteRouteChildren: CandidateRouteRouteChildren = {
+  CandidateOnboardingRoute: CandidateOnboardingRoute,
+  CandidateProfileRoute: CandidateProfileRoute,
+}
+
+const CandidateRouteRouteWithChildren = CandidateRouteRoute._addFileChildren(
+  CandidateRouteRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  CandidateRouteRoute: CandidateRouteRoute,
+  CandidateRouteRoute: CandidateRouteRouteWithChildren,
   EmployerRouteRoute: EmployerRouteRoute,
   LoginRoute: LoginRoute,
 }
