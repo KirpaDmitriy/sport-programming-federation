@@ -1,8 +1,10 @@
 from dataclasses import asdict
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 
 from app.domain.models import Candidate
+from app.domain.scoring import build_profile
+from app.pdf_profile import build_candidate_pdf
 
 from .auth import current_user, require_role, store
 from .schemas import CandidateProfileIn, EmployerProfileIn
@@ -54,3 +56,35 @@ def update_employer_profile(
 @router.get("/vacancies")
 def account_vacancies(user: dict = Depends(require_role("employer")), database=Depends(store)) -> list[dict]:
     return [asdict(item) for item in database.owned_vacancies(user["id"])]
+
+
+@router.get("/profile.pdf", response_class=Response)
+def profile_pdf(user: dict = Depends(require_role("candidate")), database=Depends(store)) -> Response:
+    profile = database.candidate_profile(user["id"])
+    if profile is None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Complete candidate profile first")
+    candidate_id = profile["candidate_id"]
+    skills = database.skills()
+    competitions = database.competitions()
+    achievements = database.achievements(candidate_id)
+    computed = build_profile(
+        candidate_id,
+        skills,
+        competitions,
+        achievements,
+        test_signals=database.test_skill_signals(candidate_id),
+    )
+    evidence = []
+    for achievement in achievements:
+        competition = competitions[achievement.competition_id]
+        evidence.append({
+            **asdict(achievement),
+            "competition": competition.name,
+            "discipline": competition.discipline,
+        })
+    content = build_candidate_pdf(profile, asdict(computed), evidence)
+    return Response(
+        content,
+        media_type="application/pdf",
+        headers={"Content-Disposition": 'attachment; filename="vygotsky-profile.pdf"'},
+    )
