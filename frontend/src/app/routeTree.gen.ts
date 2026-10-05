@@ -22,10 +22,13 @@ import { Route as CandidateSkillsRouteImport } from './routes/candidate/skills'
 import { Route as CandidateSourcesRouteImport } from './routes/candidate/sources'
 import { Route as EmployerIndexRouteImport } from './routes/employer/index'
 import { Route as EmployerCompanyRouteImport } from './routes/employer/company'
+import { Route as EmployerInvitationsRouteImport } from './routes/employer/invitations'
+import { Route as EmployerSettingsRouteImport } from './routes/employer/settings'
 import { Route as CandidateAssessmentsIndexRouteImport } from './routes/candidate/assessments/index'
 import { Route as CandidateInvitationsIndexRouteImport } from './routes/candidate/invitations/index'
 import { Route as CandidateInvitationsInvitationIdRouteImport } from './routes/candidate/invitations/$invitationId'
 import { Route as EmployerCandidatesIndexRouteImport } from './routes/employer/candidates/index'
+import { Route as EmployerCandidatesCandidateIdRouteImport } from './routes/employer/candidates/$candidateId'
 import { Route as EmployerNeedsIndexRouteImport } from './routes/employer/needs/index'
 import { Route as EmployerNeedsNeedIdRouteImport } from './routes/employer/needs/$needId'
 import { Route as EmployerNeedsNewRouteImport } from './routes/employer/needs/new'
@@ -99,6 +102,16 @@ const EmployerCompanyRoute = EmployerCompanyRouteImport.update({
   path: '/company',
   getParentRoute: () => EmployerRouteRoute,
 } as any)
+const EmployerInvitationsRoute = EmployerInvitationsRouteImport.update({
+  id: '/invitations',
+  path: '/invitations',
+  getParentRoute: () => EmployerRouteRoute,
+} as any)
+const EmployerSettingsRoute = EmployerSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => EmployerRouteRoute,
+} as any)
 const CandidateAssessmentsIndexRoute =
   CandidateAssessmentsIndexRouteImport.update({
     id: '/assessments/',
@@ -122,6 +135,12 @@ const EmployerCandidatesIndexRoute = EmployerCandidatesIndexRouteImport.update({
   path: '/candidates/',
   getParentRoute: () => EmployerRouteRoute,
 } as any)
+const EmployerCandidatesCandidateIdRoute =
+  EmployerCandidatesCandidateIdRouteImport.update({
+    id: '/candidates/$candidateId',
+    path: '/candidates/$candidateId',
+    getParentRoute: () => EmployerRouteRoute,
+  } as any)
 const EmployerNeedsIndexRoute = EmployerNeedsIndexRouteImport.update({
   id: '/needs/',
   path: '/needs/',
@@ -173,9 +192,12 @@ export interface FileRoutesByFullPath {
   '/candidate/skills': typeof CandidateSkillsRoute
   '/candidate/sources': typeof CandidateSourcesRoute
   '/employer/company': typeof EmployerCompanyRoute
+  '/employer/invitations': typeof EmployerInvitationsRoute
+  '/employer/settings': typeof EmployerSettingsRoute
   '/candidate/': typeof CandidateIndexRoute
   '/employer/': typeof EmployerIndexRoute
   '/candidate/invitations/$invitationId': typeof CandidateInvitationsInvitationIdRoute
+  '/employer/candidates/$candidateId': typeof EmployerCandidatesCandidateIdRoute
   '/employer/needs/$needId': typeof EmployerNeedsNeedIdRoute
   '/employer/needs/new': typeof EmployerNeedsNewRoute
   '/employer/shortlists/$shortlistId': typeof EmployerShortlistsShortlistIdRoute
@@ -197,9 +219,12 @@ export interface FileRoutesByTo {
   '/candidate/skills': typeof CandidateSkillsRoute
   '/candidate/sources': typeof CandidateSourcesRoute
   '/employer/company': typeof EmployerCompanyRoute
+  '/employer/invitations': typeof EmployerInvitationsRoute
+  '/employer/settings': typeof EmployerSettingsRoute
   '/candidate': typeof CandidateIndexRoute
   '/employer': typeof EmployerIndexRoute
   '/candidate/invitations/$invitationId': typeof CandidateInvitationsInvitationIdRoute
+  '/employer/candidates/$candidateId': typeof EmployerCandidatesCandidateIdRoute
   '/employer/needs/$needId': typeof EmployerNeedsNeedIdRoute
   '/employer/needs/new': typeof EmployerNeedsNewRoute
   '/employer/shortlists/$shortlistId': typeof EmployerShortlistsShortlistIdRoute
@@ -224,9 +249,12 @@ export interface FileRoutesById {
   '/candidate/skills': typeof CandidateSkillsRoute
   '/candidate/sources': typeof CandidateSourcesRoute
   '/employer/company': typeof EmployerCompanyRoute
+  '/employer/invitations': typeof EmployerInvitationsRoute
+  '/employer/settings': typeof EmployerSettingsRoute
   '/candidate/': typeof CandidateIndexRoute
   '/employer/': typeof EmployerIndexRoute
   '/candidate/invitations/$invitationId': typeof CandidateInvitationsInvitationIdRoute
+  '/employer/candidates/$candidateId': typeof EmployerCandidatesCandidateIdRoute
   '/employer/needs/$needId': typeof EmployerNeedsNeedIdRoute
   '/employer/needs/new': typeof EmployerNeedsNewRoute
   '/employer/shortlists/$shortlistId': typeof EmployerShortlistsShortlistIdRoute
@@ -252,9 +280,12 @@ export interface FileRouteTypes {
     | '/candidate/skills'
     | '/candidate/sources'
     | '/employer/company'
+    | '/employer/invitations'
+    | '/employer/settings'
     | '/candidate/'
     | '/employer/'
     | '/candidate/invitations/$invitationId'
+    | '/employer/candidates/$candidateId'
     | '/employer/needs/$needId'
     | '/employer/needs/new'
     | '/employer/shortlists/$shortlistId'
@@ -276,9 +307,12 @@ export interface FileRouteTypes {
     | '/candidate/skills'
     | '/candidate/sources'
     | '/employer/company'
+    | '/employer/invitations'
+    | '/employer/settings'
     | '/candidate'
     | '/employer'
     | '/candidate/invitations/$invitationId'
+    | '/employer/candidates/$candidateId'
     | '/employer/needs/$needId'
     | '/employer/needs/new'
     | '/employer/shortlists/$shortlistId'
@@ -302,9 +336,12 @@ export interface FileRouteTypes {
     | '/candidate/skills'
     | '/candidate/sources'
     | '/employer/company'
+    | '/employer/invitations'
+    | '/employer/settings'
     | '/candidate/'
     | '/employer/'
     | '/candidate/invitations/$invitationId'
+    | '/employer/candidates/$candidateId'
     | '/employer/needs/$needId'
     | '/employer/needs/new'
     | '/employer/shortlists/$shortlistId'
@@ -417,6 +454,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof EmployerCompanyRouteImport
       parentRoute: typeof EmployerRouteRoute
     }
+    '/employer/invitations': {
+      id: '/employer/invitations'
+      path: '/invitations'
+      fullPath: '/employer/invitations'
+      preLoaderRoute: typeof EmployerInvitationsRouteImport
+      parentRoute: typeof EmployerRouteRoute
+    }
+    '/employer/settings': {
+      id: '/employer/settings'
+      path: '/settings'
+      fullPath: '/employer/settings'
+      preLoaderRoute: typeof EmployerSettingsRouteImport
+      parentRoute: typeof EmployerRouteRoute
+    }
     '/candidate/assessments/': {
       id: '/candidate/assessments/'
       path: '/assessments'
@@ -443,6 +494,13 @@ declare module '@tanstack/react-router' {
       path: '/candidates'
       fullPath: '/employer/candidates/'
       preLoaderRoute: typeof EmployerCandidatesIndexRouteImport
+      parentRoute: typeof EmployerRouteRoute
+    }
+    '/employer/candidates/$candidateId': {
+      id: '/employer/candidates/$candidateId'
+      path: '/candidates/$candidateId'
+      fullPath: '/employer/candidates/$candidateId'
+      preLoaderRoute: typeof EmployerCandidatesCandidateIdRouteImport
       parentRoute: typeof EmployerRouteRoute
     }
     '/employer/needs/': {
@@ -535,7 +593,10 @@ const CandidateRouteRouteWithChildren = CandidateRouteRoute._addFileChildren(
 
 interface EmployerRouteRouteChildren {
   EmployerCompanyRoute: typeof EmployerCompanyRoute
+  EmployerInvitationsRoute: typeof EmployerInvitationsRoute
+  EmployerSettingsRoute: typeof EmployerSettingsRoute
   EmployerIndexRoute: typeof EmployerIndexRoute
+  EmployerCandidatesCandidateIdRoute: typeof EmployerCandidatesCandidateIdRoute
   EmployerNeedsNeedIdRoute: typeof EmployerNeedsNeedIdRoute
   EmployerNeedsNewRoute: typeof EmployerNeedsNewRoute
   EmployerShortlistsShortlistIdRoute: typeof EmployerShortlistsShortlistIdRoute
@@ -546,7 +607,10 @@ interface EmployerRouteRouteChildren {
 
 const EmployerRouteRouteChildren: EmployerRouteRouteChildren = {
   EmployerCompanyRoute: EmployerCompanyRoute,
+  EmployerInvitationsRoute: EmployerInvitationsRoute,
+  EmployerSettingsRoute: EmployerSettingsRoute,
   EmployerIndexRoute: EmployerIndexRoute,
+  EmployerCandidatesCandidateIdRoute: EmployerCandidatesCandidateIdRoute,
   EmployerNeedsNeedIdRoute: EmployerNeedsNeedIdRoute,
   EmployerNeedsNewRoute: EmployerNeedsNewRoute,
   EmployerShortlistsShortlistIdRoute: EmployerShortlistsShortlistIdRoute,
