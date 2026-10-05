@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#111114">
+    <meta name="description" content="Контур — доказательный подбор ИТ-специалистов по результатам соревнований.">
+    <title>Контур — таланты с доказательствами</title>
+    <link rel="stylesheet" href="/assets/styles.css">
+  </head>
+  <body>
+    <div class="ambient ambient-one"></div>
+    <div class="ambient ambient-two"></div>
+    <header class="topbar">
+      <a class="brand" href="#" aria-label="Контур — на главную">
+        <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span>контур</span>
+      </a>
+      <nav class="role-switch" aria-label="Режим приложения">
+        <button class="role-button active" data-view="employer">Работодатель</button>
+        <button class="role-button" data-view="candidate">Кандидат</button>
+      </nav>
+      <div class="source-pill"><span></span> Данные ФСП синхронизированы</div>
+    </header>
+
+    <main>
+      <section id="employer-view" class="view active">
+        <section class="hero shell">
+          <div class="hero-copy">
+            <p class="eyebrow">Обратный подбор для ИТ</p>
+            <h1>Ищите не резюме.<br><em>Ищите доказательства.</em></h1>
+            <p class="hero-lead">Результаты соревнований превращаются в понятный граф навыков. Вы задаёте критичность — Контур показывает, кто действительно подходит.</p>
+            <div class="hero-actions">
+              <button class="button button-lime" id="start-search">Смотреть кандидатов <span>↗</span></button>
+              <button class="button button-ghost" id="open-vacancy">+ Новая вакансия</button>
+            </div>
+          </div>
+          <div class="hero-orbit" aria-label="Пример графа компетенций">
+            <div class="orbit-ring ring-one"></div>
+            <div class="orbit-ring ring-two"></div>
+            <div class="orbit-core"><strong>92</strong><small>match</small></div>
+            <span class="orbit-node node-a">Python</span>
+            <span class="orbit-node node-b">ML</span>
+            <span class="orbit-node node-c">Data</span>
+            <span class="orbit-node node-d">Product</span>
+          </div>
+          <div class="hero-proof"><strong>ФСП</strong><span>официальные результаты<br>как карьерный капитал</span></div>
+        </section>
+
+        <section class="trust-strip shell" aria-label="Показатели платформы">
+          <div><strong id="candidate-count">—</strong><span>проверенных профилей</span></div>
+          <div><strong id="competition-count">—</strong><span>источников доказательств</span></div>
+          <div><strong>100%</strong><span>объяснимый мэтчинг</span></div>
+          <div class="trust-note">Без ключевых слов<br>и слепых откликов</div>
+        </section>
+
+        <section class="workspace shell" id="workspace">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow blue">Подбор</p>
+              <h2>Кого зовём в команду?</h2>
+            </div>
+            <p>Выберите вакансию — мы пересчитаем профиль каждого кандидата по вашей политике доказательств.</p>
+          </div>
+          <div id="vacancy-list" class="vacancy-list" aria-label="Вакансии"></div>
+          <div class="match-toolbar">
+            <div id="category-filters" class="filter-row"></div>
+            <label class="search-box">
+              <span aria-hidden="true">⌕</span>
+              <input id="candidate-search" type="search" placeholder="Имя, город или стек" aria-label="Поиск кандидатов">
+            </label>
+          </div>
+          <div id="candidate-grid" class="candidate-grid" aria-live="polite"></div>
+        </section>
+      </section>
+
+      <section id="candidate-view" class="view shell candidate-page">
+        <div class="candidate-topline">
+          <div>
+            <p class="eyebrow coral">Личный карьерный контур</p>
+            <h1>Ваши навыки.<br><em>Теперь с доказательствами.</em></h1>
+          </div>
+          <label class="persona-select">Демо-профиль<select id="persona-select" aria-label="Выбрать демо-профиль"></select></label>
+        </div>
+        <div class="candidate-dashboard">
+          <article class="profile-card" id="profile-summary"></article>
+          <article class="graph-card">
+            <div class="card-title"><div><span class="live-dot"></span> Граф компетенций</div><small>размер = уровень · обводка = доверие</small></div>
+            <svg id="skill-graph" viewBox="0 0 720 400" role="img" aria-label="Граф подтверждённых компетенций"></svg>
+          </article>
+          <article class="compare-card">
+            <div class="card-title"><div>Цель</div><select id="candidate-vacancy" aria-label="Целевая вакансия"></select></div>
+            <div id="candidate-match"></div>
+          </article>
+          <article class="growth-card">
+            <div class="card-title"><div>Следующий уровень</div><small>что подтвердить дальше</small></div>
+            <div id="recommendations"></div>
+          </article>
+          <article class="evidence-card">
+            <div class="card-title"><div>Лента доказательств</div><small>проверяемое происхождение</small></div>
+            <div id="evidence-list"></div>
+          </article>
+          <article class="inbox-card">
+            <div class="card-title"><div>Предложения</div><span class="counter" id="offer-count">0</span></div>
+            <div id="offer-list"></div>
+          </article>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer shell">
+      <div><span class="brand small"><span class="brand-mark"><i></i><i></i><i></i></span>контур</span><p>Спортивные достижения → карьерные возможности</p></div>
+      <div><span>Данные</span><strong>ФСП · Codeforces · хакатоны</strong></div>
+      <div><span>Для жюри</span><a href="/docs">OpenAPI ↗</a></div>
+    </footer>
+
+    <dialog id="candidate-dialog" class="dialog candidate-dialog">
+      <button class="dialog-close" data-close aria-label="Закрыть">×</button>
+      <div id="candidate-detail"></div>
+    </dialog>
+
+    <dialog id="offer-dialog" class="dialog form-dialog">
+      <button class="dialog-close" data-close aria-label="Закрыть">×</button>
+      <p class="eyebrow coral">Прямой контакт</p>
+      <h2>Сделать предложение</h2>
+      <form id="offer-form">
+        <input type="hidden" name="candidate_id">
+        <label>Вакансия<select name="vacancy_id" required></select></label>
+        <div class="form-row">
+          <label>От, ₽<input name="salary_from" type="number" min="1" required></label>
+          <label>До, ₽<input name="salary_to" type="number" min="1" required></label>
+        </div>
+        <label>Сообщение<textarea name="message" minlength="10" required>Ваши подтверждённые навыки совпали с нашей задачей. Давайте познакомимся?</textarea></label>
+        <button class="button button-dark" type="submit">Отправить предложение</button>
+        <p class="form-status" role="status"></p>
+      </form>
+    </dialog>
+
+    <dialog id="vacancy-dialog" class="dialog form-dialog wide">
+      <button class="dialog-close" data-close aria-label="Закрыть">×</button>
+      <p class="eyebrow blue">Новый граф требований</p>
+      <h2>Соберите вакансию</h2>
+      <form id="vacancy-form">
+        <div class="form-row">
+          <label>Компания<input name="employer" value="Новая команда" required></label>
+          <label>Название<input name="title" value="Python-разработчик" required></label>
+        </div>
+        <div class="form-row thirds">
+          <label>Грейд<input name="grade" value="Middle" required></label>
+          <label>Формат<select name="work_format"><option value="remote">Удалённо</option><option value="hybrid">Гибрид</option><option value="office">Офис</option></select></label>
+          <label>Навык<select name="skill_id"></select></label>
+        </div>
+        <div class="form-row">
+          <label>Зарплата от<input name="salary_from" type="number" value="180000" min="1" required></label>
+          <label>Зарплата до<input name="salary_to" type="number" value="260000" min="1" required></label>
+        </div>
+        <div class="sliders">
+          <label>Требуемый уровень <output id="level-output">70%</output><input name="level" type="range" min="20" max="100" value="70"></label>
+          <label>Критичность <output id="criticality-output">5 / 5</output><input name="criticality" type="range" min="1" max="5" value="5"></label>
+        </div>
+        <button class="button button-dark" type="submit">Создать и начать подбор</button>
+        <p class="form-status" role="status"></p>
+      </form>
+    </dialog>
+
+    <div id="toast" class="toast" role="status"></div>
+    <script type="module" src="/assets/app.js"></script>
+  </body>
+</html>

@@ -19,6 +19,18 @@ def test_health_catalog_and_ranked_matches(tmp_path) -> None:
     assert "gaps" in matches[0]["match"]
 
 
+def test_browser_shell_and_assets_are_served(tmp_path) -> None:
+    with client(tmp_path) as http:
+        page = http.get("/")
+        script = http.get("/assets/app.js")
+        styles = http.get("/assets/styles.css")
+
+    assert page.status_code == 200
+    assert "Ищите доказательства" in page.text
+    assert "async function boot" in script.text
+    assert "prefers-reduced-motion" in styles.text
+
+
 def test_candidate_graph_and_recommendations(tmp_path) -> None:
     with client(tmp_path) as http:
         complete_response = http.get("/api/v1/candidates/alina?vacancy_id=ml-engineer")

@@ -3,6 +3,8 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.application.service import TalentService
 from app.infrastructure.database import Store
@@ -30,6 +32,13 @@ def create_app(database_path: str | Path | None = None) -> FastAPI:
         lifespan=lifespan,
     )
     app.include_router(router)
+    static_dir = Path(__file__).parent / "web" / "static"
+    app.mount("/assets", StaticFiles(directory=static_dir), name="assets")
+
+    @app.get("/", include_in_schema=False)
+    def index():
+        return FileResponse(static_dir / "index.html")
+
     return app
 
 
