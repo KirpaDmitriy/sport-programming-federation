@@ -15,6 +15,9 @@ import { Route as EmployerRouteRouteImport } from './routes/employer/route'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as CandidateOnboardingRouteImport } from './routes/candidate/onboarding'
 import { Route as CandidateProfileRouteImport } from './routes/candidate/profile'
+import { Route as CandidateSettingsRouteImport } from './routes/candidate/settings'
+import { Route as CandidateSkillsRouteImport } from './routes/candidate/skills'
+import { Route as CandidateSourcesRouteImport } from './routes/candidate/sources'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -46,6 +49,21 @@ const CandidateProfileRoute = CandidateProfileRouteImport.update({
   path: '/profile',
   getParentRoute: () => CandidateRouteRoute,
 } as any)
+const CandidateSettingsRoute = CandidateSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => CandidateRouteRoute,
+} as any)
+const CandidateSkillsRoute = CandidateSkillsRouteImport.update({
+  id: '/skills',
+  path: '/skills',
+  getParentRoute: () => CandidateRouteRoute,
+} as any)
+const CandidateSourcesRoute = CandidateSourcesRouteImport.update({
+  id: '/sources',
+  path: '/sources',
+  getParentRoute: () => CandidateRouteRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -54,6 +72,9 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/candidate/onboarding': typeof CandidateOnboardingRoute
   '/candidate/profile': typeof CandidateProfileRoute
+  '/candidate/settings': typeof CandidateSettingsRoute
+  '/candidate/skills': typeof CandidateSkillsRoute
+  '/candidate/sources': typeof CandidateSourcesRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -62,6 +83,9 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/candidate/onboarding': typeof CandidateOnboardingRoute
   '/candidate/profile': typeof CandidateProfileRoute
+  '/candidate/settings': typeof CandidateSettingsRoute
+  '/candidate/skills': typeof CandidateSkillsRoute
+  '/candidate/sources': typeof CandidateSourcesRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -71,6 +95,9 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/candidate/onboarding': typeof CandidateOnboardingRoute
   '/candidate/profile': typeof CandidateProfileRoute
+  '/candidate/settings': typeof CandidateSettingsRoute
+  '/candidate/skills': typeof CandidateSkillsRoute
+  '/candidate/sources': typeof CandidateSourcesRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -81,6 +108,9 @@ export interface FileRouteTypes {
     | '/login'
     | '/candidate/onboarding'
     | '/candidate/profile'
+    | '/candidate/settings'
+    | '/candidate/skills'
+    | '/candidate/sources'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -89,6 +119,9 @@ export interface FileRouteTypes {
     | '/login'
     | '/candidate/onboarding'
     | '/candidate/profile'
+    | '/candidate/settings'
+    | '/candidate/skills'
+    | '/candidate/sources'
   id:
     | '__root__'
     | '/'
@@ -97,6 +130,9 @@ export interface FileRouteTypes {
     | '/login'
     | '/candidate/onboarding'
     | '/candidate/profile'
+    | '/candidate/settings'
+    | '/candidate/skills'
+    | '/candidate/sources'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -150,17 +186,44 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CandidateProfileRouteImport
       parentRoute: typeof CandidateRouteRoute
     }
+    '/candidate/settings': {
+      id: '/candidate/settings'
+      path: '/settings'
+      fullPath: '/candidate/settings'
+      preLoaderRoute: typeof CandidateSettingsRouteImport
+      parentRoute: typeof CandidateRouteRoute
+    }
+    '/candidate/skills': {
+      id: '/candidate/skills'
+      path: '/skills'
+      fullPath: '/candidate/skills'
+      preLoaderRoute: typeof CandidateSkillsRouteImport
+      parentRoute: typeof CandidateRouteRoute
+    }
+    '/candidate/sources': {
+      id: '/candidate/sources'
+      path: '/sources'
+      fullPath: '/candidate/sources'
+      preLoaderRoute: typeof CandidateSourcesRouteImport
+      parentRoute: typeof CandidateRouteRoute
+    }
   }
 }
 
 interface CandidateRouteRouteChildren {
   CandidateOnboardingRoute: typeof CandidateOnboardingRoute
   CandidateProfileRoute: typeof CandidateProfileRoute
+  CandidateSettingsRoute: typeof CandidateSettingsRoute
+  CandidateSkillsRoute: typeof CandidateSkillsRoute
+  CandidateSourcesRoute: typeof CandidateSourcesRoute
 }
 
 const CandidateRouteRouteChildren: CandidateRouteRouteChildren = {
   CandidateOnboardingRoute: CandidateOnboardingRoute,
   CandidateProfileRoute: CandidateProfileRoute,
+  CandidateSettingsRoute: CandidateSettingsRoute,
+  CandidateSkillsRoute: CandidateSkillsRoute,
+  CandidateSourcesRoute: CandidateSourcesRoute,
 }
 
 const CandidateRouteRouteWithChildren = CandidateRouteRoute._addFileChildren(
