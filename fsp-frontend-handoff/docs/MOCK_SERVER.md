@@ -6,12 +6,12 @@ The server validates JSON request bodies, path/query parameters, and successful 
 
 ## Start and verify
 
-Use Node 24. Initial checks ran with Node `24.19.0`; the final integrated package verification passed on `24.21.0`. Exact logs are under `reports/` in the package root. Dependencies are pinned in `package.json` and `package-lock.json`.
+Use Bun 1.4.2 or newer. The server was first verified on Node 24 and since 2026-10-06 runs on Bun, locally and on the demo stand; the suite passes on both runtimes. Dependencies are pinned in `package.json` and `bun.lock`.
 
 ```bash
 cd mock-server
-npm ci
-npm start
+bun install --frozen-lockfile
+bun start
 ```
 
 In another terminal:
@@ -29,8 +29,8 @@ Expected response:
 Run the integration tests and regenerate the canonical contract:
 
 ```bash
-npm test
-npm run contract
+bun run test
+bun run contract
 ```
 
 The tests import the server factory and listen on an available loopback port. They do not require a separately running server. `tests/contract-coverage.json` records which declared operations and HTTP statuses were exercised. Operation coverage is not a claim of full branch coverage.

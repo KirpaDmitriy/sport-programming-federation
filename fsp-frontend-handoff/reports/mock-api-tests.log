@@ -1,31 +1,9 @@
-Command: /root/.npm/_npx/cc856a1b480a8bd0/node_modules/node/bin/node --test tests/mock-api.test.mjs
+Command: bun test ./tests/mock-api.test.mjs
 Working directory: .
 Exit code: 0
 
-✔ canonical contract matches generator and all declared routes have explicit operation IDs (8.749315ms)
-✔ health, request validation, session, role, origin and host boundaries (59.54486ms)
-✔ email verification creates role-bound candidate and employer accounts; expiry is authoritative (47.518654ms)
-✔ profile category is server-owned and publication consent does not replace qualification (12.372666ms)
-✔ source enrichment is automatic, asynchronous, private and does not infer hours or grades (3084.720034ms)
-✔ assessment workflow uses jobs, preserves unrelated evidence, and applies a successful grade change (2068.901225ms)
-▶ failed and unavailable assessment scenarios preserve grades and allow retry without a penalty
-  ✔ assessment_failure (1041.505484ms)
-  ✔ service_failure (1036.502634ms)
-✔ failed and unavailable assessment scenarios preserve grades and allow retry without a penalty (2078.941719ms)
-✔ same-grade retry is allowed; downgrade is refused; cooldown configuration is server-owned (7.55647ms)
-✔ stale check jobs and revoked processing consent cannot write grades or outdated results (1330.416949ms)
-✔ need CRUD validates salary and evidence policies without tenant crossover or ID collisions (16.651778ms)
-✔ candidate bank is anonymous, deterministic and distinguishes qualification from skill evidence (14.388264ms)
-✔ shortlists persist across filters and preserve each company membership (14.78216ms)
-✔ direct invitations freeze terms, are idempotent, and disclose only selected fields to the accepting company (29.640896ms)
-✔ declining and withdrawing never grant contacts and terminal transitions remain stable (10.916273ms)
-✔ PDF export is a real current-profile PDF; fixture import is asynchronous and explicitly confirmed (1076.454124ms)
-✔ scenario reset clears sessions and supports no-FSP, empty and error states (12.016106ms)
-ℹ tests 18
-ℹ suites 0
-ℹ pass 18
-ℹ fail 0
-ℹ cancelled 0
-ℹ skipped 0
-ℹ todo 0
-ℹ duration_ms 10272.224999
+bun test v1.4.2 (744846f84)
+
+ 17 pass
+ 0 fail
+Ran 17 tests across 1 file. [10.80s]

@@ -15,7 +15,7 @@ Every npm package number below was returned by its registry `latest` endpoint on
 | Package or runtime | Observed version | Use in this project |
 |---|---:|---|
 | Node.js | 24.21.0 LTS | Preferred toolchain runtime; official release page, not npm package `node` |
-| `pnpm` | 12.9.1 | One package manager for frontend development |
+| `pnpm` | 12.9.1 | Package manager at research time; replaced by Bun 1.4.2 on 2026-10-06 |
 | `react`, `react-dom` | 19.3.0 | UI runtime; keep their versions aligned |
 | `@types/react`, `@types/react-dom` | 19.3.0 | Matching React declarations |
 | `typescript` | 7.0.2 | Strict application type checking |
@@ -68,7 +68,7 @@ An actual alternative probe explained why peer metadata alone is insufficient: `
 ## Version and installation rules for the implementation agent
 
 - Reuse the checked version set at the beginning of implementation. If a newer stable release exists when work begins, inspect the release notes and peers before changing the baseline. Record the resulting versions and do not silently upgrade midway through implementation.
-- Set `packageManager` to an exact pnpm version. Use one lockfile per intended workspace; do not commit both npm and pnpm lockfiles for the same package.
+- Set `packageManager` to an exact package-manager version (Bun since 2026-10-06). Use one lockfile per intended workspace; do not commit lockfiles of two package managers for the same package.
 - Run a real install to produce the lockfile. Never handwrite lockfile integrity values or mark a dependency tree as resolved without installation.
 - Do not use `--force`, `--legacy-peer-deps`, or broad overrides to hide a conflicting peer. Change the dependency choice or isolate incompatible tooling explicitly.
 - Do not pin `@types/node` to an unrelated runtime major merely because that package's latest tag moved. Resolve a current patch from the Node 24 type series.

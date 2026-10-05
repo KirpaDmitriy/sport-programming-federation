@@ -4,21 +4,16 @@ This isolated package generates TypeScript declarations from the canonical `../.
 
 ## Toolchain
 
-Use Node 24.19 or newer within the Node 24 LTS line and pnpm 12.9.1. The application uses TypeScript 7.0.2; this tool deliberately uses TypeScript 5.9.3 to satisfy `openapi-typescript@7.13.0`'s declared `^5.x` peer. Keep this package isolated from the application compiler. The real generated pnpm lockfile is included.
+Use Bun 1.4.2 or newer. The application uses TypeScript 7.0.2; this tool deliberately uses TypeScript 5.9.3 to satisfy `openapi-typescript@7.13.0`'s declared `^5.x` peer. Keep this package isolated from the application compiler. The real generated `bun.lock` is included.
 
-From the archive root, with pnpm 12.9.1 available:
-
-```sh
-pnpm --dir tools/contract-codegen install --frozen-lockfile
-pnpm --dir tools/contract-codegen generate
-pnpm --dir tools/contract-codegen check
-```
-
-If pnpm is not installed, each command can be prefixed with `npm exec --yes --package=pnpm@12.9.1 --`; for example:
+From the archive root:
 
 ```sh
-npm exec --yes --package=pnpm@12.9.1 -- pnpm --dir tools/contract-codegen generate
+bun install --cwd tools/contract-codegen --frozen-lockfile
+bun run --cwd tools/contract-codegen generate
+bun run --cwd tools/contract-codegen check
 ```
+
 
 ## Outputs and checks
 
