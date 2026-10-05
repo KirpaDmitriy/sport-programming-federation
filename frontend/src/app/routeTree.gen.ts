@@ -13,11 +13,16 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as CandidateRouteRouteImport } from './routes/candidate/route'
 import { Route as EmployerRouteRouteImport } from './routes/employer/route'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as CandidateIndexRouteImport } from './routes/candidate/index'
 import { Route as CandidateOnboardingRouteImport } from './routes/candidate/onboarding'
+import { Route as CandidateOverviewRouteImport } from './routes/candidate/overview'
 import { Route as CandidateProfileRouteImport } from './routes/candidate/profile'
 import { Route as CandidateSettingsRouteImport } from './routes/candidate/settings'
 import { Route as CandidateSkillsRouteImport } from './routes/candidate/skills'
 import { Route as CandidateSourcesRouteImport } from './routes/candidate/sources'
+import { Route as CandidateAssessmentsIndexRouteImport } from './routes/candidate/assessments/index'
+import { Route as CandidateAssessmentsAssessmentIdResultRouteImport } from './routes/candidate/assessments/$assessmentId/result'
+import { Route as CandidateAssessmentsAssessmentIdWorkspaceRouteImport } from './routes/candidate/assessments/$assessmentId/workspace'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -39,9 +44,19 @@ const LoginRoute = LoginRouteImport.update({
   path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
+const CandidateIndexRoute = CandidateIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => CandidateRouteRoute,
+} as any)
 const CandidateOnboardingRoute = CandidateOnboardingRouteImport.update({
   id: '/onboarding',
   path: '/onboarding',
+  getParentRoute: () => CandidateRouteRoute,
+} as any)
+const CandidateOverviewRoute = CandidateOverviewRouteImport.update({
+  id: '/overview',
+  path: '/overview',
   getParentRoute: () => CandidateRouteRoute,
 } as any)
 const CandidateProfileRoute = CandidateProfileRouteImport.update({
@@ -64,6 +79,24 @@ const CandidateSourcesRoute = CandidateSourcesRouteImport.update({
   path: '/sources',
   getParentRoute: () => CandidateRouteRoute,
 } as any)
+const CandidateAssessmentsIndexRoute =
+  CandidateAssessmentsIndexRouteImport.update({
+    id: '/assessments/',
+    path: '/assessments/',
+    getParentRoute: () => CandidateRouteRoute,
+  } as any)
+const CandidateAssessmentsAssessmentIdResultRoute =
+  CandidateAssessmentsAssessmentIdResultRouteImport.update({
+    id: '/assessments/$assessmentId/result',
+    path: '/assessments/$assessmentId/result',
+    getParentRoute: () => CandidateRouteRoute,
+  } as any)
+const CandidateAssessmentsAssessmentIdWorkspaceRoute =
+  CandidateAssessmentsAssessmentIdWorkspaceRouteImport.update({
+    id: '/assessments/$assessmentId/workspace',
+    path: '/assessments/$assessmentId/workspace',
+    getParentRoute: () => CandidateRouteRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -71,21 +104,30 @@ export interface FileRoutesByFullPath {
   '/employer': typeof EmployerRouteRoute
   '/login': typeof LoginRoute
   '/candidate/onboarding': typeof CandidateOnboardingRoute
+  '/candidate/overview': typeof CandidateOverviewRoute
   '/candidate/profile': typeof CandidateProfileRoute
   '/candidate/settings': typeof CandidateSettingsRoute
   '/candidate/skills': typeof CandidateSkillsRoute
   '/candidate/sources': typeof CandidateSourcesRoute
+  '/candidate/': typeof CandidateIndexRoute
+  '/candidate/assessments/': typeof CandidateAssessmentsIndexRoute
+  '/candidate/assessments/$assessmentId/result': typeof CandidateAssessmentsAssessmentIdResultRoute
+  '/candidate/assessments/$assessmentId/workspace': typeof CandidateAssessmentsAssessmentIdWorkspaceRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/candidate': typeof CandidateRouteRouteWithChildren
   '/employer': typeof EmployerRouteRoute
   '/login': typeof LoginRoute
   '/candidate/onboarding': typeof CandidateOnboardingRoute
+  '/candidate/overview': typeof CandidateOverviewRoute
   '/candidate/profile': typeof CandidateProfileRoute
   '/candidate/settings': typeof CandidateSettingsRoute
   '/candidate/skills': typeof CandidateSkillsRoute
   '/candidate/sources': typeof CandidateSourcesRoute
+  '/candidate': typeof CandidateIndexRoute
+  '/candidate/assessments': typeof CandidateAssessmentsIndexRoute
+  '/candidate/assessments/$assessmentId/result': typeof CandidateAssessmentsAssessmentIdResultRoute
+  '/candidate/assessments/$assessmentId/workspace': typeof CandidateAssessmentsAssessmentIdWorkspaceRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -94,10 +136,15 @@ export interface FileRoutesById {
   '/employer': typeof EmployerRouteRoute
   '/login': typeof LoginRoute
   '/candidate/onboarding': typeof CandidateOnboardingRoute
+  '/candidate/overview': typeof CandidateOverviewRoute
   '/candidate/profile': typeof CandidateProfileRoute
   '/candidate/settings': typeof CandidateSettingsRoute
   '/candidate/skills': typeof CandidateSkillsRoute
   '/candidate/sources': typeof CandidateSourcesRoute
+  '/candidate/': typeof CandidateIndexRoute
+  '/candidate/assessments/': typeof CandidateAssessmentsIndexRoute
+  '/candidate/assessments/$assessmentId/result': typeof CandidateAssessmentsAssessmentIdResultRoute
+  '/candidate/assessments/$assessmentId/workspace': typeof CandidateAssessmentsAssessmentIdWorkspaceRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -107,21 +154,30 @@ export interface FileRouteTypes {
     | '/employer'
     | '/login'
     | '/candidate/onboarding'
+    | '/candidate/overview'
     | '/candidate/profile'
     | '/candidate/settings'
     | '/candidate/skills'
     | '/candidate/sources'
+    | '/candidate/'
+    | '/candidate/assessments/'
+    | '/candidate/assessments/$assessmentId/result'
+    | '/candidate/assessments/$assessmentId/workspace'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
-    | '/candidate'
     | '/employer'
     | '/login'
     | '/candidate/onboarding'
+    | '/candidate/overview'
     | '/candidate/profile'
     | '/candidate/settings'
     | '/candidate/skills'
     | '/candidate/sources'
+    | '/candidate'
+    | '/candidate/assessments'
+    | '/candidate/assessments/$assessmentId/result'
+    | '/candidate/assessments/$assessmentId/workspace'
   id:
     | '__root__'
     | '/'
@@ -129,10 +185,15 @@ export interface FileRouteTypes {
     | '/employer'
     | '/login'
     | '/candidate/onboarding'
+    | '/candidate/overview'
     | '/candidate/profile'
     | '/candidate/settings'
     | '/candidate/skills'
     | '/candidate/sources'
+    | '/candidate/'
+    | '/candidate/assessments/'
+    | '/candidate/assessments/$assessmentId/result'
+    | '/candidate/assessments/$assessmentId/workspace'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -172,11 +233,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/candidate/': {
+      id: '/candidate/'
+      path: '/'
+      fullPath: '/candidate/'
+      preLoaderRoute: typeof CandidateIndexRouteImport
+      parentRoute: typeof CandidateRouteRoute
+    }
     '/candidate/onboarding': {
       id: '/candidate/onboarding'
       path: '/onboarding'
       fullPath: '/candidate/onboarding'
       preLoaderRoute: typeof CandidateOnboardingRouteImport
+      parentRoute: typeof CandidateRouteRoute
+    }
+    '/candidate/overview': {
+      id: '/candidate/overview'
+      path: '/overview'
+      fullPath: '/candidate/overview'
+      preLoaderRoute: typeof CandidateOverviewRouteImport
       parentRoute: typeof CandidateRouteRoute
     }
     '/candidate/profile': {
@@ -207,23 +282,56 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CandidateSourcesRouteImport
       parentRoute: typeof CandidateRouteRoute
     }
+    '/candidate/assessments/': {
+      id: '/candidate/assessments/'
+      path: '/assessments'
+      fullPath: '/candidate/assessments/'
+      preLoaderRoute: typeof CandidateAssessmentsIndexRouteImport
+      parentRoute: typeof CandidateRouteRoute
+    }
+    '/candidate/assessments/$assessmentId/result': {
+      id: '/candidate/assessments/$assessmentId/result'
+      path: '/assessments/$assessmentId/result'
+      fullPath: '/candidate/assessments/$assessmentId/result'
+      preLoaderRoute: typeof CandidateAssessmentsAssessmentIdResultRouteImport
+      parentRoute: typeof CandidateRouteRoute
+    }
+    '/candidate/assessments/$assessmentId/workspace': {
+      id: '/candidate/assessments/$assessmentId/workspace'
+      path: '/assessments/$assessmentId/workspace'
+      fullPath: '/candidate/assessments/$assessmentId/workspace'
+      preLoaderRoute: typeof CandidateAssessmentsAssessmentIdWorkspaceRouteImport
+      parentRoute: typeof CandidateRouteRoute
+    }
   }
 }
 
 interface CandidateRouteRouteChildren {
   CandidateOnboardingRoute: typeof CandidateOnboardingRoute
+  CandidateOverviewRoute: typeof CandidateOverviewRoute
   CandidateProfileRoute: typeof CandidateProfileRoute
   CandidateSettingsRoute: typeof CandidateSettingsRoute
   CandidateSkillsRoute: typeof CandidateSkillsRoute
   CandidateSourcesRoute: typeof CandidateSourcesRoute
+  CandidateIndexRoute: typeof CandidateIndexRoute
+  CandidateAssessmentsIndexRoute: typeof CandidateAssessmentsIndexRoute
+  CandidateAssessmentsAssessmentIdResultRoute: typeof CandidateAssessmentsAssessmentIdResultRoute
+  CandidateAssessmentsAssessmentIdWorkspaceRoute: typeof CandidateAssessmentsAssessmentIdWorkspaceRoute
 }
 
 const CandidateRouteRouteChildren: CandidateRouteRouteChildren = {
   CandidateOnboardingRoute: CandidateOnboardingRoute,
+  CandidateOverviewRoute: CandidateOverviewRoute,
   CandidateProfileRoute: CandidateProfileRoute,
   CandidateSettingsRoute: CandidateSettingsRoute,
   CandidateSkillsRoute: CandidateSkillsRoute,
   CandidateSourcesRoute: CandidateSourcesRoute,
+  CandidateIndexRoute: CandidateIndexRoute,
+  CandidateAssessmentsIndexRoute: CandidateAssessmentsIndexRoute,
+  CandidateAssessmentsAssessmentIdResultRoute:
+    CandidateAssessmentsAssessmentIdResultRoute,
+  CandidateAssessmentsAssessmentIdWorkspaceRoute:
+    CandidateAssessmentsAssessmentIdWorkspaceRoute,
 }
 
 const CandidateRouteRouteWithChildren = CandidateRouteRoute._addFileChildren(
