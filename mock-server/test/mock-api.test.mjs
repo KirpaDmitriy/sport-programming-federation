@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { request as rawHttpRequest } from 'node:http';
 import { readFile, writeFile } from 'node:fs/promises';
-import { createMockServer } from '../mock-server/src/server.mjs';
-import { routes, buildOpenApi } from '../mock-server/src/contract.mjs';
-import { validators } from '../mock-server/src/validation.mjs';
+import { createMockServer } from '../src/server.mjs';
+import { routes, buildOpenApi } from '../src/contract.mjs';
+import { validators } from '../src/validation.mjs';
 
 const coverage = new Map();
 const operationFor = (method, path) => routes.find((route) => route.method === method.toLowerCase() && new RegExp(`^${route.path.replace(/\{[^}]+\}/g, '[^/]+')}$`).test(path.split('?')[0]));
@@ -55,7 +55,7 @@ function assertAnonymous(value) {
 function assertGraph(graph) { const ids = new Set(graph.nodes.map((item) => item.id)); assert.equal(ids.size, graph.nodes.length); for (const edge of graph.edges) { assert.ok(ids.has(edge.from)); assert.ok(ids.has(edge.to)); } }
 
 test('canonical contract matches generator and all declared routes have explicit operation IDs', async () => {
-  const file = JSON.parse(await readFile(new URL('../contracts/openapi.json', import.meta.url), 'utf8'));
+  const file = JSON.parse(await readFile(new URL('../../contracts/openapi.json', import.meta.url), 'utf8'));
   assert.deepEqual(file, buildOpenApi());
   assert.equal(new Set(routes.map((route) => route.operationId)).size, routes.length);
   assert.equal(file.openapi, '3.1.0');
@@ -327,7 +327,7 @@ test('PDF export is a real current-profile PDF; fixture import is asynchronous a
   const exported = await request('GET', '/api/v1/me/profile/export', { actor: candidate });
   assert.ok(exported.buffer.subarray(0, 5).equals(Buffer.from('%PDF-'))); assert.ok(exported.buffer.subarray(-1024).includes(Buffer.from('%%EOF')));
   assert.equal(exported.response.headers.get('content-type'), 'application/pdf');
-  await writeFile(new URL('../mock-server/fixtures/profile-export.pdf', import.meta.url), exported.buffer);
+  await writeFile(new URL('../fixtures/profile-export.pdf', import.meta.url), exported.buffer);
   const form = new FormData(); form.set('file', new Blob([exported.buffer], { type: 'application/pdf' }), 'profile.pdf');
   const imported = (await request('POST', '/api/v1/me/profile/imports', { actor: candidate, raw: form, status: 202 })).body;
   await request('POST', `/api/v1/me/profile/imports/${imported.id}/confirm`, { actor: candidate, body: { profile: { name: 'Имя' } }, status: 409 });

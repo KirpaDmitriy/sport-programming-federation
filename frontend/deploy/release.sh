@@ -9,11 +9,14 @@ set -a
 [ -f /etc/fsp/frontend-build.env ] && . /etc/fsp/frontend-build.env
 set +a
 
-(cd "$DIR/fsp-frontend-handoff/mock-server" && bun install --frozen-lockfile --production)
+(cd "$DIR/mock-server" && bun install --frozen-lockfile --production)
 (cd "$DIR/frontend" && bun install --frozen-lockfile && bun run build && bun scripts/check-bundle.mjs)
 
 ln -sfn "$DIR" /opt/fsp/current.next
 mv -Tf /opt/fsp/current.next /opt/fsp/current
+# The unit follows the release so path changes ship with the code.
+install -m 644 "$DIR/frontend/deploy/fsp-mock-api.service" /etc/systemd/system/fsp-mock-api.service
+systemctl daemon-reload
 systemctl restart fsp-mock-api
 systemctl reload nginx
 

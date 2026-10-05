@@ -2,9 +2,9 @@
 
 ## Contract status
 
-`../contracts/openapi.json` is the proposed v0.1.0 wire contract. It defines paths, schemas, operation IDs, parameters, status codes and error bodies. The local HTTP mock implements it for frontend development. Compatibility with a real Rust service must be tested when that service exists.
+[`openapi.json`](openapi.json) is the proposed v0.1.0 wire contract. It defines paths, schemas, operation IDs, parameters, status codes and error bodies. The local HTTP mock implements it for frontend development. Compatibility with a real Rust service must be tested when that service exists.
 
-The complete generated operation index is [API_OPERATIONS.md](API_OPERATIONS.md). The run commands and fixtures are documented in [MOCK_SERVER.md](MOCK_SERVER.md). The selected compiler/generator boundary is described in [STACK_RESEARCH.md](STACK_RESEARCH.md); use the included generation scripts rather than hand-editing types.
+The complete generated operation index is [API_OPERATIONS.md](API_OPERATIONS.md). The run commands and fixtures are documented in the [mock server README](../mock-server/README.md). The selected compiler/generator boundary is described in [STACK_RESEARCH.md](../fsp-frontend-handoff/docs/STACK_RESEARCH.md); use the included generation scripts rather than hand-editing types.
 
 ## Connection and session
 
@@ -39,7 +39,7 @@ Use `needId` when requesting a candidate comparison. Without a need, matching da
 
 The application's typed transport lives in `frontend/src/shared/api/`. Keep one generated type source and a small error-normalization boundary. Do not introduce a second manually written `Candidate`, `Invitation` or `Need` DTO that competes with the contract.
 
-Map API errors using `code`, `message`, `requestId` and field `details`. The implemented mock codes are listed in [error-codes.json](../contracts/error-codes.json). Preserve user input on recoverable errors. A 401 requires session recovery; a 403 means the action is not permitted; a 404 can represent an inaccessible resource; a 409 requires refetch/reconciliation; a 422 maps to validation feedback. Do not claim that every endpoint implements every possible error scenario just because a shared error schema is documented.
+Map API errors using `code`, `message`, `requestId` and field `details`. The implemented mock codes are listed in [error-codes.json](error-codes.json). Preserve user input on recoverable errors. A 401 requires session recovery; a 403 means the action is not permitted; a 404 can represent an inaccessible resource; a 409 requires refetch/reconciliation; a 422 maps to validation feedback. Do not claim that every endpoint implements every possible error scenario just because a shared error schema is documented.
 
 For assessment creation, assessment submission and invitation creation, follow the operation's required `Idempotency-Key` header. Generate one key for a logical submission and retain it while retrying that same payload. A changed payload is a new logical command. Do not create a new key on each network retry.
 

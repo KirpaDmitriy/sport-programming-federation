@@ -85,7 +85,7 @@ Persisted shortlists are resources independent of the search result. Changing fi
 
 ## API contract integration
 
-Generate the path and schema declarations from the local OpenAPI document in `tools/contract-codegen/`. Use the generated `paths` type with `openapi-fetch` in the application. Do not handwrite parallel TypeScript wire interfaces or fix generated files by hand. When a schema changes, update the source contract and regenerate.
+Generate the path and schema declarations from the local OpenAPI document in `contracts/codegen/`. Use the generated `paths` type with `openapi-fetch` in the application. Do not handwrite parallel TypeScript wire interfaces or fix generated files by hand. When a schema changes, update the source contract and regenerate.
 
 Place domain-specific query factories beside the owning entity, feature, or page. They call contract-typed operations, normalize errors through the shared transport boundary, and expose typed data. Components receive domain-shaped props and invoke an action; they do not construct arbitrary URL strings.
 

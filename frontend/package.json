@@ -8,7 +8,7 @@
   },
   "scripts": {
     "dev": "bun --bun vite",
-    "mock": "bun run --cwd ../fsp-frontend-handoff/mock-server start",
+    "mock": "bun run --cwd ../mock-server start",
     "build": "bun --bun vite build",
     "preview": "bun --bun vite preview",
     "typecheck": "tsc --noEmit",
@@ -17,8 +17,8 @@
     "e2e:public": "bun --bun playwright test -c playwright.public.config.ts",
     "lint": "biome check . && bun scripts/check-layers.mjs",
     "format": "biome format --write .",
-    "codegen": "bun run --cwd ../fsp-frontend-handoff/tools/contract-codegen generate",
-    "codegen:check": "bun run --cwd ../fsp-frontend-handoff/tools/contract-codegen check",
+    "codegen": "bun run --cwd ../contracts/codegen generate",
+    "codegen:check": "bun run --cwd ../contracts/codegen check",
     "verify": "bun run codegen:check && bun run typecheck && bun run lint && bun run test && bun run build && bun scripts/check-bundle.mjs"
   },
   "dependencies": {

@@ -6,7 +6,7 @@ After=network.target
 Type=simple
 User=fsp
 Group=fsp
-WorkingDirectory=/opt/fsp/current/fsp-frontend-handoff/mock-server
+WorkingDirectory=/opt/fsp/current/mock-server
 Environment=NODE_ENV=production
 # The filesystem is read-only for the service, so Bun's transpiler cache stays off.
 Environment=BUN_RUNTIME_TRANSPILER_CACHE_PATH=0

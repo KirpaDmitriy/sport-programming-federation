@@ -3,9 +3,8 @@
 React application for the FSP reverse-hiring platform: candidates confirm a specialization and grade through an
 assessment and receive salary-bearing invitations; employers describe needs, search an anonymous categorized bank,
 keep shortlists and invite a specific person. The UI talks to the proposed OpenAPI contract in
-[`../fsp-frontend-handoff/contracts/openapi.json`](../fsp-frontend-handoff/contracts/openapi.json). Today that
-contract is served by the stateful HTTP mock from the handoff package; the Rust backend can replace it behind the
-same `/api/v1` boundary.
+[`../contracts/openapi.json`](../contracts/openapi.json). Today that contract is served by the stateful HTTP mock
+in [`../mock-server`](../mock-server/README.md); the Rust backend replaces it behind the same `/api/v1` boundary.
 
 Everything shown by the mock is synthetic: GitHub/FSP data, checks, assistant answers and assessment results are
 scenario fixtures, e-mail is a demo mailbox. The UI says so wherever it matters.
@@ -50,7 +49,7 @@ self-application, chat, recurring tasks) have no controls.
 ```sh
 cd frontend
 bun install --frozen-lockfile
-bun install --cwd ../fsp-frontend-handoff/mock-server --frozen-lockfile   # once
+bun install --cwd ../mock-server --frozen-lockfile   # once
 bun run mock      # terminal 1: mock API on 127.0.0.1:4010
 bun run dev       # terminal 2: http://127.0.0.1:5173
 ```
@@ -64,8 +63,8 @@ actors, reset mock scenarios (`baseline`, `qualified`, `assessment_failure`, `se
 
 ## Contract types
 
-Types come from the isolated generator in the handoff package, which writes the same output here and into the
-reference package:
+Types come from the isolated generator in [`../contracts/codegen`](../contracts/codegen/README.md), which also
+rewrites the contract's operation index:
 
 ```sh
 bun run codegen         # regenerate after a contract change

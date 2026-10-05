@@ -1,6 +1,6 @@
 # Stateful mock API
 
-This package is a runnable development server for the frontend. It implements the proposed `v0.1.0` HTTP contract in `contracts/openapi.json`. It is not a Rust backend, an external-source connector, an authentication service for production, or a real assessment engine.
+This package is a runnable development server for the frontend. It implements the proposed `v0.1.0` HTTP contract in [`../contracts/openapi.json`](../contracts/openapi.json). It is not a Rust backend, an external-source connector, an authentication service for production, or a real assessment engine.
 
 The server validates JSON request bodies, path/query parameters, and successful JSON responses with **Ajv 2020 and ajv-formats**. JSON Schema is not approximated by handwritten validation. Cross-field business rules, authorization, and state transitions are implemented separately.
 
@@ -26,17 +26,18 @@ Expected response:
 {"status":"ok","service":"fsp-mock-api","version":"0.1.0"}
 ```
 
-Run the integration tests and regenerate the canonical contract:
+Run the integration tests and regenerate the canonical contract, then refresh the frontend types and the operation index:
 
 ```bash
 bun run test
 bun run contract
+bun run --cwd ../contracts/codegen generate
 ```
 
-The tests import the server factory and listen on an available loopback port. They do not require a separately running server. `tests/contract-coverage.json` records which declared operations and HTTP statuses were exercised. Operation coverage is not a claim of full branch coverage.
+The tests import the server factory and listen on an available loopback port. They do not require a separately running server. `test/contract-coverage.json` records which declared operations and HTTP statuses were exercised. Operation coverage is not a claim of full branch coverage.
 
 ```js
-import { createMockServer } from './mock-server/src/server.mjs';
+import { createMockServer } from './src/server.mjs';
 
 const app = createMockServer({ port: 0, scenario: 'qualified' });
 const baseUrl = await app.listen();
@@ -208,7 +209,7 @@ A candidate may request a gap plan for a need only after receiving that need in 
 
 ## PDF import and export
 
-Export returns an actual `application/pdf` document generated from the current authenticated candidate profile. PDFKit embeds the included DejaVu Sans font for Russian text. The font license is shipped alongside the font. The canonical sample file, `mock-server/fixtures/profile-export.pdf`, was generated through the HTTP endpoint, parsed with Poppler, and visually checked.
+Export returns an actual `application/pdf` document generated from the current authenticated candidate profile. PDFKit embeds the included DejaVu Sans font for Russian text. The font license is shipped alongside the font. The canonical sample file, `fixtures/profile-export.pdf`, was generated through the HTTP endpoint, parsed with Poppler, and visually checked.
 
 Import uses `multipart/form-data` with one `file` part, MIME type `application/pdf`, and a maximum size of 2 MiB. The mock checks the signature and PDF end marker. It does not parse the content, run OCR, or claim that extracted fields came from the uploaded file. The asynchronous job returns an explicitly marked `parser: "fixture_preview"` result. Unknown duration is `null`. The candidate reviews/edits the preview and confirms it through the separate endpoint; import cannot change verified fields.
 
@@ -218,7 +219,7 @@ Do not reuse this lightweight file-signature check as the security validation of
 
 All JSON errors use `{ code, message, requestId, details }`; validation details contain field paths and messages. The frontend should use `code` for behavior and the Russian message for the demo's user-facing explanation. Do not build control flow by matching message text. The response also includes `X-Request-Id`.
 
-`contracts/error-codes.json` lists the implemented HTTP and job error codes. The OpenAPI document describes success and error schemas/statuses. `tests/contract-coverage.json` records observed status coverage.
+[`../contracts/error-codes.json`](../contracts/error-codes.json) lists the implemented HTTP and job error codes. The OpenAPI document describes success and error schemas/statuses. `test/contract-coverage.json` records observed status coverage.
 
 Required idempotency keys apply to assessment creation, assessment submission, and invitation creation. Keys are scoped to actor, operation, and resource path. The same key and logically identical JSON replay the original response; the same key with a different payload returns `409`. A replay is marked with `X-Idempotent-Replay: true`. Generate one key per intended action and retain it for network retries. After a replay, refetch the resource if current state matters: the saved response is the original response snapshot.
 

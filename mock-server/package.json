@@ -9,7 +9,7 @@
   "scripts": {
     "start": "bun src/server.mjs",
     "contract": "bun scripts/build-contract.mjs",
-    "test": "bun test ../tests/mock-api.test.mjs"
+    "test": "bun test ./test/mock-api.test.mjs"
   },
   "dependencies": {
     "ajv": "8.20.0",
