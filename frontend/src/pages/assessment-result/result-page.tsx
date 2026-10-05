@@ -236,7 +236,7 @@ export function AssessmentResultPage({ assessmentId }: { assessmentId: string })
               </p>
             )}
             {result.nextEligibleAt && result.outcome === 'passed' && result.gradeChanged && (
-              <p className="small muted">Следующая смена грейда — не раньше {formatDate(result.nextEligibleAt)}.</p>
+              <p className="small muted">Следующая смена грейда — не раньше {formatDate(result.nextEligibleAt)}</p>
             )}
           </Card>
 

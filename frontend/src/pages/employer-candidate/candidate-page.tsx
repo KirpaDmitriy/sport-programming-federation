@@ -228,7 +228,7 @@ function ChecksTab({ candidateId }: { candidateId: string }) {
     <div className="stack">
       <p>
         Категория «{specializationLabel[candidate.data.specialization]} · {gradeLabel[candidate.data.verifiedGrade]}»
-        подтверждена практической проверкой {formatDate(candidate.data.gradeConfirmedAt)}.
+        подтверждена практической проверкой {formatDate(candidate.data.gradeConfirmedAt)}
       </p>
       <ul className="stack" style={{ margin: 0, paddingLeft: '1.25rem' }}>
         {confirmed.map((skill) => (
