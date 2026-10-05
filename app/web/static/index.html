@@ -20,7 +20,7 @@
         <button class="role-button active" data-view="employer">Работодатель</button>
         <button class="role-button" data-view="candidate">Кандидат</button>
       </nav>
-      <div class="source-pill"><span></span> Данные ФСП синхронизированы</div>
+      <button class="source-pill" id="open-data"><span></span> Данные ФСП синхронизированы</button>
     </header>
 
     <main>
@@ -148,19 +148,40 @@
         <div class="form-row thirds">
           <label>Грейд<input name="grade" value="Middle" required></label>
           <label>Формат<select name="work_format"><option value="remote">Удалённо</option><option value="hybrid">Гибрид</option><option value="office">Офис</option></select></label>
-          <label>Навык<select name="skill_id"></select></label>
+          <label>Политика доказательств<select name="policy_mode"><option value="platform_rating">Рейтинг Контура</option><option value="allowlist">Только выбранные соревнования</option></select></label>
         </div>
         <div class="form-row">
           <label>Зарплата от<input name="salary_from" type="number" value="180000" min="1" required></label>
           <label>Зарплата до<input name="salary_to" type="number" value="260000" min="1" required></label>
         </div>
-        <div class="sliders">
-          <label>Требуемый уровень <output id="level-output">70%</output><input name="level" type="range" min="20" max="100" value="70"></label>
-          <label>Критичность <output id="criticality-output">5 / 5</output><input name="criticality" type="range" min="1" max="5" value="5"></label>
+        <div class="requirement-section">
+          <div class="builder-title"><strong>Узлы графа</strong><button type="button" id="add-requirement">+ Добавить навык</button></div>
+          <div id="requirement-builder"></div>
+        </div>
+        <fieldset id="competition-policy" class="competition-policy" hidden>
+          <legend>Какие соревнования считаем доказательством</legend>
+          <div id="competition-options"></div>
+        </fieldset>
+        <div class="policy-note">
+          <strong>Рейтинг Контура</strong>
+          <span>Учитывает официальность, массовость, сложность и тематическую близость соревнования.</span>
         </div>
         <button class="button button-dark" type="submit">Создать и начать подбор</button>
         <p class="form-status" role="status"></p>
       </form>
+    </dialog>
+
+    <dialog id="data-dialog" class="dialog data-dialog">
+      <button class="dialog-close" data-close aria-label="Закрыть">×</button>
+      <p class="eyebrow blue">Прозрачность данных</p>
+      <h2>Что считает Контур</h2>
+      <p>ФСП — основной доверенный источник спортивных результатов: дисциплина, соревнование, место, роль в команде и спортивный разряд. В демо официальный API заменён версионированным мок-контрактом той же структуры.</p>
+      <div class="source-grid">
+        <div><strong>ФСП</strong><span>официальность · разряды · роли</span></div>
+        <div><strong>Codeforces</strong><span>массовость · алгоритмы</span></div>
+        <div><strong>Хакатоны</strong><span>продукт · ML · команда</span></div>
+      </div>
+      <p class="quiet">Контур не смешивает уровень навыка и достоверность: в профиле видны обе величины и каждое исходное доказательство. Демонстрационные имена и компании вымышлены.</p>
     </dialog>
 
     <div id="toast" class="toast" role="status"></div>

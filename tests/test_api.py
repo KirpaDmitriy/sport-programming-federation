@@ -28,6 +28,9 @@ def test_browser_shell_and_assets_are_served(tmp_path) -> None:
 
     assert page.status_code == 200
     assert "Ищите доказательства" in page.text
+    assert 'id="requirement-builder"' in page.text
+    assert 'id="competition-policy"' in page.text
+    assert 'id="data-dialog"' in page.text
     assert "async function boot" in script.text
     assert "prefers-reduced-motion" in styles.text
 
@@ -55,7 +58,14 @@ def test_create_vacancy_and_offer_end_to_end(tmp_path) -> None:
         "work_format": "remote",
         "salary_from": 120000,
         "salary_to": 170000,
-        "requirements": [{"skill_id": "python", "level": 0.5, "criticality": 5}],
+        "requirements": [
+            {"skill_id": "python", "level": 0.5, "criticality": 5},
+            {"skill_id": "algorithms", "level": 0.4, "criticality": 3},
+        ],
+        "evidence_policy": {
+            "mode": "allowlist",
+            "competition_ids": ["fsp-algo-final-2026"],
+        },
     }
     with client(tmp_path) as http:
         assert http.post("/api/v1/vacancies", json=vacancy).status_code == 201
@@ -89,6 +99,7 @@ def test_validation_and_not_found_paths_can_fail(tmp_path) -> None:
     with client(tmp_path) as http:
         assert http.post("/api/v1/vacancies", json=malformed).status_code == 422
         assert http.get("/api/v1/candidates/missing").status_code == 404
+        assert http.get("/api/v1/candidates/alina?vacancy_id=missing").status_code == 404
         assert http.get("/api/v1/vacancies/missing/matches").status_code == 404
 
 

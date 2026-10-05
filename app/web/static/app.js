@@ -206,6 +206,12 @@ function bindForms() {
     event.preventDefault();
     const form = event.currentTarget;
     const data = Object.fromEntries(new FormData(form));
+    const requirements = $$(".requirement-editor", form).map((row) => ({
+      skill_id: $("[name=skill_id]", row).value,
+      level: Number($("[name=level]", row).value) / 100,
+      criticality: Number($("[name=criticality]", row).value),
+    }));
+    const competitionIds = $$('[name="competition_ids"]:checked', form).map((input) => input.value);
     const payload = {
       id: `vacancy-${Date.now()}`,
       employer: data.employer,
@@ -214,8 +220,8 @@ function bindForms() {
       work_format: data.work_format,
       salary_from: Number(data.salary_from),
       salary_to: Number(data.salary_to),
-      requirements: [{ skill_id: data.skill_id, level: Number(data.level) / 100, criticality: Number(data.criticality) }],
-      evidence_policy: { mode: "platform_rating", competition_ids: [] },
+      requirements,
+      evidence_policy: { mode: data.policy_mode, competition_ids: competitionIds },
     };
     try {
       const created = await api("/api/v1/vacancies", { method: "POST", body: JSON.stringify(payload) });
@@ -232,6 +238,28 @@ function bindForms() {
   });
 }
 
+function addRequirement(skillId = "", level = 70, criticality = 4) {
+  const row = document.createElement("div");
+  row.className = "requirement-editor";
+  row.innerHTML = `
+    <label>Навык<select name="skill_id">${state.catalog.skills.map((item) => `<option value="${html(item.id)}" ${item.id === skillId ? "selected" : ""}>${html(item.name)}</option>`).join("")}</select></label>
+    <label>Уровень <output>${level}%</output><input name="level" type="range" min="20" max="100" value="${level}"></label>
+    <label>Критичность <output>${criticality} / 5</output><input name="criticality" type="range" min="1" max="5" value="${criticality}"></label>
+    <button class="remove-requirement" type="button" aria-label="Удалить навык">×</button>`;
+  $("[name=level]", row).addEventListener("input", (event) => $("output", event.target.closest("label")).textContent = `${event.target.value}%`);
+  $("[name=criticality]", row).addEventListener("input", (event) => $("output", event.target.closest("label")).textContent = `${event.target.value} / 5`);
+  $(".remove-requirement", row).addEventListener("click", () => {
+    if ($$(".requirement-editor").length > 1) row.remove();
+  });
+  $("#requirement-builder").append(row);
+}
+
+function renderCompetitionOptions() {
+  $("#competition-options").innerHTML = state.catalog.competitions.map((item) => `
+    <label><input type="checkbox" name="competition_ids" value="${html(item.id)}"> <span>${html(item.name)}</span></label>
+  `).join("");
+}
+
 async function boot() {
   try {
     [state.catalog, state.vacancies, state.candidates] = await Promise.all([
@@ -242,7 +270,9 @@ async function boot() {
     $("#competition-count").textContent = new Set(state.catalog.competitions.map((item) => item.source)).size;
     $("#persona-select").innerHTML = state.candidates.map((item) => `<option value="${html(item.id)}">${html(item.name)}</option>`).join("");
     $("#candidate-vacancy").innerHTML = state.vacancies.map((item) => `<option value="${html(item.id)}">${html(item.title)}</option>`).join("");
-    $("#vacancy-form [name=skill_id]").innerHTML = state.catalog.skills.map((item) => `<option value="${html(item.id)}">${html(item.name)}</option>`).join("");
+    addRequirement("python", 70, 5);
+    addRequirement("algorithms", 60, 4);
+    renderCompetitionOptions();
     renderVacancies();
     await selectVacancy(state.vacancyId);
   } catch (error) {
@@ -255,10 +285,13 @@ $$('[data-close]').forEach((button) => button.addEventListener("click", () => bu
 $$('dialog').forEach((dialog) => dialog.addEventListener("click", (event) => { if (event.target === dialog) dialog.close(); }));
 $("#start-search").addEventListener("click", () => $("#workspace").scrollIntoView({ behavior: "smooth" }));
 $("#open-vacancy").addEventListener("click", () => $("#vacancy-dialog").showModal());
+$("#open-data").addEventListener("click", () => $("#data-dialog").showModal());
 $("#candidate-search").addEventListener("input", (event) => { state.search = event.target.value; renderCandidates(); });
 $("#persona-select").addEventListener("change", (event) => { state.candidateId = event.target.value; loadCandidateDashboard(); });
 $("#candidate-vacancy").addEventListener("change", loadCandidateDashboard);
-$("#vacancy-form [name=level]").addEventListener("input", (event) => { $("#level-output").textContent = `${event.target.value}%`; });
-$("#vacancy-form [name=criticality]").addEventListener("input", (event) => { $("#criticality-output").textContent = `${event.target.value} / 5`; });
+$("#add-requirement").addEventListener("click", () => addRequirement());
+$("#vacancy-form [name=policy_mode]").addEventListener("change", (event) => {
+  $("#competition-policy").hidden = event.target.value !== "allowlist";
+});
 bindForms();
 boot();

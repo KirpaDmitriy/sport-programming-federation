@@ -40,6 +40,8 @@ def candidate(
     vacancy_id: str | None = None,
     talent: TalentService = Depends(service),
 ) -> dict:
+    if vacancy_id and talent.store.vacancy(vacancy_id) is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Vacancy not found")
     result = talent.candidate_detail(candidate_id, vacancy_id)
     if result is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Candidate not found")

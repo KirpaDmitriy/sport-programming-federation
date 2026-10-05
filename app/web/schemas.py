@@ -36,6 +36,9 @@ class VacancyIn(BaseModel):
             raise ValueError("salary_to must be greater than or equal to salary_from")
         if self.evidence_policy.mode == EvidencePolicyMode.ALLOWLIST and not self.evidence_policy.competition_ids:
             raise ValueError("allowlist policy requires at least one competition")
+        skill_ids = [item.skill_id for item in self.requirements]
+        if len(skill_ids) != len(set(skill_ids)):
+            raise ValueError("requirements must contain unique skills")
         return self
 
     def domain(self) -> Vacancy:
