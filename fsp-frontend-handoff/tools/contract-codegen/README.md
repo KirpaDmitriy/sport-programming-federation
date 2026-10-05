@@ -17,10 +17,10 @@ bun run --cwd tools/contract-codegen check
 
 ## Outputs and checks
 
-The generator writes `schema.d.ts` and `manifest.json` into the application, `../frontend/src/shared/api/generated/`, and into `frontend-reference/src/shared/api/generated/` so the reference checks keep running. Both copies come from one run and the check compares both. It resolves every local JSON Pointer before invoking the generator and rejects missing or nonlocal references. The manifest records the source contract version and SHA-256, generator/compiler versions, binary representation, and output SHA-256. It deliberately contains no generation timestamp, so identical input produces identical files.
+The generator writes `schema.d.ts` and `manifest.json` into the application, `../frontend/src/shared/api/generated/`. It resolves every local JSON Pointer before invoking the generator and rejects missing or nonlocal references. The manifest records the source contract version and SHA-256, generator/compiler versions, binary representation, and output SHA-256. It deliberately contains no generation timestamp, so identical input produces identical files.
 
-The `check` script regenerates in memory and compares both committed outputs without writing them. A source-only contract edit fails the hash check even if its TypeScript shape would be unchanged. This catches stale generated artifacts; it is not a substitute for the mock server's schema and behavior checks.
+The `check` script regenerates in memory and compares the committed output without writing it. A source-only contract edit fails the hash check even if its TypeScript shape would be unchanged. This catches stale generated artifacts; it is not a substitute for the mock server's schema and behavior checks.
 
 OpenAPI `type: string, format: binary` becomes a DOM `Blob` type through the generator's documented transform hook. The import helper can therefore submit a browser `File` through typed `FormData`, and the PDF export can return a `Blob`, without a `File`-to-`string` cast or editing generated output. See [openapi-typescript Node API](https://openapi-ts.dev/node).
 
-The application under `../frontend/` is the consumer of record. Keep one canonical source contract and regenerate instead of editing either generated copy.
+The application under `../frontend/` is the consumer of record. Keep one canonical source contract and regenerate instead of editing the generated files.

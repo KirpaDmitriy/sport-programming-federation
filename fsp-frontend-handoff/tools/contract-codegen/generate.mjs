@@ -4,11 +4,7 @@ import openapiTS, { astToString } from 'openapi-typescript';
 import ts from 'typescript';
 
 const contractUrl = new URL('../../contracts/openapi.json', import.meta.url);
-// The application consumes its own copy; the reference package keeps one so its checks stay runnable.
-const outputUrls = [
-  new URL('../../../frontend/src/shared/api/generated/', import.meta.url),
-  new URL('../../frontend-reference/src/shared/api/generated/', import.meta.url),
-];
+const outputUrls = [new URL('../../../frontend/src/shared/api/generated/', import.meta.url)];
 const source = await readFile(contractUrl, 'utf8');
 const contract = JSON.parse(source);
 

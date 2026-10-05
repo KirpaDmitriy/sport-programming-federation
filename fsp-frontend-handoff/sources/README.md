@@ -17,4 +17,4 @@ The user requested GitHub-first automatic enrichment, Rust backend, React/TanSta
 
 The working palette and wordmark are a proposed interface direction. A separate official logo asset/complete brandbook was not validated as part of this frontend package. Do not trace a generated raster logo and label it an official vector asset. Preserve the reference palette and replace the wordmark with an authorized supplied asset when available.
 
-Package-level checksums and the verification report identify the exact files delivered. The original presentation and PDF are included for the team's own implementation and submission workflow.
+The original presentation and PDF are included for the team's own implementation and submission workflow.

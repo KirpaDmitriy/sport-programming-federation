@@ -37,7 +37,7 @@ Use `needId` when requesting a candidate comparison. Without a need, matching da
 
 ## Request and response handling
 
-Use the typed transport reference under `../frontend-reference/`. Keep one generated type source and a small error-normalization boundary. Do not introduce a second manually written `Candidate`, `Invitation` or `Need` DTO that competes with the contract.
+The application's typed transport lives in `frontend/src/shared/api/`. Keep one generated type source and a small error-normalization boundary. Do not introduce a second manually written `Candidate`, `Invitation` or `Need` DTO that competes with the contract.
 
 Map API errors using `code`, `message`, `requestId` and field `details`. The implemented mock codes are listed in [error-codes.json](../contracts/error-codes.json). Preserve user input on recoverable errors. A 401 requires session recovery; a 403 means the action is not permitted; a 404 can represent an inaccessible resource; a 409 requires refetch/reconciliation; a 422 maps to validation feedback. Do not claim that every endpoint implements every possible error scenario just because a shared error schema is documented.
 

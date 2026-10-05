@@ -6,7 +6,7 @@ Implement the candidate and employer application under `frontend/`, using the te
 
 `contracts/openapi.json` is authoritative for paths, operation IDs, DTOs, required fields, error envelopes, and wire enums. The product requirements and screen notes are authoritative for user behavior. Raster mockups communicate layout and hierarchy; their incidental text, sample dates, and icon artifacts must not override written rules. Do not infer an endpoint or a mandatory field from pixels.
 
-`frontend-reference/` is a small, verified API integration reference, not the completed frontend. Move its typed client pattern into `frontend/src/shared/api/` when building the application. Maintain one canonical source contract.
+The typed client lives in `frontend/src/shared/api/`. Maintain one canonical source contract.
 
 ## Runtime boundary
 
