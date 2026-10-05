@@ -54,7 +54,7 @@ def test_candidate_graph_and_recommendations(tmp_path) -> None:
     assert body["recommendations"][0]["competition_id"] == "ml-challenge-2027"
 
 
-def test_create_vacancy_and_offer_end_to_end(tmp_path) -> None:
+def test_create_vacancy_and_legacy_offer_boundary(tmp_path) -> None:
     vacancy = {
         "id": "python-intern",
         "employer": "КодРазряд Лаб",
@@ -76,7 +76,7 @@ def test_create_vacancy_and_offer_end_to_end(tmp_path) -> None:
         authenticated_client(http, "employer@example.test", "employer")
         employer_profile(http, "КодРазряд Лаб")
         assert http.post("/api/v1/vacancies", json=vacancy).status_code == 201
-        offer = http.post(
+        legacy_offer = http.post(
             "/api/v1/offers",
             json={
                 "candidate_id": "alina",
@@ -86,10 +86,8 @@ def test_create_vacancy_and_offer_end_to_end(tmp_path) -> None:
                 "message": "Алина, приглашаем обсудить нашу платформу.",
             },
         )
-        inbox = http.get("/api/v1/candidates/alina/offers")
 
-    assert offer.status_code == 201
-    assert inbox.json()[0]["title"] == "Python-разработчик"
+    assert legacy_offer.status_code == 410
 
 
 def test_validation_and_not_found_paths_can_fail(tmp_path) -> None:

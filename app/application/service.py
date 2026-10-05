@@ -89,7 +89,6 @@ class TalentService:
             "profile": asdict(profile),
             "evidence": evidence,
             "graph": {"nodes": graph_nodes, "edges": graph_edges},
-            "offers": self.store.offers(candidate_id),
             "tested_category": (
                 f"{account['specialization']}:{account['verified_grade'] or 'unverified'}"
                 if account else None

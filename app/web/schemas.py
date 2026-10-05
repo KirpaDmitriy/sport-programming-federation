@@ -66,6 +66,26 @@ class AssessmentSubmitIn(BaseModel):
     answers: dict[str, int] = Field(min_length=1, max_length=20)
 
 
+class InvitationIn(BaseModel):
+    candidate_id: str = Field(min_length=1)
+    vacancy_id: str | None = Field(default=None, min_length=1)
+    position_title: str = Field(min_length=3, max_length=160)
+    salary_from: int = Field(gt=0)
+    salary_to: int = Field(gt=0)
+    description: str = Field(min_length=10, max_length=2000)
+    contact_method: str = Field(min_length=5, max_length=254)
+
+    @model_validator(mode="after")
+    def salary_range_is_ordered(self):
+        if self.salary_to < self.salary_from:
+            raise ValueError("salary_to must be greater than or equal to salary_from")
+        return self
+
+
+class InvitationStatusIn(BaseModel):
+    status: Literal["accepted", "rejected"]
+
+
 class RequirementIn(BaseModel):
     skill_id: str = Field(min_length=1)
     level: UnitInterval

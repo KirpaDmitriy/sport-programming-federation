@@ -50,9 +50,16 @@ def candidate(
 
 
 @router.get("/candidates/{candidate_id}/offers", tags=["offers"])
-def candidate_offers(candidate_id: str, talent: TalentService = Depends(service)) -> list[dict]:
+def candidate_offers(
+    candidate_id: str,
+    talent: TalentService = Depends(service),
+    user: dict = Depends(require_role("candidate")),
+) -> list[dict]:
     if talent.store.candidate(candidate_id) is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Candidate not found")
+    profile = talent.store.candidate_profile(user["id"])
+    if profile is None or profile["candidate_id"] != candidate_id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the profile owner can access offers")
     return talent.store.offers(candidate_id)
 
 
@@ -95,20 +102,14 @@ def matches(
 
 
 @router.post("/offers", status_code=status.HTTP_201_CREATED, tags=["offers"])
-def create_offer(payload: OfferIn, talent: TalentService = Depends(service)) -> dict:
-    if talent.store.candidate(payload.candidate_id) is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Candidate not found")
-    vacancy = talent.store.vacancy(payload.vacancy_id)
-    if vacancy is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Vacancy not found")
-    offer_id = talent.store.create_offer(
-        payload.candidate_id,
-        payload.vacancy_id,
-        payload.salary_from,
-        payload.salary_to,
-        payload.message,
+def create_offer(
+    payload: OfferIn,
+    user: dict = Depends(require_role("employer")),
+) -> dict:
+    raise HTTPException(
+        status.HTTP_410_GONE,
+        "Legacy offers are replaced by /api/v1/invitations with role-based access",
     )
-    return {"id": offer_id, "status": "new"}
 
 
 @router.post("/integrations/fsp/sync", tags=["integrations"])

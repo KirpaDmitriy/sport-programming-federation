@@ -157,9 +157,26 @@ CREATE TABLE IF NOT EXISTS offers (
     status TEXT NOT NULL DEFAULT 'new',
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+CREATE TABLE IF NOT EXISTS invitations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    employer_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    candidate_id TEXT NOT NULL REFERENCES candidates(id) ON DELETE CASCADE,
+    vacancy_id TEXT REFERENCES vacancies(id) ON DELETE SET NULL,
+    company_name TEXT NOT NULL,
+    position_title TEXT NOT NULL,
+    salary_from INTEGER NOT NULL CHECK (salary_from > 0),
+    salary_to INTEGER NOT NULL CHECK (salary_to >= salary_from),
+    description TEXT NOT NULL,
+    contact_method TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'sent' CHECK (status IN ('sent', 'viewed', 'accepted', 'rejected')),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
 CREATE INDEX IF NOT EXISTS achievements_candidate_idx ON achievements(candidate_id);
 CREATE INDEX IF NOT EXISTS offers_candidate_idx ON offers(candidate_id);
 CREATE INDEX IF NOT EXISTS sessions_user_idx ON sessions(user_id);
+CREATE INDEX IF NOT EXISTS invitations_candidate_idx ON invitations(candidate_id);
+CREATE INDEX IF NOT EXISTS invitations_employer_idx ON invitations(employer_user_id);
 """
 
 
@@ -555,6 +572,93 @@ class Store:
             for row in rows
         }
 
+    def create_invitation(self, employer_user_id: str, candidate_id: str, invitation: dict) -> int:
+        with self.connection() as connection:
+            cursor = connection.execute(
+                """INSERT INTO invitations(
+                    employer_user_id, candidate_id, vacancy_id, company_name,
+                    position_title, salary_from, salary_to, description, contact_method
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    employer_user_id,
+                    candidate_id,
+                    invitation.get("vacancy_id"),
+                    invitation["company_name"],
+                    invitation["position_title"],
+                    invitation["salary_from"],
+                    invitation["salary_to"],
+                    invitation["description"],
+                    invitation["contact_method"],
+                ),
+            )
+            return int(cursor.lastrowid)
+
+    def invitation(self, invitation_id: int) -> dict | None:
+        with self.connection() as connection:
+            row = connection.execute(
+                "SELECT * FROM invitations WHERE id = ?",
+                (invitation_id,),
+            ).fetchone()
+        return dict(row) if row else None
+
+    def employer_invitations(self, user_id: str) -> list[dict]:
+        with self.connection() as connection:
+            rows = connection.execute(
+                """SELECT invitations.*, candidates.name AS candidate_name,
+                CASE WHEN invitations.status = 'accepted' THEN candidate_profiles.contact_email END
+                    AS candidate_contact
+                FROM invitations
+                JOIN candidates ON candidates.id = invitations.candidate_id
+                LEFT JOIN candidate_profiles ON candidate_profiles.candidate_id = invitations.candidate_id
+                WHERE invitations.employer_user_id = ? ORDER BY invitations.id DESC""",
+                (user_id,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def candidate_invitations(self, user_id: str, mark_viewed: bool = False) -> list[dict]:
+        with self.connection() as connection:
+            profile = connection.execute(
+                "SELECT candidate_id FROM candidate_profiles WHERE user_id = ?",
+                (user_id,),
+            ).fetchone()
+            if profile is None:
+                return []
+            if mark_viewed:
+                connection.execute(
+                    """UPDATE invitations SET status='viewed', updated_at=CURRENT_TIMESTAMP
+                    WHERE candidate_id = ? AND status = 'sent'""",
+                    (profile["candidate_id"],),
+                )
+            rows = connection.execute(
+                """SELECT invitations.* FROM invitations
+                WHERE candidate_id = ? ORDER BY id DESC""",
+                (profile["candidate_id"],),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def set_invitation_status(self, invitation_id: int, user_id: str, new_status: str) -> dict | None:
+        with self.connection() as connection:
+            row = connection.execute(
+                """SELECT invitations.* FROM invitations
+                JOIN candidate_profiles ON candidate_profiles.candidate_id = invitations.candidate_id
+                WHERE invitations.id = ? AND candidate_profiles.user_id = ?""",
+                (invitation_id, user_id),
+            ).fetchone()
+            if row is None:
+                return None
+            if row["status"] not in {"sent", "viewed"}:
+                raise ValueError("Invitation already has a final status")
+            connection.execute(
+                """UPDATE invitations SET status = ?, updated_at=CURRENT_TIMESTAMP
+                WHERE id = ?""",
+                (new_status, invitation_id),
+            )
+            updated = connection.execute(
+                "SELECT * FROM invitations WHERE id = ?",
+                (invitation_id,),
+            ).fetchone()
+        return dict(updated)
+
     def upsert_achievements(self, achievements: Iterable[Achievement], connection: sqlite3.Connection | None = None) -> None:
         rows = [
             (
@@ -758,7 +862,7 @@ class Store:
         if table not in {
             "users", "sessions", "candidate_profiles", "employer_profiles",
             "assessment_attempts", "candidate_test_skills", "skills", "competitions",
-            "candidates", "achievements", "vacancies", "offers",
+            "candidates", "achievements", "vacancies", "offers", "invitations",
         }:
             raise ValueError("Unknown table")
         with self.connection() as connection:
