@@ -97,12 +97,6 @@ h1 em { font-style: normal; color: var(--lime); }
 .hero-proof { position: absolute; z-index: 3; right: 36px; bottom: 30px; display: flex; align-items: center; gap: 14px; color: #c8c8d0; font-size: 11px; line-height: 1.3; text-transform: uppercase; letter-spacing: .08em; }
 .hero-proof strong { display: grid; place-content: center; width: 52px; height: 52px; border-radius: 16px; background: white; color: var(--ink); font-size: 17px; letter-spacing: -.04em; }
 
-.trust-strip { margin-top: 20px; padding: 18px; display: grid; grid-template-columns: repeat(3,1fr) 1.2fr; gap: 12px; }
-.trust-strip > div { min-height: 116px; padding: 20px 24px; display: flex; flex-direction: column; justify-content: space-between; border-radius: 24px; background: var(--card); border: 1px solid var(--line); }
-.trust-strip strong { font-size: 34px; letter-spacing: -.05em; }
-.trust-strip span { color: var(--muted); font-size: 12px; }
-.trust-strip .trust-note { color: white; background: var(--blue); border-color: var(--blue); font-size: 18px; line-height: 1.15; font-weight: 720; }
-
 .workspace { padding: 100px 0 120px; }
 .section-heading { display: grid; grid-template-columns: 1.2fr .8fr; align-items: end; gap: 40px; margin-bottom: 32px; }
 .section-heading h2 { margin-bottom: 0; font-size: clamp(38px,5vw,62px); line-height: 1; letter-spacing: -.055em; }
@@ -362,9 +356,6 @@ h1 em { font-style: normal; color: var(--lime); }
   .hero-actions { flex-direction: column; align-items: stretch; }
   .hero-orbit { right: -48px; bottom: -38px; transform: scale(.61); }
   .hero-proof { left: 25px; bottom: 22px; }
-  .trust-strip { grid-template-columns: 1fr 1fr; padding-inline: 0; }
-  .trust-strip > div { min-height: 100px; padding: 16px; }
-  .trust-strip strong { font-size: 28px; }
   .workspace { padding-top: 70px; }
   .section-heading { grid-template-columns: 1fr; gap: 16px; }
   .vacancy-list,.candidate-grid { grid-template-columns: 1fr; }

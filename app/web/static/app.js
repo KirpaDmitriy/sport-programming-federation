@@ -573,8 +573,6 @@ async function boot() {
       api("/api/v1/catalog"), api("/api/v1/vacancies"), api("/api/v1/candidates"),
     ]);
     state.vacancyId = state.vacancies[0].id;
-    $("#candidate-count").textContent = state.candidates.length;
-    $("#competition-count").textContent = new Set(state.catalog.competitions.map((item) => item.source)).size;
     $("#persona-select").innerHTML = state.candidates.map((item) => `<option value="${html(item.id)}">${html(item.name)}</option>`).join("");
     $("#candidate-vacancy").innerHTML = state.vacancies.map((item) => `<option value="${html(item.id)}">${html(item.title)}</option>`).join("");
     addRequirement("python", 70, 5);
