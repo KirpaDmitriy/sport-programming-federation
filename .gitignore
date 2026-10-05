@@ -11,3 +11,6 @@ tmp/
 # Local infrastructure state and secrets (never commit)
 .fsp-infra/
 node_modules/
+
+# Rust build output
+target/
