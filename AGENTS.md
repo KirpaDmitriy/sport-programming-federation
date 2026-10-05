@@ -1,7 +1,7 @@
 # Repository rules
 
 The FSP reverse-hiring platform for the FSP 2026 special track. The repository holds two things side by side: Dima's
-Python MVP «Выготский» in the root, and the modular platform that replaces it (contract, mock, frontend, Rust
+Python MVP in the root, and the modular platform that replaces it (contract, mock, frontend, Rust
 backend, stand).
 
 ## Map
