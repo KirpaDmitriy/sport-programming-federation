@@ -2,23 +2,24 @@
   "name": "@fsp/frontend",
   "private": true,
   "type": "module",
-  "packageManager": "pnpm@12.9.1",
+  "packageManager": "bun@1.4.2",
   "engines": {
-    "node": "^24.19.0"
+    "bun": ">=1.4.2"
   },
   "scripts": {
-    "dev": "vite",
-    "mock": "npm --prefix ../fsp-frontend-handoff/mock-server start",
-    "build": "vite build",
-    "preview": "vite preview",
+    "dev": "bun --bun vite",
+    "mock": "bun run --cwd ../fsp-frontend-handoff/mock-server start",
+    "build": "bun --bun vite build",
+    "preview": "bun --bun vite preview",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "e2e": "playwright test",
-    "lint": "biome check . && node scripts/check-layers.mjs",
+    "e2e": "bun --bun playwright test",
+    "e2e:public": "bun --bun playwright test -c playwright.public.config.ts",
+    "lint": "biome check . && bun scripts/check-layers.mjs",
     "format": "biome format --write .",
-    "codegen": "pnpm --dir ../fsp-frontend-handoff/tools/contract-codegen generate",
-    "codegen:check": "pnpm --dir ../fsp-frontend-handoff/tools/contract-codegen check",
-    "verify": "pnpm codegen:check && pnpm typecheck && pnpm lint && pnpm test && pnpm build && node scripts/check-bundle.mjs"
+    "codegen": "bun run --cwd ../fsp-frontend-handoff/tools/contract-codegen generate",
+    "codegen:check": "bun run --cwd ../fsp-frontend-handoff/tools/contract-codegen check",
+    "verify": "bun run codegen:check && bun run typecheck && bun run lint && bun run test && bun run build && bun scripts/check-bundle.mjs"
   },
   "dependencies": {
     "@tanstack/react-form": "1.33.5",

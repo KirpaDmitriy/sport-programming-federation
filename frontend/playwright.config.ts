@@ -20,10 +20,10 @@ export default defineConfig({
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 } } }],
   webServer: [
     {
-      command: 'npm --prefix ../fsp-frontend-handoff/mock-server start',
+      command: 'bun run --cwd ../fsp-frontend-handoff/mock-server start',
       url: 'http://127.0.0.1:4010/health',
       reuseExistingServer: true,
     },
-    { command: './node_modules/.bin/vite', url: 'http://127.0.0.1:5173/login', reuseExistingServer: true },
+    { command: 'bun --bun vite', url: 'http://127.0.0.1:5173/login', reuseExistingServer: true },
   ],
 });
