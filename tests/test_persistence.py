@@ -44,3 +44,35 @@ def test_database_rejects_impossible_placement(tmp_path) -> None:
 
     with pytest.raises(sqlite3.IntegrityError):
         sync_fsp_payload(store, malformed)
+
+
+def test_failed_sync_rolls_back_the_whole_payload(tmp_path) -> None:
+    store = Store(tmp_path / "test.sqlite3")
+    store.initialize()
+    store.upsert_skills(SKILLS)
+    malformed = {
+        "disciplines": [{"id": "algo", "name": "Алгоритмы"}],
+        "participants": [{"id": "new-person", "name": "Новый участник"}],
+        "competitions": [{
+            "id": "new-event",
+            "name": "Новое соревнование",
+            "discipline_id": "algo",
+            "participants": 10,
+            "difficulty": 0.5,
+            "skills": {"algorithms": 1.0},
+        }],
+        "results": [{
+            "id": "broken-result",
+            "participant_id": "new-person",
+            "competition_id": "new-event",
+            "placement": 0,
+            "participants": 10,
+            "role": "participant",
+        }],
+    }
+
+    with pytest.raises(sqlite3.IntegrityError):
+        sync_fsp_payload(store, malformed)
+
+    assert store.count("candidates") == 0
+    assert store.count("competitions") == 0

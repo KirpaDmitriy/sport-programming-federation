@@ -47,9 +47,10 @@ def sync_fsp_payload(store: Store, payload: dict) -> dict[str, int]:
         )
         for item in payload["results"]
     ]
-    store.upsert_candidates(candidates)
-    store.upsert_competitions(competitions)
-    store.upsert_achievements(achievements)
+    with store.connection() as connection:
+        store.upsert_candidates(candidates, connection)
+        store.upsert_competitions(competitions, connection)
+        store.upsert_achievements(achievements, connection)
     return {
         "disciplines": len(disciplines),
         "competitions": len(competitions),

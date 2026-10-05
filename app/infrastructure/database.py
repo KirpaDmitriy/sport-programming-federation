@@ -102,17 +102,24 @@ class Store:
         with self.connection() as connection:
             connection.executescript(SCHEMA)
 
-    def upsert_skills(self, skills: Iterable[Skill]) -> None:
-        rows = [(s.id, s.name, s.category, json.dumps(s.prerequisites)) for s in skills]
-        with self.connection() as connection:
-            connection.executemany(
-                """INSERT INTO skills VALUES (?, ?, ?, ?)
-                ON CONFLICT(id) DO UPDATE SET name=excluded.name,
-                category=excluded.category, prerequisites_json=excluded.prerequisites_json""",
-                rows,
-            )
+    def _executemany(self, query: str, rows: list[tuple], connection: sqlite3.Connection | None = None) -> None:
+        if connection is not None:
+            connection.executemany(query, rows)
+            return
+        with self.connection() as own_connection:
+            own_connection.executemany(query, rows)
 
-    def upsert_competitions(self, competitions: Iterable[Competition]) -> None:
+    def upsert_skills(self, skills: Iterable[Skill], connection: sqlite3.Connection | None = None) -> None:
+        rows = [(s.id, s.name, s.category, json.dumps(s.prerequisites)) for s in skills]
+        self._executemany(
+            """INSERT INTO skills VALUES (?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET name=excluded.name,
+            category=excluded.category, prerequisites_json=excluded.prerequisites_json""",
+            rows,
+            connection,
+        )
+
+    def upsert_competitions(self, competitions: Iterable[Competition], connection: sqlite3.Connection | None = None) -> None:
         rows = [
             (
                 item.id,
@@ -127,32 +134,32 @@ class Store:
             )
             for item in competitions
         ]
-        with self.connection() as connection:
-            connection.executemany(
-                """INSERT INTO competitions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(id) DO UPDATE SET name=excluded.name,
-                discipline=excluded.discipline, source=excluded.source,
-                participants=excluded.participants, difficulty=excluded.difficulty,
-                official=excluded.official, skill_relevance_json=excluded.skill_relevance_json,
-                starts_on=excluded.starts_on""",
-                rows,
-            )
+        self._executemany(
+            """INSERT INTO competitions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET name=excluded.name,
+            discipline=excluded.discipline, source=excluded.source,
+            participants=excluded.participants, difficulty=excluded.difficulty,
+            official=excluded.official, skill_relevance_json=excluded.skill_relevance_json,
+            starts_on=excluded.starts_on""",
+            rows,
+            connection,
+        )
 
-    def upsert_candidates(self, candidates: Iterable[Candidate]) -> None:
+    def upsert_candidates(self, candidates: Iterable[Candidate], connection: sqlite3.Connection | None = None) -> None:
         rows = [
             (c.id, c.name, c.city, c.work_format, c.desired_role, c.about, json.dumps(c.stack, ensure_ascii=False))
             for c in candidates
         ]
-        with self.connection() as connection:
-            connection.executemany(
-                """INSERT INTO candidates VALUES (?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(id) DO UPDATE SET name=excluded.name, city=excluded.city,
-                work_format=excluded.work_format, desired_role=excluded.desired_role,
-                about=excluded.about, stack_json=excluded.stack_json""",
-                rows,
-            )
+        self._executemany(
+            """INSERT INTO candidates VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET name=excluded.name, city=excluded.city,
+            work_format=excluded.work_format, desired_role=excluded.desired_role,
+            about=excluded.about, stack_json=excluded.stack_json""",
+            rows,
+            connection,
+        )
 
-    def upsert_achievements(self, achievements: Iterable[Achievement]) -> None:
+    def upsert_achievements(self, achievements: Iterable[Achievement], connection: sqlite3.Connection | None = None) -> None:
         rows = [
             (
                 a.id,
@@ -167,15 +174,15 @@ class Store:
             )
             for a in achievements
         ]
-        with self.connection() as connection:
-            connection.executemany(
-                """INSERT INTO achievements VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(source, external_id) DO UPDATE SET
-                candidate_id=excluded.candidate_id, competition_id=excluded.competition_id,
-                placement=excluded.placement, participants=excluded.participants,
-                role=excluded.role, rank=excluded.rank""",
-                rows,
-            )
+        self._executemany(
+            """INSERT INTO achievements VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(source, external_id) DO UPDATE SET
+            candidate_id=excluded.candidate_id, competition_id=excluded.competition_id,
+            placement=excluded.placement, participants=excluded.participants,
+            role=excluded.role, rank=excluded.rank""",
+            rows,
+            connection,
+        )
 
     def upsert_vacancies(self, vacancies: Iterable[Vacancy]) -> None:
         rows = [
