@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "experiments": [
+    {
+      "id": "scoring-v1",
+      "change": "Добавить к покрытию требований 15% абсолютной подтверждённой силы профиля.",
+      "expected_effect": "Более сильный результат ранжируется выше при одинаковом полном покрытии требований.",
+      "failure_condition": "Порядок равный или обратный; кандидат с критичным пробелом обгоняет кандидата с полным покрытием только за счёт бонуса.",
+      "command": ".venv/bin/pytest tests/test_scoring.py --junitxml=experiments/artifacts/scoring-v1.junit.xml",
+      "artifact": "experiments/artifacts/scoring-v1.junit.xml",
+      "status": "passed"
+    }
+  ]
+}
