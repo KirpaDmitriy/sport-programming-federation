@@ -29,6 +29,16 @@ verify:
 e2e:
     bun run --cwd frontend e2e
 
+# Rust backend on 127.0.0.1:8080
+backend:
+    cd backend && cargo run -p fsp-server
+
+# Rust backend: format check, clippy and tests
+backend-check:
+    cd backend && cargo fmt --all --check
+    cd backend && cargo clippy --workspace --all-targets --locked -- -D warnings
+    cd backend && cargo test --workspace --locked
+
 # Build a git ref on the demo stand and switch to it
 deploy ref="main":
     infra/deploy.sh {{ref}}
