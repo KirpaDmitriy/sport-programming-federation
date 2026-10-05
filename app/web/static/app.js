@@ -103,11 +103,11 @@ function renderCandidates() {
         </div>
         <h3>${html(candidate.name)}</h3>
         <div class="candidate-role">${html(candidate.desired_role)} · ${html(candidate.city)}</div>
-        <div class="candidate-proofline">${candidate.tested_category ? `Тест: ${html(candidate.tested_category)}` : "Демо-профиль"} · ${candidate.has_fsp_history ? "есть история ФСП" : "без истории ФСП"}</div>
+        <div class="candidate-proofline"><span>Пример профиля</span> · ${candidate.tested_category ? `тест: ${html(candidate.tested_category)}` : "навыки из достижений"} · ${candidate.has_fsp_history ? "есть результаты соревнований" : "без результатов соревнований"}</div>
         <div class="tag-row">${topSkills.map((skill) => `<span class="tag">${html(skillById(skill.skill_id)?.name || skill.skill_id)} ${percent(skill.level)}</span>`).join("")}</div>
         <div class="candidate-foot">
           <span>${candidate.match.critical_gaps ? `критичных пробелов: ${candidate.match.critical_gaps}` : "критичные навыки закрыты"}</span>
-          <button class="link-button" data-candidate="${html(candidate.id)}">Профиль →</button>
+          <button class="link-button" data-candidate="${html(candidate.id)}">Открыть профиль <span>↗</span></button>
         </div>
       </article>
     `;
@@ -216,7 +216,7 @@ async function loadCandidateDashboard() {
   const gaps = candidate.match.gaps.slice(0, 4);
   $("#candidate-match").innerHTML = `<div class="match-big"><strong>${Math.round(candidate.match.score)}</strong><span>/ 100 match</span></div><div class="progress"><i style="width:${candidate.match.score}%"></i></div><div class="gap-list">${gaps.length ? gaps.map((gap) => `<div class="gap-item"><span>${html(skillById(gap.skill_id)?.name)}</span><span>−${percent(gap.deficit)}</span></div>`).join("") : '<p class="quiet">Все требования подтверждены. Можно идти на интервью.</p>'}</div><p class="quiet">${html(vacancy.title)} · ${html(vacancy.employer)}</p>`;
   $("#recommendations").innerHTML = candidate.recommendations.length ? candidate.recommendations.slice(0, 2).map((item) => { const competition = competitionById(item.competition_id); return `<div class="recommendation"><strong>${html(competition?.name || item.competition_id)}</strong><span>Подтвердит: ${item.closes_skills.map((id) => html(skillById(id)?.name)).join(", ")}</span></div>`; }).join("") : '<p class="quiet">Граф цели закрыт. Выберите более сложную вакансию — найдём следующий шаг.</p>';
-  $("#evidence-list").innerHTML = candidate.evidence.map((item) => `<div class="evidence-row"><div class="place">#${item.placement}</div><div><strong>${html(item.competition)}</strong><span>${html(item.discipline)} · роль: ${html(item.role)}${item.rank ? ` · разряд ${html(item.rank)}` : ""}</span></div><span class="verified">${item.source === "fsp" ? "ФСП · mock" : html(item.source)}</span></div>`).join("");
+  $("#evidence-list").innerHTML = candidate.evidence.map((item) => `<div class="evidence-row"><div class="place">#${item.placement}</div><div><strong>${html(item.competition)}</strong><span>${html(item.discipline)} · роль: ${html(item.role)}${item.rank ? ` · разряд ${html(item.rank)}` : ""}</span></div><span class="verified">${item.source === "fsp" ? "ФСП" : html(item.source)}</span></div>`).join("");
   const demoOffers = candidate.offers || [];
   $("#offer-count").textContent = demoOffers.length;
   $("#offer-list").innerHTML = demoOffers.length ? demoOffers.map((item) => `<div class="offer-item"><strong>${html(item.title)}</strong><span>${html(item.employer)} · ${money(item.salary_from)} — ${money(item.salary_to)}</span></div>`).join("") : '<p class="quiet">Это демонстрация кабинета. Реальные приглашения доступны после регистрации.</p>';
@@ -472,7 +472,7 @@ function bindAccountForms() {
       const result = await api("/api/v1/auth/register", { method: "POST", body: JSON.stringify(payload) });
       $("#verify-form").email.value = payload.email;
       $("#verification-note").innerHTML = result.verification_delivery === "demo_outbox"
-        ? `Почтовый сервер в публичном демо не настроен. Код из прозрачного demo-outbox: <strong>${html(result.verification_code)}</strong>`
+        ? `Код подтверждения для тестового стенда: <strong>${html(result.verification_code)}</strong>`
         : "Мы отправили код на указанный email.";
       setAuthTab("verify");
     } catch (error) { $(".form-status", form).textContent = error.message; }
@@ -607,7 +607,7 @@ $("#logout").addEventListener("click", async () => {
   switchView("employer");
   toast("Сессия завершена");
 });
-$("#open-data").addEventListener("click", () => $("#data-dialog").showModal());
+$$('[data-open-data]').forEach((button) => button.addEventListener("click", () => $("#data-dialog").showModal()));
 $("#candidate-search").addEventListener("input", (event) => { state.search = event.target.value; renderCandidates(); });
 $("#candidate-specialization").addEventListener("change", (event) => { state.specialization = event.target.value; renderCandidates(); });
 $("#candidate-grade").addEventListener("change", (event) => { state.grade = event.target.value; renderCandidates(); });

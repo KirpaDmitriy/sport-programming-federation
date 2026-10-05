@@ -4,8 +4,8 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#111114">
-    <meta name="description" content="Выготский — доказательный подбор ИТ-специалистов по результатам соревнований.">
-    <title>Выготский — таланты с доказательствами</title>
+    <meta name="description" content="Выготский — сервис подбора ИТ-специалистов по подтверждённым навыкам.">
+    <title>Выготский — найм по подтверждённым навыкам</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%23641982'/%3E%3Cpath d='M15 20h34v10H15zm12-10h10v34H27z' fill='%23d8ff75'/%3E%3C/svg%3E">
     <link rel="stylesheet" href="/assets/styles.css">
   </head>
@@ -22,8 +22,8 @@
         <button class="role-button" data-view="candidate">Кандидат</button>
       </nav>
       <div class="top-actions">
-        <button class="source-pill" id="open-data"><span></span> Демо · контракт ФСП</button>
-        <button class="top-login" id="open-auth">Войти</button>
+        <button class="source-pill" data-open-data><span aria-hidden="true">?</span> Как считаем навыки</button>
+        <button class="top-login" id="open-auth">Войти <span aria-hidden="true">↗</span></button>
         <button class="top-account" id="open-account" hidden>Кабинет</button>
       </div>
     </header>
@@ -32,13 +32,14 @@
       <section id="employer-view" class="view active">
         <section class="hero shell">
           <div class="hero-copy">
-            <p class="eyebrow">Обратный подбор для ИТ</p>
-            <h1>Ищите не резюме.<br><em>Ищите доказательства.</em></h1>
-            <p class="hero-lead">Результаты соревнований превращаются в понятный граф навыков. Вы задаёте критичность — Выготский показывает, кто действительно подходит.</p>
+            <p class="eyebrow">Сервис обратного подбора для ИТ</p>
+            <h1>Найм начинается<br><em>с навыков.</em></h1>
+            <p class="hero-lead">Находите ИТ-специалистов по подтверждённым результатам, а не по формулировкам в резюме.</p>
             <div class="hero-actions">
-              <button class="button button-lime" id="start-search">Смотреть кандидатов <span>↗</span></button>
+              <button class="button button-lime" id="start-search">Найти специалистов <span>↗</span></button>
               <button class="button button-ghost" id="hero-register">Создать аккаунт</button>
             </div>
+            <button class="hero-data-link" data-open-data>Как формируется оценка <span>→</span></button>
           </div>
           <div class="hero-orbit" aria-label="Пример графа компетенций">
             <div class="orbit-ring ring-one"></div>
@@ -49,12 +50,12 @@
             <span class="orbit-node node-c">Data</span>
             <span class="orbit-node node-d">Product</span>
           </div>
-          <div class="hero-proof"><strong>ФСП</strong><span>готовы подключить<br>официальный API</span></div>
+          <div class="hero-proof"><strong>✓</strong><span>У каждого навыка<br>видно подтверждение</span></div>
         </section>
 
         <section class="trust-strip shell" aria-label="Показатели платформы">
-          <div><strong id="candidate-count">—</strong><span>демо-профилей</span></div>
-          <div><strong id="competition-count">—</strong><span>источников доказательств</span></div>
+          <div><strong id="candidate-count">—</strong><span>примеров профилей</span></div>
+          <div><strong id="competition-count">—</strong><span>соревнований в примере</span></div>
           <div><strong>100%</strong><span>объяснимый мэтчинг</span></div>
           <div class="trust-note">Без ключевых слов<br>и слепых откликов</div>
         </section>
@@ -74,9 +75,9 @@
               <span aria-hidden="true">⌕</span>
               <input id="candidate-search" type="search" placeholder="Имя, город или стек" aria-label="Поиск кандидатов">
             </label>
-            <label class="compact-filter">Специализация<select id="candidate-specialization"><option value="">Все</option><option value="backend">Backend</option><option value="data">Data / ML</option><option value="frontend">Frontend</option></select></label>
-            <label class="compact-filter">Грейд<select id="candidate-grade"><option value="">Все</option><option value="intern">Intern</option><option value="junior">Junior</option><option value="middle">Middle</option><option value="senior">Senior</option></select></label>
-            <label class="compact-filter">История ФСП<select id="candidate-fsp"><option value="">Любая</option><option value="yes">Есть</option><option value="no">Нет</option></select></label>
+            <label class="compact-filter"><span>Специализация</span><select id="candidate-specialization"><option value="">Все направления</option><option value="backend">Backend</option><option value="data">Data / ML</option><option value="frontend">Frontend</option></select></label>
+            <label class="compact-filter"><span>Уровень</span><select id="candidate-grade"><option value="">Любой уровень</option><option value="intern">Intern</option><option value="junior">Junior</option><option value="middle">Middle</option><option value="senior">Senior</option></select></label>
+            <label class="compact-filter"><span>Результаты соревнований</span><select id="candidate-fsp"><option value="">Неважно</option><option value="yes">Есть</option><option value="no">Нет</option></select></label>
           </div>
           <div id="candidate-grid" class="candidate-grid" aria-live="polite"></div>
         </section>
@@ -88,7 +89,7 @@
             <p class="eyebrow coral">Карта карьерного роста</p>
             <h1>Ваши навыки.<br><em>Теперь с доказательствами.</em></h1>
           </div>
-          <label class="persona-select">Демо-профиль<select id="persona-select" aria-label="Выбрать демо-профиль"></select></label>
+          <label class="persona-select">Пример профиля<select id="persona-select" aria-label="Выбрать пример профиля"></select></label>
         </div>
         <div class="candidate-dashboard">
           <article class="profile-card" id="profile-summary"></article>
@@ -118,12 +119,12 @@
       <section id="account-view" class="view shell account-page">
         <div class="account-heading">
           <div>
-            <p class="eyebrow coral">Боевой контур</p>
+            <p class="eyebrow coral">Личный кабинет</p>
             <h1 id="account-title">Личный кабинет</h1>
             <p id="account-subtitle">Ваши данные защищены ролевым доступом.</p>
           </div>
           <div class="account-actions">
-            <button class="button button-soft" id="back-to-demo">← Демо</button>
+            <button class="button button-soft" id="back-to-demo">← На главную</button>
             <button class="button button-dark compact" id="logout">Выйти</button>
           </div>
         </div>
@@ -269,22 +270,22 @@
 
     <dialog id="data-dialog" class="dialog data-dialog">
       <button class="dialog-close" data-close aria-label="Закрыть">×</button>
-      <p class="eyebrow blue">Прозрачность данных</p>
-      <h2>Что считает Выготский</h2>
-      <p>ФСП — основной доверенный источник спортивных результатов: дисциплина, соревнование, место, роль в команде и спортивный разряд. В демо официальный API заменён версионированным мок-контрактом той же структуры.</p>
+      <p class="eyebrow blue">Прозрачная оценка</p>
+      <h2>Откуда берутся навыки</h2>
+      <p>Выготский связывает результаты соревнований с профессиональными навыками. Для каждого достижения учитываются уровень турнира, место, роль участника и задачи, которые он решал.</p>
       <div class="source-grid">
-        <div><strong>ФСП</strong><span>официальность · разряды · роли</span></div>
-        <div><strong>Codeforces</strong><span>массовость · алгоритмы</span></div>
+        <div><strong>Соревнования ФСП</strong><span>место · дисциплина · роль · разряд</span></div>
+        <div><strong>Открытые платформы</strong><span>рейтинг · алгоритмические задачи</span></div>
         <div><strong>Хакатоны</strong><span>продукт · ML · команда</span></div>
       </div>
-      <p class="quiet">Выготский не смешивает уровень навыка и достоверность: в профиле видны обе величины и каждое исходное доказательство. Все показанные имена, компании и результаты вымышлены.</p>
+      <p class="quiet">В профиле видно, чем подтверждён каждый навык. На этой странице показаны вымышленные примеры: реальные данные публикуются только с согласия кандидата.</p>
     </dialog>
 
     <dialog id="auth-dialog" class="dialog auth-dialog">
       <button class="dialog-close" data-close aria-label="Закрыть">×</button>
       <div class="auth-brand"><span class="brand-mark"><i></i><i></i><i></i></span><span>выготский</span></div>
-      <p class="eyebrow blue">Демо + реальное использование</p>
-      <h2>Войдите в свой контур</h2>
+      <p class="eyebrow blue">Личный кабинет</p>
+      <h2>Войдите в Выготский</h2>
       <div class="auth-tabs"><button class="active" data-auth-tab="login">Вход</button><button data-auth-tab="register">Регистрация</button></div>
       <form id="login-form" class="auth-form">
         <label>Email<input name="email" type="email" autocomplete="email" required></label>

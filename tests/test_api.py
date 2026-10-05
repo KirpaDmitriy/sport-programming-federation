@@ -29,13 +29,15 @@ def test_browser_shell_and_assets_are_served(tmp_path) -> None:
         styles = http.get("/assets/styles.css")
 
     assert page.status_code == 200
-    assert "Ищите доказательства" in page.text
-    assert "Выготский — таланты с доказательствами" in page.text
-    assert "Демо · контракт ФСП" in page.text
+    assert "Найм начинается" in page.text
+    assert "Выготский — найм по подтверждённым навыкам" in page.text
+    assert "Как считаем навыки" in page.text
+    assert "Откуда берутся навыки" in page.text
     assert 'id="requirement-builder"' in page.text
     assert 'id="competition-policy"' in page.text
     assert 'id="data-dialog"' in page.text
     assert "async function boot" in script.text
+    assert "[data-open-data]" in script.text
     assert "prefers-reduced-motion" in styles.text
     assert "max-width: 420px" in styles.text
 

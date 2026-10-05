@@ -56,7 +56,7 @@ FSP_DEMO_PAYLOAD = {
         },
         {
             "id": "sofia",
-            "name": "Софья Ким",
+            "name": "Софья Морозова",
             "city": "Казань",
             "work_format": "hybrid",
             "desired_role": "Product engineer",
@@ -65,7 +65,7 @@ FSP_DEMO_PAYLOAD = {
         },
         {
             "id": "timur",
-            "name": "Тимур Сафин",
+            "name": "Тимофей Соколов",
             "city": "Уфа",
             "work_format": "remote",
             "desired_role": "Security engineer",
