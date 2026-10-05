@@ -1,7 +1,7 @@
 import { fireEvent, screen } from '@testing-library/react';
 import { HttpResponse, http } from 'msw';
 import { describe, expect, it } from 'vitest';
-import { assessmentKey } from '@/entities/assessment';
+import { type AssessmentAnswer, assessmentKey } from '@/entities/assessment';
 import { scopeOf } from '@/entities/session';
 import { assessment, candidateSession, problem } from '../../../test/fixtures';
 import { renderWithProviders } from '../../../test/render';
@@ -17,11 +17,12 @@ function renderWorkspace() {
 
 describe('assessment draft persistence', () => {
   it('reports a saved draft only after the server acknowledges it', async () => {
-    let saved: unknown = null;
+    let saved: AssessmentAnswer | null = null;
     server.use(
       http.put(`${API}/api/v1/me/assessments/assessment-001/answer`, async ({ request }) => {
-        saved = await request.json();
-        return HttpResponse.json(assessment({ status: 'in_progress', answer: saved as never, revision: 2 }));
+        const answer = (await request.json()) as AssessmentAnswer;
+        saved = answer;
+        return HttpResponse.json(assessment({ status: 'in_progress', answer, revision: 2 }));
       }),
     );
     await renderWorkspace();
