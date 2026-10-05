@@ -24,7 +24,7 @@ The actual PDF intentionally supplies no FSP API, data schema, candidate dataset
 
 ## Corrections to the visual references
 
-See `MOCKUP_CORRECTIONS.md` for the complete register. The archive contains the selected final set, including corrections to the candidate preview, Docker observation status, grade status, shortlist bookmark and invitation contact explanation. Raster dates and incidental numbers are not authoritative fixtures. Additional mandatory flows require implementation from the text specification even where no separate PNG exists.
+See [`MOCKUP_CORRECTIONS.md`](../../frontend/docs/MOCKUP_CORRECTIONS.md) for the complete register. The archive contains the selected final set, including corrections to the candidate preview, Docker observation status, grade status, shortlist bookmark and invitation contact explanation. Raster dates and incidental numbers are not authoritative fixtures. Additional mandatory flows require implementation from the text specification even where no separate PNG exists.
 
 ## Remaining integration work
 

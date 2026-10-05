@@ -1,6 +1,6 @@
 # Product rules and domain boundaries
 
-Status: team design for the frontend MVP. Exact wire fields and enum values are defined by `../contracts/openapi.json`. The official requirements are in `../sources/organizer-spec.pdf`; requirement references use its printed page numbers.
+Status: team design for the frontend MVP. Exact wire fields and enum values are defined by [`../../contracts/openapi.json`](../../contracts/openapi.json). The official requirements are in [`sources/organizer-spec.pdf`](sources/organizer-spec.pdf); requirement references use its printed page numbers.
 
 ## 1. Core product
 

@@ -1,21 +1,19 @@
 # Frontend implementation rules
 
-This directory is a handoff package for the FSP hackathon frontend. The application is to be implemented by the receiving agent. The included HTTP mock is a development dependency, not the Rust backend.
+Rules for the React application of the FSP reverse-hiring platform. The HTTP mock in `../mock-server` is a development dependency, not the Rust backend.
 
 ## Authority
 
-1. Follow the current user's instructions and the destination repository's applicable instructions.
-2. Use `sources/organizer-spec.pdf` for organizer requirements. The earlier announcement saying that an FSP API and datasets would be supplied is superseded by the actual specification.
-3. Use `docs/PRODUCT_RULES.md` and `docs/REQUIREMENTS_TRACEABILITY.md` for the agreed interpretation and explicitly marked team decisions.
-4. Use `contracts/openapi.json` for exact request/response fields, enums, methods and status codes. It is the proposed integration contract, not evidence that the Rust backend implements it.
-5. Use the screen specification and correction register for behavior. The ten PNGs are visual references; text specifications override their incidental dates, counts, icons and unsupported controls.
-
-When importing this package into an existing repository, merge relevant instructions. Do not replace existing instructions, source trees or lockfiles wholesale.
+1. Follow the current user's instructions and the repository's [`../AGENTS.md`](../AGENTS.md).
+2. Use [`../docs/product/sources/organizer-spec.pdf`](../docs/product/sources/organizer-spec.pdf) for organizer requirements. The earlier announcement saying that an FSP API and datasets would be supplied is superseded by the actual specification.
+3. Use [`PRODUCT_RULES.md`](../docs/product/PRODUCT_RULES.md) and [`REQUIREMENTS_TRACEABILITY.md`](../docs/product/REQUIREMENTS_TRACEABILITY.md) for the agreed interpretation and explicitly marked team decisions.
+4. Use [`../contracts/openapi.json`](../contracts/openapi.json) for exact request/response fields, enums, methods and status codes. It is the proposed integration contract, not evidence that the Rust backend implements it.
+5. Use the [screen specification](docs/SCREEN_SPECIFICATION.md) and [correction register](docs/MOCKUP_CORRECTIONS.md) for behavior. The ten PNGs are visual references; text specifications override their incidental dates, counts, icons and unsupported controls.
 
 ## Scope and structure
 
-- Implement the React application under `frontend/`. Preserve `backend/`, `infra/`, `docs/`, experiments and tests owned by other workstreams.
-- Use TypeScript and the verified compatible dependencies in `docs/STACK_RESEARCH.md` and the reference package. Do not mix API examples from different major versions.
+- The application lives in this directory. Do not change `../backend/`, the Python MVP or other workstreams from here; a contract change follows the protocol in [`../contracts/README.md`](../contracts/README.md).
+- Use TypeScript and the verified compatible dependencies in [`docs/STACK_RESEARCH.md`](docs/STACK_RESEARCH.md), pinned in `package.json` and `bun.lock`. Do not mix API examples from different major versions.
 - Use FSD layers `app`, `pages`, `widgets`, `features`, `entities`, `shared` only when they hold real code. Imports flow downward; expose slice public APIs. Avoid a deprecated `processes` layer and generic dumping grounds.
 - Use TanStack Router for routes/search parameters, Query for server state, Form for forms, and Table where its features are needed. Do not add a second global server-state store.
 - Keep Rust as the production application backend. Browser code does not assign grades, rank candidates, infer trust or call model providers directly.
@@ -50,8 +48,8 @@ When importing this package into an existing repository, merge relevant instruct
 
 ## Verification and delivery
 
-- Follow `docs/IMPLEMENTATION_PLAN.md` in small functional commits on the team's named branch. Integrate through `dev`; `main` is the deployment branch.
-- Verify the archive's mock suite first, then implement frontend unit/component and browser acceptance tests from `docs/ACCEPTANCE_TESTS.md`.
+- Follow [`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md) in small functional commits on the team's named branch. Integrate through `dev`; `main` is the deployment branch.
+- Keep the mock suite green (`bun run --cwd ../mock-server test`) and extend the unit/component and browser acceptance tests from [`docs/ACCEPTANCE_TESTS.md`](docs/ACCEPTANCE_TESTS.md).
 - Run build and type checking with the pinned toolchain. Exercise both roles in a browser at the documented desktop sizes.
 - Preserve real test output. Report failures, skipped checks and environment limitations accurately. Do not manufacture coverage percentages, matching quality or assessment accuracy.
 - Deliver code, an updated runbook, a verified demo script and a concise change/test report. A static screenshot does not establish functional completion.

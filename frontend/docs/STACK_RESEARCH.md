@@ -1,6 +1,6 @@
 # Frontend stack research
 
-Research date: 2026-10-05. This document separates observed releases, the selected architecture, and verification still required for the full application. Package metadata was retrieved directly from the public npm registry and is preserved in [`../sources/stack-registry.json`](../sources/stack-registry.json). The snapshot contains exact versions, engines, peers, licenses, and tarball integrity values; it is not a fabricated lockfile.
+Research date: 2026-10-05. This document separates observed releases, the selected architecture, and verification still required for the full application. Package metadata was retrieved directly from the public npm registry and is preserved in [`stack-registry.json`](stack-registry.json). The snapshot contains exact versions, engines, peers, licenses, and tarball integrity values; it is not a fabricated lockfile.
 
 ## Decision
 

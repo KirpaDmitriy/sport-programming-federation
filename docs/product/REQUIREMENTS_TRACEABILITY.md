@@ -6,10 +6,10 @@ This handoff specifies a React frontend backed by a stateful mock API. It prepar
 
 Sources:
 
-- **Organizer specification:** [`../sources/organizer-spec.pdf`](../sources/organizer-spec.pdf), read in full. It has nine physical pages: a cover followed by printed pages 1–8. References below use **printed page numbers**.
-- **Organizer presentation:** [`../sources/organizer-presentation-template.pptx`](../sources/organizer-presentation-template.pptx). The supplied announcement requires slides 7–11 to preserve their template structure and design. This is a submission requirement, not a frontend feature.
-- **Approved product decisions:** the conversation with Danil and Dima and [`../sources/system-atlas.pdf`](../sources/system-atlas.pdf). The atlas records the agreed architecture; it is not an organizer API specification.
-- **Design references:** the ten final PNGs listed in [`../mockups/manifest.json`](../mockups/manifest.json). They illustrate selected states, not the full functional scope.
+- **Organizer specification:** [`sources/organizer-spec.pdf`](sources/organizer-spec.pdf), read in full. It has nine physical pages: a cover followed by printed pages 1–8. References below use **printed page numbers**.
+- **Organizer presentation:** [`sources/organizer-presentation-template.pptx`](sources/organizer-presentation-template.pptx). The supplied announcement requires slides 7–11 to preserve their template structure and design. This is a submission requirement, not a frontend feature.
+- **Approved product decisions:** the conversation with Danil and Dima and [`sources/system-atlas.pdf`](sources/system-atlas.pdf). The atlas records the agreed architecture; it is not an organizer API specification.
+- **Design references:** the ten final PNGs listed in [`../../frontend/docs/mockups/manifest.json`](../../frontend/docs/mockups/manifest.json). They illustrate selected states, not the full functional scope.
 
 The actual PDF explicitly says that **no FSP API, FSP schema, candidate/vacancy dataset, or reference evaluation labels are supplied** (§2, p2; §4, p6). The earlier pasted announcement suggesting an available FSP API/mock is superseded by the actual specification. All FSP integration fields in this project are proposed, synthetic data.
 

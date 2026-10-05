@@ -1,6 +1,6 @@
 # Frontend acceptance and integration tests
 
-Status: implementation acceptance plan for the receiving agent. These browser tests are not claimed as executed in this archive. The separately included mock-server tests and package verification report describe what was actually run while preparing the handoff.
+Status: implemented in `frontend/test` (Vitest + MSW) and `frontend/e2e` (Playwright against the mock); run commands and current results are in the [frontend README](../README.md). The separately included mock-server tests and package verification report describe what was actually run while preparing the handoff.
 
 Use the real local HTTP mock for end-to-end flows. Use MSW for small deterministic component tests and failure injection. Do not run both handlers for the same request without an explicit test setup. Reset the HTTP mock between independent test cases and use separate browser contexts for different actors.
 

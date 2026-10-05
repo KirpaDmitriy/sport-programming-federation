@@ -4,7 +4,7 @@
 
 [`openapi.json`](openapi.json) is the proposed v0.1.0 wire contract. It defines paths, schemas, operation IDs, parameters, status codes and error bodies. The local HTTP mock implements it for frontend development. Compatibility with a real Rust service must be tested when that service exists.
 
-The complete generated operation index is [API_OPERATIONS.md](API_OPERATIONS.md). The run commands and fixtures are documented in the [mock server README](../mock-server/README.md). The selected compiler/generator boundary is described in [STACK_RESEARCH.md](../fsp-frontend-handoff/docs/STACK_RESEARCH.md); use the included generation scripts rather than hand-editing types.
+The complete generated operation index is [API_OPERATIONS.md](API_OPERATIONS.md). The run commands and fixtures are documented in the [mock server README](../mock-server/README.md). The selected compiler/generator boundary is described in [STACK_RESEARCH.md](../frontend/docs/STACK_RESEARCH.md); use the included generation scripts rather than hand-editing types.
 
 ## Connection and session
 

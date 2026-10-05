@@ -1,6 +1,6 @@
 # Frontend implementation plan
 
-This is the receiving agent's execution plan. It is not a claim that the React application already exists. Complete the required vertical slices before adding optional functionality.
+This was the execution plan for the frontend, which is now implemented in this directory; the backend handover below still applies. Complete the required vertical slices before adding optional functionality.
 
 ## Repository placement
 

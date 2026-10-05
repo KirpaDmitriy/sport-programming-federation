@@ -9,7 +9,7 @@ All ten images were visually reviewed against the organizer PDF and agreed produ
 Order of interpretation:
 
 1. Required organizer behavior and explicit product decisions recorded in the handoff.
-2. Shared API contract and `PRODUCT_RULES.md` for wire/state rules.
+2. Shared API contract and [`PRODUCT_RULES.md`](../../docs/product/PRODUCT_RULES.md) for wire/state rules.
 3. `SCREEN_SPECIFICATION.md` and this correction register for user behavior.
 4. `DESIGN_SYSTEM.md` and provided tokens for reusable UI treatment.
 5. Pixels for layout, visual hierarchy, and composition.
