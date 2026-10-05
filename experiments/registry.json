@@ -18,6 +18,15 @@
       "command": ".venv/bin/pytest tests/test_persistence.py --junitxml=experiments/artifacts/fsp-sync-v1.junit.xml",
       "artifact": "experiments/artifacts/fsp-sync-v1.junit.xml",
       "status": "passed"
+    },
+    {
+      "id": "api-scenarios-v1",
+      "change": "Соединить каталог, профили, вакансии, мэтчинг, рекомендации и предложения в версионированном HTTP API.",
+      "expected_effect": "Основные пути работодателя и кандидата выполняются через реальную временную SQLite, а ошибочные входы дают 404 или 422.",
+      "failure_condition": "Любой сценарий обходит хранилище, некорректная зарплата принимается или схема OpenAPI не содержит контракт ФСП.",
+      "command": ".venv/bin/pytest tests/test_api.py --junitxml=experiments/artifacts/api-scenarios-v1.junit.xml",
+      "artifact": "experiments/artifacts/api-scenarios-v1.junit.xml",
+      "status": "passed"
     }
   ]
 }

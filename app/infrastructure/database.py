@@ -243,6 +243,16 @@ class Store:
             for row in rows
         ]
 
+    def candidate(self, candidate_id: str) -> Candidate | None:
+        with self.connection() as connection:
+            row = connection.execute("SELECT * FROM candidates WHERE id = ?", (candidate_id,)).fetchone()
+        if row is None:
+            return None
+        return Candidate(
+            row["id"], row["name"], row["city"], row["work_format"], row["desired_role"],
+            row["about"], tuple(json.loads(row["stack_json"])),
+        )
+
     def achievements(self, candidate_id: str | None = None) -> list[Achievement]:
         query = "SELECT * FROM achievements"
         parameters: tuple[str, ...] = ()
