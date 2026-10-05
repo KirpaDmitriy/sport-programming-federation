@@ -1,0 +1,20 @@
+{
+  "checked_at": "2026-10-05T09:24:11Z",
+  "host": "93.77.179.211",
+  "release_commit": "35c0288",
+  "public_url": "http://93.77.179.211:8010",
+  "checks": {
+    "internal_smoke": "passed",
+    "external_smoke": "passed",
+    "openapi_public": "passed",
+    "kontur_talent_service": "active",
+    "metroguard_service": "active",
+    "nginx_service": "active"
+  },
+  "runtime": {
+    "kontur_memory_bytes": 34988032,
+    "kontur_port": 8010,
+    "metroguard_port": 8000,
+    "metroguard_best_algorithm": "memory_hybrid"
+  }
+}
