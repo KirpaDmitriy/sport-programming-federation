@@ -31,7 +31,7 @@ const profileEditable = {
 
 export const schemas = {
   Error: obj({ code: str(), message: str(), requestId: str(), details: arr(obj({ path: str(), message: str() })) }),
-  Health: obj({ status: en('ok'), service: en('fsp-mock-api'), version: en('0.1.0') }),
+  Health: obj({ status: en('ok'), service: en('fsp-mock-api', 'fsp-career-api'), version: en('0.1.0') }),
   Meta: obj({
     contractVersion: en('0.1.0'), mode: en('mock', 'live'), serverTime: dt, scenario: str(),
     capabilities: obj(Object.fromEntries([
