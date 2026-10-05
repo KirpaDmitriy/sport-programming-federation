@@ -1,122 +1,61 @@
-# Requirements and source traceability
+# Requirements traceability
 
-## Authority and scope
+How each requirement of the organizer's specification ([`sources/organizer-spec.pdf`](sources/organizer-spec.pdf),
+printed page numbers) is covered by the current code. Rules are detailed in [`BUSINESS_RULES.md`](BUSINESS_RULES.md);
+screens in [`frontend/docs/SCREENS.md`](../../frontend/docs/SCREENS.md); tests in
+[`frontend/docs/TESTING.md`](../../frontend/docs/TESTING.md). "Mock test" refers to
+[`mock-server/test/mock-api.test.mjs`](../../mock-server/test/mock-api.test.mjs), "e2e" to `frontend/e2e/`.
 
-This handoff specifies a React frontend backed by a stateful mock API. It prepares the integration boundary for the future Rust backend. A working mock flow is not evidence that email delivery, GitHub ingestion, secure execution, model evaluation, or production authorization has been implemented.
+Status: **done** — implemented end to end against the mock API; **done, simulated** — the workflow is implemented,
+the underlying data or evaluation is a fixture; **not implemented**.
 
-Sources:
-
-- **Organizer specification:** [`sources/organizer-spec.pdf`](sources/organizer-spec.pdf), read in full. It has nine physical pages: a cover followed by printed pages 1–8. References below use **printed page numbers**.
-- **Organizer presentation:** [`sources/organizer-presentation-template.pptx`](sources/organizer-presentation-template.pptx). The supplied announcement requires slides 7–11 to preserve their template structure and design. This is a submission requirement, not a frontend feature.
-- **Approved product decisions:** the conversation with Danil and Dima and [`sources/system-atlas.pdf`](sources/system-atlas.pdf). The atlas records the agreed architecture; it is not an organizer API specification.
-- **Design references:** the ten final PNGs listed in [`../../frontend/docs/mockups/manifest.json`](../../frontend/docs/mockups/manifest.json). They illustrate selected states, not the full functional scope.
-
-The actual PDF explicitly says that **no FSP API, FSP schema, candidate/vacancy dataset, or reference evaluation labels are supplied** (§2, p2; §4, p6). The earlier pasted announcement suggesting an available FSP API/mock is superseded by the actual specification. All FSP integration fields in this project are proposed, synthetic data.
-
-The IDs below are handoff traceability IDs. They are not IDs assigned by the organizer. Exact HTTP routes, wire types, error codes, and operation IDs belong to the contract shipped in this archive. Do not infer an endpoint from a screen name.
+The specification supplies no FSP API, schema or dataset (§2, p2; §4, p6), so every FSP record here is synthetic.
 
 ## Required MVP behavior
 
-| ID | Requirement | Source | Frontend coverage and acceptance evidence |
-|---|---|---|---|
-| OR-01 | Two role-specific personal workspaces: candidate and employer. | §2.1, p3 | Separate navigation and protected views. A candidate cannot open employer-only actions or another candidate's records. |
-| OR-02 | Registration by email with address confirmation. | §2.2.4, p4 | Add registration, pending verification, successful verification, expired/invalid link, resend, sign-in, and session-expired states. A demo account selector does not replace this flow. |
-| OR-03 | Candidate profile/resume: manual form or PDF auto-extraction, covering name, contacts, stack, grade, roles, experience, and soft skills. | §2.1, p3 | Screen 02 plus PDF import states. Imported grade remains a claim. Unknown extracted fields remain empty. Candidate can correct extracted fields. |
-| OR-04 | Automatically generate a standardized PDF profile. | §2.1, p3 | Screens 01 and 06 expose an export action with pending, ready, and failed states. The resulting document must match the selected candidate and current profile version. |
-| OR-05 | Mandatory onboarding questionnaire covering industry and specialization. | §2, p1; §2.1, p3 | Add onboarding questionnaire before the first assessment. A prefilled demo profile is not a substitute for demonstrating it. |
-| OR-06 | Candidate selects the grade to test. | §2, p1 | Screen 02 and assessment setup show selected grade separately from verified grade. Changing a select field does not change the employer-visible category. |
-| OR-07 | Implement a testing mechanism with comparable assessment difficulty and resistance to task/answer circulation. | §2, p1–2 | Screens 05–06 plus setup/history demonstrate task variants, a shared rubric, checks, explanation, and result handling. The frontend consumes assessment decisions from the API. |
-| OR-08 | Employer-visible category is based on questionnaire and passed assessment; category combines specialization and grade. | §2, p1; search requirements, p4 | Screens 01, 06, 08, 09. No verified category is minted from GitHub activity, PDF parsing, an LLM answer, or self-description alone. |
-| OR-09 | Do not force a lower grade after a failed assessment. Candidate may voluntarily attempt a lower grade; successful candidates may attempt a higher one. | §2, p2 | First failed assessment leaves the profile unverified. Failed upgrade preserves the existing verified category. Lower/higher options are explicit user choices. |
-| OR-10 | Grade changes have a time restriction; the team chooses the interval. | §2, p2; §2.1, p3 | Assessment setup/history show eligibility and next eligible date from the API. Never hardcode the example “three months” as an organizer-mandated value. |
-| OR-11 | Show current industry, specialization, grade, and questionnaire/assessment history. | §2.1, p3 | Screens 01, 02, 06 plus history/detail views. Preserve earlier confirmed results after an unsuccessful upgrade or infrastructure error. |
-| OR-12 | Candidate profile can link an FSP participant ID. Absence of FSP history must work correctly. | §2, p2; §2.1, p3 | Screen 03 and settings. FSP link is optional, an empty history is valid, and a lookup failure is distinct from an empty result. |
-| OR-13 | Employer company profile contains description, business area, and contact information. | §2.1, p3 | Add company create/edit view. Invitation preview must contain these relevant details before it is sent. |
-| OR-14 | Employer describes the hiring need: team/work, stack, specialization, grade. | §2.1, p3 | Screen 07. Store a need independently from a published vacancy. |
-| OR-15 | Recommend categories and concrete candidates, with an explanation of why they were selected. | §2.1, p3; search requirements, p4 | Screen 08 shows category context and reasons; screen 09 gives requirement-level grounds and gaps. |
-| OR-16 | Employer can search the complete accessible candidate bank, with filters for specialization, grade, category, stack, and confirmed FSP achievements. | §2.1, p3 | Screen 08 has both recommendations and full-bank modes. The full bank respects candidate publication choices and verified category rules. |
-| OR-17 | Rank within a category by strength of confirmed profile, assessment results, and confirmed FSP achievements; rank search by need fit with concise explanation. | §2, p1; search requirements, p4 | Render API ranking/reasons. A confirmed FSP achievement may improve a ranking; absence is not a disqualification. Unknown FSP connection state is not a confirmed achievement. |
-| OR-18 | Changing filters or refining a query must not lose the previously obtained shortlist. | Search requirements, p4 | Screen 08 keeps saved shortlist membership outside transient filters. Refresh and role-appropriate navigation preserve it. |
-| OR-19 | Employer can invite a specific candidate with an offer, without publishing a vacancy. | §2, p2; §2.1, p3 | Screens 07, 09, 10 and invitation composer. The demo must complete this flow with vacancy publication off. |
-| OR-20 | Invitation and vacancy contain a mandatory salary range “from–to” in RUB. | §2.2.1, p4 | Screens 07, 09, 10. Both bounds are required. This handoff additionally chooses positive whole-ruble bounds, a monthly period, and gross pay. Reject reversed, zero, negative, fractional, non-finite, and malformed input. |
-| OR-21 | Invitation contains offer description, salary, company name, and a way to contact the employer. Candidate sees conditions before communication. | §2.2.1–2, p4 | Screen 10 shows the employer's contact before candidate acceptance. Do not hide both parties' contact information behind acceptance. |
-| OR-22 | Candidate can accept or reject an invitation; both sides see current interaction status. | §2.1, p3; §2.2.3, p4 | Screen 10 plus candidate/employer invitation lists. Read, accept, reject, conflict, and refreshed status are reproducible mock flows. |
-| OR-23 | Employer cannot access candidate contact details before acceptance or a candidate-initiated application. | §2.1, p4; §2.2.2, p4 | API omits unavailable fields. Search, profile, graphs, exports, previews, caches, and error payloads respect the same rule. CSS hiding is insufficient. |
-| OR-24 | Candidate can see only their own invitations and applications; other candidates' records are unavailable. | §2.1, p3 | Mock API rejects cross-candidate access even if a request ID is changed manually. Route guards are supplementary. |
-| OR-25 | Privacy settings, consent for processing/publication, and role-based data access. | §2.1, p3; §3.5, p6 | Screen 02 and settings separate processing consent, discoverability/publication, and company-specific contact disclosure. Do not silently combine these actions. |
-| OR-26 | End-to-end demonstration: registration → questionnaire → assessment → category → employer search → named invitation/contact. | §3.3, p5 | Provide a resettable demo script that starts from an unverified candidate, not only the upgraded profile shown in screen 06. |
+| ID | Requirement | Status | Implementation | Evidence |
+| --- | --- | --- | --- | --- |
+| OR-01 | Two role workspaces, candidate and employer (§2.1, p3) | done | `/candidate/*` and `/employer/*` behind role guards; the API checks the role of every call | e2e auth «UI-25 roles are separated…» |
+| OR-02 | Registration by e-mail with confirmation (§2.2.4, p4) | done, simulated | E-mail code flow on `/login`; the code goes to a demo mailbox instead of a real letter | e2e auth «UI-01 …» (two cases), unit `login-page.test.tsx`, mock test «email verification…» |
+| OR-03 | Profile by form or PDF extraction: name, contacts, stack, grade, roles, experience, soft skills (§2.1, p3) | done, simulated | Profile form; PDF import with editable preview and explicit confirmation. The mock returns a fixed preview instead of parsing the file | e2e candidate «UI-04 PDF import…» |
+| OR-04 | Standardized PDF profile (§2.1, p3) | done | «Скачать PDF» on the overview and the assessment result; the server renders the current profile | e2e candidate «UI-10 UI-12 UI-05 … the PDF is real», mock test «PDF export…» |
+| OR-05 | Mandatory questionnaire with industry and specialization (§2, p1; §2.1, p3) | done | `/candidate/onboarding`; a new candidate lands there after sign-in | e2e candidate «UI-02 UI-07 …» |
+| OR-06 | The candidate selects the grade to test (§2, p1) | done | `selectedGrade` is the target, shown apart from the verified grade | unit `qualification/ui.test.tsx`, mock test «profile category is server-owned…» |
+| OR-07 | Testing with comparable difficulty and resistance to leaked tasks (§2, p1–2) | done, simulated | One task family with per-grade variants, a shared weighted rubric, server-side draft, checks, explanation, history. Code is not executed; outcomes come from the mock scenario | e2e candidate «UI-10…», «UI-13…», «UI-14…»; mock test «assessment workflow…» |
+| OR-08 | Employer-visible category from questionnaire and passed assessment (§2, p1; p4) | done | Visibility needs verified e-mail, questionnaire, passed assessment and both consents | mock test «profile category is server-owned…», e2e «UI-02 UI-07…» |
+| OR-09 | No forced downgrade after a failure; lower or higher attempts by choice (§2, p2) | done | A failed attempt keeps the verified grade. Until a grade is verified any target can be chosen; after that, attempts below the verified grade are refused so the verified grade never drops | e2e «UI-13 a failed upgrade keeps the verified Junior grade», mock test «same-grade retry…» |
+| OR-10 | Time restriction on grade changes; interval chosen by the team (§2, p2; §2.1, p3) | done | 90 days after a successful grade change, configurable; same-grade retries and failures add none | e2e «UI-15 cooldown comes from the server», mock test «same-grade retry…» |
+| OR-11 | Current industry, specialization, grade and history (§2.1, p3) | done | Overview, «Профиль и цели», «Проверки» history with immutable results | e2e candidate suite |
+| OR-12 | Optional FSP ID; absence of history works (§2, p2; §2.1, p3) | done, simulated | FSP card on «Источники»; no history and a failed lookup are distinct states | e2e «UI-06 …» (two cases), mock test «scenario reset… no-FSP…» |
+| OR-13 | Company profile with description, business area, contacts (§2.1, p3) | done | `/employer/company`; invitations need a complete profile | e2e employer suite |
+| OR-14 | Employer describes the need: work, stack, specialization, grade (§2.1, p3) | done | Need editor with requirements, criticality, minimum grade and evidence policy | e2e «UI-16 …», mock test «need CRUD…» |
+| OR-15 | Recommended categories and candidates with reasons (§2.1, p3; p4) | done | Recommended mode grouped by match status with per-requirement reasons; «Соответствие» tab on the profile | e2e «UI-18 required coverage…» |
+| OR-16 | Search the whole bank with filters: specialization, grade, category, stack, confirmed FSP (§2.1, p3) | done | «Весь банк» mode; filters for verified specialization and grade, stack and verified FSP live in the URL | e2e «UI-17 UI-19 filters live in the URL…» |
+| OR-17 | Ranking by confirmed profile, assessment and FSP; search by need fit with explanation (§2, p1; p4) | done | Deterministic server order (grade fit, required, desired, FSP as a tie-breaker) | mock test «candidate bank is anonymous, deterministic…» |
+| OR-18 | Changing filters does not lose the shortlist (p4) | done | Shortlists are a persisted company resource independent of filters | e2e «UI-17 UI-19 …», «an emptied bank keeps saved shortlist entries…», mock test «shortlists persist…» |
+| OR-19 | Invite a candidate with an offer without publishing a vacancy (§2, p2; §2.1, p3) | done | Invitation composer from the candidate profile; needs are never published | e2e invitations suite |
+| OR-20 | Mandatory salary range in RUB in every offer (§2.2.1, p4) | done | Whole-ruble monthly gross range validated in the form and on the server | unit `need-form.test.ts`, e2e «UI-16 salary validation…» |
+| OR-21 | Offer shows description, salary, company and employer contact before communication (§2.2.1–2, p4) | done | Candidate invitation page shows the frozen terms and the company contact before the decision | e2e «UI-20 UI-21 UI-23 …» |
+| OR-22 | Accept or decline; both sides see the status (§2.1, p3; §2.2.3, p4) | done | Candidate decision, employer withdrawal, statuses and timeline on both sides | e2e «UI-22 …», «UI-24 …», unit `invitation-decision.test.tsx` |
+| OR-23 | No candidate contacts for the employer before acceptance (§2.1, p4; §2.2.2, p4) | done | Anonymous projection everywhere; contacts only through the per-company disclosure resource after acceptance | e2e «UI-20 UI-21 UI-23 …», mock test «direct invitations… disclose only selected fields…» |
+| OR-24 | A candidate sees only their own invitations (§2.1, p3) | done | Server scoping answers `404` for other records | mock test «health, request validation, session, role…», «direct invitations…» |
+| OR-25 | Privacy settings, processing and publication consent, role-based access (§2.1, p3; §3.5, p6) | done | Separate processing and publication consents; disclosure per invitation and company | e2e «UI-02 UI-07 …», mock test «profile category…» |
+| OR-26 | End-to-end demo: registration → questionnaire → assessment → category → search → invitation and contact (§3.3, p5) | done | Full path on the HTTPS stand; scripted in [`DEMO_SCRIPT_RU.md`](../../frontend/docs/DEMO_SCRIPT_RU.md) | e2e public «a new candidate and two companies complete the reverse-hiring flow» |
 
-## Agreed product decisions
+## Optional scope
 
-These choices extend or concretize the organizer's brief. They must not be described as externally supplied facts or industry-certified measures.
+| Feature | Organizer position | Status |
+| --- | --- | --- |
+| Vacancy browsing, self-application, application history | Desirable, not MVP (§2.1, p3) | not implemented; capability reported as off, no controls |
+| Vacancy publication and incoming applications | Desirable, not MVP (§2.1, p4) | not implemented; needs stay unpublished |
+| Recurring short employer tasks | Desirable, not MVP (§2.1, p3) | not implemented |
+| Anti-fraud checks for employers, ATS integration | After MVP (§2, p2–3) | not implemented; no «verified company» badge |
+| Keycloak or FSP ID sign-in | Future recommendation (§2, p2; §3.5, p6) | not implemented; e-mail sign-in only |
+| Mobile and tablet layout | Optional (§3.5, p6) | done: responsive layout with a navigation drawer below 1024 px, checked without horizontal scroll (e2e accessibility «narrow screens reflow…») |
+| In-app chat | Not required | not implemented; parties contact each other directly after acceptance |
 
-| ID | Decision | Consequence for the frontend and mock |
-|---|---|---|
-| PD-01 | GitHub is the first external source; enrichment is automatic after account linking. | No manual repository selection/approval is required to start or finish enrichment. Show progress and supported retry actions. The core mock has no disconnect/report operation; those controls remain hidden until supported. |
-| PD-02 | Public source observations, AI interpretations, and assessment results are separate evidence types. | Every skill detail distinguishes what was found, what was inferred, and what was checked. A repository technology does not automatically become a verified personal skill. |
-| PD-03 | Competence and requirement graphs drive explainable matching. | Screen 04 presents skills and evidence; screens 07–09 present required level, criticality, accepted evidence, match result, and remaining gap. A list/table must remain available as an accessible equivalent. |
-| PD-04 | Employer can define accepted evidence by requirement and use a default policy. | Support an evidence-policy editor/detail panel. Source/event choices must come from supplied catalogs. Never invent a real competition or claim FSP endorsement. |
-| PD-05 | Gap analysis suggests how to obtain missing evidence. | Recommend an available assessment or an explicitly synthetic demonstration event. Do not claim a real competition schedule or guaranteed qualification outcome without source data. |
-| PD-06 | AI assistance is allowed throughout assessment, including external tools, coding, checking, and explanation. | Keep the visible allowance from screen 05. No hidden ban on AI during the explanation/adaptation stage. The mock assistant is labeled as simulated when no model is connected. |
-| PD-07 | Common task-family rubric with controlled variants and an adaptation/explanation stage. | Show the attempt's task/rubric/version and progress consistently. The initial implementation simulates scoring through API fixtures; it must not claim real model or code evaluation. |
-| PD-08 | Employers see pseudonyms and generalized evidence until candidate consent. | Hide name, personal photo, real initials, email, phone, GitHub handle/URL, repository names/URLs, SHAs, and identifying code/quotes in employer projections. This is stronger than the organizer's contact-only minimum. |
-| PD-09 | Disclosure is scoped to the accepting invitation and company. | Candidate sees the recipient and selected fields. Acceptance by one company does not unlock another company's profile view. Accepted need/offer terms remain in history. |
-| PD-10 | GitHub activity is an observation, not worked hours or a calibrated skill probability. | Use found/processed/queued/unavailable counts and observation periods. Do not infer hours, grade, or a confidence percentage from commit volume. |
-| PD-11 | Rust backend, React/TanStack frontend, FSD organization, monorepo modules, Docker/Nginx/Redis, just tasks. | Follow the technical plan and package versions shipped elsewhere in the handoff. UI does not call databases, Bifrost, GitHub, or model vendors directly. |
-| PD-12 | Models are accessed through the future server-side Bifrost boundary. | Grok/DeepSeek identifiers from the conversation are planned configuration, not proof of availability. Frontend depends on assessment/source APIs, not provider-specific SDKs or credentials. |
-| PD-13 | Team works on personal branches, integrates into dev, main is intended for deployment. | Agent makes cohesive commits and supplies launch/test instructions. No deployment or real backend availability is implied by the mock implementation. |
+## Outside the current code
 
-## Optional and later scope
-
-| Feature | Organizer position | Treatment in this handoff |
-|---|---|---|
-| Candidate vacancy browsing, self-application, application history | Desirable, not required for MVP (§2.1, p3) | Optional extension. Hide navigation/actions until implemented end to end with the same salary and disclosure rules. |
-| Employer vacancy publication, editing, incoming applications | Desirable, not required for MVP (§2.1, p4) | The toggle in screen 07 is a visual option, not permission to ship a dead control. Named invitation is the primary flow. |
-| Recurring short employer tasks | Desirable, not required for MVP (§2.1, p3) | Optional extension. The general description on p2 must be read together with this explicit MVP qualification. |
-| Anti-fraud employer checks and ATS integration | Concept/architecture after MVP; a bonus (§2, p2–3) | Document extension boundaries. Do not invent verified-company badges, mandatory moderation, or an implemented ATS integration. |
-| Keycloak/FSP ID authentication compatibility | Future recommendation, not mandatory (§2, p2; §3.5, p6) | Keep identity integration replaceable; email confirmation is still required. |
-| Mobile/tablet adaptation | Optional for organizer MVP (§3.5, p6) | This handoff sets a practical responsive implementation target. Complete the desktop hiring flow first. |
-| Candidate/employer in-app chat | Not required in the provided specification | Outside the core handoff. The final screen 10 describes direct contact after acceptance; do not add a chat promise without a contracted, tested implementation. |
-| Need import from PDF, arbitrary file editing, drag sorting | Not specified as mandatory | Implement only when the contract and supporting states exist. Core need form and working assessment submission take priority. |
-
-## Delivery requirements beyond the frontend
-
-| ID | Required or recommended deliverable | Source and interpretation |
-|---|---|---|
-| DL-01 | Readable source code and repository link | §3.5, p5; §5, p6–7. Source must be available for review, unobfuscated. The brief does not force a public GitHub repository or a particular project license. |
-| DL-02 | Functional/component architecture and assessment/matching rationale | §3.4, p5. Include category rules, task leakage resistance, and reasons for ranking. |
-| DL-03 | Own validation procedure and measured results | §2, p2; §3.4, p5. Synthetic fixtures and UI tests alone are not proof of actual assessment or hiring quality. Report what was measured and on which data. |
-| DL-04 | Proposed FSP registry integration | §3.4, p5. Clearly label the schema/adapter as a team proposal with synthetic data. |
-| DL-05 | API documentation and library/component versions | §3.4, p5; §3.5, p6. This project uses OpenAPI as the shared contract; all implemented operations need request/response/error coverage. |
-| DL-06 | Reproducible build, local start, and deployment instructions | §3.4–3.5, p5. Docker is desirable; reproducible operation is essential. |
-| DL-07 | Presentation in PPTX/PDF, source link, companion documentation in DOC/PDF | §3.3, p5; §5.2, p6–7. Markdown development documentation needs an appropriate submission export. Preserve required template slides. |
-| DL-08 | Deployable prototype accessible for review | §3.3, p5; §5.2, p7. Strongly preferred. If deployment is unavailable, provide a demonstration video and clear local launch instructions. VM/domain come from the team. |
-
-The original specification also names security, safe credential storage, and protection of personal information (§3.5, p6). The mock implements and tests the **shape of authorization and disclosure**. A real deployment still requires backend enforcement, actual identity/session security, and the applicable operational/legal work. Do not mark these production obligations complete from browser-only tests.
-
-## Evaluation priorities
-
-| Criterion | Weight | Practical priority |
-|---|---:|---|
-| Reverse hiring mechanism and explanation | 35% | Complete need → category/candidate search → invitation → candidate decision. |
-| Assessment, validation, categorization | 25% | Demonstrate controlled variants, stable rules, no forced downgrade, and an honest validation method. |
-| Interface usability | 10% | Both role journeys should be understandable without narration. |
-| Technical implementation | 7% | Coherent state/API boundary, reproducible launch, maintainable code. |
-| Required scope and documentation | 6% | Cover onboarding, no-FSP history, API, architecture, and run instructions. |
-| Optional functionality | 7% | Add only after the primary flow and required states work. |
-| Presentation and pitch | 10% | Explain evidence, assessment, matching, and actual implementation limits clearly. |
-
-Source: §6, printed p7–8. Weights total 100%. They are supplied evaluation weights, not a forecast of competition results.
-
-## Release evidence checklist
-
-- [ ] A new candidate verifies email, completes the questionnaire, chooses a grade, and receives an API-backed mock assessment outcome.
-- [ ] Initial failure, failed upgrade, successful upgrade, and temporary evaluation failure have distinct results.
-- [ ] Candidate without GitHub/FSP data still completes the required route.
-- [ ] Employer need can produce an explained shortlist and invitation without a published vacancy.
-- [ ] Salary range and employer contact are visible before candidate acceptance.
-- [ ] Cross-candidate access and cross-company disclosure are covered by API-level negative tests.
-- [ ] Saved shortlist survives filter changes, page navigation, and refresh.
-- [ ] Graph/list/status representations agree on the same data and reference level.
-- [ ] Every visible action works or is explicitly unavailable with a reason; no placeholder chat/publication promise is presented as completed functionality.
-- [ ] Documentation distinguishes tested mock behavior, proposed backend behavior, and unimplemented production integrations.
+Production security, personal-data compliance, real e-mail delivery, live GitHub/FSP integrations, code execution
+and measured assessment or matching quality are not covered by the mock and remain backend work
+([`BUSINESS_RULES.md` §13](BUSINESS_RULES.md#13-capabilities-and-simulation)).

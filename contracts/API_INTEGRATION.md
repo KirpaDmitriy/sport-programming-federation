@@ -1,86 +1,157 @@
-# API integration guide
+# API integration
 
-## Contract status
+How the API behaves on the wire and how the frontend uses it. Shapes, enums and status codes are in
+[`openapi.json`](openapi.json); the operation list is in [`API_OPERATIONS.md`](API_OPERATIONS.md); domain rules are
+in [`../docs/product/BUSINESS_RULES.md`](../docs/product/BUSINESS_RULES.md). Everything below is what the mock
+implements and the frontend relies on; the backend has to keep it.
 
-[`openapi.json`](openapi.json) is the proposed v0.1.0 wire contract. It defines paths, schemas, operation IDs, parameters, status codes and error bodies. The local HTTP mock implements it for frontend development. Compatibility with a real Rust service must be tested when that service exists.
+## Connection
 
-The complete generated operation index is [API_OPERATIONS.md](API_OPERATIONS.md). The run commands and fixtures are documented in the [mock server README](../mock-server/README.md). The selected compiler/generator boundary is described in [STACK_RESEARCH.md](../frontend/docs/STACK_RESEARCH.md); use the included generation scripts rather than hand-editing types.
+- The browser calls the same origin. Application paths already start with `/api/v1`, so the client's base URL is
+  empty (`VITE_API_ORIGIN` sets an absolute origin only in Node tests). nginx forwards only `/api/v1/`.
+- The Vite dev and preview servers proxy `/api` to `FSP_API_TARGET` (default `http://127.0.0.1:4010`, the mock); the
+  dev server also proxies `/__mock__`.
+- `/__mock__/*` are development controls marked `x-mock-only` (choose actor, reset scenario, read the demo mailbox,
+  advance the clock). They are not part of the application API, are disabled on the stand
+  (`FSP_MOCK_DEV_ROUTES=0`) and blocked by nginx.
 
-## Connection and session
+## Session
 
-The contract's application paths already include `/api/v1`. In the browser use the same origin and an empty API base URL. The development Vite server proxies `/api` to `http://127.0.0.1:4010`. Do not concatenate `/api/v1` twice. Proxy `/__mock__` only in local development.
+1. `POST /api/v1/auth/email/challenges` with `{ email, role }` → `201 { challengeId, expiresAt, delivery }`
+   (`delivery: "mock_mailbox"` in the mock).
+2. `POST /api/v1/auth/email/verify` with `{ challengeId, code }` → `200 Session` and the session cookie.
+3. `GET /api/v1/session` → `Session` (`actorId`, `role`, `emailVerified`, `candidateId`, `companyId`,
+   `displayName`) or `401`.
+4. `DELETE /api/v1/auth/session` → `204`, the cookie is cleared.
 
-Use Vite port `5173` with `strictPort: true`. The local mock accepts the documented localhost/127.0.0.1 origins on that port; silently moving Vite to 5174 would produce an origin error. Keep the development proxy configuration out of the production routing plan.
+The cookie is opaque, `HttpOnly`, `SameSite=Lax` (`Secure` behind TLS). The client sends it with
+`credentials: "include"` and never reads it. Identity, role and company always come from the session, never from
+request fields.
 
-Bootstrap metadata with `getMeta` and authenticated context with `getSession`. A missing/expired session is an authentication state, not permission to select a seeded user automatically. Real application requests use the cookie session described in the contract; never add actor/company IDs as an authorization shortcut.
+Any `401` ends the session in the frontend: pending queries are cancelled, the whole query cache is cleared and the
+user goes to `/login?redirect=…&reason=expired`. Protected navigations revalidate the session (one
+`GET /api/v1/session` each), and a session of another actor seen from another tab clears the cache too.
 
-Create an email challenge using the email and selected role, then verify the returned challenge ID and code. The mock's code inspection endpoint is a developer convenience, not part of the production registration UI. New employers need company onboarding before sending an offer. Existing accounts cannot acquire a different role merely by changing a request field.
+## Origin
 
-On logout or actor switch, cancel obsolete reads, clear cached private data and bootstrap a new authenticated context. Separate browser contexts are required when testing simultaneous candidate/employer flows.
+Requests carrying an `Origin` that is not allowed are rejected with `403 origin_not_allowed`. The mock allows
+`http://127.0.0.1:5173` and `http://localhost:5173` in development and exactly the stand origin on the stand
+(`FSP_MOCK_ALLOWED_ORIGINS`). The mock additionally accepts only loopback `Host` headers (`403 host_not_allowed`),
+which is why nginx sends `Host: 127.0.0.1:4010`; that rule belongs to the mock.
 
-## Screen-to-operation map
+## Requests and validation
 
-| Screen | Primary reads | Main commands | Refresh after success |
-| --- | --- | --- | --- |
-| 01 Overview | `getMyProfile`, `getMySkills`, `getMySources`, `listMyInvitations` | `startAssessment` | Assessment list and selected attempt |
-| 02 Profile | `getMyProfile`, `getMeta` | `updateMyProfile`, `importMyProfile`, `confirmProfileImport`, `exportMyProfile` | Profile and eligibility |
-| 03 Sources | `getMySources`, `getJob` | `connectMySource`, optional `syncMySource` refresh | Sources, skills, graph and profile projections affected by evidence |
-| 04 Skills | `getMySkills`, `getMyGraph` | Start an eligible assessment | Assessment list; later skills/profile after result |
-| 05 Assessment | `getAssessment`, `getJob` | `saveAssessmentAnswer`, `runAssessmentChecks`, `askAssessmentAssistant`, `submitAssessment` | Current attempt and relevant job |
-| 06 Result | `getAssessment`, `listMyAssessments`, `getMyProfile` | Export profile or choose an eligible next target | Profile, skills, graph and history |
-| 07 Need | `getCompany`, `getNeed`, `getMeta`, `getNeedGraph` where applicable | `updateCompany`, `createNeed`, `updateNeed` | Need list/detail and corresponding recommendations |
-| 08 Search | `searchCandidates`, `listShortlists`, `getShortlist` | `addShortlistMember`, `removeShortlistMember`, shortlist CRUD | Affected shortlist and membership presentation |
-| 09 Employer candidate | `getCandidate`, `getCandidateGraph`, `getCandidateGapPlan`, `getCandidateDisclosure` | `createInvitation` | Company invitation list and relevant invitation |
-| 10 Candidate invitation | `getMyInvitation`, `listMyInvitations` | `viewMyInvitation`, `acceptMyInvitation`, `declineMyInvitation` | Candidate invitation list/detail; employer refetches its own records |
+- Bodies are `application/json` (`415 json_required` otherwise), except the PDF import (`multipart/form-data`).
+- Schemas are strict (`additionalProperties: false`). A body, path or query value that breaks the schema is
+  `400 validation_error` with `details: [{ path, message }]`; a repeated query parameter is
+  `400 duplicate_query_parameter`; a body on an operation that takes none is `400 body_not_allowed`.
+- The mock also validates its own successful responses and answers `500 response_contract_error` if one breaks the
+  contract.
+- The frontend sends only generated, typed requests (`openapi-fetch` with the generated `paths`); it never adds actor
+  or company IDs as an authorization shortcut.
 
-Use `needId` when requesting a candidate comparison. Without a need, matching data can be absent/null. Do not synthesize a match from the candidate's stack in the component. The candidate's own need-specific gap endpoint is limited to a need available through their invitation; it is not unrestricted access to employers' unpublished needs.
+## Errors
 
-## Request and response handling
+Every error body is `{ code, message, requestId, details }` and every response carries `X-Request-Id`. Behavior
+branches on `code`; `message` is user-facing Russian text. Implemented codes are listed in
+[`error-codes.json`](error-codes.json).
 
-The application's typed transport lives in `frontend/src/shared/api/`. Keep one generated type source and a small error-normalization boundary. Do not introduce a second manually written `Candidate`, `Invitation` or `Need` DTO that competes with the contract.
+| Status | Meaning | Frontend behavior |
+| --- | --- | --- |
+| `400` | Malformed request or schema mismatch; also a wrong or expired code | Field errors from `details`, or the message |
+| `401` | No or expired session | Clear the cache, go to sign-in |
+| `403` | Wrong role, missing verification or consent, foreign origin | «Действие недоступно» with the message |
+| `404` | Missing or someone else's record | «Не найдено»: the record is unavailable to this account |
+| `409` | Conflict: cooldown, active attempt, terminal invitation, existing invitation, idempotency conflict, stale import | Refetch and show the current state |
+| `413`, `415` | File too large or wrong media type | Explain the limit |
+| `422` | Business validation (salary range, evidence policy, incomplete company, unsupported scope, downgrade) | Show the message next to the form |
+| `429` | Too many wrong codes | Ask for a new code |
+| `5xx` | Service failure | «Сервис временно недоступен» with retry; the request ID stays visible |
 
-Map API errors using `code`, `message`, `requestId` and field `details`. The implemented mock codes are listed in [error-codes.json](error-codes.json). Preserve user input on recoverable errors. A 401 requires session recovery; a 403 means the action is not permitted; a 404 can represent an inaccessible resource; a 409 requires refetch/reconciliation; a 422 maps to validation feedback. Do not claim that every endpoint implements every possible error scenario just because a shared error schema is documented.
+Queries retry once on transport errors and `5xx` (job polling twice), never on `4xx`; mutations never retry
+automatically. A failed
+request never falls back to fixture data.
 
-For assessment creation, assessment submission and invitation creation, follow the operation's required `Idempotency-Key` header. Generate one key for a logical submission and retain it while retrying that same payload. A changed payload is a new logical command. Do not create a new key on each network retry.
+## Idempotency
 
-`revision` values on selected response DTOs are not a promise of general optimistic locking. Unless the specific mutation defines an expected revision or precondition, do not invent `If-Match` or an `expectedRevision` body. Invitation terminal-state conflicts are enforced separately. Offer terms in an invitation are a snapshot and are not silently replaced when the underlying need is edited.
+`Idempotency-Key` is required for starting an assessment, submitting it and creating an invitation. The server
+scopes a key to actor, operation and path: the same key with the same body replays the stored response with
+`X-Idempotent-Replay: true`; the same key with a different body is `409 idempotency_conflict`. The frontend makes one
+key per intended command, reuses it when the same command is retried after a transport failure, and drops it once
+the server has answered.
 
-## Asynchronous work
+## Background jobs
 
-Imports, source synchronization, checks and final assessment processing return or reference a `Job`. Poll `getJob` using its `pollAfterMs`, with cancellation and bounded retry for transient transport failures. Terminal states stop polling. A failed job must remain visibly different from a failed qualification result.
+PDF import, source sync, assessment checks and submission answer `202` with a `Job`
+(`id`, `kind`, `status`, `result`, `error`, `pollAfterMs`, `simulation`). The client polls `GET /api/v1/jobs/{jobId}`
+no faster than every 250 ms, follows `pollAfterMs`, stops at `succeeded` or `failed`, and then refetches what the job
+changes (sources, skills, graph, profile, the assessment). A source's `activeJobId` lets polling resume after a
+reload. A job belongs to the actor who started it; a failure carries `{ code, message, retryable }`.
 
-Connecting a source starts automatic processing on the mock server and exposes the active job reference on the source. The browser does not need to issue a second sync command to make the initial connection useful. After navigation/refresh, inspect the source's active job reference and resume observing it. The explicit sync action is a refresh action. No repository-by-repository approval step is introduced.
+## Pagination
 
-The workspace contract contains one task and a code/explanation answer. Visual steps/tabs must not invent a second server stage machine. Display adaptation instructions only when supplied by the task; submit the contracted payload. Do not execute code in the browser and label it a backend check.
+`GET /api/v1/candidates` takes `page` (from 1) and `pageSize` (1–50, default 10) and returns `items`, `page`,
+`pageSize`, `total` and `hasNextPage`. Other lists are returned whole.
 
-A service-error result remains in the attempt history. In this contract, retrying a completed attempt means starting a new eligible assessment; there is no endpoint that reopens a terminal attempt or resumes a failed job. A transport retry of an unacknowledged submission reuses its idempotency key and is a different case.
+## PDF
 
-Eligibility is target-sensitive. A flag named `canStartUpgrade` must not disable every same-grade assessment. Use `assessmentEligibility.canStartSelected` for the selected specialization/grade, and read `selectedReason` and `nextEligibleAt`. Preserve the previous confirmed result while another attempt is pending or failed.
+- Export: `GET /api/v1/me/profile/export` returns `application/pdf`; the client reads it as a `Blob` and saves
+  `fsp-profile.pdf`.
+- Import: `POST /api/v1/me/profile/imports` with one form field `file` (`application/pdf`, 1 byte – 2 MiB). The
+  browser sets the multipart boundary; the client validates type and size first. Errors: `400 file_required`,
+  `415 pdf_required`, `413 file_too_large`, `422 invalid_pdf`. The job's preview is applied with
+  `POST /api/v1/me/profile/imports/{jobId}/confirm`.
 
-## PDF handling
+## Time
 
-Upload a `File`/`Blob` as multipart form data using the `file` field defined by the contract. Let the browser set the multipart boundary; do not manually set `Content-Type: multipart/form-data`. Poll the import job, show the parsed preview and submit explicit confirmation before updating the profile.
+Timestamps are ISO 8601 UTC. `GET /api/v1/meta` returns `serverTime`; countdowns (code lifetime, `nextEligibleAt`)
+are computed from it, not from the browser clock. The mock clock starts at `2026-10-05T12:00:00.000Z` and moves only
+through `/__mock__/clock`.
 
-The mock validates the upload envelope/signature and returns a predefined preview. It does not parse arbitrary resumes. The export endpoint returns actual `application/pdf` bytes; request a Blob, download with a safe filename and revoke any temporary object URL after use. Do not decode the PDF as JSON or introduce a DOCX export.
+## Metadata and capabilities
 
-## Privacy projections and cache keys
+`GET /api/v1/meta` (no session needed) returns the contract version, `mode`, `serverTime`, `scenario`,
+`capabilities`, `assessmentPolicy` (cooldowns, AI allowance, supported scopes), the competition catalog and the
+skill catalog. The frontend loads it before rendering a workspace, takes skill names and competitions from it, hides
+features whose capability is off and shows the «Демо» dialog while `mode` is `mock`.
 
-Owner profile/skills/source responses are distinct from employer candidate responses. Keep their types and query families separate. The employer candidate projection remains anonymous even when the company later receives a disclosure resource; combine only the authorized disclosed fields for that company in the view.
+## Privacy projections and caching
 
-Include authenticated actor/company scope in query keys. Include the relevant need, filter values and pagination in a search key. Shortlist membership has its own persisted query state and does not depend on the current search query. Never preload another company's contact data into a generic candidate cache.
+Employer responses about candidates are always the anonymous projection; contacts come only from
+`GET /api/v1/candidates/{candidateId}/disclosure`. Every private query key in the frontend starts with
+`[role, actorId, companyId]`, so data of different actors never share cache entries, and the whole cache is cleared
+on sign-in, logout, a `401` or an actor change.
 
-Render source text, imported text and assistant responses as untrusted content. Do not insert raw HTML. If Markdown is used, disable raw HTML or sanitize it with a narrow policy. Only render external links for an allowed protocol and an authorized field; a hidden link is still a disclosure if it is present in the response or DOM.
+## Screens and operations
 
-The synthetic source URLs under `example.com/fixtures/` are illustrative identifiers, not hosted repository pages. In the mock UI, label them as demo references and display them as text rather than creating a broken external navigation. The evidence inspector remains functional using the supplied record. Real, authorized source URLs can become links after connector integration.
+| Route | Operations |
+| --- | --- |
+| `/login` | `getMeta`, `getSession`, `createEmailChallenge`, `verifyEmail`, then `getMyProfile` or `getCompany` to pick the landing page |
+| `/candidate/onboarding` | `getMyProfile`, `updateMyProfile`, `importMyProfile`, `getJob`, `confirmProfileImport`, `startAssessment` |
+| `/candidate/overview` | `getMyProfile`, `getMySkills`, `getMySources`, `listMyAssessments`, `startAssessment`, `exportMyProfile` |
+| `/candidate/profile` | `getMyProfile`, `updateMyProfile`, `getMySkills`, PDF import operations |
+| `/candidate/sources` | `getMySources`, `getMyProfile`, `connectMySource`, `syncMySource`, `getJob` |
+| `/candidate/skills` | `getMySkills`, `getMyGraph`, `getMyProfile`, `listMyAssessments` |
+| `/candidate/assessments` | `getMyProfile`, `listMyAssessments`, `startAssessment` |
+| `/candidate/assessments/{id}/workspace` | `getAssessment`, `saveAssessmentAnswer`, `runAssessmentChecks`, `getJob`, `askAssessmentAssistant`, `submitAssessment` |
+| `/candidate/assessments/{id}/result` | `getAssessment` (polled while evaluating), `getMyProfile`, `getMySkills`, `startAssessment`, `exportMyProfile` |
+| `/candidate/invitations`, `/{id}` | `listMyInvitations`, `getMyInvitation`, `viewMyInvitation`, `getMyGapPlan`, `acceptMyInvitation`, `declineMyInvitation` |
+| `/candidate/settings` | `getMyProfile`, `updateMyProfile`, `getMySources`, `logout` |
+| `/employer/needs`, `/new`, `/{id}` | `listNeeds`, `getNeed`, `createNeed`, `updateNeed`, `deleteNeed`, `getCompany` |
+| `/employer/candidates` | `listNeeds`, `searchCandidates`, `listShortlists`, `getShortlist`, `createShortlist`, `addShortlistMember`, `removeShortlistMember` |
+| `/employer/candidates/{id}` | `getCandidate`, `getCandidateGraph`, `getCandidateGapPlan`, `getCandidateDisclosure`, `listNeeds`, `getCompany`, `createInvitation`, shortlist operations |
+| `/employer/shortlists`, `/{id}` | `listShortlists`, `createShortlist`, `getShortlist`, `updateShortlist`, `deleteShortlist`, `removeShortlistMember` |
+| `/employer/invitations` | `listInvitations`, `withdrawInvitation` |
+| `/employer/company`, `/settings` | `getCompany`, `updateCompany`, `logout` |
 
-## Dates and the deterministic demo clock
-
-The mock fixtures use a fixed demo epoch. Real browser time may be hours, days or months later. Use `meta.serverTime` as the reference for mock relative-time displays, with a controlled/injected clock in tests. Do not immediately expire a newly created email challenge by comparing its mock timestamp to the host clock.
-
-The server is authoritative for code expiry and assessment eligibility. A client countdown is informational and must not independently reject a valid verification command. Refetch metadata when the mock scenario/clock is reset. Production relative times can use a measured server offset; retain UTC on the wire and format Russian dates in the UI.
+The candidate shell also reads `listMyInvitations` for the new-invitation badge. `getNeedGraph` and the employer's
+`getInvitation` are in the contract but not used by the current screens.
 
 ## Backend cutover checklist
 
-Run the same request/response, authorization and browser cases against Rust. Check the actual cookie/CSRF/origin policy, error envelope, asynchronous jobs, enum/null handling, salary units, disclosure scope and idempotency behavior. Keep provider credentials, source adapters, code execution and Bifrost routing server-side.
-
-The contract is intentionally explicit about simulation. A production service must return truthful mode/simulation metadata and actual results; it must not reuse fixture claims to appear compatible. If real integration needs additional OAuth or lifecycle endpoints, version and document that change, regenerate types and update tests together.
+Before the stand switches from the mock to the backend, the backend must show the same behavior for: every request
+and response shape and the error envelope; cookie attributes, origin checks and role/tenant scoping (`404` for
+foreign records); anonymous projections and per-company disclosure; idempotent commands and terminal conflicts;
+job states and `pollAfterMs`; UTC timestamps, nullable fields and stable search order; and truthful `mode`,
+`capabilities` and `simulation` flags. A mismatch is fixed by one contract change on both sides
+([`README.md`](README.md)), not by casts or fallbacks.
