@@ -9,6 +9,15 @@
       "command": ".venv/bin/pytest tests/test_scoring.py --junitxml=experiments/artifacts/scoring-v1.junit.xml",
       "artifact": "experiments/artifacts/scoring-v1.junit.xml",
       "status": "passed"
+    },
+    {
+      "id": "fsp-sync-v1",
+      "change": "Добавить транзакционное хранилище и идемпотентный адаптер входного контракта ФСП.",
+      "expected_effect": "Повтор одного пакета не меняет число записей и сохраняет дисциплины, соревнования, результаты, роли и разряды.",
+      "failure_condition": "Повтор создаёт дубликат, теряется поле контракта или синхронизация требует сеть.",
+      "command": ".venv/bin/pytest tests/test_persistence.py --junitxml=experiments/artifacts/fsp-sync-v1.junit.xml",
+      "artifact": "experiments/artifacts/fsp-sync-v1.junit.xml",
+      "status": "passed"
     }
   ]
 }
