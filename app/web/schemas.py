@@ -25,6 +25,39 @@ class LoginIn(BaseModel):
     password: str = Field(min_length=1, max_length=128)
 
 
+class CandidateProfileIn(BaseModel):
+    name: str = Field(min_length=2, max_length=120)
+    city: str = Field(min_length=2, max_length=120)
+    work_format: Literal["remote", "hybrid", "office"]
+    desired_role: str = Field(min_length=2, max_length=120)
+    about: str = Field(min_length=10, max_length=2000)
+    stack: list[str] = Field(min_length=1, max_length=30)
+    industry: str = Field(min_length=2, max_length=120)
+    specialization: str = Field(min_length=2, max_length=120)
+    claimed_grade: Literal["intern", "junior", "middle", "senior"]
+    fsp_id: str | None = Field(default=None, max_length=120)
+    contact_email: str = Field(pattern=r"^[^\s@]+@[^\s@]+\.[^\s@]+$", max_length=254)
+    years_experience: int = Field(ge=0, le=70)
+    roles: list[str] = Field(default_factory=list, max_length=20)
+    soft_skills: list[str] = Field(default_factory=list, max_length=30)
+    profile_visible: bool = False
+    consent_processing: bool
+    consent_publication: bool = False
+
+    @model_validator(mode="after")
+    def publication_requires_processing_consent(self):
+        if (self.profile_visible or self.consent_publication) and not self.consent_processing:
+            raise ValueError("visible profile requires processing consent")
+        return self
+
+
+class EmployerProfileIn(BaseModel):
+    company_name: str = Field(min_length=2, max_length=160)
+    description: str = Field(min_length=10, max_length=2000)
+    industry: str = Field(min_length=2, max_length=120)
+    contact_method: str = Field(min_length=5, max_length=254)
+
+
 class RequirementIn(BaseModel):
     skill_id: str = Field(min_length=1)
     level: UnitInterval

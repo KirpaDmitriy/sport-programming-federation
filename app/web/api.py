@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from app.application.service import TalentService
 from app.infrastructure.fsp import sync_fsp_payload
 
+from .auth import require_role
 from .schemas import FspPayloadIn, OfferIn, VacancyIn
 
 
@@ -61,11 +62,24 @@ def vacancies(talent: TalentService = Depends(service)) -> list[dict]:
 
 
 @router.post("/vacancies", status_code=status.HTTP_201_CREATED, tags=["matching"])
-def create_vacancy(payload: VacancyIn, talent: TalentService = Depends(service)) -> dict:
+def create_vacancy(
+    payload: VacancyIn,
+    talent: TalentService = Depends(service),
+    user: dict = Depends(require_role("employer")),
+) -> dict:
     unknown = {item.skill_id for item in payload.requirements} - talent.store.skills().keys()
     if unknown:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, f"Unknown skills: {sorted(unknown)}")
-    return talent.save_vacancy(payload.domain())
+    owner = talent.store.vacancy_owner(payload.id)
+    if talent.store.vacancy(payload.id) is not None and owner != user["id"]:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Vacancy belongs to another account or demo catalog")
+    profile = talent.store.employer_profile(user["id"])
+    if profile is None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Complete employer profile first")
+    vacancy = payload.domain()
+    if vacancy.employer != profile["company_name"]:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Employer must match company profile")
+    return talent.save_vacancy(vacancy, user["id"])
 
 
 @router.get("/vacancies/{vacancy_id}/matches", tags=["matching"])

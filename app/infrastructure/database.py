@@ -38,6 +38,14 @@ CREATE TABLE IF NOT EXISTS sessions (
     expires_at TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+CREATE TABLE IF NOT EXISTS employer_profiles (
+    user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    company_name TEXT NOT NULL,
+    description TEXT NOT NULL,
+    industry TEXT NOT NULL,
+    contact_method TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
 CREATE TABLE IF NOT EXISTS skills (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
@@ -64,6 +72,24 @@ CREATE TABLE IF NOT EXISTS candidates (
     about TEXT NOT NULL,
     stack_json TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS candidate_profiles (
+    user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    candidate_id TEXT NOT NULL UNIQUE REFERENCES candidates(id) ON DELETE CASCADE,
+    industry TEXT NOT NULL,
+    specialization TEXT NOT NULL,
+    claimed_grade TEXT NOT NULL,
+    verified_grade TEXT,
+    grade_changed_at TEXT,
+    fsp_id TEXT,
+    contact_email TEXT NOT NULL,
+    years_experience INTEGER NOT NULL CHECK (years_experience >= 0),
+    roles_json TEXT NOT NULL,
+    soft_skills_json TEXT NOT NULL,
+    profile_visible INTEGER NOT NULL DEFAULT 0,
+    consent_processing INTEGER NOT NULL DEFAULT 0,
+    consent_publication INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
 CREATE TABLE IF NOT EXISTS achievements (
     id TEXT PRIMARY KEY,
     candidate_id TEXT NOT NULL REFERENCES candidates(id),
@@ -87,6 +113,10 @@ CREATE TABLE IF NOT EXISTS vacancies (
     requirements_json TEXT NOT NULL,
     policy_mode TEXT NOT NULL,
     policy_competitions_json TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS vacancy_owners (
+    vacancy_id TEXT PRIMARY KEY REFERENCES vacancies(id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE
 );
 CREATE TABLE IF NOT EXISTS offers (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -268,6 +298,104 @@ class Store:
             connection,
         )
 
+    def save_candidate_profile(self, user_id: str, candidate: Candidate, profile: dict) -> None:
+        with self.connection() as connection:
+            self.upsert_candidates([candidate], connection)
+            connection.execute(
+                """INSERT INTO candidate_profiles(
+                    user_id, candidate_id, industry, specialization, claimed_grade,
+                    verified_grade, grade_changed_at, fsp_id, contact_email,
+                    years_experience, roles_json, soft_skills_json, profile_visible,
+                    consent_processing, consent_publication, updated_at
+                ) VALUES (?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(user_id) DO UPDATE SET
+                    industry=excluded.industry,
+                    specialization=excluded.specialization,
+                    claimed_grade=excluded.claimed_grade,
+                    fsp_id=excluded.fsp_id,
+                    contact_email=excluded.contact_email,
+                    years_experience=excluded.years_experience,
+                    roles_json=excluded.roles_json,
+                    soft_skills_json=excluded.soft_skills_json,
+                    profile_visible=excluded.profile_visible,
+                    consent_processing=excluded.consent_processing,
+                    consent_publication=excluded.consent_publication,
+                    updated_at=CURRENT_TIMESTAMP""",
+                (
+                    user_id,
+                    candidate.id,
+                    profile["industry"],
+                    profile["specialization"],
+                    profile["claimed_grade"],
+                    profile.get("fsp_id"),
+                    profile["contact_email"],
+                    profile["years_experience"],
+                    json.dumps(profile["roles"], ensure_ascii=False),
+                    json.dumps(profile["soft_skills"], ensure_ascii=False),
+                    int(profile["profile_visible"]),
+                    int(profile["consent_processing"]),
+                    int(profile["consent_publication"]),
+                ),
+            )
+
+    def candidate_profile(self, user_id: str) -> dict | None:
+        with self.connection() as connection:
+            row = connection.execute(
+                """SELECT candidate_profiles.*, candidates.name, candidates.city,
+                candidates.work_format, candidates.desired_role, candidates.about,
+                candidates.stack_json
+                FROM candidate_profiles
+                JOIN candidates ON candidates.id = candidate_profiles.candidate_id
+                WHERE candidate_profiles.user_id = ?""",
+                (user_id,),
+            ).fetchone()
+        if row is None:
+            return None
+        result = dict(row)
+        result["stack"] = json.loads(result.pop("stack_json"))
+        result["roles"] = json.loads(result.pop("roles_json"))
+        result["soft_skills"] = json.loads(result.pop("soft_skills_json"))
+        for field in ("profile_visible", "consent_processing", "consent_publication"):
+            result[field] = bool(result[field])
+        return result
+
+    def candidate_profile_by_candidate(self, candidate_id: str) -> dict | None:
+        with self.connection() as connection:
+            row = connection.execute(
+                "SELECT * FROM candidate_profiles WHERE candidate_id = ?",
+                (candidate_id,),
+            ).fetchone()
+        return dict(row) if row else None
+
+    def save_employer_profile(self, user_id: str, profile: dict) -> None:
+        with self.connection() as connection:
+            connection.execute(
+                """INSERT INTO employer_profiles(
+                    user_id, company_name, description, industry, contact_method, updated_at
+                ) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(user_id) DO UPDATE SET
+                    company_name=excluded.company_name,
+                    description=excluded.description,
+                    industry=excluded.industry,
+                    contact_method=excluded.contact_method,
+                    updated_at=CURRENT_TIMESTAMP""",
+                (
+                    user_id,
+                    profile["company_name"],
+                    profile["description"],
+                    profile["industry"],
+                    profile["contact_method"],
+                ),
+            )
+
+    def employer_profile(self, user_id: str) -> dict | None:
+        with self.connection() as connection:
+            row = connection.execute(
+                "SELECT * FROM employer_profiles WHERE user_id = ?",
+                (user_id,),
+            ).fetchone()
+        return dict(row) if row else None
+
     def upsert_achievements(self, achievements: Iterable[Achievement], connection: sqlite3.Connection | None = None) -> None:
         rows = [
             (
@@ -293,7 +421,8 @@ class Store:
             connection,
         )
 
-    def upsert_vacancies(self, vacancies: Iterable[Vacancy]) -> None:
+    def upsert_vacancies(self, vacancies: Iterable[Vacancy], owner_user_id: str | None = None) -> None:
+        vacancies = list(vacancies)
         rows = [
             (
                 v.id,
@@ -319,6 +448,30 @@ class Store:
                 policy_competitions_json=excluded.policy_competitions_json""",
                 rows,
             )
+            if owner_user_id:
+                connection.executemany(
+                    """INSERT INTO vacancy_owners(vacancy_id, user_id) VALUES (?, ?)
+                    ON CONFLICT(vacancy_id) DO UPDATE SET user_id=excluded.user_id""",
+                    [(vacancy.id, owner_user_id) for vacancy in vacancies],
+                )
+
+    def vacancy_owner(self, vacancy_id: str) -> str | None:
+        with self.connection() as connection:
+            row = connection.execute(
+                "SELECT user_id FROM vacancy_owners WHERE vacancy_id = ?",
+                (vacancy_id,),
+            ).fetchone()
+        return row["user_id"] if row else None
+
+    def owned_vacancies(self, user_id: str) -> list[Vacancy]:
+        with self.connection() as connection:
+            rows = connection.execute(
+                """SELECT vacancies.* FROM vacancies
+                JOIN vacancy_owners ON vacancy_owners.vacancy_id = vacancies.id
+                WHERE vacancy_owners.user_id = ? ORDER BY vacancies.title""",
+                (user_id,),
+            ).fetchall()
+        return [self._vacancy(row) for row in rows]
 
     def skills(self) -> dict[str, Skill]:
         with self.connection() as connection:
@@ -350,7 +503,15 @@ class Store:
 
     def candidates(self) -> list[Candidate]:
         with self.connection() as connection:
-            rows = connection.execute("SELECT * FROM candidates ORDER BY name").fetchall()
+            rows = connection.execute(
+                """SELECT candidates.* FROM candidates
+                LEFT JOIN candidate_profiles ON candidate_profiles.candidate_id = candidates.id
+                WHERE candidate_profiles.user_id IS NULL
+                   OR (candidate_profiles.profile_visible = 1
+                       AND candidate_profiles.consent_processing = 1
+                       AND candidate_profiles.consent_publication = 1)
+                ORDER BY candidates.name"""
+            ).fetchall()
         return [
             Candidate(
                 row["id"], row["name"], row["city"], row["work_format"], row["desired_role"],
@@ -436,8 +597,8 @@ class Store:
 
     def count(self, table: str) -> int:
         if table not in {
-            "users", "sessions", "skills", "competitions", "candidates",
-            "achievements", "vacancies", "offers",
+            "users", "sessions", "candidate_profiles", "employer_profiles",
+            "skills", "competitions", "candidates", "achievements", "vacancies", "offers",
         }:
             raise ValueError("Unknown table")
         with self.connection() as connection:

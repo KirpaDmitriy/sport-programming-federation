@@ -19,8 +19,8 @@ class TalentService:
     def vacancies(self) -> list[dict]:
         return [asdict(item) for item in self.store.vacancies()]
 
-    def save_vacancy(self, vacancy: Vacancy) -> dict:
-        self.store.upsert_vacancies([vacancy])
+    def save_vacancy(self, vacancy: Vacancy, owner_user_id: str | None = None) -> dict:
+        self.store.upsert_vacancies([vacancy], owner_user_id)
         return asdict(vacancy)
 
     def candidates(self, category: str | None = None, work_format: str | None = None) -> list[dict]:

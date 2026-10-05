@@ -3,6 +3,8 @@ from fastapi.testclient import TestClient
 from app.main import create_app
 from app.infrastructure.seed import FSP_DEMO_PAYLOAD
 
+from .helpers import authenticated_client, employer_profile
+
 
 def client(tmp_path):
     return TestClient(create_app(tmp_path / "api.sqlite3"))
@@ -71,6 +73,8 @@ def test_create_vacancy_and_offer_end_to_end(tmp_path) -> None:
         },
     }
     with client(tmp_path) as http:
+        authenticated_client(http, "employer@example.test", "employer")
+        employer_profile(http, "КодРазряд Лаб")
         assert http.post("/api/v1/vacancies", json=vacancy).status_code == 201
         offer = http.post(
             "/api/v1/offers",
@@ -100,6 +104,9 @@ def test_validation_and_not_found_paths_can_fail(tmp_path) -> None:
         "requirements": [{"skill_id": "unknown", "level": 2, "criticality": 7}],
     }
     with client(tmp_path) as http:
+        assert http.post("/api/v1/vacancies", json=malformed).status_code == 401
+        authenticated_client(http, "validation@example.test", "employer")
+        employer_profile(http, "Тестовая компания")
         assert http.post("/api/v1/vacancies", json=malformed).status_code == 422
         assert http.get("/api/v1/candidates/missing").status_code == 404
         assert http.get("/api/v1/candidates/alina?vacancy_id=missing").status_code == 404
