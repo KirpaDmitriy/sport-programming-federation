@@ -99,5 +99,5 @@ def create_offer(payload: OfferIn, talent: TalentService = Depends(service)) -> 
 def sync_fsp(payload: FspPayloadIn, talent: TalentService = Depends(service)) -> dict:
     try:
         return sync_fsp_payload(talent.store, payload.model_dump())
-    except KeyError as error:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, f"Broken reference: {error.args[0]}") from error
+    except (KeyError, ValueError) as error:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, f"Invalid FSP payload: {error}") from error

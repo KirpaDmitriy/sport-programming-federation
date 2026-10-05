@@ -1,6 +1,7 @@
 from fastapi.testclient import TestClient
 
 from app.main import create_app
+from app.infrastructure.seed import FSP_DEMO_PAYLOAD
 
 
 def client(tmp_path):
@@ -99,3 +100,15 @@ def test_openapi_contains_fsp_contract(tmp_path) -> None:
     names = schema["components"]["schemas"]
     assert "FspPayloadIn" in names
     assert sync["tags"] == ["integrations"]
+
+
+def test_fsp_sync_rejects_broken_references_without_partial_write(tmp_path) -> None:
+    payload = {**FSP_DEMO_PAYLOAD, "results": [{**FSP_DEMO_PAYLOAD["results"][0], "participant_id": "missing"}]}
+    with client(tmp_path) as http:
+        before = len(http.get("/api/v1/candidates").json())
+        response = http.post("/api/v1/integrations/fsp/sync", json=payload)
+        after = len(http.get("/api/v1/candidates").json())
+
+    assert response.status_code == 422
+    assert "Unknown participant" in response.json()["detail"]
+    assert after == before

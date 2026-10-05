@@ -18,6 +18,9 @@ const initials = (name) => name.split(" ").map((part) => part[0]).slice(0, 2).jo
 const money = (value) => `${Math.round(value / 1000)}к ₽`;
 const percent = (value) => `${Math.round(value * 100)}%`;
 const formatLabel = { remote: "удалённо", hybrid: "гибрид", office: "офис" };
+const html = (value) => String(value ?? "").replace(/[&<>"']/g, (symbol) => ({
+  "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+}[symbol]));
 
 async function api(path, options = {}) {
   const response = await fetch(path, {
@@ -40,9 +43,9 @@ function toast(message) {
 
 function renderVacancies() {
   $("#vacancy-list").innerHTML = state.vacancies.map((vacancy) => `
-    <button class="vacancy-card ${vacancy.id === state.vacancyId ? "active" : ""}" data-vacancy="${vacancy.id}">
-      <span class="vacancy-meta"><span>${vacancy.employer}</span><span>${formatLabel[vacancy.work_format] || vacancy.work_format}</span></span>
-      <h3>${vacancy.title}</h3>
+    <button class="vacancy-card ${vacancy.id === state.vacancyId ? "active" : ""}" data-vacancy="${html(vacancy.id)}">
+      <span class="vacancy-meta"><span>${html(vacancy.employer)}</span><span>${html(formatLabel[vacancy.work_format] || vacancy.work_format)}</span></span>
+      <h3>${html(vacancy.title)}</h3>
       <span class="vacancy-salary">${money(vacancy.salary_from)} — ${money(vacancy.salary_to)}</span>
     </button>
   `).join("");
@@ -52,7 +55,7 @@ function renderVacancies() {
 function renderFilters() {
   const categories = ["Все", ...new Set(state.candidates.flatMap((item) => item.profile.categories))];
   $("#category-filters").innerHTML = categories.map((category) => `
-    <button class="filter-chip ${state.category === category ? "active" : ""}" data-category="${category}">${category}</button>
+    <button class="filter-chip ${state.category === category ? "active" : ""}" data-category="${html(category)}">${html(category)}</button>
   `).join("");
   $$('[data-category]').forEach((button) => button.addEventListener("click", () => {
     state.category = button.dataset.category;
@@ -77,15 +80,15 @@ function renderCandidates() {
     return `
       <article class="candidate-card">
         <div class="candidate-head">
-          <div class="avatar">${initials(candidate.name)}</div>
+          <div class="avatar">${html(initials(candidate.name))}</div>
           <div class="score-ring" style="--score:${candidate.match.score}" aria-label="Совпадение ${candidate.match.score} процентов">${Math.round(candidate.match.score)}</div>
         </div>
-        <h3>${candidate.name}</h3>
-        <div class="candidate-role">${candidate.desired_role} · ${candidate.city}</div>
-        <div class="tag-row">${topSkills.map((skill) => `<span class="tag">${skillById(skill.skill_id)?.name || skill.skill_id} ${percent(skill.level)}</span>`).join("")}</div>
+        <h3>${html(candidate.name)}</h3>
+        <div class="candidate-role">${html(candidate.desired_role)} · ${html(candidate.city)}</div>
+        <div class="tag-row">${topSkills.map((skill) => `<span class="tag">${html(skillById(skill.skill_id)?.name || skill.skill_id)} ${percent(skill.level)}</span>`).join("")}</div>
         <div class="candidate-foot">
           <span>${candidate.match.critical_gaps ? `критичных пробелов: ${candidate.match.critical_gaps}` : "критичные навыки закрыты"}</span>
-          <button class="link-button" data-candidate="${candidate.id}">Профиль →</button>
+          <button class="link-button" data-candidate="${html(candidate.id)}">Профиль →</button>
         </div>
       </article>
     `;
@@ -97,28 +100,28 @@ async function selectVacancy(id) {
   state.vacancyId = id;
   renderVacancies();
   $("#candidate-grid").innerHTML = '<div class="empty-state">Пересчитываем графы доказательств…</div>';
-  state.matches = await api(`/api/v1/vacancies/${id}/matches`);
+  state.matches = await api(`/api/v1/vacancies/${encodeURIComponent(id)}/matches`);
   renderFilters();
   renderCandidates();
 }
 
 async function openCandidate(id) {
-  const candidate = await api(`/api/v1/candidates/${id}?vacancy_id=${state.vacancyId}`);
+  const candidate = await api(`/api/v1/candidates/${encodeURIComponent(id)}?vacancy_id=${encodeURIComponent(state.vacancyId)}`);
   const score = candidate.match.score;
   const skills = Object.values(candidate.match.profile.skills).sort((a, b) => b.level - a.level).slice(0, 6);
   $("#candidate-detail").innerHTML = `
     <div class="detail-hero">
-      <div class="avatar">${initials(candidate.name)}</div>
-      <h2>${candidate.name}</h2>
-      <div>${candidate.desired_role} · ${candidate.city} · ${formatLabel[candidate.work_format] || candidate.work_format}</div>
+      <div class="avatar">${html(initials(candidate.name))}</div>
+      <h2>${html(candidate.name)}</h2>
+      <div>${html(candidate.desired_role)} · ${html(candidate.city)} · ${html(formatLabel[candidate.work_format] || candidate.work_format)}</div>
     </div>
     <div class="detail-body">
       <div class="detail-score">
         <div class="score-ring" style="--score:${score}">${Math.round(score)}</div>
-        <div><p class="eyebrow blue">Совпадение с вакансией</p><h3>${candidate.match.critical_gaps ? `${candidate.match.critical_gaps} критичных пробела` : "Критичные требования закрыты"}</h3><p class="quiet">${candidate.about}</p></div>
+        <div><p class="eyebrow blue">Совпадение с вакансией</p><h3>${candidate.match.critical_gaps ? `${candidate.match.critical_gaps} критичных пробела` : "Критичные требования закрыты"}</h3><p class="quiet">${html(candidate.about)}</p></div>
       </div>
-      <div class="detail-skills">${skills.map((skill) => `<div class="skill-bar"><div><span>${skillById(skill.skill_id)?.name}</span><span>${percent(skill.level)} · доверие ${percent(skill.confidence)}</span></div><div class="progress"><i style="width:${percent(skill.level)}"></i></div></div>`).join("")}</div>
-      <div class="detail-actions"><button class="button button-dark" data-offer="${candidate.id}">Сделать предложение · ${money(vacancyById(state.vacancyId).salary_from)}+</button></div>
+      <div class="detail-skills">${skills.map((skill) => `<div class="skill-bar"><div><span>${html(skillById(skill.skill_id)?.name)}</span><span>${percent(skill.level)} · доверие ${percent(skill.confidence)}</span></div><div class="progress"><i style="width:${percent(skill.level)}"></i></div></div>`).join("")}</div>
+      <div class="detail-actions"><button class="button button-dark" data-offer="${html(candidate.id)}">Сделать предложение · ${money(vacancyById(state.vacancyId).salary_from)}+</button></div>
     </div>`;
   $("#candidate-dialog").showModal();
   $('[data-offer]').addEventListener("click", () => openOffer(id));
@@ -128,7 +131,7 @@ function openOffer(candidateId) {
   $("#candidate-dialog").close();
   const form = $("#offer-form");
   form.candidate_id.value = candidateId;
-  form.vacancy_id.innerHTML = state.vacancies.map((item) => `<option value="${item.id}" ${item.id === state.vacancyId ? "selected" : ""}>${item.title}</option>`).join("");
+  form.vacancy_id.innerHTML = state.vacancies.map((item) => `<option value="${html(item.id)}" ${item.id === state.vacancyId ? "selected" : ""}>${html(item.title)}</option>`).join("");
   const vacancy = vacancyById(state.vacancyId);
   form.salary_from.value = vacancy.salary_from;
   form.salary_to.value = vacancy.salary_to;
@@ -162,23 +165,24 @@ function renderGraph(graph) {
     const point = positions.get(node.id);
     const radius = 28 + node.level * 24;
     const color = colors[node.category] || "#315cff";
-    return `<g class="graph-node" transform="translate(${point.x} ${point.y})"><circle r="${radius}" fill="${color}" stroke="rgba(255,255,255,${node.confidence})"/><text y="-2">${node.label.length > 18 ? `${node.label.slice(0, 16)}…` : node.label}</text><text class="graph-score" y="15">${percent(node.level)} · ${percent(node.confidence)}</text></g>`;
+    const label = node.label.length > 18 ? `${node.label.slice(0, 16)}…` : node.label;
+    return `<g class="graph-node" transform="translate(${point.x} ${point.y})"><circle r="${radius}" fill="${color}" stroke="rgba(255,255,255,${node.confidence})"/><text y="-2">${html(label)}</text><text class="graph-score" y="15">${percent(node.level)} · ${percent(node.confidence)}</text></g>`;
   }).join("");
   svg.innerHTML = `${edges}${nodes}`;
 }
 
 async function loadCandidateDashboard() {
   const vacancyId = $("#candidate-vacancy").value || state.vacancyId;
-  const candidate = await api(`/api/v1/candidates/${state.candidateId}?vacancy_id=${vacancyId}`);
-  $("#profile-summary").innerHTML = `<div class="avatar">${initials(candidate.name)}</div><h2>${candidate.name}</h2><p>${candidate.desired_role} · ${candidate.city}<br>${candidate.about}</p><div class="profile-stack">${candidate.stack.map((item) => `<span>${item}</span>`).join("")}</div>`;
+  const candidate = await api(`/api/v1/candidates/${encodeURIComponent(state.candidateId)}?vacancy_id=${encodeURIComponent(vacancyId)}`);
+  $("#profile-summary").innerHTML = `<div class="avatar">${html(initials(candidate.name))}</div><h2>${html(candidate.name)}</h2><p>${html(candidate.desired_role)} · ${html(candidate.city)}<br>${html(candidate.about)}</p><div class="profile-stack">${candidate.stack.map((item) => `<span>${html(item)}</span>`).join("")}</div>`;
   renderGraph(candidate.graph);
   const vacancy = vacancyById(vacancyId);
   const gaps = candidate.match.gaps.slice(0, 4);
-  $("#candidate-match").innerHTML = `<div class="match-big"><strong>${Math.round(candidate.match.score)}</strong><span>/ 100 match</span></div><div class="progress"><i style="width:${candidate.match.score}%"></i></div><div class="gap-list">${gaps.length ? gaps.map((gap) => `<div class="gap-item"><span>${skillById(gap.skill_id)?.name}</span><span>−${percent(gap.deficit)}</span></div>`).join("") : '<p class="quiet">Все требования подтверждены. Можно идти на интервью.</p>'}</div><p class="quiet">${vacancy.title} · ${vacancy.employer}</p>`;
-  $("#recommendations").innerHTML = candidate.recommendations.length ? candidate.recommendations.slice(0, 2).map((item) => { const competition = competitionById(item.competition_id); return `<div class="recommendation"><strong>${competition?.name || item.competition_id}</strong><span>Подтвердит: ${item.closes_skills.map((id) => skillById(id)?.name).join(", ")}</span></div>`; }).join("") : '<p class="quiet">Граф цели закрыт. Выберите более сложную вакансию — найдём следующий шаг.</p>';
-  $("#evidence-list").innerHTML = candidate.evidence.map((item) => `<div class="evidence-row"><div class="place">#${item.placement}</div><div><strong>${item.competition}</strong><span>${item.discipline} · роль: ${item.role}${item.rank ? ` · разряд ${item.rank}` : ""}</span></div><span class="verified">${item.official ? "ФСП ✓" : item.source}</span></div>`).join("");
+  $("#candidate-match").innerHTML = `<div class="match-big"><strong>${Math.round(candidate.match.score)}</strong><span>/ 100 match</span></div><div class="progress"><i style="width:${candidate.match.score}%"></i></div><div class="gap-list">${gaps.length ? gaps.map((gap) => `<div class="gap-item"><span>${html(skillById(gap.skill_id)?.name)}</span><span>−${percent(gap.deficit)}</span></div>`).join("") : '<p class="quiet">Все требования подтверждены. Можно идти на интервью.</p>'}</div><p class="quiet">${html(vacancy.title)} · ${html(vacancy.employer)}</p>`;
+  $("#recommendations").innerHTML = candidate.recommendations.length ? candidate.recommendations.slice(0, 2).map((item) => { const competition = competitionById(item.competition_id); return `<div class="recommendation"><strong>${html(competition?.name || item.competition_id)}</strong><span>Подтвердит: ${item.closes_skills.map((id) => html(skillById(id)?.name)).join(", ")}</span></div>`; }).join("") : '<p class="quiet">Граф цели закрыт. Выберите более сложную вакансию — найдём следующий шаг.</p>';
+  $("#evidence-list").innerHTML = candidate.evidence.map((item) => `<div class="evidence-row"><div class="place">#${item.placement}</div><div><strong>${html(item.competition)}</strong><span>${html(item.discipline)} · роль: ${html(item.role)}${item.rank ? ` · разряд ${html(item.rank)}` : ""}</span></div><span class="verified">${item.official ? "ФСП ✓" : html(item.source)}</span></div>`).join("");
   $("#offer-count").textContent = candidate.offers.length;
-  $("#offer-list").innerHTML = candidate.offers.length ? candidate.offers.map((item) => `<div class="offer-item"><strong>${item.title}</strong><span>${item.employer} · ${money(item.salary_from)} — ${money(item.salary_to)}</span></div>`).join("") : '<p class="quiet">Новых предложений пока нет. Профиль уже виден работодателям.</p>';
+  $("#offer-list").innerHTML = candidate.offers.length ? candidate.offers.map((item) => `<div class="offer-item"><strong>${html(item.title)}</strong><span>${html(item.employer)} · ${money(item.salary_from)} — ${money(item.salary_to)}</span></div>`).join("") : '<p class="quiet">Новых предложений пока нет. Профиль уже виден работодателям.</p>';
 }
 
 function bindForms() {
@@ -236,13 +240,13 @@ async function boot() {
     state.vacancyId = state.vacancies[0].id;
     $("#candidate-count").textContent = state.candidates.length;
     $("#competition-count").textContent = new Set(state.catalog.competitions.map((item) => item.source)).size;
-    $("#persona-select").innerHTML = state.candidates.map((item) => `<option value="${item.id}">${item.name}</option>`).join("");
-    $("#candidate-vacancy").innerHTML = state.vacancies.map((item) => `<option value="${item.id}">${item.title}</option>`).join("");
-    $("#vacancy-form [name=skill_id]").innerHTML = state.catalog.skills.map((item) => `<option value="${item.id}">${item.name}</option>`).join("");
+    $("#persona-select").innerHTML = state.candidates.map((item) => `<option value="${html(item.id)}">${html(item.name)}</option>`).join("");
+    $("#candidate-vacancy").innerHTML = state.vacancies.map((item) => `<option value="${html(item.id)}">${html(item.title)}</option>`).join("");
+    $("#vacancy-form [name=skill_id]").innerHTML = state.catalog.skills.map((item) => `<option value="${html(item.id)}">${html(item.name)}</option>`).join("");
     renderVacancies();
     await selectVacancy(state.vacancyId);
   } catch (error) {
-    $("#candidate-grid").innerHTML = `<div class="empty-state">${error.message}. Обновите страницу.</div>`;
+    $("#candidate-grid").innerHTML = `<div class="empty-state">${html(error.message)}. Обновите страницу.</div>`;
   }
 }
 

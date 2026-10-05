@@ -7,6 +7,22 @@ from .database import Store
 
 def sync_fsp_payload(store: Store, payload: dict) -> dict[str, int]:
     disciplines = {item["id"]: item["name"] for item in payload["disciplines"]}
+    participant_ids = {item["id"] for item in payload["participants"]}
+    competition_ids = {item["id"] for item in payload["competitions"]}
+    known_skills = store.skills().keys()
+    for item in payload["competitions"]:
+        if item["discipline_id"] not in disciplines:
+            raise ValueError(f"Unknown discipline: {item['discipline_id']}")
+        unknown_skills = item["skills"].keys() - known_skills
+        if unknown_skills:
+            raise ValueError(f"Unknown skills: {sorted(unknown_skills)}")
+    for item in payload["results"]:
+        if item["participant_id"] not in participant_ids:
+            raise ValueError(f"Unknown participant: {item['participant_id']}")
+        if item["competition_id"] not in competition_ids:
+            raise ValueError(f"Unknown competition: {item['competition_id']}")
+        if item["placement"] > item["participants"]:
+            raise ValueError("Placement cannot exceed participant count")
     candidates = [
         Candidate(
             item["id"],
