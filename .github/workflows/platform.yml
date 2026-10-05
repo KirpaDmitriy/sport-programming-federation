@@ -25,7 +25,7 @@ jobs:
       # Vitest's jsdom environment runs on Node (see frontend/README.md); everything else runs on Bun.
       - uses: actions/setup-node@v7
         with:
-          node-version: 24
+          node-version: 26
       - run: bun install --cwd mock-server --frozen-lockfile
       - run: bun install --cwd contracts/codegen --frozen-lockfile
       - run: bun install --cwd frontend --frozen-lockfile
