@@ -8,7 +8,8 @@ import { spawn } from 'node:child_process';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const reports = join(root, 'reports');
 await mkdir(reports, { recursive: true });
-const report = { checkedAt: new Date().toISOString(), node: process.version, platform: process.platform, checks: [] };
+const runtime = process.versions.bun ? `bun ${process.versions.bun}` : `node ${process.version}`;
+const report = { checkedAt: new Date().toISOString(), runtime, platform: process.platform, checks: [] };
 const readJson = async (path) => JSON.parse(await readFile(join(root, path), 'utf8'));
 const digest = (bytes) => createHash('sha256').update(bytes).digest('hex');
 const methods = new Set(['get', 'post', 'put', 'patch', 'delete', 'head', 'options']);
@@ -69,7 +70,7 @@ async function staticChecks() {
   const index = await readFile(join(root, 'docs/API_OPERATIONS.md'), 'utf8');
   for (const id of operationIds) assert.ok(index.includes(`\`${id}\``), `Operation index is stale: ${id}`);
 
-  const requiredFiles = ['README.md', 'START_HERE_RU.md', 'AGENTS.md', 'agent/IMPLEMENTATION_PROMPT.md', 'docs/PRODUCT_RULES.md', 'docs/REQUIREMENTS_TRACEABILITY.md', 'docs/SCREEN_SPECIFICATION.md', 'docs/DESIGN_SYSTEM.md', 'docs/MOCKUP_CORRECTIONS.md', 'docs/FRONTEND_ARCHITECTURE.md', 'docs/STACK_RESEARCH.md', 'docs/API_INTEGRATION.md', 'docs/IMPLEMENTATION_PLAN.md', 'docs/ACCEPTANCE_TESTS.md', 'docs/MOCK_SERVER.md', 'docs/DECISIONS_AND_RISKS.md', 'docs/DEMO_SCRIPT_RU.md', 'sources/organizer-spec.pdf', 'sources/organizer-presentation-template.pptx', 'sources/stack-registry.json', 'mock-server/package-lock.json', 'tools/contract-codegen/pnpm-lock.yaml', 'frontend-reference/pnpm-lock.yaml'];
+  const requiredFiles = ['README.md', 'START_HERE_RU.md', 'AGENTS.md', 'agent/IMPLEMENTATION_PROMPT.md', 'docs/PRODUCT_RULES.md', 'docs/REQUIREMENTS_TRACEABILITY.md', 'docs/SCREEN_SPECIFICATION.md', 'docs/DESIGN_SYSTEM.md', 'docs/MOCKUP_CORRECTIONS.md', 'docs/FRONTEND_ARCHITECTURE.md', 'docs/STACK_RESEARCH.md', 'docs/API_INTEGRATION.md', 'docs/IMPLEMENTATION_PLAN.md', 'docs/ACCEPTANCE_TESTS.md', 'docs/MOCK_SERVER.md', 'docs/DECISIONS_AND_RISKS.md', 'docs/DEMO_SCRIPT_RU.md', 'sources/organizer-spec.pdf', 'sources/organizer-presentation-template.pptx', 'sources/stack-registry.json', 'mock-server/bun.lock', 'tools/contract-codegen/bun.lock', 'frontend-reference/bun.lock'];
   for (const path of requiredFiles) assert.ok((await stat(join(root, path))).size > 0, `Missing or empty file: ${path}`);
 
   const files = await collectFiles(root);
@@ -116,11 +117,11 @@ try {
   console.error(`artifact-integrity: FAIL ${error.message}`);
 }
 
-const pnpm = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
-await run('mock-api-tests', process.execPath, ['--test', 'tests/mock-api.test.mjs'], root);
-await run('codegen-drift', pnpm, ['check'], join(root, 'tools/contract-codegen'));
-await run('reference-typecheck', pnpm, ['typecheck'], join(root, 'frontend-reference'));
-await run('reference-tests', pnpm, ['test'], join(root, 'frontend-reference'));
+const bun = process.platform === 'win32' ? 'bun.exe' : 'bun';
+await run('mock-api-tests', bun, ['test', './tests/mock-api.test.mjs'], root);
+await run('codegen-drift', bun, ['run', 'check'], join(root, 'tools/contract-codegen'));
+await run('reference-typecheck', bun, ['run', 'typecheck'], join(root, 'frontend-reference'));
+await run('reference-tests', bun, ['run', 'test'], join(root, 'frontend-reference'));
 report.passed = report.checks.every(check => check.passed);
 await writeFile(join(reports, 'verification-summary.json'), `${JSON.stringify(report, null, 2)}\n`);
 process.exitCode = report.passed ? 0 : 1;

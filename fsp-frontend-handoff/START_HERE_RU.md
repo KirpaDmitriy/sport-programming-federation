@@ -35,23 +35,21 @@
 
 ## Запустить проверку пакета
 
-Нужны Node 24 LTS и pnpm 12.9.1. Зависимости устанавливаются из реестра или локального кеша; `node_modules` в архив не включены.
+Нужен Bun 1.4.2 или новее: он устанавливает зависимости и исполняет код, у каждого пакета свой `bun.lock`. Зависимости устанавливаются из реестра или локального кеша; `node_modules` в архив не включены.
 
 Из корня распакованного каталога:
 
 ```sh
-npm --prefix mock-server ci
-pnpm --dir tools/contract-codegen install --frozen-lockfile
-pnpm --dir frontend-reference install --frozen-lockfile
-node scripts/verify-package.mjs
+bun install --cwd mock-server --frozen-lockfile
+bun install --cwd tools/contract-codegen --frozen-lockfile
+bun install --cwd frontend-reference --frozen-lockfile
+bun scripts/verify-package.mjs
 ```
-
-Если pnpm не установлен, в [README](README.md) есть вариант запуска закреплённой версии через `npm exec` без глобальной установки.
 
 Для запуска API в отдельном терминале:
 
 ```sh
-npm --prefix mock-server start
+bun run --cwd mock-server start
 ```
 
 Адрес: `http://127.0.0.1:4010`. Состояние: `/health`, параметры демонстрации: `/api/v1/meta`. Настройка пользователей и сценариев описана в [MOCK_SERVER.md](docs/MOCK_SERVER.md). Мок-сервер запускается локально; его служебный выбор пользователя не является готовой авторизацией для публичного размещения.

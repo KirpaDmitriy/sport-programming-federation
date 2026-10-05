@@ -2,12 +2,14 @@
   "name": "@fsp/frontend-reference",
   "private": true,
   "type": "module",
-  "packageManager": "pnpm@12.9.1",
-  "engines": { "node": "^24.19.0" },
+  "packageManager": "bun@1.4.2",
+  "engines": {
+    "bun": ">=1.4.2"
+  },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
-    "verify": "pnpm typecheck && pnpm test"
+    "test": "bun --bun vitest run",
+    "verify": "bun run typecheck && bun run test"
   },
   "dependencies": {
     "@tanstack/react-query": "5.104.1",
