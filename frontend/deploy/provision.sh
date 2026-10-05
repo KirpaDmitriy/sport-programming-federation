@@ -1,35 +1,33 @@
 #!/usr/bin/env bash
 # Idempotent provisioning of the FSP demo stand on Ubuntu 24.04. Run as root:
 #   provision.sh <public-ipv4>
-# Installs nginx, pinned Node.js and pnpm, certbot, the mock API unit and an
+# Installs nginx, a pinned Bun runtime, certbot, the mock API unit and an
 # IP-address TLS certificate (Let's Encrypt "shortlived" profile, 160 hours).
 set -euo pipefail
 
 PUBLIC_IP="${1:?usage: provision.sh <public-ipv4>}"
-NODE_VERSION=24.21.0
-NODE_SHA256=fd8e59d5a511510f6a298afb548f18c7d2b1be404d8b4a27d94fbe49f56cb2d6
-PNPM_VERSION=12.9.1
+BUN_VERSION=1.4.2
+BUN_SHA256=36368faef7527875d5ffa52e53cd48021741f2a83eb6208a8dd64068d422a913
 HERE="$(cd "$(dirname "$0")" && pwd)"
 
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -q
 apt-get upgrade -yq
-apt-get install -yq nginx ufw curl xz-utils
+apt-get install -yq nginx ufw curl unzip
 
-if [ "$(/opt/node/bin/node --version 2>/dev/null)" != "v$NODE_VERSION" ]; then
+if [ "$(/opt/bun/bin/bun --version 2>/dev/null)" != "$BUN_VERSION" ]; then
   tmp="$(mktemp -d)"
-  curl -fsSLo "$tmp/node.tar.xz" "https://nodejs.org/dist/v$NODE_VERSION/node-v$NODE_VERSION-linux-x64.tar.xz"
-  echo "$NODE_SHA256  $tmp/node.tar.xz" | sha256sum -c -
-  mkdir -p "/opt/node-v$NODE_VERSION"
-  tar -xJf "$tmp/node.tar.xz" -C "/opt/node-v$NODE_VERSION" --strip-components=1
-  ln -sfn "/opt/node-v$NODE_VERSION" /opt/node
+  curl -fsSLo "$tmp/bun.zip" "https://github.com/oven-sh/bun/releases/download/bun-v$BUN_VERSION/bun-linux-x64.zip"
+  echo "$BUN_SHA256  $tmp/bun.zip" | sha256sum -c -
+  unzip -q "$tmp/bun.zip" -d "$tmp"
+  install -D -m 755 "$tmp/bun-linux-x64/bun" "/opt/bun-$BUN_VERSION/bin/bun"
+  ln -sfn "/opt/bun-$BUN_VERSION" /opt/bun
   rm -rf "$tmp"
 fi
-for tool in node npm npx; do ln -sf "/opt/node/bin/$tool" "/usr/local/bin/$tool"; done
-if [ "$(pnpm --version 2>/dev/null)" != "$PNPM_VERSION" ]; then
-  npm install -g --prefix /opt/pnpm "pnpm@$PNPM_VERSION"
-  ln -sf /opt/pnpm/bin/pnpm /usr/local/bin/pnpm
-fi
+ln -sf /opt/bun/bin/bun /usr/local/bin/bun
+# The stand builds and runs on Bun only; drop the Node/pnpm toolchain of earlier provisioning.
+rm -rf /opt/node /opt/node-v* /opt/pnpm
+rm -f /usr/local/bin/node /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/pnpm
 
 snap install core >/dev/null 2>&1 || true
 snap list certbot >/dev/null 2>&1 || snap install --classic certbot
