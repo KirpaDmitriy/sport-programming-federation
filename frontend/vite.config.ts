@@ -21,7 +21,6 @@ export default defineConfig({
     host: '127.0.0.1',
     port: 5173,
     strictPort: true,
-    fs: { allow: ['.', '../fsp-frontend-handoff/design'] },
     proxy: { '/api': mockApi, '/__mock__': mockApi },
   },
   // Production-like preview: only the application API is proxied, never /__mock__.

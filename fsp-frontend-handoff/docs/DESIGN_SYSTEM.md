@@ -4,7 +4,7 @@
 
 The ten mockups define a coherent application direction: dark plum navigation, a light workspace, restrained purple actions, and evidence/status colors. The following tokens are **proposed implementation values**. They are not a reconstruction of an official FSP brandbook.
 
-Use [`../design/tokens.css`](../design/tokens.css) in the frontend foundation. [`../design/tokens.json`](../design/tokens.json) contains the same 63 base token values for tooling and inspection. Keep the files synchronized if values change. The CSS also reduces token-based motion when the user requests reduced motion.
+Use [`tokens.css`](../../frontend/src/app/styles/tokens.css) in the frontend foundation. [`tokens.json`](../../frontend/src/app/styles/tokens.json) contains the same 63 base token values for tooling and inspection. Keep the files synchronized if values change. The CSS also reduces token-based motion when the user requests reduced motion.
 
 Use the system font stack included in the tokens. It supports the local system's Cyrillic fonts and requires no external font service. An optional custom typeface must be bundled with its license before it becomes a runtime dependency. Do not load fonts, logos, or illustration assets from an unlisted CDN.
 
