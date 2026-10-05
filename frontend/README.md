@@ -12,10 +12,14 @@ scenario fixtures, e-mail is a demo mailbox. The UI says so wherever it matters.
 
 ## Stack
 
-Node 24.21.0, pnpm 12.9.1, React 19.3, TypeScript 7.0.2, Vite 8.3, TanStack Router 1.170 (file routes), Query 5.104,
-Form 1.33, openapi-fetch 0.17 with generated types, zod 4.6 (URL search validation), @xyflow/react 12.12 (graph,
-lazy-loaded), Vitest 5 + Testing Library + MSW 3, Playwright 1.63 + axe, Biome 2.5. Exact versions are pinned in
-`package.json` and `pnpm-lock.yaml`.
+Bun 1.4.2 (package manager and runtime), React 19.3, TypeScript 7.0.2, Vite 8.3, TanStack Router 1.170 (file
+routes), Query 5.104, Form 1.33, openapi-fetch 0.17 with generated types, zod 4.6 (URL search validation),
+@xyflow/react 12.12 (graph, lazy-loaded), Vitest 5 + Testing Library + MSW 3, Playwright 1.63 + axe, Biome 2.5.
+Exact versions are pinned in `package.json` and `bun.lock`.
+
+Install, scripts, the Vite dev server and build, the mock API, the Playwright runner and the demo stand all run on
+Bun. Vitest is the one exception: its jsdom environment fails on Bun's EventTarget and MSW cannot patch Bun's
+globals, so `bun run test` starts Vitest on Node (24.15 or newer, required by jsdom).
 
 `tsconfig.json` is strict (`exactOptionalPropertyTypes`, `noUncheckedIndexedAccess`). `skipLibCheck` is on because
 the @xyflow/react 12.12 declarations do not compile under `exactOptionalPropertyTypes`; project sources are checked
@@ -32,7 +36,7 @@ in full.
 | `src/entities` | session, meta, profile, qualification badges, skills, sources, jobs, assessments, invitations, company, needs, anonymous candidates, shortlists |
 | `src/shared` | typed API client and errors, generated contract types, labels and formatting, UI kit |
 
-Route files are thin: URL validation, guards, loaders and the page component. `node scripts/check-layers.mjs`
+Route files are thin: URL validation, guards, loaders and the page component. `bun scripts/check-layers.mjs`
 enforces downward imports, no cross-slice imports within a layer and access through each slice's `index.ts`.
 
 Key rules the code follows: the selected grade is only a target; employer screens use only the anonymous projection
@@ -45,10 +49,10 @@ self-application, chat, recurring tasks) have no controls.
 
 ```sh
 cd frontend
-pnpm install --frozen-lockfile
-npm --prefix ../fsp-frontend-handoff/mock-server ci   # once
-pnpm mock                                               # terminal 1: mock API on 127.0.0.1:4010
-pnpm dev                                                # terminal 2: http://127.0.0.1:5173
+bun install --frozen-lockfile
+bun install --cwd ../fsp-frontend-handoff/mock-server --frozen-lockfile   # once
+bun run mock      # terminal 1: mock API on 127.0.0.1:4010
+bun run dev       # terminal 2: http://127.0.0.1:5173
 ```
 
 Vite proxies `/api` and (in development only) `/__mock__` to the mock. Sign in with any address: new addresses
@@ -58,16 +62,14 @@ checks). In development the code field offers “Вставить код из д
 actors, reset mock scenarios (`baseline`, `qualified`, `assessment_failure`, `service_failure`, `no_fsp`,
 `empty_bank`, `api_error`) and advance the mock clock. None of this exists in a production build.
 
-If pnpm is not installed: `npm exec --yes --package=pnpm@12.9.1 -- pnpm <command>`.
-
 ## Contract types
 
 Types come from the isolated generator in the handoff package, which writes the same output here and into the
 reference package:
 
 ```sh
-pnpm codegen         # regenerate after a contract change
-pnpm codegen:check   # fails if src/shared/api/generated is stale
+bun run codegen         # regenerate after a contract change
+bun run codegen:check   # fails if src/shared/api/generated is stale
 ```
 
 Never edit `src/shared/api/generated/` by hand.
@@ -75,11 +77,11 @@ Never edit `src/shared/api/generated/` by hand.
 ## Checks
 
 ```sh
-pnpm verify        # codegen check, typecheck, Biome + FSD layer check, unit tests, build, bundle check
-pnpm test          # Vitest + MSW component tests
-pnpm e2e           # Playwright against the real mock (starts mock and Vite if they are not running)
-SCREENSHOTS=1 pnpm exec playwright test e2e/screenshots.spec.ts   # refresh docs/screenshots
-FSP_PUBLIC_URL=https://188.166.88.183 pnpm exec playwright test -c playwright.public.config.ts
+bun run verify        # codegen check, typecheck, Biome + FSD layer check, unit tests, build, bundle check
+bun run test          # Vitest + MSW component tests (on Node, see Stack)
+bun run e2e           # Playwright against the real mock (starts mock and Vite if they are not running)
+SCREENSHOTS=1 bun run e2e e2e/screenshots.spec.ts               # refresh docs/screenshots
+FSP_PUBLIC_URL=https://188.166.88.183 bun run e2e:public          # smoke the deployed stand
 ```
 
 `scripts/check-bundle.mjs` fails if built assets contain `/__mock__` controls or demo account data outside a
@@ -90,9 +92,9 @@ context per actor; the public suite only uses public flows and fresh accounts.
 
 | Variable | Default | Effect |
 | --- | --- | --- |
-| `VITE_DEMO_STAND` | unset (`1` in `.env.development`) | Adds demo-stand copy and the seeded account hints on the sign-in page |
+| `VITE_DEMO_STAND` | unset (implied in `vite` dev mode) | Adds demo-stand copy and the seeded account hints to a production build |
 | `VITE_DEMO_EMAIL_CODE` | unset | Shown next to the code field when the server reports `delivery: mock_mailbox` |
-| `VITE_API_ORIGIN` | empty (same origin) | Tests set an absolute origin for Node |
+| `VITE_API_ORIGIN` | empty (same origin) | Tests set an absolute origin because Node cannot resolve relative URLs |
 
 ## Demo stand deployment
 
@@ -100,12 +102,13 @@ The stand is one DigitalOcean droplet (`fsp-career-demo`, Ubuntu 24.04) serving 
 Let's Encrypt IP certificate (shortlived profile, 160 hours). nginx serves the built SPA with an `index.html`
 fallback, forwards only `/api/v1/` to the mock on `127.0.0.1:4010` with a loopback `Host`, marks the session cookie
 `Secure` and answers `/__mock__` with 404. The mock runs as the `fsp` user under `fsp-mock-api.service` with
-`FSP_MOCK_DEV_ROUTES=0` and the stand's origin in `FSP_MOCK_ALLOWED_ORIGINS`.
+`FSP_MOCK_DEV_ROUTES=0` and the stand's origin in `FSP_MOCK_ALLOWED_ORIGINS`. The host has Bun only (`/opt/bun`, checksum
+verified at provisioning); releases are installed with `bun install --frozen-lockfile` and built with `bun run build`.
 
 Access material (SSH key, droplet metadata) lives in the git-ignored `../.fsp-infra/`.
 
 ```sh
-# one-time, idempotent host setup (packages, Node, pnpm, certbot, firewall, nginx, unit, certificate)
+# one-time, idempotent host setup (packages, pinned Bun, certbot, firewall, nginx, unit, certificate)
 scp -F .fsp-infra/ssh/config -r frontend/deploy fsp-demo:/root/fsp-deploy
 ssh -F .fsp-infra/ssh/config fsp-demo 'bash /root/fsp-deploy/provision.sh 188.166.88.183'
 
