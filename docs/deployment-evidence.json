@@ -1,19 +1,25 @@
 {
-  "checked_at": "2026-10-05T10:52:48Z",
+  "checked_at": "2026-10-05T11:09:36Z",
   "host": "93.77.179.211",
-  "release_commit": "unknown-legacy",
+  "release_commit": "eac298b",
   "public_url": "http://93.77.179.211:8010",
   "checks": {
-    "internal_smoke": "not_run:ssh_access_denied",
-    "external_health": "passed:service=kodrazryad",
-    "current_release_smoke": "failed:auth_session_404",
-    "openapi_public": "legacy_without_auth_routes",
-    "public_brand": "КодРазряд",
-    "deployment_blocker": "server rejected available deployment key"
+    "internal_smoke": "passed",
+    "external_smoke": "passed",
+    "openapi_public": "passed:auth_session_present",
+    "public_brand": "Выготский",
+    "auth_flow": "passed:register_verify_login_session_logout",
+    "desktop_browser": "passed:1440_no_horizontal_overflow",
+    "mobile_browser": "passed:390_no_horizontal_overflow",
+    "browser_console_errors": 0,
+    "application_service": "kontur-talent.service:active",
+    "metroguard_service": "active",
+    "nginx_service": "active"
   },
   "runtime": {
     "application_port": 8010,
-    "expected_application": "Выготский",
-    "observed_application": "КодРазряд"
+    "application_memory_bytes": 61247488,
+    "metroguard_port": 8000,
+    "metroguard_best_algorithm": "memory_hybrid"
   }
 }
