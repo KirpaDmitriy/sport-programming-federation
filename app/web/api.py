@@ -1,6 +1,8 @@
+import hmac
+import os
 from dataclasses import asdict
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 
 from app.application.service import TalentService
 from app.infrastructure.fsp import sync_fsp_payload
@@ -117,7 +119,16 @@ def create_offer(
 
 
 @router.post("/integrations/fsp/sync", tags=["integrations"])
-def sync_fsp(payload: FspPayloadIn, talent: TalentService = Depends(service)) -> dict:
+def sync_fsp(
+    payload: FspPayloadIn,
+    talent: TalentService = Depends(service),
+    integration_key: str | None = Header(default=None, alias="X-Integration-Key"),
+) -> dict:
+    expected_key = os.environ.get("VYGOTSKY_INTEGRATION_KEY")
+    if not expected_key:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "FSP integration is not configured")
+    if not integration_key or not hmac.compare_digest(integration_key, expected_key):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid integration key")
     try:
         return sync_fsp_payload(talent.store, payload.model_dump())
     except (KeyError, ValueError) as error:

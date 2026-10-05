@@ -8,6 +8,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.application.service import TalentService
 from app.infrastructure.database import Store
+from app.infrastructure.mailer import SmtpMailer
 from app.infrastructure.seed import seed_store
 from app.web.api import router
 from app.web.auth import router as auth_router
@@ -33,6 +34,7 @@ def create_app(database_path: str | Path | None = None) -> FastAPI:
         if store.count("skills") == 0:
             seed_store(store)
         app.state.service = TalentService(store)
+        app.state.mailer = SmtpMailer()
         yield
 
     app = FastAPI(

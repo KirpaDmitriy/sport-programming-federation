@@ -112,3 +112,50 @@ def test_duplicate_email_and_wrong_credentials_are_rejected(tmp_path) -> None:
             "/api/v1/auth/login",
             json={"email": email, "password": "wrong"},
         ).status_code == 401
+
+
+def test_production_registration_sends_verification_email(tmp_path, monkeypatch) -> None:
+    sent = []
+
+    class FakeSmtp:
+        def __init__(self, host, port, timeout):
+            assert (host, port, timeout) == ("smtp.example.test", 587, 15)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return None
+
+        def starttls(self):
+            return None
+
+        def login(self, username, password):
+            assert (username, password) == ("smtp-user", "smtp-pass")
+
+        def send_message(self, message):
+            sent.append(message)
+
+    monkeypatch.setenv("VYGOTSKY_DEMO_AUTH", "0")
+    monkeypatch.setenv("VYGOTSKY_SMTP_HOST", "smtp.example.test")
+    monkeypatch.setenv("VYGOTSKY_SMTP_USERNAME", "smtp-user")
+    monkeypatch.setenv("VYGOTSKY_SMTP_PASSWORD", "smtp-pass")
+    monkeypatch.setenv("VYGOTSKY_SMTP_FROM", "hello@example.test")
+    monkeypatch.setattr("app.infrastructure.mailer.smtplib.SMTP", FakeSmtp)
+
+    with TestClient(create_app(tmp_path / "smtp.sqlite3")) as http:
+        response = http.post(
+            "/api/v1/auth/register",
+            json={
+                "email": "mail@example.test",
+                "password": "correct-horse-battery",
+                "role": "candidate",
+                "display_name": "Почтовый пользователь",
+            },
+        )
+
+    assert response.status_code == 201
+    assert response.json()["verification_delivery"] == "email"
+    assert "verification_code" not in response.json()
+    assert sent[0]["To"] == "mail@example.test"
+    assert "код подтверждения" in sent[0].get_content()

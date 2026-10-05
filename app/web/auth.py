@@ -83,7 +83,11 @@ def register(payload: RegisterIn, request: Request, database: Store = Depends(st
     if demo_outbox:
         result["verification_code"] = code
     else:
-        request.app.state.mailer.send_verification(email, code)
+        try:
+            request.app.state.mailer.send_verification(email, code)
+        except (OSError, RuntimeError) as error:
+            database.delete_user(user["id"])
+            raise HTTPException(status.HTTP_502_BAD_GATEWAY, "Verification email could not be sent") from error
     return result
 
 

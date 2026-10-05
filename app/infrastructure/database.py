@@ -265,6 +265,10 @@ class Store:
             ).fetchone()
         return dict(row) if row else None
 
+    def delete_user(self, user_id: str) -> None:
+        with self.connection() as connection:
+            connection.execute("DELETE FROM users WHERE id = ?", (user_id,))
+
     def verification(self, user_id: str) -> dict | None:
         with self.connection() as connection:
             row = connection.execute(

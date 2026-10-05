@@ -127,11 +127,17 @@ def test_openapi_contains_fsp_contract(tmp_path) -> None:
     assert sync["tags"] == ["integrations"]
 
 
-def test_fsp_sync_rejects_broken_references_without_partial_write(tmp_path) -> None:
+def test_fsp_sync_rejects_broken_references_without_partial_write(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("VYGOTSKY_INTEGRATION_KEY", "test-fsp-secret")
     payload = {**FSP_DEMO_PAYLOAD, "results": [{**FSP_DEMO_PAYLOAD["results"][0], "participant_id": "missing"}]}
     with client(tmp_path) as http:
         before = len(http.get("/api/v1/candidates").json())
-        response = http.post("/api/v1/integrations/fsp/sync", json=payload)
+        assert http.post("/api/v1/integrations/fsp/sync", json=payload).status_code == 401
+        response = http.post(
+            "/api/v1/integrations/fsp/sync",
+            json=payload,
+            headers={"X-Integration-Key": "test-fsp-secret"},
+        )
         after = len(http.get("/api/v1/candidates").json())
 
     assert response.status_code == 422
