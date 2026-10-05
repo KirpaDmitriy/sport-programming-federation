@@ -138,8 +138,7 @@ export function DefinitionList({ items }: { items: Array<{ term: ReactNode; valu
   return (
     <dl className={styles.dl}>
       {items.map((item, index) => (
-        // Terms are static labels; their order is the identity.
-        // biome-ignore lint/suspicious/noArrayIndexKey: stable ordering
+        // biome-ignore lint/suspicious/noArrayIndexKey: terms are static labels whose order is their identity
         <div key={index} style={{ display: 'contents' }}>
           <dt>{item.term}</dt>
           <dd>{item.value}</dd>
