@@ -8,30 +8,24 @@ For Данил and Дима, start with [START_HERE_RU.md](START_HERE_RU.md). Fo
 
 ## Quick start
 
-Use Node 24 LTS and pnpm 12.9.1. The actual checked runtime and commands are recorded in `reports/verification-summary.json`. Dependency installation needs network access or a populated local package cache. Dependencies are not bundled inside the archive.
+Use Bun 1.4.2 or newer as package manager and runtime; every package has a `bun.lock`. The latest checked runtime and commands are recorded in `reports/verification-summary.json`. Dependency installation needs network access or a populated local package cache. Dependencies are not bundled inside the archive.
 
 From this directory:
 
 ```sh
-npm --prefix mock-server ci
-pnpm --dir tools/contract-codegen install --frozen-lockfile
-pnpm --dir frontend-reference install --frozen-lockfile
-node scripts/verify-package.mjs
-```
-
-If pnpm is not installed, invoke the pinned executable without a global installation:
-
-```sh
-npm exec --yes --package=pnpm@12.9.1 -- pnpm --dir tools/contract-codegen install --frozen-lockfile
-npm exec --yes --package=pnpm@12.9.1 -- pnpm --dir frontend-reference install --frozen-lockfile
-npm exec --yes --package=pnpm@12.9.1 -- node scripts/verify-package.mjs
+bun install --cwd mock-server --frozen-lockfile
+bun install --cwd tools/contract-codegen --frozen-lockfile
+bun install --cwd frontend-reference --frozen-lockfile
+bun scripts/verify-package.mjs
 ```
 
 Start the mock in a separate terminal:
 
 ```sh
-npm --prefix mock-server start
+bun run --cwd mock-server start
 ```
+
+The package moved from npm/pnpm to Bun on 2026-10-06. The 2026-10-05 reports below keep the commands that were actually run then.
 
 It listens locally at `http://127.0.0.1:4010`. Verify `/health` and `/api/v1/meta`. See [docs/MOCK_SERVER.md](docs/MOCK_SERVER.md) for seeded actors, scenario reset, email verification and request examples. Keep the mock local; its demo session controls are intentionally not production authentication.
 
@@ -76,10 +70,10 @@ Actual final checks are summarized in [reports/FINAL_VERIFICATION.md](reports/FI
 For an intentional contract change, update the contract definition used by the mock, rebuild `contracts/openapi.json`, regenerate declarations and indexes, then run all checks:
 
 ```sh
-npm --prefix mock-server run contract
-pnpm --dir tools/contract-codegen generate
-node scripts/build-api-index.mjs
-node scripts/verify-package.mjs
+bun run --cwd mock-server contract
+bun run --cwd tools/contract-codegen generate
+bun scripts/build-api-index.mjs
+bun scripts/verify-package.mjs
 ```
 
 The mock's contract definition is a checked authoring source; the generated OpenAPI document is the wire artifact consumed by both workstreams. Keep them synchronized. Do not independently hand-edit the generated TypeScript declarations or preserve a stale second contract.

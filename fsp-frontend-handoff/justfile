@@ -2,21 +2,21 @@ default:
     @just --list
 
 install:
-    npm --prefix mock-server ci
-    pnpm --dir tools/contract-codegen install --frozen-lockfile
-    pnpm --dir frontend-reference install --frozen-lockfile
+    bun install --cwd mock-server --frozen-lockfile
+    bun install --cwd tools/contract-codegen --frozen-lockfile
+    bun install --cwd frontend-reference --frozen-lockfile
 
 mock:
-    npm --prefix mock-server start
+    bun run --cwd mock-server start
 
 verify:
-    node scripts/verify-package.mjs
+    bun scripts/verify-package.mjs
 
 codegen:
-    pnpm --dir tools/contract-codegen generate
+    bun run --cwd tools/contract-codegen generate
 
 gallery:
-    node scripts/build-gallery.mjs
+    bun scripts/build-gallery.mjs
 
 api-index:
-    node scripts/build-api-index.mjs
+    bun scripts/build-api-index.mjs

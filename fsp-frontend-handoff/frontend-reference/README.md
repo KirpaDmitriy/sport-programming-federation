@@ -4,26 +4,20 @@ This package is a small, executable reference for the future `frontend/` applica
 
 ## Run the verified reference
 
-Use Node 24.19 or newer within the Node 24 LTS line and pnpm 12.9.1. Node 24.21.0 was the observed current LTS release during research; the included checks ran on the available Node 24.19.0 runtime.
+Use Bun 1.4.2 or newer. The tests run on the Bun runtime; the original 2026-10-05 checks ran on Node 24.19.0.
 
 From the archive root:
 
 ```sh
-pnpm --dir tools/contract-codegen install --frozen-lockfile
-pnpm --dir tools/contract-codegen generate
-pnpm --dir tools/contract-codegen check
-pnpm --dir frontend-reference install --frozen-lockfile
-pnpm --dir frontend-reference typecheck
-pnpm --dir frontend-reference test
+bun install --cwd tools/contract-codegen --frozen-lockfile
+bun run --cwd tools/contract-codegen generate
+bun run --cwd tools/contract-codegen check
+bun install --cwd frontend-reference --frozen-lockfile
+bun run --cwd frontend-reference typecheck
+bun run --cwd frontend-reference test
 ```
 
-If pnpm is not installed, prefix a command with `npm exec --yes --package=pnpm@12.9.1 --`. For example:
-
-```sh
-npm exec --yes --package=pnpm@12.9.1 -- pnpm --dir frontend-reference verify
-```
-
-The application/compiler context is TypeScript 7.0.2. The separate code generator uses TypeScript 5.9.3 to satisfy its own peer requirement. Both packages include real pnpm lockfiles and must remain isolated. See [`../docs/STACK_VERIFICATION.md`](../docs/STACK_VERIFICATION.md) for actual test results and the rejected generator probe.
+The application/compiler context is TypeScript 7.0.2. The separate code generator uses TypeScript 5.9.3 to satisfy its own peer requirement. Both packages include real `bun.lock` files and must remain isolated. See [`../docs/STACK_VERIFICATION.md`](../docs/STACK_VERIFICATION.md) for actual test results and the rejected generator probe.
 
 ## What to reuse
 
