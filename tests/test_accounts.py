@@ -33,7 +33,7 @@ def test_employer_owns_vacancy_and_cannot_overwrite_demo_or_foreign_vacancy(tmp_
     app = create_app(tmp_path / "accounts.sqlite3")
     vacancy = {
         "id": "owned-python-role",
-        "employer": "Выготский Лаб",
+        "employer": "Карьера Лаб",
         "title": "Python-разработчик",
         "grade": "Junior",
         "specialization": "Backend",

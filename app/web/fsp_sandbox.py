@@ -41,7 +41,7 @@ h1{{font-size:32px;line-height:1.05;margin:28px 0 10px}}p{{color:#5d6370;line-he
 .note{{font-size:13px;background:#f2f3f6;padding:12px 14px;border-radius:12px}}#status{{min-height:20px;color:#a13629;font-size:14px}}
 </style></head><body><main><div class='brand'><span class='mark'>ФСП</span>Тестовый вход ФСП ID</div>
 <h1>Выберите учебный профиль</h1><p>Это безопасный синтетический стенд. Все имена, результаты и идентификаторы ниже вымышлены.</p>
-<div class='list'>{identities}</div><p class='note'>Нажатие имитирует вход на стороне ФСП и передачу одноразового разрешения сервису «Выготский».</p><p id='status'></p></main>
+<div class='list'>{identities}</div><p class='note'>Нажатие имитирует вход на стороне ФСП и передачу одноразового разрешения сервису «ФСП / Карьера».</p><p id='status'></p></main>
 <script>const requestToken={token_json};document.querySelectorAll('.identity').forEach(button=>button.addEventListener('click',async()=>{{
 document.getElementById('status').textContent='Проверяем ФСП ID…';
 const response=await fetch('/fsp-id/oauth/authorize',{{method:'POST',headers:{{'content-type':'application/json'}},body:JSON.stringify({{request_token:requestToken,participant_id:button.dataset.id,pin:button.dataset.pin}})}});

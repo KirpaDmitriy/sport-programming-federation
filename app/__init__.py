@@ -1,1 +1,1 @@
-"""Vygotsky talent platform."""
+"""FSP Career talent platform."""

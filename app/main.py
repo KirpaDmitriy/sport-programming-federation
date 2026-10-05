@@ -41,7 +41,7 @@ def create_app(database_path: str | Path | None = None) -> FastAPI:
         yield
 
     app = FastAPI(
-        title="Выготский API",
+        title="ФСП / Карьера API",
         summary="Подтверждённые компетенции и обратный подбор в ИТ",
         version="0.1.0",
         lifespan=lifespan,
