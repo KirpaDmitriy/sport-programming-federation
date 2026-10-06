@@ -23,8 +23,10 @@ if [ "$IMPL" = rust ] && [ -z "$CARGO_BIN" ]; then
   exit 1
 fi
 if [ -n "$CARGO_BIN" ]; then
-  (cd "$DIR/backend" && RUSTUP_HOME=/opt/rustup CARGO_TARGET_DIR=/opt/fsp/target-cache \
-    "$CARGO_BIN" build --release --locked -p fsp-server)
+  # rustc must sit next to cargo on PATH when invoking the toolchain binary directly.
+  RUST_BIN_DIR="$(dirname "$CARGO_BIN")"
+  (cd "$DIR/backend" && PATH="$RUST_BIN_DIR:$PATH" RUSTUP_HOME=/opt/rustup \
+    CARGO_TARGET_DIR=/opt/fsp/target-cache "$CARGO_BIN" build --release --locked -p fsp-server)
   install -D -m 755 /opt/fsp/target-cache/release/fsp-career-api "$DIR/bin/fsp-career-api"
 fi
 
