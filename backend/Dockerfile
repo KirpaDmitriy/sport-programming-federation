@@ -7,7 +7,7 @@ COPY backend/ ./
 RUN cargo build --release --locked -p fsp-server
 
 FROM debian:trixie-slim
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --system --uid 10001 --no-create-home fsp \
     && install -d -o fsp -g fsp /var/lib/fsp
