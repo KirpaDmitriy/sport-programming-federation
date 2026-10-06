@@ -6,9 +6,9 @@ Four suites check the platform at different levels. All of them run locally; CI
 
 | Suite | Runner | Where | Count | Command |
 | --- | --- | --- | --- | --- |
-| Mock API | `bun test` | `mock-server/test/mock-api.test.ts` | 17 | `bun run --cwd ../mock-server test` |
+| Mock API | `bun test` | `mock-server/test/mock-api.test.ts` | 22 | `bun run --cwd ../mock-server test` |
 | Unit and component | Vitest 5 + Testing Library + MSW 3 (jsdom, on Node) | `src/**/*.test.ts(x)` | 31 in 7 files | `bun run test` |
-| Browser acceptance | Playwright 1.63 + axe, Chromium 1440×900 | `e2e/*.spec.ts` | 28 + 1 opt-in | `bun run e2e` |
+| Browser acceptance | Playwright 1.63 + axe, Chromium 1440×900 | `e2e/*.spec.ts` | 34 + 1 opt-in | `bun run e2e` |
 | Deployed stand | Playwright | `e2e/public/stand.spec.ts` | 2 | `FSP_PUBLIC_URL=https://188.166.88.183 bun run e2e:public` |
 
 `bun run verify` runs the codegen check, typecheck, Biome, the FSD layer check, the unit tests, the production build
@@ -17,12 +17,15 @@ and the bundle check; `just verify` adds the mock tests. JSON reports go to `tes
 ## Mock API tests
 
 HTTP tests against an in-process server, one per rule group: contract drift (the committed `openapi.json` must equal
-the generated one), origin/host/role boundaries, the stand configuration (only the configured origin, no
+the generated one), the error-code catalog (every code, status and literal message the mock raises is listed in
+`contracts/error-codes.json`), origin/host/role boundaries, the stand configuration (only the configured origin, no
 development routes), e-mail verification and expiry, the server-owned category, automatic source jobs without
 inferred hours or grades, the assessment lifecycle, failure and service-error outcomes, same-grade retry, downgrade
 refusal and cooldown, stale checks and revoked consent, need validation and tenant isolation, the anonymous and
 deterministic bank, shortlist persistence, invitations with frozen terms, idempotency and per-company disclosure,
-decline and withdrawal, PDF export and import, and scenario resets. `test/contract-coverage.json` records which
+decline and withdrawal, vacancy publication and the candidate feed, applications with frozen terms, eligibility,
+disclosure and its withdrawal, weekly task offers, answers, reviews and profile freshness, task authoring and
+archiving, PDF export and import, and scenario resets. `test/contract-coverage.json` records which
 operations and statuses were exercised.
 
 ## Unit and component tests
@@ -50,9 +53,11 @@ acceptance cases they cover.
 | --- | --- |
 | `auth.spec.ts` | Registration with a wrong and an expired code; role separation and deep links that return after sign-in; an expired session clears private data; logout |
 | `candidate.spec.ts` | A new candidate reaches a verified category without FSP; the draft survives a reload, an upgrade updates every view and the PDF is real; a failed upgrade keeps Джуниор; a service failure is retryable without penalty; the cooldown comes from the server; automatic source enrichment and empty FSP history; a verified FSP record; graph and list share selection with keyboard access; PDF import applies only on confirmation |
-| `employer.spec.ts` | Salary validation, read-only tax basis, saving without publication; filters in the URL with a shortlist that survives filtering and reload; required coverage, verification gaps and verified grade kept apart; no publication, self-application, chat or ATS controls; a search failure is an error with retry; an emptied bank keeps shortlist entries as unavailable |
+| `employer.spec.ts` | Salary validation, read-only tax basis, saving without publication; filters in the URL with a shortlist that survives filtering and reload; required coverage, verification gaps and verified grade kept apart; publication only on the needs list and no chat or ATS controls; a search failure is an error with retry; an emptied bank keeps shortlist entries as unavailable |
 | `invitations.spec.ts` | Anonymous until acceptance, then only the chosen fields and only for the inviting company; viewing changes only the status and declining grants nothing; a stale tab sees the canonical decision and a withdrawn offer cannot be accepted |
-| `accessibility.spec.ts` | No serious or critical axe violations (WCAG 2.2 AA tags) on the login, five candidate and three employer pages; skip link and keyboard navigation; narrow screens without horizontal scroll and with reachable navigation |
+| `vacancies.spec.ts` | Publishing and unpublishing a need, the candidate feed with filters, salary and fit; applying opens only the chosen contacts to that company, which views and accepts while the candidate follows the status; withdrawing takes the contacts back; a candidate without a verified grade is told why applying is unavailable |
+| `tasks.spec.ts` | The weekly task is answered once, reviewed by its company with a comment and makes the profile fresh for every company, while the answer stays with the author; companies add and archive tasks with validation; a candidate without a verified grade is told why there is no task |
+| `accessibility.spec.ts` | No serious or critical axe violations (WCAG 2.2 AA tags) on the login, nine candidate and seven employer pages; skip link and keyboard navigation; narrow screens without horizontal scroll and with reachable navigation |
 | `screenshots.spec.ts` | Opt-in (`SCREENSHOTS=1`): regenerates `docs/screenshots` |
 
 Responses are also inspected: employer-side API bodies must not contain private markers (the seed candidate's name,

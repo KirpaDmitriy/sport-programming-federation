@@ -1,0 +1,46 @@
+name: docker
+
+on:
+  push:
+    paths:
+      - docker-compose.yml
+      - .dockerignore
+      - mock-server/**
+      - frontend/**
+      - backend/**
+      - infra/docker/**
+      - infra/nginx/fsp-security-headers.conf
+      - .github/workflows/docker.yml
+  pull_request:
+    paths:
+      - docker-compose.yml
+      - .dockerignore
+      - mock-server/**
+      - frontend/**
+      - backend/**
+      - infra/docker/**
+      - infra/nginx/fsp-security-headers.conf
+      - .github/workflows/docker.yml
+
+jobs:
+  compose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build and start the demo containers
+        run: docker compose up --build --detach --wait
+      - name: Pages, API, development routes and origin checks
+        run: |
+          base=http://localhost:8080
+          status() { curl -s -o /dev/null -w '%{http_code}' "$@"; }
+          body='{"email":"ci@example.com","role":"candidate"}'
+          test "$(status "$base/candidate/vacancies")" = 200
+          test "$(status "$base/api/v1/meta")" = 200
+          test "$(status "$base/__mock__/reset")" = 404
+          test "$(status -X POST -H "Origin: $base" -H 'Content-Type: application/json' -d "$body" "$base/api/v1/auth/email/challenges")" = 201
+          test "$(status -X POST -H 'Origin: https://evil.example' -H 'Content-Type: application/json' -d "$body" "$base/api/v1/auth/email/challenges")" = 403
+      - name: Container logs
+        if: failure()
+        run: docker compose logs
+      - name: Build the backend image
+        run: docker compose --profile backend build backend

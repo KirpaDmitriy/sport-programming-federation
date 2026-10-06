@@ -328,6 +328,9 @@ export function EmployerCandidatesPage({ search, onSearchChange }: Props) {
                               </StatusChip>
                             </div>
                             {candidate.fspVerified && <div className="small muted">ФСП: подтверждённое участие</div>}
+                            <div className="small muted">
+                              {candidate.freshness.fresh ? 'Профиль актуален' : 'Давно не обновлялся'}
+                            </div>
                           </td>
                           <td>
                             {candidate.skills

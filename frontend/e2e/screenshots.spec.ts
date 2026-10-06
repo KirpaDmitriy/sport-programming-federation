@@ -71,6 +71,33 @@ test('documentation screenshots of the implemented screens', async ({ browser, p
   await shot(employer.page, '12-employer-disclosed-contacts');
   await employer.page.goto('/employer/invitations');
   await shot(employer.page, '13-employer-invitations');
+  await employer.page.goto('/employer/needs');
+  await shot(employer.page, '17-employer-needs');
+  await page.goto('/candidate/vacancies');
+  await expect(page.getByText(/Найдено: \d/)).toBeVisible();
+  await shot(page, '18-candidate-vacancies');
+  await page.goto('/candidate/vacancies/need-002');
+  await page
+    .getByLabel('Сопроводительное письмо')
+    .fill('Хочу развивать сервис уведомлений: интересны очереди, повторные попытки и наблюдаемость.');
+  await shot(page, '19-candidate-vacancy');
+  await page.getByRole('button', { name: 'Откликнуться и открыть контакты' }).click();
+  await page.waitForURL(/\/candidate\/applications\/application-/);
+  await shot(page, '20-candidate-application');
+  await employer.page.goto('/employer/applications');
+  await shot(employer.page, '21-employer-applications');
+  await employer.page.getByRole('link', { name: 'Кандидат №024' }).click();
+  await expect(employer.page.getByRole('heading', { name: 'Отклик: Кандидат №024' })).toBeVisible();
+  await shot(employer.page, '22-employer-application');
+  await page.goto('/candidate/tasks');
+  await page
+    .getByLabel('Ваш подход')
+    .fill('Очередь попыток в PostgreSQL со временем следующей попытки, экспоненциальная задержка и предел попыток.');
+  await shot(page, '23-candidate-tasks');
+  await page.getByRole('button', { name: 'Отправить ответ' }).click();
+  await expect(page.getByText('Ждёт оценки компании')).toBeVisible();
+  await employer.page.goto('/employer/tasks?tab=responses');
+  await shot(employer.page, '24-employer-task-responses');
 
   await resetMock('assessment_failure');
   const failing = await actor(browser, ALEXEY, 'candidate');

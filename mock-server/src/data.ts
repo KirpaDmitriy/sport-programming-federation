@@ -14,6 +14,8 @@ export type Need = S['Need'];
 export type EvidencePolicy = S['EvidencePolicy'];
 export type Assessment = S['Assessment'];
 export type Invitation = S['Invitation'];
+export type Application = S['Application'];
+export type TaskResponse = S['TaskResponse'];
 export type Job = S['Job'];
 export type Disclosure = S['Disclosure'];
 
@@ -76,6 +78,10 @@ export interface Shortlist {
 export type AssessmentRecord = Assessment & { candidateId: string };
 /** An invitation keeps the full need it was sent for, so gap plans use the terms the candidate received. */
 export type InvitationRecord = Invitation & { needDefinition: Need };
+/** An application keeps the vacancy as it was when the candidate applied; its match is computed when read. */
+export type ApplicationRecord = Omit<Application, 'match'> & { needDefinition: Need };
+/** A company's short task; candidates see it through the weekly offer, companies with their response count. */
+export type TaskRecord = Omit<S['Task'], 'responseCount'> & { companyId: string };
 export type JobResult = NonNullable<Job['result']>;
 export type JobRecord = Job & {
   ownerActorId: string;
@@ -106,6 +112,9 @@ export interface State {
   needs: Map<string, Need>;
   shortlists: Map<string, Shortlist>;
   invitations: Map<string, InvitationRecord>;
+  applications: Map<string, ApplicationRecord>;
+  tasks: Map<string, TaskRecord>;
+  taskResponses: Map<string, TaskResponse>;
   disclosures: Map<string, Disclosure>;
   assessments: Map<string, AssessmentRecord>;
   jobs: Map<string, JobRecord>;
@@ -370,7 +379,7 @@ export const DEFAULT_POLICY: EvidencePolicy = {
   competitionSelection: 'system',
   competitionIds: [],
 };
-function need(companyId: string, id: string): Need {
+function need(companyId: string, id: string, overrides: Partial<Need> = {}): Need {
   return {
     id,
     companyId,
@@ -388,10 +397,161 @@ function need(companyId: string, id: string): Need {
       evidencePolicy: structuredClone(DEFAULT_POLICY),
     })),
     published: false,
+    publishedAt: null,
     createdAt: CLOCK,
     updatedAt: CLOCK,
     revision: 1,
+    ...overrides,
   };
+}
+
+const requirement = (
+  skillId: SkillId,
+  criticality: Need['requirements'][number]['criticality'],
+  minimumGrade: Grade,
+): Need['requirements'][number] => ({
+  skillId,
+  criticality,
+  minimumGrade,
+  evidencePolicy: structuredClone(DEFAULT_POLICY),
+});
+const daysBefore = (days: number) => new Date(Date.parse(CLOCK) - days * 86400000).toISOString();
+
+/** Published needs are the vacancies candidates browse; need-001 stays unpublished for direct invitations. */
+function seedNeeds(): Map<string, Need> {
+  const items = [
+    need('company-a', 'need-001'),
+    need('company-a', 'need-002', {
+      title: 'Бэкенд-разработчик сервиса уведомлений',
+      grade: 'junior',
+      workMode: 'hybrid',
+      salary: { from: 120000, to: 160000, currency: 'RUB', period: 'month', taxBasis: 'gross' },
+      description:
+        'Сервис доставки уведомлений на Rust: очереди, повторные попытки и наблюдаемость. Гибрид, офис в Москве два дня в неделю, наставник в команде.',
+      requirements: [
+        requirement('rust', 'required', 'junior'),
+        requirement('postgresql', 'desired', 'junior'),
+        requirement('docker', 'desired', 'junior'),
+      ],
+      published: true,
+      publishedAt: daysBefore(2),
+      createdAt: daysBefore(3),
+      updatedAt: daysBefore(3),
+    }),
+    need('company-b', 'need-b-001', { published: true, publishedAt: daysBefore(5) }),
+    need('company-b', 'need-b-002', {
+      title: 'Фронтенд-разработчик (React)',
+      specialization: 'frontend',
+      workMode: 'office',
+      salary: { from: 180000, to: 230000, currency: 'RUB', period: 'month', taxBasis: 'gross' },
+      description:
+        'Интерфейсы внутренних сервисов на React и TypeScript: формы, таблицы, доступность. Офис в Санкт-Петербурге.',
+      requirements: [requirement('react', 'required', 'middle')],
+      published: true,
+      publishedAt: daysBefore(1),
+      createdAt: daysBefore(4),
+      updatedAt: daysBefore(4),
+    }),
+  ];
+  return new Map(items.map((item) => [item.id, item]));
+}
+
+function seedTasks(): Map<string, TaskRecord> {
+  const task = (item: Omit<TaskRecord, 'status'>): TaskRecord => ({ ...item, status: 'active' });
+  const items = [
+    task({
+      id: 'task-001',
+      companyId: 'company-a',
+      title: 'Повтор платежа без двойного списания',
+      prompt:
+        'Платёжный сервис получает повторный запрос после таймаута клиента. Как сделать, чтобы деньги не списались дважды? Решите или опишите подход: таблицы и ограничения PostgreSQL, порядок операций, что вернуть повторному запросу.',
+      skillId: 'postgresql',
+      grade: 'junior',
+      estimateMinutes: 30,
+      createdAt: daysBefore(20),
+    }),
+    task({
+      id: 'task-002',
+      companyId: 'company-a',
+      title: 'Повторные попытки отправки уведомлений',
+      prompt:
+        'Сервис уведомлений на Rust вызывает внешний API, который иногда отвечает ошибкой или не отвечает. Предложите, как организовать повторные попытки: где хранить состояние, как не перегрузить внешний сервис и когда прекращать попытки.',
+      skillId: 'rust',
+      grade: 'junior',
+      estimateMinutes: 45,
+      createdAt: daysBefore(18),
+    }),
+    task({
+      id: 'task-003',
+      companyId: 'company-b',
+      title: 'Форма регистрации с проверкой полей',
+      prompt:
+        'Нужна форма регистрации на React: почта, пароль и согласие с условиями. Опишите, как проверять поля и показывать ошибки так, чтобы форма была доступна с клавиатуры и для экранного диктора.',
+      skillId: 'react',
+      grade: 'middle',
+      estimateMinutes: 40,
+      createdAt: daysBefore(15),
+    }),
+  ];
+  return new Map(items.map((item) => [item.id, item]));
+}
+
+function seedTaskResponses(
+  candidates: Map<string, Candidate>,
+  tasks: Map<string, TaskRecord>,
+): Map<string, TaskResponse> {
+  const companyName = { 'company-a': 'Север Тех', 'company-b': 'Вторая компания' } as Record<string, string>;
+  const response = (
+    id: string,
+    candidateId: string,
+    taskId: string,
+    answer: string,
+    feedback: string,
+    submittedDaysAgo: number,
+  ): TaskResponse => {
+    const task = tasks.get(taskId);
+    const candidate = candidates.get(candidateId);
+    if (!task || !candidate) throw new Error(`Missing seed task response ${id}`);
+    return {
+      id,
+      candidateId,
+      candidateAlias: candidate.alias,
+      task: {
+        id: task.id,
+        company: { id: task.companyId, displayName: companyName[task.companyId] ?? '' },
+        title: task.title,
+        prompt: task.prompt,
+        skillId: task.skillId,
+        grade: task.grade,
+        estimateMinutes: task.estimateMinutes,
+      },
+      mode: 'approach',
+      answer,
+      status: 'accepted',
+      feedback,
+      submittedAt: daysBefore(submittedDaysAgo),
+      reviewedAt: daysBefore(submittedDaysAgo - 1),
+    };
+  };
+  const items = [
+    response(
+      'task-response-seed-031',
+      'candidate031',
+      'task-002',
+      'Очередь задач в PostgreSQL со статусом и временем следующей попытки, экспоненциальная задержка с ограничением, ключ идемпотентности на стороне получателя, после пяти неудач — в очередь разбора.',
+      'Хороший разбор задержек и идемпотентности.',
+      3,
+    ),
+    response(
+      'task-response-seed-041',
+      'candidate041',
+      'task-003',
+      'Проверка при потере фокуса и при отправке, ошибки связаны с полями через aria-describedby, фокус переходит к первому ошибочному полю, состояние кнопки не блокирует отправку без объяснения.',
+      'Учтены доступность и порядок фокуса.',
+      10,
+    ),
+  ];
+  return new Map(items.map((item) => [item.id, item]));
 }
 
 const seeded = (candidates: Map<string, Candidate>, id: string): Candidate => {
@@ -553,6 +713,7 @@ export function createState(scenario: Scenario = 'baseline'): State {
     revision: 1,
     simulation: true,
   };
+  const tasks = seedTasks();
   return {
     scenario,
     clock: CLOCK,
@@ -563,10 +724,7 @@ export function createState(scenario: Scenario = 'baseline'): State {
     actors,
     sessions: new Map(),
     challenges: new Map(),
-    needs: new Map([
-      ['need-001', need('company-a', 'need-001')],
-      ['need-b-001', need('company-b', 'need-b-001')],
-    ]),
+    needs: seedNeeds(),
     shortlists: new Map([
       [
         'shortlist-001',
@@ -581,6 +739,9 @@ export function createState(scenario: Scenario = 'baseline'): State {
       ],
     ]),
     invitations: new Map(),
+    applications: new Map(),
+    tasks,
+    taskResponses: seedTaskResponses(candidates, tasks),
     disclosures: new Map(),
     assessments: new Map([[historyId, history]]),
     jobs: new Map(),

@@ -1,12 +1,11 @@
 default:
     @just --list
 
-# Install the TypeScript modules: mock server, contract generator, frontend, Python MVP browser client
+# Install the TypeScript modules: mock server, contract generator, frontend
 install:
     bun install --cwd mock-server --frozen-lockfile
     bun install --cwd contracts/codegen --frozen-lockfile
     bun install --cwd frontend --frozen-lockfile
-    bun install --cwd app/web/client --frozen-lockfile
 
 # Mock API on 127.0.0.1:4010
 mock:
@@ -21,11 +20,7 @@ contract:
     bun run --cwd mock-server contract
     bun run --cwd contracts/codegen generate
 
-# Rebuild the Python MVP browser script app/web/static/app.js from app/web/client/src
-mvp-web:
-    bun run --cwd app/web/client build
-
-# Types, lint and tests of the contract generator, the mock, the frontend and the MVP browser client
+# Types, lint and tests of the contract generator, the mock and the frontend
 verify:
     bun run --cwd contracts/codegen typecheck
     bun run --cwd contracts/codegen lint
@@ -33,9 +28,6 @@ verify:
     bun run --cwd mock-server lint
     bun run --cwd mock-server test
     bun run --cwd frontend verify
-    bun run --cwd app/web/client typecheck
-    bun run --cwd app/web/client lint
-    bun run --cwd app/web/client check
 
 # Browser acceptance tests against the mock
 e2e:
@@ -50,6 +42,14 @@ backend-check:
     cd backend && cargo fmt --all --check
     cd backend && cargo clippy --workspace --all-targets --locked -- -D warnings
     cd backend && cargo test --workspace --locked
+
+# The whole demo in containers on http://localhost:8080 (FSP_PORT overrides the port)
+docker-up:
+    docker compose up --build --detach --wait
+
+# Stop the containers
+docker-down:
+    docker compose down
 
 # Build a git ref on the demo stand and switch to it
 deploy ref="main":

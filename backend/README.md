@@ -2,8 +2,8 @@
 
 The Rust service that replaces the mock behind the same `/api/v1` paths, built as a hexagonal architecture. Today it
 is a skeleton: the workspace, the crate boundaries, the contract's transport rules and `GET /health`; no use case
-is implemented yet. Docker, nginx and Redis are the planned surroundings. The Python MVP in the repository root
-stays as it is.
+is implemented yet. [`Dockerfile`](Dockerfile) builds it into a small image (`docker compose --profile backend up
+--build backend` serves it on port 8081); nginx and Redis are the planned surroundings.
 
 ## Layout
 
@@ -53,7 +53,7 @@ CI runs the same checks in `.github/workflows/backend.yml` on changes to `backen
 | Source | What it defines |
 | --- | --- |
 | [`../contracts/openapi.json`](../contracts/openapi.json) | Every operation except the `x-mock-only` `/__mock__` controls, which must not exist in production; index in [`API_OPERATIONS.md`](../contracts/API_OPERATIONS.md) |
-| [`../docs/product/BUSINESS_RULES.md`](../docs/product/BUSINESS_RULES.md) | Accounts and access, profile visibility, consents, sources and skill states, assessment eligibility and outcomes, needs, matching and order, anonymous projection, shortlists, invitations, disclosure, PDF, jobs |
+| [`../docs/product/BUSINESS_RULES.md`](../docs/product/BUSINESS_RULES.md) | Accounts and access, profile visibility, consents, sources and skill states, assessment eligibility and outcomes, needs, matching and order, anonymous projection, shortlists, invitations, vacancies and applications, short tasks and freshness, disclosure, PDF, jobs |
 | [`../contracts/API_INTEGRATION.md`](../contracts/API_INTEGRATION.md) | Session cookie, origin checks, validation, error envelope, idempotency, jobs, pagination, PDF, time, metadata, the cutover checklist |
 | [`../mock-server`](../mock-server/README.md) | The rules as running code (`src/domain.ts`) and as 17 HTTP tests (`test/mock-api.test.ts`) ready to port |
 

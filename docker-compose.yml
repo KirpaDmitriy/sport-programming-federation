@@ -1,0 +1,57 @@
+# The demo platform in containers: `docker compose up --build`, then http://localhost:8080.
+# All data is synthetic and lives in memory; `docker compose restart api` resets it. The e-mail code is 123456.
+name: fsp-career
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: mock-server/Dockerfile
+    environment:
+      # Browser origins the API accepts; add yours when opening the demo by another host name or port.
+      FSP_MOCK_ALLOWED_ORIGINS: ${FSP_ALLOWED_ORIGINS:-http://localhost:${FSP_PORT:-8080},http://127.0.0.1:${FSP_PORT:-8080}}
+    # The web service shares this network namespace, so its port is published here; the API port is not.
+    ports:
+      - "${FSP_PORT:-8080}:8080"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:4010/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    network_mode: service:api
+    depends_on:
+      api:
+        condition: service_healthy
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  backend:
+    profiles: [backend]
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    environment:
+      FSP_ALLOWED_ORIGINS: ${FSP_ALLOWED_ORIGINS:-http://localhost:${FSP_PORT:-8080},http://127.0.0.1:${FSP_PORT:-8080}}
+    ports:
+      - "${FSP_BACKEND_PORT:-8081}:8080"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped

@@ -1,5 +1,5 @@
 import type { components } from '@/shared/api';
-import { gradeLabel, specializationLabel } from '@/shared/lib';
+import { formatDate, gradeLabel, specializationLabel } from '@/shared/lib';
 import { StatusChip } from '@/shared/ui';
 
 type Grade = components['schemas']['Profile']['selectedGrade'];
@@ -25,4 +25,28 @@ export function TargetGradeBadge({ grade }: { grade: Grade }) {
 export function qualificationText(specialization: Specialization | null, grade: Grade | null) {
   if (!specialization || !grade) return 'Категория не присвоена';
   return `${specializationLabel[specialization]} · ${gradeLabel[grade]}`;
+}
+
+type Freshness = components['schemas']['Freshness'];
+
+/** How recent the last server-counted signal is: a verified grade or a short task the company did not reject. */
+export function FreshnessChip({ freshness }: { freshness: Freshness }) {
+  if (!freshness.lastSignalAt) {
+    return (
+      <StatusChip tone="neutral" icon="clock">
+        Свежих подтверждений нет
+      </StatusChip>
+    );
+  }
+  const what = freshness.lastSignal === 'task' ? 'задание' : 'проверка';
+  const when = formatDate(freshness.lastSignalAt);
+  return freshness.fresh ? (
+    <StatusChip tone="success" icon="activity">
+      Профиль актуален · {what} {when}
+    </StatusChip>
+  ) : (
+    <StatusChip tone="neutral" icon="clock">
+      Давно не обновлялся · {what} {when}
+    </StatusChip>
+  );
 }

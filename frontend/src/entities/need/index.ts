@@ -9,6 +9,8 @@ export {
   needQuery,
   needsKey,
   needsQuery,
+  publishNeed,
   type Requirement,
+  unpublishNeed,
   updateNeed,
 } from './model';

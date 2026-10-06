@@ -3,7 +3,9 @@
 The web application of the FSP reverse-hiring platform. A candidate confirms a specialization and grade with a
 practical assessment, enriches the profile from sources and receives salary-bearing invitations; an employer
 describes needs, searches an anonymous bank of verified candidates, keeps shortlists and invites a specific person,
-whose contacts open only to that company after the candidate accepts.
+whose contacts open only to that company after the candidate accepts. As an additional path, the employer can
+publish a need as a vacancy and the candidate can apply to it, choosing which contacts the company receives; and
+each week the platform offers the candidate a short task from a company, whose answer keeps the profile fresh.
 
 The app talks to the API described in [`../contracts/openapi.json`](../contracts/openapi.json). Today that API is the
 mock in [`../mock-server`](../mock-server/README.md), so profiles, sources, assessment results and the candidate bank

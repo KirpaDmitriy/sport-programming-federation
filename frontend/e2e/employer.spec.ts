@@ -9,7 +9,7 @@ test.beforeEach(async ({ page }) => {
 test('UI-16 salary validation, read-only tax basis and saving without publication', async ({ page }) => {
   await page.goto('/employer/needs/new');
   await expect(page.getByText('До вычета налогов').first()).toBeVisible();
-  await expect(page.getByText(/Опубликовать вакансию/)).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /Опубликовать/ })).toHaveCount(0);
   await page.getByLabel('Название').fill('Бэкенд на Rust');
   await page.getByLabel('Краткое описание').fill('Сервисы заказов.');
   await page.getByLabel('От', { exact: true }).fill('260000');
@@ -70,7 +70,7 @@ test('UI-18 required coverage, verification gaps and the verified grade stay dis
   await expect(row024.getByText(/Желательно проверить: Docker, Redis/)).toBeVisible();
 });
 
-test('UI-26 no publication, self-application, chat or ATS controls are offered', async ({ page }) => {
+test('UI-26 publication lives on the needs list; no chat or ATS controls are offered', async ({ page }) => {
   for (const path of [
     '/employer/needs',
     '/employer/needs/need-001',
@@ -78,8 +78,8 @@ test('UI-26 no publication, self-application, chat or ATS controls are offered',
   ]) {
     await page.goto(path);
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
-    await expect(page.getByRole('button', { name: /Опубликовать|Откликнуться|Написать|Чат|ATS/ })).toHaveCount(0);
-    await expect(page.getByRole('checkbox', { name: /Опубликовать/ })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /Откликнуться|Написать|Чат|ATS/ })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /Опубликовать/ })).toHaveCount(path === '/employer/needs' ? 1 : 0);
   }
 });
 
