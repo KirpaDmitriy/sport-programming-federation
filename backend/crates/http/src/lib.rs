@@ -93,8 +93,7 @@ pub fn router(config: HttpConfig, service: Arc<PlatformService>) -> Router {
         .with_state(state);
     if let Some(static_dir) = static_dir {
         router.fallback_service(
-            ServeDir::new(&static_dir)
-                .not_found_service(ServeFile::new(static_dir.join("index.html"))),
+            ServeDir::new(&static_dir).fallback(ServeFile::new(static_dir.join("index.html"))),
         )
     } else {
         router.fallback(not_found)
@@ -684,7 +683,7 @@ mod tests {
         }
     }
 
-    fn app() -> Router {
+    fn app_with_static(static_dir: Option<PathBuf>) -> Router {
         let service = Arc::new(PlatformService::new(
             Arc::new(EmptyRepository),
             Arc::new(Delivery),
@@ -696,10 +695,14 @@ mod tests {
                 public_web_url: "http://127.0.0.1:5173".into(),
                 github_callback_url: "http://127.0.0.1:8080/api/v1/integrations/github/callback"
                     .into(),
-                static_dir: None,
+                static_dir,
             },
             service,
         )
+    }
+
+    fn app() -> Router {
+        app_with_static(None)
     }
 
     #[tokio::test]
@@ -730,5 +733,47 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn static_frontend_serves_deep_links_without_masking_api_404s() {
+        use axum::body::Body;
+        use http_body_util::BodyExt;
+        use tower::ServiceExt;
+
+        let static_dir = std::env::temp_dir().join(format!("fsp-http-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&static_dir).unwrap();
+        std::fs::write(
+            static_dir.join("index.html"),
+            "<!doctype html><title>SPA</title>",
+        )
+        .unwrap();
+        let app = app_with_static(Some(static_dir.clone()));
+
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/candidate/profile")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        assert!(body.starts_with(b"<!doctype html>"));
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/unknown")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        std::fs::remove_dir_all(static_dir).unwrap();
     }
 }
