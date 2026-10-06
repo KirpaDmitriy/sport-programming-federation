@@ -77,7 +77,28 @@ pub trait PlatformRepository: Send + Sync {
     fn save_source(&self, source: &SourceRecord) -> Result<(), RepositoryError>;
     fn save_job(&self, job: &JobRecord) -> Result<(), RepositoryError>;
     fn job(&self, owner_id: &str, job_id: &str) -> Result<Option<JobRecord>, RepositoryError>;
+    fn idempotency_get(
+        &self,
+        scope: &str,
+    ) -> Result<Option<StoredIdempotentResponse>, RepositoryError>;
+    fn idempotency_put(
+        &self,
+        scope: &str,
+        fingerprint: &str,
+        status: u16,
+        body: &str,
+        now: &str,
+    ) -> Result<(), RepositoryError>;
     fn seed_demo(&self, now: &str) -> Result<(), RepositoryError>;
+}
+
+/// A stored `Idempotency-Key` response: the request fingerprint plus the
+/// serialized success payload that a replayed request must receive verbatim.
+#[derive(Debug, Clone)]
+pub struct StoredIdempotentResponse {
+    pub fingerprint: String,
+    pub status: u16,
+    pub body: String,
 }
 
 #[derive(Debug)]

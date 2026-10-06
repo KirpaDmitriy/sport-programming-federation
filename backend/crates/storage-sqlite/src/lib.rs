@@ -1,7 +1,10 @@
 use std::path::Path;
 use std::sync::Mutex;
 
-use fsp_application::{ConsumeChallenge, PendingChallenge, PlatformRepository, RepositoryError};
+use fsp_application::{
+    ConsumeChallenge, PendingChallenge, PlatformRepository, RepositoryError,
+    StoredIdempotentResponse,
+};
 use fsp_domain::{
     Account, CandidateIndexRecord, CandidateProfile, Company, Consents, Criticality,
     EvidencePolicy, EvidenceSource, EvidenceStatus, Grade, HiringNeed, HiringNeedRecord, JobRecord,
@@ -338,6 +341,44 @@ impl PlatformRepository for SqliteRepository {
             )
             .optional()
             .map_err(storage)
+    }
+
+    fn idempotency_get(
+        &self,
+        scope: &str,
+    ) -> Result<Option<StoredIdempotentResponse>, RepositoryError> {
+        self.connection()?
+            .query_row(
+                "SELECT fingerprint,status,body_json FROM idempotency_keys WHERE scope=?",
+                [scope],
+                |row| {
+                    Ok(StoredIdempotentResponse {
+                        fingerprint: row.get(0)?,
+                        status: row.get(1)?,
+                        body: row.get(2)?,
+                    })
+                },
+            )
+            .optional()
+            .map_err(storage)
+    }
+
+    fn idempotency_put(
+        &self,
+        scope: &str,
+        fingerprint: &str,
+        status: u16,
+        body: &str,
+        now: &str,
+    ) -> Result<(), RepositoryError> {
+        // INSERT OR IGNORE keeps the first response when retries race.
+        self.connection()?
+            .execute(
+                "INSERT OR IGNORE INTO idempotency_keys(scope,fingerprint,status,body_json,created_at) VALUES(?,?,?,?,?)",
+                params![scope, fingerprint, i64::from(status), body, now],
+            )
+            .map_err(storage)?;
+        Ok(())
     }
 
     fn seed_demo(&self, now: &str) -> Result<(), RepositoryError> {
@@ -922,6 +963,7 @@ CREATE TABLE IF NOT EXISTS oauth_states(state TEXT PRIMARY KEY,candidate_id TEXT
 CREATE TABLE IF NOT EXISTS github_credentials(candidate_id TEXT PRIMARY KEY,access_token TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS sources(id TEXT PRIMARY KEY,candidate_id TEXT NOT NULL,provider TEXT NOT NULL,synthetic INTEGER NOT NULL,active_job_id TEXT,account_label TEXT,last_synced_at TEXT,analysis_json TEXT,verified_participation INTEGER NOT NULL,competition_ids_json TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS jobs(id TEXT PRIMARY KEY,owner_id TEXT NOT NULL,status TEXT NOT NULL,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,result_source_id TEXT,error_code TEXT,error_message TEXT);
+CREATE TABLE IF NOT EXISTS idempotency_keys(scope TEXT PRIMARY KEY,fingerprint TEXT NOT NULL,status INTEGER NOT NULL,body_json TEXT NOT NULL,created_at TEXT NOT NULL);
 "#;
 
 #[cfg(test)]
@@ -1080,6 +1122,51 @@ mod tests {
             2
         );
         drop(service);
+        std::fs::remove_file(path).expect("temporary database is removed");
+    }
+
+    #[test]
+    fn idempotency_keys_round_trip_and_keep_the_first_response() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system clock must be after Unix epoch")
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("fsp-idem-{nonce}.sqlite3"));
+        let repository = SqliteRepository::open(&path).expect("database opens");
+
+        assert!(
+            repository
+                .idempotency_get("actor:op:/path:key-0001")
+                .expect("lookup works")
+                .is_none()
+        );
+        repository
+            .idempotency_put(
+                "actor:op:/path:key-0001",
+                "{\"a\":1}",
+                201,
+                "{\"id\":\"one\"}",
+                "2026-10-06T00:00:00Z",
+            )
+            .expect("first response is stored");
+        // A racing retry must not overwrite the stored response.
+        repository
+            .idempotency_put(
+                "actor:op:/path:key-0001",
+                "{\"a\":2}",
+                200,
+                "{\"id\":\"two\"}",
+                "2026-10-06T00:00:01Z",
+            )
+            .expect("conflicting inserts are ignored");
+        let stored = repository
+            .idempotency_get("actor:op:/path:key-0001")
+            .expect("lookup works")
+            .expect("response is stored");
+        assert_eq!(stored.fingerprint, "{\"a\":1}");
+        assert_eq!(stored.status, 201);
+        assert_eq!(stored.body, "{\"id\":\"one\"}");
+        drop(repository);
         std::fs::remove_file(path).expect("temporary database is removed");
     }
 }

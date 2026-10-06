@@ -131,6 +131,47 @@ pub fn reject_duplicate_query(query: &str) -> Result<(), ApiError> {
     Ok(())
 }
 
+/// `Idempotency-Key` header on commands the contract marks idempotent:
+/// required, 8–128 characters; violations are `validation_error` like the
+/// mock's header schema.
+pub struct IdempotencyKey(pub String);
+
+impl<S> FromRequestParts<S> for IdempotencyKey
+where
+    S: Send + Sync,
+{
+    type Rejection = ApiError;
+
+    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
+        let value = parts
+            .headers
+            .get("idempotency-key")
+            .and_then(|value| value.to_str().ok())
+            .map(str::trim);
+        match value {
+            Some(key) if (8..=128).contains(&key.len()) => Ok(Self(key.to_owned())),
+            Some(_) => Err(ApiError::new(
+                StatusCode::BAD_REQUEST,
+                "validation_error",
+                "Запрос не соответствует контракту",
+            )
+            .with_details(vec![Detail {
+                path: "/Idempotency-Key".to_owned(),
+                message: "must NOT have fewer than 8 characters".to_owned(),
+            }])),
+            None => Err(ApiError::new(
+                StatusCode::BAD_REQUEST,
+                "validation_error",
+                "Запрос не соответствует контракту",
+            )
+            .with_details(vec![Detail {
+                path: "/".to_owned(),
+                message: "must have required property 'Idempotency-Key'".to_owned(),
+            }])),
+        }
+    }
+}
+
 /// Path parameters; a decode failure is `400 invalid_path`, as in the mock.
 pub struct ContractPath<T>(pub T);
 

@@ -26,9 +26,11 @@ use tower_http::services::{ServeDir, ServeFile};
 use uuid::Uuid;
 
 pub use error::{ApiError, Detail};
+pub use extract::IdempotencyKey;
 use extract::{ContractJson, ContractPath, ContractQuery, reject_duplicate_query};
 
 const REQUEST_ID: HeaderName = HeaderName::from_static("x-request-id");
+const IDEMPOTENT_REPLAY: HeaderName = HeaderName::from_static("x-idempotent-replay");
 const SESSION_COOKIE: &str = "fsp_session";
 /// JSON body ceiling, shared with the mock's `MAX_JSON`.
 const MAX_JSON_BODY: usize = 512 * 1024;
@@ -133,6 +135,29 @@ async fn health() -> Json<Health> {
         service: "fsp-career-api",
         version: env!("CARGO_PKG_VERSION"),
     })
+}
+
+/// Emits an idempotent command's outcome: stored bodies replay verbatim with
+/// `X-Idempotent-Replay: true`, fresh results serialize normally.
+pub fn idempotent_response<T: Serialize>(
+    status: StatusCode,
+    outcome: fsp_application::Idempotent<T>,
+) -> Response {
+    match outcome {
+        fsp_application::Idempotent::Replayed { status, body } => {
+            let mut response = Response::new(Body::from(body));
+            *response.status_mut() = StatusCode::from_u16(status).unwrap_or(StatusCode::OK);
+            response.headers_mut().insert(
+                axum::http::header::CONTENT_TYPE,
+                HeaderValue::from_static("application/json"),
+            );
+            response
+                .headers_mut()
+                .insert(IDEMPOTENT_REPLAY, HeaderValue::from_static("true"));
+            response
+        }
+        fsp_application::Idempotent::Fresh(value) => (status, Json(value)).into_response(),
+    }
 }
 
 async fn meta(State(state): State<AppState>) -> Json<Value> {
@@ -719,6 +744,22 @@ mod tests {
         }
         fn job(&self, _: &str, _: &str) -> Result<Option<JobRecord>, RepositoryError> {
             Ok(None)
+        }
+        fn idempotency_get(
+            &self,
+            _: &str,
+        ) -> Result<Option<fsp_application::StoredIdempotentResponse>, RepositoryError> {
+            Ok(None)
+        }
+        fn idempotency_put(
+            &self,
+            _: &str,
+            _: &str,
+            _: u16,
+            _: &str,
+            _: &str,
+        ) -> Result<(), RepositoryError> {
+            Ok(())
         }
         fn seed_demo(&self, _: &str) -> Result<(), RepositoryError> {
             Ok(())

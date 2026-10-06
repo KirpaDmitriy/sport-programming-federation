@@ -41,6 +41,24 @@ impl ApplicationError {
     }
 }
 
+/// Outcome of an `Idempotency-Key` scoped command: either the stored response
+/// is replayed verbatim or the fresh operation result is returned.
+pub enum Idempotent<T> {
+    Replayed { status: u16, body: String },
+    Fresh(T),
+}
+
+/// The request context that scopes an idempotent command: operation name, the
+/// concrete path, the client key, the parsed body and the success status the
+/// replayed response must keep.
+pub struct IdempotencyContext<'a> {
+    pub operation: &'static str,
+    pub path: &'a str,
+    pub key: &'a str,
+    pub body: &'a serde_json::Value,
+    pub status: u16,
+}
+
 pub struct PlatformService {
     repository: Arc<dyn PlatformRepository>,
     delivery: Arc<dyn VerificationDelivery>,
@@ -710,6 +728,61 @@ impl PlatformService {
             .into_iter()
             .find(|record| record.profile.id == id)
             .ok_or_else(|| ApplicationError::new(404, "not_found", "Кандидат не найден"))
+    }
+
+    /// Mock-compatible `Idempotency-Key` handling for contract commands that
+    /// require it. The key is scoped by actor, operation and path; an
+    /// identical payload replays the stored response verbatim, a changed
+    /// payload conflicts, and only successful results are stored.
+    pub async fn idempotent<T, F, Fut>(
+        &self,
+        session: &SessionView,
+        context: IdempotencyContext<'_>,
+        run: F,
+    ) -> Result<Idempotent<T>, ApplicationError>
+    where
+        T: serde::Serialize + serde::de::DeserializeOwned,
+        F: FnOnce() -> Fut,
+        Fut: std::future::Future<Output = Result<T, ApplicationError>>,
+    {
+        let IdempotencyContext {
+            operation,
+            path,
+            key,
+            body,
+            status,
+        } = context;
+        let scope = format!("{}:{}:{}:{}", session.actor_id, operation, path, key);
+        // serde_json::Value serializes objects in sorted-key order, matching
+        // the mock's stableJson fingerprint.
+        let fingerprint = serde_json::to_string(body).map_err(|_| {
+            ApplicationError::new(500, "internal_error", "Сервис временно недоступен")
+        })?;
+        if let Some(stored) = self
+            .repository
+            .idempotency_get(&scope)
+            .map_err(ApplicationError::storage)?
+        {
+            if stored.fingerprint != fingerprint {
+                return Err(ApplicationError::new(
+                    409,
+                    "idempotency_conflict",
+                    "Ключ уже использован с другим запросом",
+                ));
+            }
+            return Ok(Idempotent::Replayed {
+                status: stored.status,
+                body: stored.body,
+            });
+        }
+        let value = run().await?;
+        let stored_body = serde_json::to_string(&value).map_err(|_| {
+            ApplicationError::new(500, "internal_error", "Сервис временно недоступен")
+        })?;
+        self.repository
+            .idempotency_put(&scope, &fingerprint, status, &stored_body, &now())
+            .map_err(ApplicationError::storage)?;
+        Ok(Idempotent::Fresh(value))
     }
 
     /// Mirrors the mock's `processing(candidate)` guard on data-processing
