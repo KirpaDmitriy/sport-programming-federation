@@ -296,11 +296,13 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "chrono",
+ "form_urlencoded",
  "fsp-application",
  "fsp-domain",
  "http-body-util",
  "serde",
  "serde_json",
+ "serde_path_to_error",
  "tokio",
  "tower",
  "tower-http",

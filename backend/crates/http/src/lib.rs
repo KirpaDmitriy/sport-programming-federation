@@ -1,16 +1,18 @@
 //! Inbound HTTP adapter for the application use cases.
 
 mod error;
+mod extract;
 
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use axum::extract::{Path, Query, Request, State};
+use axum::body::Body;
+use axum::extract::{DefaultBodyLimit, Request, State};
 use axum::http::header::{CACHE_CONTROL, COOKIE, ORIGIN, SET_COOKIE, X_CONTENT_TYPE_OPTIONS};
 use axum::http::{HeaderMap, HeaderName, HeaderValue, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Redirect, Response};
-use axum::routing::{any, delete, get, post};
+use axum::routing::{any, delete, get, patch, post};
 use axum::{Json, Router};
 use chrono::Utc;
 use fsp_application::{
@@ -24,9 +26,12 @@ use tower_http::services::{ServeDir, ServeFile};
 use uuid::Uuid;
 
 pub use error::{ApiError, Detail};
+use extract::{ContractJson, ContractPath, ContractQuery, reject_duplicate_query};
 
 const REQUEST_ID: HeaderName = HeaderName::from_static("x-request-id");
 const SESSION_COOKIE: &str = "fsp_session";
+/// JSON body ceiling, shared with the mock's `MAX_JSON`.
+const MAX_JSON_BODY: usize = 512 * 1024;
 
 #[derive(Debug, Clone)]
 pub struct HttpConfig {
@@ -49,18 +54,17 @@ pub fn router(config: HttpConfig, service: Arc<PlatformService>) -> Router {
         config: Arc::new(config),
     };
     let static_dir = state.config.static_dir.clone();
-    let router = Router::new()
+    // Routes without a request body reject one with `400 body_not_allowed`, and
+    // every routed request rejects repeated query keys with
+    // `duplicate_query_parameter`; both guards sit on routes so unmatched paths
+    // still answer `404 not_found` exactly like the mock.
+    let bodyless = Router::new()
         .route("/health", get(health))
         .route("/api/v1/meta", get(meta))
-        .route(
-            "/api/v1/auth/email/challenges",
-            post(create_email_challenge),
-        )
-        .route("/api/v1/auth/email/verify", post(verify_email))
         .route("/api/v1/auth/session", delete(logout))
         .route("/api/v1/session", get(session))
-        .route("/api/v1/me/profile", get(get_profile).patch(update_profile))
-        .route("/api/v1/company", get(get_company).patch(update_company))
+        .route("/api/v1/me/profile", get(get_profile))
+        .route("/api/v1/company", get(get_company))
         .route("/api/v1/needs", get(get_needs))
         .route("/api/v1/candidates", get(search_candidates))
         .route("/api/v1/candidates/{candidate_id}", get(get_candidate))
@@ -76,28 +80,44 @@ pub fn router(config: HttpConfig, service: Arc<PlatformService>) -> Router {
             "/api/v1/candidates/{candidate_id}/graph",
             get(get_candidate_graph),
         )
-        .route(
-            "/api/v1/me/sources/{provider}/connect",
-            post(connect_source),
-        )
         .route("/api/v1/me/sources/{source_id}/sync", post(sync_source))
         .route("/api/v1/jobs/{job_id}", get(get_job))
         .route("/api/v1/shortlists", get(get_shortlists))
         .route("/api/v1/applications", get(get_company_applications))
         .route("/api/v1/me/invitations", get(get_my_invitations))
+        .route_layer(middleware::from_fn(no_body));
+    let bodied = Router::new()
+        .route(
+            "/api/v1/auth/email/challenges",
+            post(create_email_challenge),
+        )
+        .route("/api/v1/auth/email/verify", post(verify_email))
+        .route("/api/v1/me/profile", patch(update_profile))
+        .route("/api/v1/company", patch(update_company))
+        .route(
+            "/api/v1/me/sources/{provider}/connect",
+            post(connect_source),
+        );
+    let router: Router = bodyless
+        .merge(bodied)
+        .route_layer(middleware::from_fn(query_guard))
         .route("/api/{*path}", any(not_found))
         .route("/__mock__", any(not_found))
         .route("/__mock__/{*path}", any(not_found))
         .method_not_allowed_fallback(not_found)
-        .layer(middleware::from_fn_with_state(state.clone(), transport))
-        .with_state(state);
-    if let Some(static_dir) = static_dir {
+        .fallback(not_found)
+        .layer(DefaultBodyLimit::max(MAX_JSON_BODY))
+        .with_state(state.clone());
+    // The static fallback and the transport envelope wrap every path, so apply
+    // them last, to the whole router.
+    let router = if let Some(static_dir) = static_dir {
         router.fallback_service(
             ServeDir::new(&static_dir).fallback(ServeFile::new(static_dir.join("index.html"))),
         )
     } else {
-        router.fallback(not_found)
-    }
+        router
+    };
+    router.layer(middleware::from_fn_with_state(state, transport))
 }
 
 #[derive(Serialize)]
@@ -151,7 +171,7 @@ async fn meta(State(state): State<AppState>) -> Json<Value> {
 
 async fn create_email_challenge(
     State(state): State<AppState>,
-    Json(input): Json<EmailChallengeInput>,
+    ContractJson(input): ContractJson<EmailChallengeInput>,
 ) -> Result<(StatusCode, Json<fsp_application::EmailChallengeView>), ApiError> {
     state
         .service
@@ -162,7 +182,7 @@ async fn create_email_challenge(
 
 async fn verify_email(
     State(state): State<AppState>,
-    Json(input): Json<EmailVerifyInput>,
+    ContractJson(input): ContractJson<EmailVerifyInput>,
 ) -> Result<Response, ApiError> {
     let (session, token) = state.service.verify_email(input).map_err(api_error)?;
     let mut response = Json(session).into_response();
@@ -218,7 +238,7 @@ async fn get_profile(
 async fn update_profile(
     State(state): State<AppState>,
     headers: HeaderMap,
-    Json(patch): Json<ProfilePatch>,
+    ContractJson(patch): ContractJson<ProfilePatch>,
 ) -> Result<Json<fsp_application::ProfileView>, ApiError> {
     let session = authenticated(&state, &headers)?;
     state
@@ -239,7 +259,7 @@ async fn get_company(
 async fn update_company(
     State(state): State<AppState>,
     headers: HeaderMap,
-    Json(patch): Json<CompanyPatch>,
+    ContractJson(patch): ContractJson<CompanyPatch>,
 ) -> Result<Json<fsp_application::CompanyView>, ApiError> {
     let session = authenticated(&state, &headers)?;
     state
@@ -273,7 +293,7 @@ struct CandidateQuery {
 async fn search_candidates(
     State(state): State<AppState>,
     headers: HeaderMap,
-    Query(query): Query<CandidateQuery>,
+    ContractQuery(query): ContractQuery<CandidateQuery>,
 ) -> Result<Json<fsp_application::CandidatePageView>, ApiError> {
     let session = authenticated(&state, &headers)?;
     let page = query.page.unwrap_or(1);
@@ -319,11 +339,17 @@ async fn search_candidates(
         .map_err(api_error)
 }
 
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct CandidateDetailQuery {
+    need_id: Option<String>,
+}
+
 async fn get_candidate(
     State(state): State<AppState>,
     headers: HeaderMap,
-    Path(candidate_id): Path<String>,
-    Query(query): Query<CandidateQuery>,
+    ContractPath(candidate_id): ContractPath<String>,
+    ContractQuery(query): ContractQuery<CandidateDetailQuery>,
 ) -> Result<Json<fsp_application::AnonymousCandidateView>, ApiError> {
     let session = authenticated(&state, &headers)?;
     state
@@ -360,7 +386,7 @@ struct OAuthCallbackQuery {
 async fn github_callback(
     State(state): State<AppState>,
     headers: HeaderMap,
-    Query(query): Query<OAuthCallbackQuery>,
+    ContractQuery(query): ContractQuery<OAuthCallbackQuery>,
 ) -> Result<Redirect, ApiError> {
     let session = authenticated(&state, &headers)?;
     state
@@ -406,7 +432,7 @@ async fn get_my_graph(
 async fn get_candidate_graph(
     State(state): State<AppState>,
     headers: HeaderMap,
-    Path(candidate_id): Path<String>,
+    ContractPath(candidate_id): ContractPath<String>,
 ) -> Result<Json<fsp_application::GraphView>, ApiError> {
     let session = authenticated(&state, &headers)?;
     state
@@ -420,8 +446,8 @@ async fn get_candidate_graph(
 async fn connect_source(
     State(state): State<AppState>,
     headers: HeaderMap,
-    Path(provider): Path<String>,
-    Json(input): Json<fsp_application::SourceConnectInput>,
+    ContractPath(provider): ContractPath<String>,
+    ContractJson(input): ContractJson<fsp_application::SourceConnectInput>,
 ) -> Result<Json<fsp_application::SourceView>, ApiError> {
     let session = authenticated(&state, &headers)?;
     state
@@ -435,7 +461,7 @@ async fn connect_source(
 async fn sync_source(
     State(state): State<AppState>,
     headers: HeaderMap,
-    Path(source_id): Path<String>,
+    ContractPath(source_id): ContractPath<String>,
 ) -> Result<(StatusCode, Json<fsp_application::JobView>), ApiError> {
     let session = authenticated(&state, &headers)?;
     state
@@ -449,7 +475,7 @@ async fn sync_source(
 async fn get_job(
     State(state): State<AppState>,
     headers: HeaderMap,
-    Path(job_id): Path<String>,
+    ContractPath(job_id): ContractPath<String>,
 ) -> Result<Json<fsp_application::JobView>, ApiError> {
     let session = authenticated(&state, &headers)?;
     state
@@ -504,6 +530,36 @@ fn require_role(session: &SessionView, role: &str) -> Result<(), ApiError> {
 
 async fn not_found() -> ApiError {
     ApiError::not_found("Маршрут не найден")
+}
+
+/// Rejects a body on a route that takes none (`400 body_not_allowed`), or
+/// `413 body_too_large` past the JSON ceiling — the mock's order.
+async fn no_body(request: Request, next: Next) -> Response {
+    let (parts, body) = request.into_parts();
+    match axum::body::to_bytes(body, MAX_JSON_BODY).await {
+        Ok(bytes) if bytes.is_empty() => next.run(Request::from_parts(parts, Body::empty())).await,
+        Ok(_) => ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "body_not_allowed",
+            "Этот маршрут не принимает тело запроса",
+        )
+        .into_response(),
+        Err(_) => ApiError::new(
+            StatusCode::PAYLOAD_TOO_LARGE,
+            "body_too_large",
+            "Файл или запрос превышает допустимый размер",
+        )
+        .into_response(),
+    }
+}
+
+/// Rejects repeated query keys (`400 duplicate_query_parameter`) on every routed
+/// request, like the mock does for all of them.
+async fn query_guard(request: Request, next: Next) -> Response {
+    match reject_duplicate_query(request.uri().query().unwrap_or_default()) {
+        Ok(()) => next.run(request).await,
+        Err(error) => error.into_response(),
+    }
 }
 
 fn authenticated(state: &AppState, headers: &HeaderMap) -> Result<SessionView, ApiError> {
@@ -775,5 +831,109 @@ mod tests {
             .unwrap();
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
         std::fs::remove_dir_all(static_dir).unwrap();
+    }
+
+    #[tokio::test]
+    async fn transport_rejections_use_the_contract_envelope() {
+        use axum::body::Body;
+        use axum::http::Method;
+        use http_body_util::BodyExt;
+        use tower::ServiceExt;
+
+        async fn code_of(app: Router, request: Request<Body>) -> (StatusCode, Value) {
+            let response = app.oneshot(request).await.unwrap();
+            let status = response.status();
+            assert!(response.headers().contains_key(REQUEST_ID));
+            let body = response.into_body().collect().await.unwrap().to_bytes();
+            let envelope: Value = serde_json::from_slice(&body).expect("envelope JSON");
+            assert!(envelope["requestId"].is_string());
+            (status, envelope)
+        }
+        let json = |body: &str| {
+            Request::builder()
+                .method(Method::POST)
+                .uri("/api/v1/auth/email/challenges")
+                .header("content-type", "application/json")
+                .body(Body::from(body.to_owned()))
+                .unwrap()
+        };
+
+        let (status, envelope) = code_of(app(), json("{")).await;
+        assert_eq!(
+            (status, envelope["code"].as_str()),
+            (StatusCode::BAD_REQUEST, Some("invalid_json"))
+        );
+
+        let (status, envelope) = code_of(app(), json("{\"email\": 5}")).await;
+        assert_eq!(
+            (status, envelope["code"].as_str()),
+            (StatusCode::BAD_REQUEST, Some("validation_error"))
+        );
+        assert!(
+            envelope["details"]
+                .as_array()
+                .is_some_and(|d| !d.is_empty())
+        );
+
+        let (status, envelope) = code_of(
+            app(),
+            Request::builder()
+                .method(Method::POST)
+                .uri("/api/v1/auth/email/challenges")
+                .header("content-type", "text/plain")
+                .body(Body::from("{}"))
+                .unwrap(),
+        )
+        .await;
+        assert_eq!(
+            (status, envelope["code"].as_str()),
+            (StatusCode::UNSUPPORTED_MEDIA_TYPE, Some("json_required"))
+        );
+
+        let (status, envelope) = code_of(
+            app(),
+            Request::builder()
+                .uri("/api/v1/candidates?page=1&page=2")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await;
+        assert_eq!(
+            (status, envelope["code"].as_str()),
+            (StatusCode::BAD_REQUEST, Some("duplicate_query_parameter"))
+        );
+
+        let (status, envelope) = code_of(
+            app(),
+            Request::builder()
+                .uri("/health")
+                .header("content-type", "application/json")
+                .body(Body::from("{}"))
+                .unwrap(),
+        )
+        .await;
+        assert_eq!(
+            (status, envelope["code"].as_str()),
+            (StatusCode::BAD_REQUEST, Some("body_not_allowed"))
+        );
+
+        let (status, envelope) = code_of(
+            app(),
+            Request::builder()
+                .uri("/api/v1/no-such-route?page=1&page=2")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await;
+        assert_eq!(
+            (status, envelope["code"].as_str()),
+            (StatusCode::NOT_FOUND, Some("not_found"))
+        );
+
+        let (status, envelope) = code_of(app(), json(&" ".repeat(MAX_JSON_BODY + 1))).await;
+        assert_eq!(
+            (status, envelope["code"].as_str()),
+            (StatusCode::PAYLOAD_TOO_LARGE, Some("body_too_large"))
+        );
     }
 }
