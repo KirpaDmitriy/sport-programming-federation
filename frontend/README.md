@@ -65,11 +65,11 @@ FSP_API_TARGET=http://127.0.0.1:8080 bun run dev
 | `bun run mock` | Starts the mock API |
 | `bun run codegen` / `codegen:check` | Regenerates or checks `src/shared/api/generated/` from the contract |
 | `bun run typecheck` | `tsc --noEmit` |
-| `bun run lint` | Biome and the FSD layer check (`scripts/check-layers.mjs`) |
+| `bun run lint` | Biome and the FSD layer check (`scripts/check-layers.ts`) |
 | `bun run test` | Vitest unit and component tests |
 | `bun run e2e` | Playwright against the mock (starts the mock and Vite if needed) |
 | `bun run e2e:public` | Playwright smoke against a deployed stand (`FSP_PUBLIC_URL`) |
-| `bun run verify` | codegen check, typecheck, lint, unit tests, build and bundle check (`scripts/check-bundle.mjs`) |
+| `bun run verify` | codegen check, typecheck, lint, unit tests, build and bundle check (`scripts/check-bundle.ts`) |
 
 ## Configuration
 

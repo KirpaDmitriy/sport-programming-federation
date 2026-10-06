@@ -10,7 +10,7 @@ set -a
 set +a
 
 (cd "$DIR/mock-server" && bun install --frozen-lockfile --production)
-(cd "$DIR/frontend" && bun install --frozen-lockfile && bun run build && bun scripts/check-bundle.mjs)
+(cd "$DIR/frontend" && bun install --frozen-lockfile && bun run build && bun scripts/check-bundle.ts)
 
 ln -sfn "$DIR" /opt/fsp/current.next
 mv -Tf /opt/fsp/current.next /opt/fsp/current

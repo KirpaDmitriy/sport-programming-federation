@@ -7,8 +7,8 @@ const root = resolve(import.meta.dirname, '..', 'src');
 const layers = ['shared', 'entities', 'features', 'widgets', 'pages', 'app'];
 const sliced = new Set(['entities', 'features', 'widgets', 'pages']);
 
-async function files(directory) {
-  const result = [];
+async function files(directory: string): Promise<string[]> {
+  const result: string[] = [];
   for (const entry of await readdir(directory, { withFileTypes: true })) {
     const path = join(directory, entry.name);
     if (entry.isDirectory()) result.push(...(await files(path)));
@@ -18,12 +18,12 @@ async function files(directory) {
   return result;
 }
 
-function locate(path) {
-  const parts = relative(root, path).split(sep);
-  return { layer: parts[0], slice: sliced.has(parts[0]) ? parts[1] : parts[0] === 'shared' ? parts[1] : null };
+function locate(path: string) {
+  const [layer = '', slice] = relative(root, path).split(sep);
+  return { layer, slice: sliced.has(layer) || layer === 'shared' ? slice : undefined };
 }
 
-const violations = [];
+const violations: string[] = [];
 for (const file of await files(root)) {
   const source = await readFile(file, 'utf8');
   const from = locate(file);
@@ -32,9 +32,10 @@ for (const file of await files(root)) {
   const isTest = /\.test\.tsx?$/.test(file);
   for (const match of source.matchAll(/(?:import|export)[^'"]*?from\s+['"]([^'"]+)['"]/g)) {
     const specifier = match[1];
+    if (!specifier) continue;
     const where = `${relative(root, file)} → ${specifier}`;
     if (!isTest && /(^|\/)test\//.test(specifier)) violations.push(`${where}: production code imports test helpers`);
-    let target;
+    let target: string;
     if (specifier.startsWith('@/')) target = join(root, specifier.slice(2));
     else if (specifier.startsWith('.')) target = resolve(file, '..', specifier);
     else continue;

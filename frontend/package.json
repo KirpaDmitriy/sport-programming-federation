@@ -15,11 +15,11 @@
     "test": "vitest run",
     "e2e": "bun --bun playwright test",
     "e2e:public": "bun --bun playwright test -c playwright.public.config.ts",
-    "lint": "biome check . && bun scripts/check-layers.mjs",
+    "lint": "biome check . && bun scripts/check-layers.ts",
     "format": "biome format --write .",
     "codegen": "bun run --cwd ../contracts/codegen generate",
     "codegen:check": "bun run --cwd ../contracts/codegen check",
-    "verify": "bun run codegen:check && bun run typecheck && bun run lint && bun run test && bun run build && bun scripts/check-bundle.mjs"
+    "verify": "bun run codegen:check && bun run typecheck && bun run lint && bun run test && bun run build && bun scripts/check-bundle.ts"
   },
   "dependencies": {
     "@tanstack/react-form": "1.33.5",

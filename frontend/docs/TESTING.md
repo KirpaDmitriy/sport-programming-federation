@@ -6,7 +6,7 @@ Four suites check the platform at different levels. All of them run locally; CI
 
 | Suite | Runner | Where | Count | Command |
 | --- | --- | --- | --- | --- |
-| Mock API | `bun test` | `mock-server/test/mock-api.test.mjs` | 17 | `bun run --cwd ../mock-server test` |
+| Mock API | `bun test` | `mock-server/test/mock-api.test.ts` | 17 | `bun run --cwd ../mock-server test` |
 | Unit and component | Vitest 5 + Testing Library + MSW 3 (jsdom, on Node) | `src/**/*.test.ts(x)` | 31 in 7 files | `bun run test` |
 | Browser acceptance | Playwright 1.63 + axe, Chromium 1440×900 | `e2e/*.spec.ts` | 28 + 1 opt-in | `bun run e2e` |
 | Deployed stand | Playwright | `e2e/public/stand.spec.ts` | 2 | `FSP_PUBLIC_URL=https://188.166.88.183 bun run e2e:public` |

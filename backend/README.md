@@ -55,7 +55,7 @@ CI runs the same checks in `.github/workflows/backend.yml` on changes to `backen
 | [`../contracts/openapi.json`](../contracts/openapi.json) | Every operation except the `x-mock-only` `/__mock__` controls, which must not exist in production; index in [`API_OPERATIONS.md`](../contracts/API_OPERATIONS.md) |
 | [`../docs/product/BUSINESS_RULES.md`](../docs/product/BUSINESS_RULES.md) | Accounts and access, profile visibility, consents, sources and skill states, assessment eligibility and outcomes, needs, matching and order, anonymous projection, shortlists, invitations, disclosure, PDF, jobs |
 | [`../contracts/API_INTEGRATION.md`](../contracts/API_INTEGRATION.md) | Session cookie, origin checks, validation, error envelope, idempotency, jobs, pagination, PDF, time, metadata, the cutover checklist |
-| [`../mock-server`](../mock-server/README.md) | The rules as running code (`src/domain.mjs`) and as 17 HTTP tests (`test/mock-api.test.mjs`) ready to port |
+| [`../mock-server`](../mock-server/README.md) | The rules as running code (`src/domain.ts`) and as 17 HTTP tests (`test/mock-api.test.ts`) ready to port |
 
 The mock simulates what the backend has to make real: e-mail delivery, GitHub and FSP data, PDF parsing, assessment
 checks and evaluation, the assistant, and production-grade sessions and security. `GET /api/v1/meta` must then report

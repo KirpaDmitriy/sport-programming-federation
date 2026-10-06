@@ -15,7 +15,7 @@ Environment=PORT=4010
 Environment=FSP_MOCK_SCENARIO=baseline
 Environment=FSP_MOCK_DEV_ROUTES=0
 EnvironmentFile=/etc/fsp/mock-api.env
-ExecStart=/opt/bun/bin/bun src/server.mjs
+ExecStart=/opt/bun/bin/bun src/server.ts
 Restart=on-failure
 RestartSec=2
 NoNewPrivileges=yes

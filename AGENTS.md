@@ -27,12 +27,13 @@ backend, stand).
 - Never commit secrets. Stand access lives in the git-ignored `.fsp-infra/`; service secrets belong in environment
   files on the host.
 - Write code, comments, documentation and commit messages in English; user-facing text is Russian.
+- New JavaScript-ecosystem code is strict TypeScript 7 checked by `tsc`; no plain JavaScript and no older TypeScript.
 
 ## Toolchains and checks
 
 | Module | Toolchain | Check |
 | --- | --- | --- |
-| contract, mock, frontend | Bun 1.4.2; Vitest on Node 26 (24.15 or newer works) | `just verify`, `just e2e` |
+| contract, mock, frontend | TypeScript 7.0.2 (strict) on Bun 1.4.2; Vitest on Node 26 (24.15 or newer works); Biome 2.5 from the root `biome.json` | `just verify`, `just e2e` |
 | Python MVP | Python 3.14 | `pytest`, `python tools/offline_smoke.py`, `python tools/experiments.py check` |
 | backend | Rust 1.99.0 (`backend/rust-toolchain.toml`), edition 2024 | `just backend-check` |
 
