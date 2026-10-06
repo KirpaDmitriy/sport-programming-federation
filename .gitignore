@@ -1,16 +1,10 @@
-.venv/
-__pycache__/
-.pytest_cache/
-*.py[cod]
-*.sqlite3
-*.egg-info/
 .DS_Store
 dist/
 tmp/
+node_modules/
 
 # Local infrastructure state and secrets (never commit)
 .fsp-infra/
-node_modules/
 
 # Rust build output
 target/

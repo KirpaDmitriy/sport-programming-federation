@@ -1,1 +1,0 @@
-"""FSP Career talent platform."""

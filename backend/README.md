@@ -2,8 +2,7 @@
 
 The Rust service that replaces the mock behind the same `/api/v1` paths, built as a hexagonal architecture. Today it
 is a skeleton: the workspace, the crate boundaries, the contract's transport rules and `GET /health`; no use case
-is implemented yet. Docker, nginx and Redis are the planned surroundings. The Python MVP in the repository root
-stays as it is.
+is implemented yet. Docker, nginx and Redis are the planned surroundings.
 
 ## Layout
 
