@@ -43,6 +43,14 @@ backend-check:
     cd backend && cargo clippy --workspace --all-targets --locked -- -D warnings
     cd backend && cargo test --workspace --locked
 
+# The whole demo in containers on http://localhost:8080 (FSP_PORT overrides the port)
+docker-up:
+    docker compose up --build --detach --wait
+
+# Stop the containers
+docker-down:
+    docker compose down
+
 # Build a git ref on the demo stand and switch to it
 deploy ref="main":
     infra/deploy.sh {{ref}}

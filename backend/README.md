@@ -2,7 +2,8 @@
 
 The Rust service that replaces the mock behind the same `/api/v1` paths, built as a hexagonal architecture. Today it
 is a skeleton: the workspace, the crate boundaries, the contract's transport rules and `GET /health`; no use case
-is implemented yet. Docker, nginx and Redis are the planned surroundings.
+is implemented yet. [`Dockerfile`](Dockerfile) builds it into a small image (`docker compose --profile backend up
+--build backend` serves it on port 8081); nginx and Redis are the planned surroundings.
 
 ## Layout
 

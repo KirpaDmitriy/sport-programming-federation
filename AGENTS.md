@@ -12,6 +12,7 @@ stand. Dima's first version, a Python (FastAPI) MVP, lives in branch `dima/mvp` 
 | [`mock-server/`](mock-server/README.md) | Данил | Stateful HTTP mock of the contract: frontend dev server and behavior reference for the backend |
 | [`frontend/`](frontend/README.md) | Данил | React/TypeScript/TanStack application (FSD); its own rules are in [`frontend/AGENTS.md`](frontend/AGENTS.md) |
 | [`infra/`](infra/README.md) | Данил | Demo stand on one DigitalOcean droplet: provisioning, deployment, nginx |
+| [`docker-compose.yml`](docker-compose.yml), `*/Dockerfile` | shared | The platform in containers: API, web and the optional backend ([`infra/README.md`](infra/README.md#docker)) |
 | [`docs/product/`](docs/product/BUSINESS_RULES.md) | shared | Business rules as implemented, requirements traceability, the organizer's specification |
 
 ## Rules
@@ -34,5 +35,6 @@ stand. Dima's first version, a Python (FastAPI) MVP, lives in branch `dima/mvp` 
 | contract, mock, frontend | TypeScript 7.0.2 (strict) on Bun 1.4.2; Vitest on Node 26 (24.15 or newer works); Biome 2.5 from the root `biome.json` | `just verify`, `just e2e` |
 | backend | Rust 1.99.0 (`backend/rust-toolchain.toml`), edition 2024 | `just backend-check` |
 
-`just` lists the tasks for the TypeScript modules, the backend and the stand. CI: `.github/workflows/platform.yml`
-(contract, mock, frontend) and `.github/workflows/backend.yml` (Rust).
+`just` lists the tasks for the TypeScript modules, the backend, Docker and the stand. CI:
+`.github/workflows/platform.yml` (contract, mock, frontend), `.github/workflows/backend.yml` (Rust) and
+`.github/workflows/docker.yml` (images and a smoke run of `docker-compose.yml`).
