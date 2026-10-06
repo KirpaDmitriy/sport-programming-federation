@@ -42,5 +42,3 @@ jobs:
       - name: Container logs
         if: failure()
         run: docker compose logs
-      - name: Build the backend image
-        run: docker compose --profile backend build backend

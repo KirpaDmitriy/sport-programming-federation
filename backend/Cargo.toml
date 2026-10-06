@@ -10,13 +10,24 @@ publish = false
 
 [workspace.dependencies]
 fsp-domain = { path = "crates/domain" }
+fsp-application = { path = "crates/application" }
 fsp-http = { path = "crates/http" }
+fsp-storage-sqlite = { path = "crates/storage-sqlite" }
+fsp-integration-github = { path = "crates/integration-github" }
+fsp-integration-bifrost = { path = "crates/integration-bifrost" }
+fsp-integration-fsp-synthetic = { path = "crates/integration-fsp-synthetic" }
 axum = "0.8.9"
+async-trait = "0.1.89"
+chrono = { version = "0.4.42", features = ["serde"] }
 http-body-util = "0.1.5"
+rusqlite = { version = "0.37.0", features = ["bundled"] }
+reqwest = { version = "0.12.24", default-features = false, features = ["json", "rustls-tls"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
+sha2 = "0.10.9"
 tokio = { version = "1.53.2", features = ["macros", "net", "rt-multi-thread", "signal"] }
 tower = { version = "0.5.3", features = ["util"] }
+tower-http = { version = "0.6.11", features = ["fs"] }
 tracing = "0.1.44"
 tracing-subscriber = "0.3.23"
 uuid = { version = "1.27.0", features = ["v4"] }

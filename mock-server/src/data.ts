@@ -220,6 +220,13 @@ export function sources(candidateId: string, options: SourceOptions = {}): [Sour
         url: `https://example.com/fixtures/github/${name}`,
         technologies: index === 1 ? ['rust', 'redis'] : index < 8 ? ['rust', 'postgresql', 'docker'] : ['rust'],
         status: index < 8 ? 'processed' : index < 11 ? 'queued' : 'unavailable',
+        metrics: {
+          stars: index * 3,
+          forks: index,
+          openIssues: index % 4,
+          sizeKib: 1200 + index * 240,
+          pushedAt: CLOCK,
+        },
       }))
     : [];
   const fspConnected = Boolean(options.fspLinked || options.fspVerified);
