@@ -1,5 +1,9 @@
 //! Pure domain types and rules for the reverse-hiring platform.
 
+mod matching;
+
+pub use matching::*;
+
 use serde::{Deserialize, Serialize};
 
 /// Assessed level. The order is meaningful: a verified grade never goes down, and a need's grade is a
@@ -12,7 +16,7 @@ pub enum Grade {
     Senior,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Specialization {
     Backend,
@@ -63,6 +67,47 @@ pub struct CandidateProfile {
     pub grade_confirmed_at: Option<String>,
     pub revision: u64,
     pub updated_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CandidateIndexRecord {
+    pub profile: CandidateProfile,
+    pub work_modes: Vec<String>,
+    pub available_for_offers: bool,
+    pub skills: Vec<SkillEvidence>,
+    pub source_kinds: Vec<EvidenceSource>,
+    pub fsp_verified: bool,
+    pub last_signal_at: Option<String>,
+}
+
+impl CandidateIndexRecord {
+    #[must_use]
+    pub fn rankable(&self) -> Option<RankableCandidate> {
+        Some(RankableCandidate {
+            id: self.profile.id.clone(),
+            specialization: self.profile.verified_specialization?,
+            verified_grade: self.profile.verified_grade?,
+            fsp_verified: self.fsp_verified,
+            skills: self.skills.clone(),
+        })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HiringNeedRecord {
+    pub id: String,
+    pub company_id: String,
+    pub title: String,
+    pub need: HiringNeed,
+    pub work_mode: String,
+    pub salary_from: u64,
+    pub salary_to: u64,
+    pub description: String,
+    pub published: bool,
+    pub published_at: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+    pub revision: u64,
 }
 
 impl CandidateProfile {

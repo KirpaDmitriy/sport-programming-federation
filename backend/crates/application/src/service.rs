@@ -1,15 +1,20 @@
 use std::sync::Arc;
 
 use chrono::{Duration, Utc};
-use fsp_domain::{Account, CandidateProfile, Company, Consents, Grade, Role, Specialization};
+use fsp_domain::{
+    Account, CandidateIndexRecord, CandidateProfile, Company, Consents, EvidenceStatus, Grade,
+    HiringNeedRecord, Requirement, Role, Specialization, rank_candidates, score,
+};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::{
-    CategoryView, CompanyPatch, CompanyView, ConsumeChallenge, EmailChallengeInput,
-    EmailChallengeView, EmailVerifyInput, FreshnessView, GradeEligibilityView, OnboardingView,
-    PendingChallenge, PlatformRepository, ProfilePatch, ProfileView, RepositoryError, SessionView,
-    VerificationDelivery,
+    AnonymousCandidateView, CandidateMatchView, CandidatePageView, CandidateSearch, CategoryView,
+    CompanyPatch, CompanyView, ConsumeChallenge, EmailChallengeInput, EmailChallengeView,
+    EmailVerifyInput, EvidencePolicyView, FreshnessView, GradeEligibilityView,
+    MatchRequirementView, NeedView, NeedsView, OnboardingView, PendingChallenge,
+    PlatformRepository, ProfilePatch, ProfileView, RepositoryError, RequirementView, SalaryView,
+    SessionView, SkillView, VerificationDelivery, match_status,
 };
 
 #[derive(Debug)]
@@ -301,6 +306,139 @@ impl PlatformService {
         Ok(company.into())
     }
 
+    pub fn needs(&self, session: &SessionView) -> Result<NeedsView, ApplicationError> {
+        let company_id = employer_company_id(session)?;
+        let items = self
+            .repository
+            .needs(company_id)
+            .map_err(ApplicationError::storage)?
+            .into_iter()
+            .map(need_view)
+            .collect();
+        Ok(NeedsView { items })
+    }
+
+    pub fn candidate_search(
+        &self,
+        session: &SessionView,
+        search: CandidateSearch,
+    ) -> Result<CandidatePageView, ApplicationError> {
+        let company_id = employer_company_id(session)?;
+        let need = match search.need_id.as_deref() {
+            Some(id) => Some(
+                self.repository
+                    .need(company_id, id)
+                    .map_err(ApplicationError::storage)?
+                    .ok_or_else(|| {
+                        ApplicationError::new(404, "not_found", "Потребность не найдена")
+                    })?,
+            ),
+            None if search.recommended => {
+                return Err(ApplicationError::new(
+                    422,
+                    "need_required",
+                    "Для рекомендаций выберите потребность",
+                ));
+            }
+            None => None,
+        };
+        let mut records =
+            self.repository
+                .candidates()
+                .map_err(ApplicationError::storage)?
+                .into_iter()
+                .filter(|item| item.profile.visible_to_employers())
+                .filter(|item| {
+                    item.profile.verified_specialization.is_some_and(|value| {
+                        search.specialization.is_none_or(|filter| filter == value)
+                    }) && item
+                        .profile
+                        .verified_grade
+                        .is_some_and(|value| search.grade.is_none_or(|filter| filter == value))
+                        && search.skill.as_ref().is_none_or(|filter| {
+                            item.skills.iter().any(|skill| {
+                                skill.skill_id == *filter
+                                    && skill.status != EvidenceStatus::Insufficient
+                            })
+                        })
+                        && (!search.fsp_verified || item.fsp_verified)
+                })
+                .collect::<Vec<_>>();
+        if search.recommended {
+            let selected = need.as_ref().expect("recommended search has a need");
+            records.retain(|item| {
+                item.profile.verified_specialization == Some(selected.need.specialization)
+                    && item
+                        .profile
+                        .verified_grade
+                        .is_some_and(|grade| grade >= selected.need.grade)
+            });
+        }
+        if let Some(selected) = &need {
+            let rankable = records
+                .iter()
+                .filter_map(CandidateIndexRecord::rankable)
+                .collect::<Vec<_>>();
+            let order = rank_candidates(&rankable, &selected.need)
+                .into_iter()
+                .enumerate()
+                .map(|(position, item)| (item.0, position))
+                .collect::<std::collections::HashMap<_, _>>();
+            records.sort_by_key(|item| order.get(&item.profile.id).copied().unwrap_or(usize::MAX));
+        } else {
+            records.sort_by(|left, right| {
+                left.profile
+                    .verified_specialization
+                    .cmp(&right.profile.verified_specialization)
+                    .then_with(|| {
+                        right
+                            .profile
+                            .verified_grade
+                            .cmp(&left.profile.verified_grade)
+                    })
+                    .then_with(|| right.fsp_verified.cmp(&left.fsp_verified))
+                    .then_with(|| left.profile.id.cmp(&right.profile.id))
+            });
+        }
+        let total = records.len();
+        let start = (search.page - 1).saturating_mul(search.page_size);
+        let items = records
+            .into_iter()
+            .skip(start)
+            .take(search.page_size)
+            .map(|candidate| anonymous_candidate(candidate, need.as_ref()))
+            .collect();
+        Ok(CandidatePageView {
+            items,
+            page: search.page,
+            page_size: search.page_size,
+            total,
+            has_next_page: start.saturating_add(search.page_size) < total,
+        })
+    }
+
+    pub fn candidate(
+        &self,
+        session: &SessionView,
+        candidate_id: &str,
+        need_id: Option<&str>,
+    ) -> Result<AnonymousCandidateView, ApplicationError> {
+        let company_id = employer_company_id(session)?;
+        let need = need_id
+            .map(|id| self.repository.need(company_id, id))
+            .transpose()
+            .map_err(ApplicationError::storage)?
+            .flatten();
+        let candidate = self
+            .repository
+            .candidates()
+            .map_err(ApplicationError::storage)?
+            .into_iter()
+            .find(|item| item.profile.id == candidate_id && item.profile.visible_to_employers())
+            .ok_or_else(|| ApplicationError::new(404, "not_found", "Кандидат не найден"))?;
+        Ok(anonymous_candidate(candidate, need.as_ref()))
+    }
+
     fn register_account(&self, email: String, role: Role) -> Result<Account, ApplicationError> {
         let suffix = Uuid::new_v4().simple().to_string();
         let account = Account {
@@ -379,6 +517,191 @@ impl PlatformService {
             company_id: account.company_id.clone(),
             display_name,
         })
+    }
+}
+
+fn employer_company_id(session: &SessionView) -> Result<&str, ApplicationError> {
+    session.company_id.as_deref().ok_or_else(|| {
+        ApplicationError::new(403, "role_forbidden", "Действие доступно работодателю")
+    })
+}
+
+fn need_view(record: HiringNeedRecord) -> NeedView {
+    NeedView {
+        id: record.id,
+        company_id: record.company_id,
+        title: record.title,
+        specialization: record.need.specialization,
+        grade: record.need.grade,
+        work_mode: record.work_mode,
+        salary: SalaryView {
+            from: record.salary_from,
+            to: record.salary_to,
+            currency: "RUB",
+            period: "month",
+            tax_basis: "gross",
+        },
+        description: record.description,
+        requirements: record
+            .need
+            .requirements
+            .into_iter()
+            .map(|item| RequirementView {
+                skill_id: item.skill_id,
+                criticality: item.criticality,
+                minimum_grade: item.minimum_grade,
+                evidence_policy: EvidencePolicyView::from(&item.evidence_policy),
+            })
+            .collect(),
+        published: record.published,
+        published_at: record.published_at,
+        created_at: record.created_at,
+        updated_at: record.updated_at,
+        revision: record.revision,
+    }
+}
+
+fn anonymous_candidate(
+    record: CandidateIndexRecord,
+    need: Option<&HiringNeedRecord>,
+) -> AnonymousCandidateView {
+    let rankable = record.rankable().expect("visible candidate is rankable");
+    let candidate_match = need.map(|selected| match_view(&rankable, selected));
+    AnonymousCandidateView {
+        id: record.profile.id,
+        alias: record.profile.alias,
+        specialization: rankable.specialization,
+        verified_grade: rankable.verified_grade,
+        grade_confirmed_at: record.profile.grade_confirmed_at.unwrap_or_default(),
+        work_modes: record.work_modes,
+        available_for_offers: record.available_for_offers,
+        skills: record
+            .skills
+            .into_iter()
+            .map(|skill| SkillView {
+                label: skill_label(&skill.skill_id).into(),
+                summary: skill_summary(skill.status).into(),
+                evidence_count: skill.sources.len(),
+                confirmed_at: (skill.status == EvidenceStatus::Confirmed)
+                    .then(|| record.profile.updated_at.clone()),
+                skill_id: skill.skill_id,
+                status: skill.status,
+                evidence_grade: skill.evidence_grade,
+                evidence_sources: skill.sources,
+            })
+            .collect(),
+        source_kinds: record.source_kinds,
+        fsp_verified: record.fsp_verified,
+        freshness: FreshnessView {
+            last_signal_at: record.last_signal_at,
+            last_signal: Some("assessment"),
+            fresh: true,
+            window_days: 90,
+        },
+        r#match: candidate_match,
+        simulation: true,
+    }
+}
+
+fn match_view(
+    candidate: &fsp_domain::RankableCandidate,
+    need: &HiringNeedRecord,
+) -> CandidateMatchView {
+    let result = score(candidate, &need.need);
+    let requirements = need
+        .need
+        .requirements
+        .iter()
+        .map(|requirement| match_requirement(candidate, requirement))
+        .collect::<Vec<_>>();
+    let status = match_status(&result, &requirements);
+    CandidateMatchView {
+        need_id: need.id.clone(),
+        status,
+        grade_matches: result.grade_matches,
+        required_met: result.required_met,
+        required_total: result.required_total,
+        desired_met: result.desired_met,
+        desired_total: result.desired_total,
+        requirements,
+        explanation: if result.grade_matches {
+            format!(
+                "Подтверждено обязательных требований: {} из {}.",
+                result.required_met, result.required_total
+            )
+        } else {
+            "Подтверждённая специализация или грейд пока не соответствуют потребности.".into()
+        },
+        algorithm_version: result.algorithm_version,
+    }
+}
+
+fn match_requirement(
+    candidate: &fsp_domain::RankableCandidate,
+    requirement: &Requirement,
+) -> MatchRequirementView {
+    let skill = candidate
+        .skills
+        .iter()
+        .find(|item| item.skill_id == requirement.skill_id);
+    let accepted = skill.is_some_and(|item| {
+        item.sources.iter().any(|source| match source {
+            fsp_domain::EvidenceSource::Assessment => {
+                requirement.evidence_policy.accept_assessments
+            }
+            fsp_domain::EvidenceSource::Github => requirement.evidence_policy.accept_github,
+            fsp_domain::EvidenceSource::Fsp => requirement.evidence_policy.accept_fsp,
+        })
+    });
+    let meets = skill.is_some_and(|item| {
+        item.status == EvidenceStatus::Confirmed
+            && accepted
+            && item
+                .evidence_grade
+                .is_some_and(|grade| grade >= requirement.minimum_grade)
+    });
+    let evidence_status = skill.map_or(EvidenceStatus::Insufficient, |item| item.status);
+    let status = if meets {
+        "meets"
+    } else if skill.is_none_or(|item| item.status == EvidenceStatus::Insufficient) {
+        "not_evidenced"
+    } else {
+        "needs_verification"
+    };
+    MatchRequirementView {
+        skill_id: requirement.skill_id.clone(),
+        criticality: requirement.criticality,
+        status,
+        evidence_status,
+        reason: if meets {
+            "Навык подтверждён на требуемом уровне."
+        } else if status == "not_evidenced" {
+            "Пока нет достаточных свидетельств по этому навыку."
+        } else if !accepted {
+            "Источник свидетельства не входит в политику потребности."
+        } else {
+            "Уровень навыка требует дополнительного подтверждения."
+        },
+    }
+}
+
+fn skill_label(skill_id: &str) -> &str {
+    match skill_id {
+        "rust" => "Rust",
+        "postgresql" => "PostgreSQL",
+        "docker" => "Docker",
+        "redis" => "Redis",
+        "react" => "React",
+        _ => skill_id,
+    }
+}
+
+fn skill_summary(status: EvidenceStatus) -> &'static str {
+    match status {
+        EvidenceStatus::Confirmed => "Навык подтверждён проверяемым свидетельством.",
+        EvidenceStatus::Evidence => "Есть свидетельства, требуется подтверждение уровня.",
+        EvidenceStatus::Observed => "Навык обнаружен в подключённых источниках.",
+        EvidenceStatus::Insufficient => "Недостаточно данных для подтверждения.",
     }
 }
 

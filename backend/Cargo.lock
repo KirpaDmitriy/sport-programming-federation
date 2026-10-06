@@ -265,6 +265,7 @@ dependencies = [
  "fsp-application",
  "fsp-domain",
  "rusqlite",
+ "serde",
  "serde_json",
 ]
 

@@ -4,7 +4,7 @@ mod error;
 
 use std::sync::Arc;
 
-use axum::extract::{Request, State};
+use axum::extract::{Path, Query, Request, State};
 use axum::http::header::{CACHE_CONTROL, COOKIE, ORIGIN, SET_COOKIE, X_CONTENT_TYPE_OPTIONS};
 use axum::http::{HeaderMap, HeaderName, HeaderValue, StatusCode};
 use axum::middleware::{self, Next};
@@ -13,10 +13,11 @@ use axum::routing::{delete, get, post};
 use axum::{Json, Router};
 use chrono::Utc;
 use fsp_application::{
-    ApplicationError, CompanyPatch, EmailChallengeInput, EmailVerifyInput, PlatformService,
-    ProfilePatch, SessionView,
+    ApplicationError, CandidateSearch, CompanyPatch, EmailChallengeInput, EmailVerifyInput,
+    PlatformService, ProfilePatch, SessionView,
 };
-use serde::Serialize;
+use fsp_domain::{Grade, Specialization};
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use uuid::Uuid;
 
@@ -54,6 +55,9 @@ pub fn router(config: HttpConfig, service: Arc<PlatformService>) -> Router {
         .route("/api/v1/session", get(session))
         .route("/api/v1/me/profile", get(get_profile).patch(update_profile))
         .route("/api/v1/company", get(get_company).patch(update_company))
+        .route("/api/v1/needs", get(get_needs))
+        .route("/api/v1/candidates", get(search_candidates))
+        .route("/api/v1/candidates/{candidate_id}", get(get_candidate))
         .fallback(not_found)
         .method_not_allowed_fallback(not_found)
         .layer(middleware::from_fn_with_state(state.clone(), transport))
@@ -208,6 +212,90 @@ async fn update_company(
         .map_err(api_error)
 }
 
+async fn get_needs(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<fsp_application::NeedsView>, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    state.service.needs(&session).map(Json).map_err(api_error)
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct CandidateQuery {
+    need_id: Option<String>,
+    mode: Option<String>,
+    specialization: Option<Specialization>,
+    grade: Option<Grade>,
+    skill: Option<String>,
+    fsp: Option<String>,
+    page: Option<usize>,
+    page_size: Option<usize>,
+}
+
+async fn search_candidates(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<CandidateQuery>,
+) -> Result<Json<fsp_application::CandidatePageView>, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    let page = query.page.unwrap_or(1);
+    let page_size = query.page_size.unwrap_or(10);
+    if page == 0 || page_size == 0 || page_size > 50 {
+        return Err(ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "validation_error",
+            "Проверьте параметры страницы",
+        ));
+    }
+    if query
+        .mode
+        .as_deref()
+        .is_some_and(|value| value != "bank" && value != "recommended")
+        || query
+            .fsp
+            .as_deref()
+            .is_some_and(|value| value != "any" && value != "verified")
+    {
+        return Err(ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "validation_error",
+            "Проверьте параметры поиска",
+        ));
+    }
+    state
+        .service
+        .candidate_search(
+            &session,
+            CandidateSearch {
+                need_id: query.need_id,
+                recommended: query.mode.as_deref() == Some("recommended"),
+                specialization: query.specialization,
+                grade: query.grade,
+                skill: query.skill,
+                fsp_verified: query.fsp.as_deref() == Some("verified"),
+                page,
+                page_size,
+            },
+        )
+        .map(Json)
+        .map_err(api_error)
+}
+
+async fn get_candidate(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(candidate_id): Path<String>,
+    Query(query): Query<CandidateQuery>,
+) -> Result<Json<fsp_application::AnonymousCandidateView>, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    state
+        .service
+        .candidate(&session, &candidate_id, query.need_id.as_deref())
+        .map(Json)
+        .map_err(api_error)
+}
+
 async fn not_found() -> ApiError {
     ApiError::not_found("Маршрут не найден")
 }
@@ -281,7 +369,7 @@ mod tests {
         ConsumeChallenge, PendingChallenge, PlatformRepository, RepositoryError,
         VerificationDelivery,
     };
-    use fsp_domain::{Account, CandidateProfile, Company};
+    use fsp_domain::{Account, CandidateIndexRecord, CandidateProfile, Company, HiringNeedRecord};
 
     struct EmptyRepository;
     impl PlatformRepository for EmptyRepository {
@@ -335,6 +423,15 @@ mod tests {
         }
         fn save_company(&self, _: &Company) -> Result<(), RepositoryError> {
             Ok(())
+        }
+        fn candidates(&self) -> Result<Vec<CandidateIndexRecord>, RepositoryError> {
+            Ok(Vec::new())
+        }
+        fn needs(&self, _: &str) -> Result<Vec<HiringNeedRecord>, RepositoryError> {
+            Ok(Vec::new())
+        }
+        fn need(&self, _: &str, _: &str) -> Result<Option<HiringNeedRecord>, RepositoryError> {
+            Ok(None)
         }
         fn seed_demo(&self, _: &str) -> Result<(), RepositoryError> {
             Ok(())

@@ -1,0 +1,17 @@
+{
+  "id": "candidate-ranking-v1",
+  "algorithmVersion": "deterministic-rules-v1",
+  "change": "rank by grade match, required evidence, desired evidence, FSP verification, then candidate id",
+  "expectedEffect": "higher deterministic match components sort first",
+  "failureCondition": "order_changes_when_input_is_reversed",
+  "expectedOrder": [
+    "candidate-a",
+    "candidate-b",
+    "candidate-z",
+    "candidate-low-grade"
+  ],
+  "verification": {
+    "command": "cargo test -p fsp-domain ranking_is_stable_and_prioritizes_match_components",
+    "artifact": "backend/experiments/candidate-ranking-v1.json"
+  }
+}

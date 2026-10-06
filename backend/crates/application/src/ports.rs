@@ -1,4 +1,6 @@
-use fsp_domain::{Account, CandidateProfile, Company, Role};
+use fsp_domain::{
+    Account, CandidateIndexRecord, CandidateProfile, Company, HiringNeedRecord, Role,
+};
 
 use crate::PendingChallenge;
 
@@ -47,6 +49,13 @@ pub trait PlatformRepository: Send + Sync {
     fn save_candidate(&self, profile: &CandidateProfile) -> Result<(), RepositoryError>;
     fn company(&self, company_id: &str) -> Result<Option<Company>, RepositoryError>;
     fn save_company(&self, company: &Company) -> Result<(), RepositoryError>;
+    fn candidates(&self) -> Result<Vec<CandidateIndexRecord>, RepositoryError>;
+    fn needs(&self, company_id: &str) -> Result<Vec<HiringNeedRecord>, RepositoryError>;
+    fn need(
+        &self,
+        company_id: &str,
+        need_id: &str,
+    ) -> Result<Option<HiringNeedRecord>, RepositoryError>;
     fn seed_demo(&self, now: &str) -> Result<(), RepositoryError>;
 }
 
