@@ -237,6 +237,43 @@ impl PlatformRepository for SqliteRepository {
             .map_err(storage)
     }
 
+    fn save_need(&self, value: &HiringNeedRecord) -> Result<(), RepositoryError> {
+        let requirements = serde_json::to_string(&value.need.requirements).map_err(json_storage)?;
+        self.connection()?
+            .execute(
+                "INSERT OR REPLACE INTO needs(id,company_id,title,specialization,grade,work_mode,salary_from,salary_to,description,requirements_json,published,published_at,created_at,updated_at,revision) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                params![
+                    value.id,
+                    value.company_id,
+                    value.title,
+                    specialization(value.need.specialization),
+                    grade(value.need.grade),
+                    value.work_mode,
+                    value.salary_from,
+                    value.salary_to,
+                    value.description,
+                    requirements,
+                    value.published,
+                    value.published_at,
+                    value.created_at,
+                    value.updated_at,
+                    value.revision
+                ],
+            )
+            .map_err(storage)?;
+        Ok(())
+    }
+
+    fn delete_need(&self, company_id: &str, need_id: &str) -> Result<(), RepositoryError> {
+        self.connection()?
+            .execute(
+                "DELETE FROM needs WHERE id=? AND company_id=?",
+                params![need_id, company_id],
+            )
+            .map_err(storage)?;
+        Ok(())
+    }
+
     fn save_oauth_state(
         &self,
         candidate_id: &str,

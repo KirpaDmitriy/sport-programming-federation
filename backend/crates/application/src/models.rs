@@ -234,6 +234,71 @@ impl From<&EvidencePolicy> for EvidencePolicyView {
     }
 }
 
+#[derive(Debug, Clone, Copy, Deserialize)]
+pub enum SalaryCurrency {
+    #[serde(rename = "RUB")]
+    Rub,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize)]
+pub enum SalaryPeriod {
+    #[serde(rename = "month")]
+    Month,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize)]
+pub enum SalaryTaxBasis {
+    #[serde(rename = "gross")]
+    Gross,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SalaryInput {
+    pub from: u64,
+    pub to: u64,
+    pub currency: SalaryCurrency,
+    pub period: SalaryPeriod,
+    pub tax_basis: SalaryTaxBasis,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NeedInput {
+    pub title: String,
+    pub specialization: Specialization,
+    pub grade: Grade,
+    pub work_mode: String,
+    pub salary: SalaryInput,
+    pub description: String,
+    pub requirements: Vec<fsp_domain::Requirement>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NeedPatch {
+    pub title: Option<String>,
+    pub specialization: Option<Specialization>,
+    pub grade: Option<Grade>,
+    pub work_mode: Option<String>,
+    pub salary: Option<SalaryInput>,
+    pub description: Option<String>,
+    pub requirements: Option<Vec<fsp_domain::Requirement>>,
+}
+
+impl NeedPatch {
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.title.is_none()
+            && self.specialization.is_none()
+            && self.grade.is_none()
+            && self.work_mode.is_none()
+            && self.salary.is_none()
+            && self.description.is_none()
+            && self.requirements.is_none()
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CandidatePageView {

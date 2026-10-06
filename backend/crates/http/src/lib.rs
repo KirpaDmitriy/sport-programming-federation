@@ -68,6 +68,11 @@ pub fn router(config: HttpConfig, service: Arc<PlatformService>) -> Router {
         .route("/api/v1/me/profile", get(get_profile))
         .route("/api/v1/company", get(get_company))
         .route("/api/v1/needs", get(get_needs))
+        .route("/api/v1/needs/{need_id}", get(get_need))
+        .route("/api/v1/needs/{need_id}", delete(delete_need))
+        .route("/api/v1/needs/{need_id}/publish", post(publish_need))
+        .route("/api/v1/needs/{need_id}/unpublish", post(unpublish_need))
+        .route("/api/v1/needs/{need_id}/graph", get(need_graph))
         .route("/api/v1/candidates", get(search_candidates))
         .route("/api/v1/candidates/{candidate_id}", get(get_candidate))
         .route(
@@ -96,6 +101,8 @@ pub fn router(config: HttpConfig, service: Arc<PlatformService>) -> Router {
         .route("/api/v1/auth/email/verify", post(verify_email))
         .route("/api/v1/me/profile", patch(update_profile))
         .route("/api/v1/company", patch(update_company))
+        .route("/api/v1/needs", post(create_need))
+        .route("/api/v1/needs/{need_id}", patch(update_need))
         .route(
             "/api/v1/me/sources/{provider}/connect",
             post(connect_source),
@@ -298,6 +305,98 @@ async fn get_needs(
 ) -> Result<Json<fsp_application::NeedsView>, ApiError> {
     let session = authenticated(&state, &headers)?;
     state.service.needs(&session).map(Json).map_err(api_error)
+}
+
+async fn create_need(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ContractJson(input): ContractJson<fsp_application::NeedInput>,
+) -> Result<(StatusCode, Json<fsp_application::NeedView>), ApiError> {
+    let session = authenticated(&state, &headers)?;
+    state
+        .service
+        .create_need(&session, input)
+        .map(|need| (StatusCode::CREATED, Json(need)))
+        .map_err(api_error)
+}
+
+async fn get_need(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ContractPath(need_id): ContractPath<String>,
+) -> Result<Json<fsp_application::NeedView>, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    state
+        .service
+        .get_need(&session, &need_id)
+        .map(Json)
+        .map_err(api_error)
+}
+
+async fn update_need(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ContractPath(need_id): ContractPath<String>,
+    ContractJson(patch): ContractJson<fsp_application::NeedPatch>,
+) -> Result<Json<fsp_application::NeedView>, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    state
+        .service
+        .update_need(&session, &need_id, patch)
+        .map(Json)
+        .map_err(api_error)
+}
+
+async fn delete_need(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ContractPath(need_id): ContractPath<String>,
+) -> Result<StatusCode, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    state
+        .service
+        .delete_need(&session, &need_id)
+        .map(|()| StatusCode::NO_CONTENT)
+        .map_err(api_error)
+}
+
+async fn publish_need(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ContractPath(need_id): ContractPath<String>,
+) -> Result<Json<fsp_application::NeedView>, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    state
+        .service
+        .publish_need(&session, &need_id)
+        .map(Json)
+        .map_err(api_error)
+}
+
+async fn unpublish_need(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ContractPath(need_id): ContractPath<String>,
+) -> Result<Json<fsp_application::NeedView>, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    state
+        .service
+        .unpublish_need(&session, &need_id)
+        .map(Json)
+        .map_err(api_error)
+}
+
+async fn need_graph(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ContractPath(need_id): ContractPath<String>,
+) -> Result<Json<fsp_application::GraphView>, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    state
+        .service
+        .need_graph(&session, &need_id)
+        .map(Json)
+        .map_err(api_error)
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -720,6 +819,12 @@ mod tests {
         }
         fn need(&self, _: &str, _: &str) -> Result<Option<HiringNeedRecord>, RepositoryError> {
             Ok(None)
+        }
+        fn save_need(&self, _: &HiringNeedRecord) -> Result<(), RepositoryError> {
+            Ok(())
+        }
+        fn delete_need(&self, _: &str, _: &str) -> Result<(), RepositoryError> {
+            Ok(())
         }
         fn save_oauth_state(&self, _: &str, _: &str, _: &str) -> Result<(), RepositoryError> {
             Ok(())

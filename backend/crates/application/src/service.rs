@@ -13,10 +13,11 @@ use crate::{
     CompanyPatch, CompanyView, ConsumeChallenge, EmailChallengeInput, EmailChallengeView,
     EmailVerifyInput, EvidencePolicyView, EvidenceView, FreshnessView, FspGateway, GitHubGateway,
     GradeEligibilityView, GraphEdgeView, GraphNodeView, GraphView, IntegrationError, JobView,
-    LlmGateway, MatchRequirementView, NeedView, NeedsView, OnboardingView, PendingChallenge,
-    PlatformRepository, ProfilePatch, ProfileView, RepositoryError, RequirementView, SalaryView,
-    SelfSkillView, SessionView, SkillView, SkillsView, SourceConnectInput, SourceView, SourcesView,
-    VerificationDelivery, job_view, match_status, source_view,
+    LlmGateway, MatchRequirementView, NeedInput, NeedPatch, NeedView, NeedsView, OnboardingView,
+    PendingChallenge, PlatformRepository, ProfilePatch, ProfileView, RepositoryError,
+    RequirementView, SalaryView, SelfSkillView, SessionView, SkillView, SkillsView,
+    SourceConnectInput, SourceView, SourcesView, VerificationDelivery, job_view, match_status,
+    source_view,
 };
 
 #[derive(Debug)]
@@ -364,6 +365,241 @@ impl PlatformService {
             .map(need_view)
             .collect();
         Ok(NeedsView { items })
+    }
+
+    /// The mock's `needFor`: employer needs are scoped to the caller's company,
+    /// an out-of-scope id is indistinguishable from missing.
+    fn own_need(
+        &self,
+        session: &SessionView,
+        need_id: &str,
+    ) -> Result<HiringNeedRecord, ApplicationError> {
+        let company_id = employer_company_id(session)?;
+        self.repository
+            .need(company_id, need_id)
+            .map_err(ApplicationError::storage)?
+            .ok_or_else(|| ApplicationError::new(404, "not_found", "Ресурс не найден"))
+    }
+
+    pub fn create_need(
+        &self,
+        session: &SessionView,
+        input: NeedInput,
+    ) -> Result<NeedView, ApplicationError> {
+        let company_id = employer_company_id(session)?.to_owned();
+        validate_need_schema(
+            &input.title,
+            &input.work_mode,
+            &input.description,
+            &input.requirements,
+        )?;
+        validate_need_rules(input.salary.from, input.salary.to, &input.requirements)?;
+        let timestamp = now();
+        let record = HiringNeedRecord {
+            id: format!("need-{}", Uuid::new_v4().simple()),
+            company_id,
+            title: input.title,
+            need: fsp_domain::HiringNeed {
+                specialization: input.specialization,
+                grade: input.grade,
+                requirements: input.requirements,
+            },
+            work_mode: input.work_mode,
+            salary_from: input.salary.from,
+            salary_to: input.salary.to,
+            description: input.description,
+            published: false,
+            published_at: None,
+            created_at: timestamp.clone(),
+            updated_at: timestamp,
+            revision: 1,
+        };
+        self.repository
+            .save_need(&record)
+            .map_err(ApplicationError::storage)?;
+        Ok(need_view(record))
+    }
+
+    pub fn get_need(
+        &self,
+        session: &SessionView,
+        need_id: &str,
+    ) -> Result<NeedView, ApplicationError> {
+        self.own_need(session, need_id).map(need_view)
+    }
+
+    pub fn update_need(
+        &self,
+        session: &SessionView,
+        need_id: &str,
+        patch: NeedPatch,
+    ) -> Result<NeedView, ApplicationError> {
+        let mut record = self.own_need(session, need_id)?;
+        if patch.is_empty() {
+            return Err(validation("Запрос не соответствует контракту"));
+        }
+        if let Some(title) = &patch.title
+            && !(1..=160).contains(&title.chars().count())
+        {
+            return Err(validation("Запрос не соответствует контракту"));
+        }
+        if let Some(description) = &patch.description
+            && description.chars().count() > 6000
+        {
+            return Err(validation("Запрос не соответствует контракту"));
+        }
+        if let Some(work_mode) = &patch.work_mode
+            && !WORK_MODES.contains(&work_mode.as_str())
+        {
+            return Err(validation("Запрос не соответствует контракту"));
+        }
+        if let Some(salary) = &patch.salary
+            && (salary.from == 0
+                || salary.to == 0
+                || salary.from > 100_000_000
+                || salary.to > 100_000_000)
+        {
+            return Err(validation("Запрос не соответствует контракту"));
+        }
+        if let Some(requirements) = &patch.requirements {
+            validate_requirements_schema(requirements)?;
+        }
+        let (salary_from, salary_to) = patch
+            .salary
+            .map(|salary| (salary.from, salary.to))
+            .unwrap_or((record.salary_from, record.salary_to));
+        let requirements = patch.requirements.unwrap_or(record.need.requirements);
+        validate_need_rules(salary_from, salary_to, &requirements)?;
+        if let Some(title) = patch.title {
+            record.title = title;
+        }
+        if let Some(specialization) = patch.specialization {
+            record.need.specialization = specialization;
+        }
+        if let Some(grade) = patch.grade {
+            record.need.grade = grade;
+        }
+        if let Some(work_mode) = patch.work_mode {
+            record.work_mode = work_mode;
+        }
+        if let Some(description) = patch.description {
+            record.description = description;
+        }
+        record.salary_from = salary_from;
+        record.salary_to = salary_to;
+        record.need.requirements = requirements;
+        record.revision += 1;
+        record.updated_at = now();
+        self.repository
+            .save_need(&record)
+            .map_err(ApplicationError::storage)?;
+        Ok(need_view(record))
+    }
+
+    pub fn delete_need(
+        &self,
+        session: &SessionView,
+        need_id: &str,
+    ) -> Result<(), ApplicationError> {
+        let record = self.own_need(session, need_id)?;
+        self.repository
+            .delete_need(&record.company_id, &record.id)
+            .map_err(ApplicationError::storage)
+    }
+
+    pub fn publish_need(
+        &self,
+        session: &SessionView,
+        need_id: &str,
+    ) -> Result<NeedView, ApplicationError> {
+        let mut record = self.own_need(session, need_id)?;
+        if record.published {
+            return Ok(need_view(record));
+        }
+        let company = self
+            .repository
+            .company(&record.company_id)
+            .map_err(ApplicationError::storage)?
+            .ok_or_else(|| {
+                ApplicationError::new(500, "internal_error", "Сервис временно недоступен")
+            })?;
+        if !company.ready_to_invite() {
+            return Err(ApplicationError::new(
+                422,
+                "company_incomplete",
+                "Заполните описание компании со сферой деятельности и контактную почту",
+            ));
+        }
+        if !session.email_verified {
+            return Err(ApplicationError::new(
+                403,
+                "email_not_verified",
+                "Подтвердите почту работодателя",
+            ));
+        }
+        validate_need_rules(
+            record.salary_from,
+            record.salary_to,
+            &record.need.requirements,
+        )?;
+        record.published = true;
+        record.published_at = Some(now());
+        self.repository
+            .save_need(&record)
+            .map_err(ApplicationError::storage)?;
+        Ok(need_view(record))
+    }
+
+    pub fn unpublish_need(
+        &self,
+        session: &SessionView,
+        need_id: &str,
+    ) -> Result<NeedView, ApplicationError> {
+        let mut record = self.own_need(session, need_id)?;
+        record.published = false;
+        record.published_at = None;
+        self.repository
+            .save_need(&record)
+            .map_err(ApplicationError::storage)?;
+        Ok(need_view(record))
+    }
+
+    pub fn need_graph(
+        &self,
+        session: &SessionView,
+        need_id: &str,
+    ) -> Result<GraphView, ApplicationError> {
+        let record = self.own_need(session, need_id)?;
+        let mut nodes = vec![GraphNodeView {
+            id: "need-root".into(),
+            kind: "role".into(),
+            label: record.title,
+            skill_id: None,
+            status: None,
+        }];
+        let mut edges = Vec::new();
+        for requirement in &record.need.requirements {
+            let id = format!("skill-{}", requirement.skill_id);
+            nodes.push(GraphNodeView {
+                id: id.clone(),
+                kind: "skill".into(),
+                label: skill_label(&requirement.skill_id).into(),
+                skill_id: Some(requirement.skill_id.clone()),
+                status: None,
+            });
+            edges.push(GraphEdgeView {
+                id: format!("requires-{}", requirement.skill_id),
+                from: "need-root".into(),
+                to: id,
+                relation: "requires".into(),
+            });
+        }
+        Ok(GraphView {
+            audience: "employer",
+            nodes,
+            edges,
+            simulation: true,
+        })
     }
 
     pub fn candidate_search(
@@ -1587,4 +1823,130 @@ fn unique_count(values: &[String]) -> usize {
 
 fn validation(message: &'static str) -> ApplicationError {
     ApplicationError::new(400, "validation_error", message)
+}
+
+/// Schema-level ids the contract enumerates.
+const CATALOG_SKILLS: &[&str] = &["rust", "postgresql", "docker", "redis", "react"];
+const WORK_MODES: &[&str] = &["remote", "hybrid", "office"];
+/// Competition ids the meta catalog advertises.
+const COMPETITION_IDS: &[&str] = &["competition-demo-api", "competition-demo-systems"];
+
+/// Contract schema checks the mock performs through ajv: lengths, ranges and
+/// enumerated values map to `validation_error`.
+fn validate_need_schema(
+    title: &str,
+    work_mode: &str,
+    description: &str,
+    requirements: &[fsp_domain::Requirement],
+) -> Result<(), ApplicationError> {
+    if !(1..=160).contains(&title.chars().count())
+        || description.chars().count() > 6000
+        || requirements.is_empty()
+        || requirements.len() > 5
+        || !WORK_MODES.contains(&work_mode)
+    {
+        return Err(validation("Запрос не соответствует контракту"));
+    }
+    validate_requirements_schema(requirements)
+}
+
+fn validate_requirements_schema(
+    requirements: &[fsp_domain::Requirement],
+) -> Result<(), ApplicationError> {
+    let invalid = requirements.iter().any(|item| {
+        !CATALOG_SKILLS.contains(&item.skill_id.as_str())
+            || !matches!(
+                item.evidence_policy.competition_selection.as_str(),
+                "system" | "selected"
+            )
+            || item
+                .evidence_policy
+                .competition_ids
+                .iter()
+                .collect::<std::collections::HashSet<_>>()
+                .len()
+                != item.evidence_policy.competition_ids.len()
+    });
+    if invalid {
+        return Err(validation("Запрос не соответствует контракту"));
+    }
+    Ok(())
+}
+
+/// The mock's `validateNeed` business rules, in the same order.
+fn validate_need_rules(
+    salary_from: u64,
+    salary_to: u64,
+    requirements: &[fsp_domain::Requirement],
+) -> Result<(), ApplicationError> {
+    if salary_from == 0 || salary_to == 0 || salary_from > 100_000_000 || salary_to > 100_000_000 {
+        return Err(validation("Запрос не соответствует контракту"));
+    }
+    if salary_from > salary_to {
+        return Err(ApplicationError::new(
+            422,
+            "salary_range_invalid",
+            "Минимальная зарплата не может превышать максимальную",
+        ));
+    }
+    let unique = requirements
+        .iter()
+        .map(|item| &item.skill_id)
+        .collect::<std::collections::HashSet<_>>();
+    if unique.len() != requirements.len() {
+        return Err(ApplicationError::new(
+            422,
+            "duplicate_skill",
+            "Навык нельзя повторять в требованиях",
+        ));
+    }
+    if !requirements
+        .iter()
+        .any(|item| item.criticality == fsp_domain::Criticality::Required)
+    {
+        return Err(ApplicationError::new(
+            422,
+            "required_skill_missing",
+            "Укажите хотя бы одно обязательное требование",
+        ));
+    }
+    for requirement in requirements {
+        let policy = &requirement.evidence_policy;
+        if !policy.accept_assessments && !policy.accept_github && !policy.accept_fsp {
+            return Err(ApplicationError::new(
+                422,
+                "empty_evidence_policy",
+                "Выберите хотя бы один источник свидетельств",
+            ));
+        }
+        if policy
+            .competition_ids
+            .iter()
+            .any(|id| !COMPETITION_IDS.contains(&id.as_str()))
+        {
+            return Err(ApplicationError::new(
+                422,
+                "unknown_competition",
+                "Неизвестное соревнование",
+            ));
+        }
+        if policy.competition_selection == "system" && !policy.competition_ids.is_empty() {
+            return Err(ApplicationError::new(
+                422,
+                "ambiguous_competition_policy",
+                "При системном выборе список соревнований должен быть пуст",
+            ));
+        }
+        if policy.accept_fsp
+            && policy.competition_selection == "selected"
+            && policy.competition_ids.is_empty()
+        {
+            return Err(ApplicationError::new(
+                422,
+                "competition_required",
+                "Укажите принимаемые соревнования",
+            ));
+        }
+    }
+    Ok(())
 }
