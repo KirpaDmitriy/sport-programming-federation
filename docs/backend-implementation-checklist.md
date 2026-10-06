@@ -10,9 +10,9 @@ the backend cutover and must stay aligned with the delivered behavior.
 - [x] Change frontend code only where its data source must move from mock-only endpoints or fixtures to `/api/v1`.
 - [x] Keep synthetic demo users and FSP responses in backend adapters, clearly marked as synthetic.
 - [x] Provide real registration, login, session, profile editing and persisted user data alongside demo data.
-- [ ] Replace the Bun mock server on the deployed stand with the Rust backend.
-- [ ] Deploy to `93.77.179.211`; use `gh` for repository operations and SSH as `dima` with `/Users/dima/Downloads/stars-repo/vopstchage/.ssh/codex_yacloud_ed25519`.
-- [ ] Preserve MetroGuard, its files, service, nginx configuration, certificates and port 8000.
+- [x] Replace the Bun mock server on the deployed stand with the Rust backend.
+- [x] Deploy to `93.77.179.211`; use `gh` for repository operations and SSH as `dima` with `/Users/dima/Downloads/stars-repo/vopstchage/.ssh/codex_yacloud_ed25519`.
+- [x] Preserve MetroGuard, its files, service, nginx configuration, certificates and port 8000.
 
 ## Contract and product behavior
 
@@ -45,8 +45,8 @@ the backend cutover and must stay aligned with the delivered behavior.
 
 - [ ] Add domain, application, adapter and HTTP contract tests for implemented behavior.
 - [x] Preserve an offline CPU path for tests and the demo seed.
-- [ ] Run `just backend-check`, relevant contract/frontend checks, Docker smoke and public stand smoke.
+- [x] Run `just backend-check`, relevant contract/frontend checks, Docker smoke and public stand smoke.
 - [ ] Make granular commits on the named branch, merge through `dev`, then deploy `main`.
-- [ ] Back up the old `/opt/kontur-talent` installation and database before cutover.
-- [ ] Verify the public frontend against the Rust backend after deployment.
+- [x] Back up the old `/opt/kontur-talent` installation and database before cutover.
+- [x] Verify the public frontend against the Rust backend after deployment.
 - [ ] Review comments and user-facing copy for unnecessary implementation language or generated filler.
