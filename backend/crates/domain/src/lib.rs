@@ -244,6 +244,39 @@ pub struct InvitationRecord {
     pub disclosure_fields: Vec<String>,
 }
 
+/// The vacancy fields frozen into an application snapshot.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VacancySnapshot {
+    pub id: String,
+    pub title: String,
+    pub specialization: Specialization,
+    pub grade: Grade,
+    pub work_mode: String,
+    pub salary_from: u64,
+    pub salary_to: u64,
+    pub description: String,
+}
+
+/// A candidate's application to a published need, with the company card,
+/// the vacancy card and the full need frozen at submission time.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ApplicationRecord {
+    pub id: String,
+    pub company_id: String,
+    pub candidate_id: String,
+    pub candidate_alias: String,
+    pub company: CompanyCard,
+    pub vacancy: VacancySnapshot,
+    pub need_definition: HiringNeedRecord,
+    pub message: String,
+    pub status: InteractionStatus,
+    pub created_at: String,
+    pub viewed_at: Option<String>,
+    pub responded_at: Option<String>,
+    pub disclosure_fields: Vec<String>,
+}
+
 /// The aggregated disclosure grant a company holds over a candidate.
 /// Row existence means `granted: true`; an absent row renders the
 /// not-granted disclosure shell.

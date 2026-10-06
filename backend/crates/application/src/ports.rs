@@ -111,6 +111,25 @@ pub trait PlatformRepository: Send + Sync {
         company_id: &str,
         candidate_id: &str,
     ) -> Result<(), RepositoryError>;
+    /// Applications addressed to a company's needs.
+    fn company_applications(
+        &self,
+        company_id: &str,
+    ) -> Result<Vec<fsp_domain::ApplicationRecord>, RepositoryError>;
+    /// Applications sent by a candidate.
+    fn candidate_applications(
+        &self,
+        candidate_id: &str,
+    ) -> Result<Vec<fsp_domain::ApplicationRecord>, RepositoryError>;
+    /// Unscoped lookup; the service applies the caller's tenancy rule.
+    fn application(
+        &self,
+        application_id: &str,
+    ) -> Result<Option<fsp_domain::ApplicationRecord>, RepositoryError>;
+    fn save_application(
+        &self,
+        application: &fsp_domain::ApplicationRecord,
+    ) -> Result<(), RepositoryError>;
     fn save_oauth_state(
         &self,
         candidate_id: &str,

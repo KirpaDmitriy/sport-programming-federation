@@ -462,6 +462,75 @@ impl PlatformRepository for SqliteRepository {
         Ok(())
     }
 
+    fn company_applications(
+        &self,
+        company_id: &str,
+    ) -> Result<Vec<fsp_domain::ApplicationRecord>, RepositoryError> {
+        let connection = self.connection()?;
+        connection
+            .prepare("SELECT * FROM applications WHERE company_id=?")
+            .map_err(storage)?
+            .query_map([company_id], application_record)
+            .map_err(storage)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(storage)
+    }
+
+    fn candidate_applications(
+        &self,
+        candidate_id: &str,
+    ) -> Result<Vec<fsp_domain::ApplicationRecord>, RepositoryError> {
+        let connection = self.connection()?;
+        connection
+            .prepare("SELECT * FROM applications WHERE candidate_id=?")
+            .map_err(storage)?
+            .query_map([candidate_id], application_record)
+            .map_err(storage)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(storage)
+    }
+
+    fn application(
+        &self,
+        application_id: &str,
+    ) -> Result<Option<fsp_domain::ApplicationRecord>, RepositoryError> {
+        self.connection()?
+            .query_row(
+                "SELECT * FROM applications WHERE id=?",
+                params![application_id],
+                application_record,
+            )
+            .optional()
+            .map_err(storage)
+    }
+
+    fn save_application(
+        &self,
+        value: &fsp_domain::ApplicationRecord,
+    ) -> Result<(), RepositoryError> {
+        self.connection()?
+            .execute(
+                "INSERT OR REPLACE INTO applications(id,company_id,candidate_id,candidate_alias,company_json,vacancy_json,need_definition_json,message,status,created_at,viewed_at,responded_at,disclosure_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                params![
+                    value.id,
+                    value.company_id,
+                    value.candidate_id,
+                    value.candidate_alias,
+                    serde_json::to_string(&value.company).map_err(json_storage)?,
+                    serde_json::to_string(&value.vacancy).map_err(json_storage)?,
+                    serde_json::to_string(&value.need_definition).map_err(json_storage)?,
+                    value.message,
+                    value.status.as_str(),
+                    value.created_at,
+                    value.viewed_at,
+                    value.responded_at,
+                    serde_json::to_string(&value.disclosure_fields).map_err(json_storage)?,
+                ],
+            )
+            .map_err(storage)?;
+        Ok(())
+    }
+
     fn save_oauth_state(
         &self,
         candidate_id: &str,
@@ -1055,6 +1124,31 @@ fn invitation_record(row: &rusqlite::Row<'_>) -> rusqlite::Result<fsp_domain::In
     })
 }
 
+fn application_record(row: &rusqlite::Row<'_>) -> rusqlite::Result<fsp_domain::ApplicationRecord> {
+    let status: String = row.get(8)?;
+    Ok(fsp_domain::ApplicationRecord {
+        id: row.get(0)?,
+        company_id: row.get(1)?,
+        candidate_id: row.get(2)?,
+        candidate_alias: row.get(3)?,
+        company: parse_json(row.get::<_, String>(4)?)?,
+        vacancy: parse_json(row.get::<_, String>(5)?)?,
+        need_definition: parse_json(row.get::<_, String>(6)?)?,
+        message: row.get(7)?,
+        status: fsp_domain::InteractionStatus::parse(&status).ok_or_else(|| {
+            rusqlite::Error::FromSqlConversionFailure(
+                8,
+                rusqlite::types::Type::Text,
+                format!("unknown application status {status}").into(),
+            )
+        })?,
+        created_at: row.get(9)?,
+        viewed_at: row.get(10)?,
+        responded_at: row.get(11)?,
+        disclosure_fields: parse_json(row.get::<_, String>(12)?)?,
+    })
+}
+
 fn disclosure_record(row: &rusqlite::Row<'_>) -> rusqlite::Result<fsp_domain::DisclosureRecord> {
     Ok(fsp_domain::DisclosureRecord {
         candidate_id: row.get(0)?,
@@ -1267,6 +1361,7 @@ CREATE TABLE IF NOT EXISTS idempotency_keys(scope TEXT PRIMARY KEY,fingerprint T
 CREATE TABLE IF NOT EXISTS shortlists(id TEXT PRIMARY KEY,company_id TEXT NOT NULL REFERENCES companies(id),title TEXT NOT NULL,members_json TEXT NOT NULL,created_at TEXT NOT NULL,updated_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS invitations(id TEXT PRIMARY KEY,company_id TEXT NOT NULL,candidate_id TEXT NOT NULL,candidate_alias TEXT NOT NULL,company_json TEXT NOT NULL,need_json TEXT NOT NULL,need_definition_json TEXT NOT NULL,message TEXT NOT NULL,status TEXT NOT NULL,created_at TEXT NOT NULL,viewed_at TEXT,responded_at TEXT,disclosure_json TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS disclosures(company_id TEXT NOT NULL,candidate_id TEXT NOT NULL,invitation_id TEXT,application_id TEXT,granted_at TEXT,name TEXT,email TEXT,source_links_json TEXT NOT NULL,PRIMARY KEY(company_id,candidate_id));
+CREATE TABLE IF NOT EXISTS applications(id TEXT PRIMARY KEY,company_id TEXT NOT NULL,candidate_id TEXT NOT NULL,candidate_alias TEXT NOT NULL,company_json TEXT NOT NULL,vacancy_json TEXT NOT NULL,need_definition_json TEXT NOT NULL,message TEXT NOT NULL,status TEXT NOT NULL,created_at TEXT NOT NULL,viewed_at TEXT,responded_at TEXT,disclosure_json TEXT NOT NULL);
 "#;
 
 #[cfg(test)]

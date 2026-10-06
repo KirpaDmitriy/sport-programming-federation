@@ -9,7 +9,8 @@ use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::{
-    AcceptInvitationInput, AnonymousCandidateView, ApplicationEligibilityView, CandidateMatchView,
+    AcceptInvitationInput, AnonymousCandidateView, ApplicationEligibilityView, ApplicationInput,
+    ApplicationVacancyView, ApplicationView, ApplicationsView, CandidateMatchView,
     CandidatePageView, CandidateSearch, CategoryView, CompanyCardView, CompanyPatch, CompanyView,
     ConsumeChallenge, DisclosureFieldsView, DisclosureView, EmailChallengeInput,
     EmailChallengeView, EmailVerifyInput, EvidencePolicyView, EvidenceView, FreshnessView,
@@ -635,14 +636,23 @@ impl PlatformService {
         })
     }
 
-    /// The latest non-withdrawn application of this candidate to the vacancy,
-    /// if applications exist (wired in the applications vertical).
+    /// The mock's `activeApplication`: the newest non-withdrawn application
+    /// of this candidate to the need behind the vacancy.
     fn active_application(
         &self,
-        _candidate_id: &str,
-        _need_id: &str,
+        candidate_id: &str,
+        need_id: &str,
     ) -> Result<Option<String>, ApplicationError> {
-        Ok(None)
+        Ok(self
+            .repository
+            .candidate_applications(candidate_id)
+            .map_err(ApplicationError::storage)?
+            .into_iter()
+            .filter(|item| {
+                item.vacancy.id == need_id && item.status != InteractionStatus::Withdrawn
+            })
+            .max_by(|a, b| a.created_at.cmp(&b.created_at).then(a.id.cmp(&b.id)))
+            .map(|item| item.id))
     }
 
     fn vacancy_view(
@@ -1253,8 +1263,8 @@ impl PlatformService {
     }
 
     /// The mock's `refreshDisclosure`: recomputes a company's disclosure grant
-    /// from accepted invitations (and, once applications land, active
-    /// applications). Removing the last grant deletes the record.
+    /// from accepted invitations and non-withdrawn applications. Removing the
+    /// last grant deletes the record.
     fn refresh_disclosure(
         &self,
         company_id: &str,
@@ -1270,11 +1280,26 @@ impl PlatformService {
                     && item.status == InteractionStatus::Accepted
             })
             .collect::<Vec<_>>();
+        let applications = self
+            .repository
+            .company_applications(company_id)
+            .map_err(ApplicationError::storage)?
+            .into_iter()
+            .filter(|item| {
+                item.candidate_id == candidate.profile.id
+                    && item.status != InteractionStatus::Withdrawn
+            })
+            .collect::<Vec<_>>();
         let granted = invitations
             .iter()
-            .flat_map(|item| item.disclosure_fields.iter().cloned())
+            .flat_map(|item| item.disclosure_fields.iter())
+            .chain(
+                applications
+                    .iter()
+                    .flat_map(|item| item.disclosure_fields.iter()),
+            )
+            .cloned()
             .collect::<std::collections::BTreeSet<_>>();
-        // Applications extend the grant; they join this union in W2.5.
         if granted.is_empty() {
             return self
                 .repository
@@ -1285,6 +1310,9 @@ impl PlatformService {
             (a.responded_at.as_deref().unwrap_or(&a.created_at))
                 .cmp(b.responded_at.as_deref().unwrap_or(&b.created_at))
         });
+        let application = applications
+            .iter()
+            .max_by(|a, b| a.created_at.cmp(&b.created_at));
         let source_links = if granted.contains("sourceLinks") {
             let mut links = Vec::new();
             for source in self
@@ -1304,12 +1332,19 @@ impl PlatformService {
         } else {
             Vec::new()
         };
+        let granted_at = [
+            invitation.and_then(|item| item.responded_at.as_deref()),
+            application.map(|item| item.created_at.as_str()),
+        ]
+        .into_iter()
+        .flatten()
+        .max();
         let record = fsp_domain::DisclosureRecord {
             candidate_id: candidate.profile.id.clone(),
             company_id: company_id.to_owned(),
             invitation_id: invitation.map(|item| item.id.clone()),
-            application_id: None,
-            granted_at: invitation.and_then(|item| item.responded_at.clone()),
+            application_id: application.map(|item| item.id.clone()),
+            granted_at: granted_at.map(str::to_owned),
             name: granted
                 .contains("name")
                 .then(|| candidate.profile.name.clone()),
@@ -1351,9 +1386,28 @@ impl PlatformService {
             });
         }
         // Without a grant the candidate must still be reachable: the mock's
-        // `candidateForCompany` also accepts a live application, which joins
-        // this check when applications land.
-        self.visible_candidate(requested_candidate_id)?;
+        // `candidateForCompany` accepts a live application or public-bank
+        // visibility, and always requires the candidate to exist.
+        let applied = self
+            .repository
+            .company_applications(company_id)
+            .map_err(ApplicationError::storage)?
+            .iter()
+            .any(|item| {
+                item.candidate_id == requested_candidate_id
+                    && item.status != InteractionStatus::Withdrawn
+            });
+        let candidate = self
+            .repository
+            .candidates()
+            .map_err(ApplicationError::storage)?
+            .into_iter()
+            .find(|item| item.profile.id == requested_candidate_id);
+        let reachable = candidate
+            .is_some_and(|item| applied || item.profile.visible_to_employers(item.email_verified));
+        if !reachable {
+            return Err(ApplicationError::new(404, "not_found", "Ресурс не найден"));
+        }
         Ok(DisclosureView {
             candidate_id: requested_candidate_id.to_owned(),
             company_id: company_id.to_owned(),
@@ -1363,6 +1417,338 @@ impl PlatformService {
             granted_at: None,
             fields: DisclosureFieldsView::default(),
         })
+    }
+
+    /// The mock's `applicationFor`: candidates reach their own applications,
+    /// employers reach their company's, everything else is missing.
+    fn application_for(
+        &self,
+        session: &SessionView,
+        application_id: &str,
+    ) -> Result<fsp_domain::ApplicationRecord, ApplicationError> {
+        let record = self
+            .repository
+            .application(application_id)
+            .map_err(ApplicationError::storage)?;
+        match record {
+            Some(item)
+                if match session.role {
+                    Role::Candidate => {
+                        session.candidate_id.as_deref() == Some(item.candidate_id.as_str())
+                    }
+                    Role::Employer => {
+                        session.company_id.as_deref() == Some(item.company_id.as_str())
+                    }
+                } =>
+            {
+                Ok(item)
+            }
+            _ => Err(ApplicationError::new(404, "not_found", "Ресурс не найден")),
+        }
+    }
+
+    /// The DTO includes a live match of the current candidate state against
+    /// the need frozen at submission.
+    fn application_view(
+        &self,
+        record: fsp_domain::ApplicationRecord,
+    ) -> Result<ApplicationView, ApplicationError> {
+        let candidate = self
+            .repository
+            .candidates()
+            .map_err(ApplicationError::storage)?
+            .into_iter()
+            .find(|item| item.profile.id == record.candidate_id)
+            .ok_or_else(|| {
+                ApplicationError::new(500, "internal_error", "Сервис временно недоступен")
+            })?;
+        let rankable = candidate.rankable().ok_or_else(|| {
+            ApplicationError::new(500, "internal_error", "Сервис временно недоступен")
+        })?;
+        Ok(ApplicationView {
+            id: record.id,
+            candidate_id: record.candidate_id,
+            candidate_alias: record.candidate_alias,
+            company: CompanyCardView {
+                id: record.company.id,
+                display_name: record.company.display_name,
+                business_area: record.company.business_area,
+                description: record.company.description,
+                contact_email: record.company.contact_email,
+            },
+            vacancy: ApplicationVacancyView {
+                id: record.vacancy.id,
+                title: record.vacancy.title,
+                specialization: record.vacancy.specialization,
+                grade: record.vacancy.grade,
+                work_mode: record.vacancy.work_mode,
+                salary: SalaryView {
+                    from: record.vacancy.salary_from,
+                    to: record.vacancy.salary_to,
+                    currency: "RUB",
+                    period: "month",
+                    tax_basis: "gross",
+                },
+                description: record.vacancy.description,
+            },
+            message: record.message,
+            status: record.status,
+            created_at: record.created_at,
+            viewed_at: record.viewed_at,
+            responded_at: record.responded_at,
+            disclosure_fields: record.disclosure_fields,
+            r#match: match_view(&rankable, &record.need_definition),
+        })
+    }
+
+    /// The mock's `newestFirst`: newest `createdAt` first, id descending as
+    /// the same-instant tie-breaker.
+    fn newest_first(items: &mut [fsp_domain::ApplicationRecord]) {
+        items.sort_by(|a, b| b.created_at.cmp(&a.created_at).then(b.id.cmp(&a.id)));
+    }
+
+    /// The mock's `publishedNeed`.
+    fn published_need(&self, vacancy_id: &str) -> Result<HiringNeedRecord, ApplicationError> {
+        self.repository
+            .published_needs()
+            .map_err(ApplicationError::storage)?
+            .into_iter()
+            .find(|need| need.id == vacancy_id)
+            .ok_or_else(|| {
+                ApplicationError::new(
+                    404,
+                    "not_found",
+                    "Вакансия не найдена или снята с публикации",
+                )
+            })
+    }
+
+    pub fn my_applications(
+        &self,
+        session: &SessionView,
+    ) -> Result<ApplicationsView, ApplicationError> {
+        let candidate_id = candidate_id(session)?;
+        let mut records = self
+            .repository
+            .candidate_applications(candidate_id)
+            .map_err(ApplicationError::storage)?;
+        Self::newest_first(&mut records);
+        let items = records
+            .into_iter()
+            .map(|record| self.application_view(record))
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(ApplicationsView { items })
+    }
+
+    /// The mock's `createApplication`, run inside `idempotent` by the caller.
+    pub fn create_application(
+        &self,
+        session: &SessionView,
+        input: ApplicationInput,
+    ) -> Result<ApplicationView, ApplicationError> {
+        if !(1..=4000).contains(&input.message.chars().count()) {
+            return Err(validation("Запрос не соответствует контракту"));
+        }
+        validate_disclose(&input.disclose)?;
+        let candidate = self.candidate_index(candidate_id(session)?)?;
+        self.require_processing_consent(&candidate.profile.id)?;
+        let need = self.published_need(&input.vacancy_id)?;
+        let eligibility = self.application_eligibility(&candidate, &need.id)?;
+        if let Some(reason) = eligibility.reason {
+            let (code, message) = match reason {
+                "application_exists" => {
+                    ("application_exists", "Вы уже откликнулись на эту вакансию")
+                }
+                "email" => (
+                    "application_not_eligible",
+                    "Подтвердите почту, чтобы откликаться на вакансии",
+                ),
+                "questionnaire" => (
+                    "application_not_eligible",
+                    "Заполните анкету, чтобы откликаться на вакансии",
+                ),
+                "assessment" => (
+                    "application_not_eligible",
+                    "Подтвердите грейд практической проверкой, чтобы откликаться на вакансии",
+                ),
+                _ => (
+                    "application_not_eligible",
+                    "Для отклика необходимо согласие на обработку данных",
+                ),
+            };
+            return Err(ApplicationError::new(409, code, message));
+        }
+        let company = self
+            .repository
+            .company(&need.company_id)
+            .map_err(ApplicationError::storage)?
+            .ok_or_else(|| {
+                ApplicationError::new(500, "internal_error", "Сервис временно недоступен")
+            })?;
+        let mut disclose = input.disclose;
+        disclose.sort();
+        let record = fsp_domain::ApplicationRecord {
+            id: format!("application-{}", Uuid::new_v4().simple()),
+            company_id: company.id.clone(),
+            candidate_id: candidate.profile.id.clone(),
+            candidate_alias: candidate.profile.alias.clone(),
+            company: fsp_domain::CompanyCard {
+                id: company.id,
+                display_name: company.display_name,
+                business_area: company.business_area,
+                description: company.description,
+                contact_email: company.contact_email,
+            },
+            vacancy: fsp_domain::VacancySnapshot {
+                id: need.id.clone(),
+                title: need.title.clone(),
+                specialization: need.need.specialization,
+                grade: need.need.grade,
+                work_mode: need.work_mode.clone(),
+                salary_from: need.salary_from,
+                salary_to: need.salary_to,
+                description: need.description.clone(),
+            },
+            need_definition: need,
+            message: input.message,
+            status: InteractionStatus::Sent,
+            created_at: now(),
+            viewed_at: None,
+            responded_at: None,
+            disclosure_fields: disclose,
+        };
+        self.repository
+            .save_application(&record)
+            .map_err(ApplicationError::storage)?;
+        self.refresh_disclosure(&record.company_id.clone(), &candidate)?;
+        self.application_view(record)
+    }
+
+    pub fn get_my_application(
+        &self,
+        session: &SessionView,
+        application_id: &str,
+    ) -> Result<ApplicationView, ApplicationError> {
+        let record = self.application_for(session, application_id)?;
+        self.application_view(record)
+    }
+
+    pub fn withdraw_my_application(
+        &self,
+        session: &SessionView,
+        application_id: &str,
+    ) -> Result<ApplicationView, ApplicationError> {
+        let mut record = self.application_for(session, application_id)?;
+        if record.status == InteractionStatus::Withdrawn {
+            return self.application_view(record);
+        }
+        if record.status.terminal() {
+            return Err(ApplicationError::new(
+                409,
+                "application_terminal",
+                "Решение по отклику уже принято",
+            ));
+        }
+        record.status = InteractionStatus::Withdrawn;
+        record.responded_at = Some(now());
+        self.repository
+            .save_application(&record)
+            .map_err(ApplicationError::storage)?;
+        let candidate = self.candidate_index(&record.candidate_id.clone())?;
+        self.refresh_disclosure(&record.company_id.clone(), &candidate)?;
+        self.application_view(record)
+    }
+
+    pub fn company_applications(
+        &self,
+        session: &SessionView,
+        need_id: Option<&str>,
+    ) -> Result<ApplicationsView, ApplicationError> {
+        let company_id = employer_company_id(session)?;
+        let mut records = self
+            .repository
+            .company_applications(company_id)
+            .map_err(ApplicationError::storage)?
+            .into_iter()
+            .filter(|item| need_id.is_none_or(|id| item.vacancy.id == id))
+            .collect::<Vec<_>>();
+        Self::newest_first(&mut records);
+        let items = records
+            .into_iter()
+            .map(|record| self.application_view(record))
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(ApplicationsView { items })
+    }
+
+    pub fn get_application(
+        &self,
+        session: &SessionView,
+        application_id: &str,
+    ) -> Result<ApplicationView, ApplicationError> {
+        let record = self.application_for(session, application_id)?;
+        self.application_view(record)
+    }
+
+    pub fn view_application(
+        &self,
+        session: &SessionView,
+        application_id: &str,
+    ) -> Result<ApplicationView, ApplicationError> {
+        let mut record = self.application_for(session, application_id)?;
+        if record.status == InteractionStatus::Sent {
+            record.status = InteractionStatus::Viewed;
+            record.viewed_at = Some(now());
+            self.repository
+                .save_application(&record)
+                .map_err(ApplicationError::storage)?;
+        }
+        self.application_view(record)
+    }
+
+    pub fn accept_application(
+        &self,
+        session: &SessionView,
+        application_id: &str,
+    ) -> Result<ApplicationView, ApplicationError> {
+        self.decide_application(session, application_id, InteractionStatus::Accepted)
+    }
+
+    pub fn decline_application(
+        &self,
+        session: &SessionView,
+        application_id: &str,
+    ) -> Result<ApplicationView, ApplicationError> {
+        self.decide_application(session, application_id, InteractionStatus::Declined)
+    }
+
+    /// The mock's accept/decline pair: the same terminal replay returns the
+    /// current record, a different terminal outcome conflicts.
+    fn decide_application(
+        &self,
+        session: &SessionView,
+        application_id: &str,
+        outcome: InteractionStatus,
+    ) -> Result<ApplicationView, ApplicationError> {
+        let mut record = self.application_for(session, application_id)?;
+        if record.status == outcome {
+            return self.application_view(record);
+        }
+        if record.status.terminal() {
+            return Err(ApplicationError::new(
+                409,
+                "application_terminal",
+                "Решение по отклику уже принято",
+            ));
+        }
+        record.status = outcome;
+        if record.viewed_at.is_none() {
+            record.viewed_at = Some(now());
+        }
+        record.responded_at = Some(now());
+        self.repository
+            .save_application(&record)
+            .map_err(ApplicationError::storage)?;
+        self.application_view(record)
     }
 
     pub fn candidate_search(

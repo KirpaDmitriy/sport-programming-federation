@@ -304,6 +304,50 @@ pub struct DisclosureView {
     pub fields: DisclosureFieldsView,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ApplicationInput {
+    pub vacancy_id: String,
+    pub message: String,
+    pub disclose: Vec<String>,
+}
+
+/// The vacancy card frozen into an application, as the contract exposes it.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApplicationVacancyView {
+    pub id: String,
+    pub title: String,
+    pub specialization: Specialization,
+    pub grade: Grade,
+    pub work_mode: String,
+    pub salary: SalaryView,
+    pub description: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApplicationView {
+    pub id: String,
+    pub candidate_id: String,
+    pub candidate_alias: String,
+    pub company: CompanyCardView,
+    pub vacancy: ApplicationVacancyView,
+    pub message: String,
+    pub status: fsp_domain::InteractionStatus,
+    pub created_at: String,
+    pub viewed_at: Option<String>,
+    pub responded_at: Option<String>,
+    pub disclosure_fields: Vec<String>,
+    pub r#match: CandidateMatchView,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApplicationsView {
+    pub items: Vec<ApplicationView>,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SalaryView {
