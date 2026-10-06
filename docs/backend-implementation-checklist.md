@@ -11,6 +11,7 @@ the backend cutover and must stay aligned with the delivered behavior.
 - [x] Keep synthetic demo users and FSP responses in backend adapters, clearly marked as synthetic.
 - [x] Provide real registration, login, session, profile editing and persisted user data alongside demo data.
 - [x] Replace the Bun mock server on the deployed stand with the Rust backend.
+- [x] Build the public stand with `VITE_DEMO_STAND=1` and `VITE_DEMO_EMAIL_CODE=123456` so the seeded accounts and verification code remain visible.
 - [x] Deploy to `93.77.179.211`; use `gh` for repository operations and SSH as `dima` with `/Users/dima/Downloads/stars-repo/vopstchage/.ssh/codex_yacloud_ed25519`.
 - [x] Preserve MetroGuard, its files, service, nginx configuration, certificates and port 8000.
 
@@ -46,7 +47,7 @@ the backend cutover and must stay aligned with the delivered behavior.
 - [ ] Add domain, application, adapter and HTTP contract tests for implemented behavior.
 - [x] Preserve an offline CPU path for tests and the demo seed.
 - [x] Run `just backend-check`, relevant contract/frontend checks, Docker smoke and public stand smoke.
-- [ ] Make granular commits on the named branch, merge through `dev`, then deploy `main`.
+- [x] Make granular commits on the named branch; merge through `dev`, then deploy `main`.
 - [x] Back up the old `/opt/kontur-talent` installation and database before cutover.
 - [x] Verify the public frontend against the Rust backend after deployment.
 - [ ] Review comments and user-facing copy for unnecessary implementation language or generated filler.
