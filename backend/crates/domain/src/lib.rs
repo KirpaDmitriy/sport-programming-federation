@@ -1,8 +1,12 @@
 //! Pure domain types and rules for the reverse-hiring platform.
 
+mod llm;
 mod matching;
+mod sources;
 
+pub use llm::*;
 pub use matching::*;
+pub use sources::*;
 
 use serde::{Deserialize, Serialize};
 

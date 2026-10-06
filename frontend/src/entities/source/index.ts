@@ -1,4 +1,5 @@
 export {
+  authorizeGitHub,
   connectSource,
   isDemoReference,
   mySourcesQuery,

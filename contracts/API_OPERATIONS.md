@@ -15,6 +15,7 @@ Generated from [`openapi.json`](openapi.json) by `codegen/generate.ts`. Do not e
 | `importMyProfile` | POST | `/api/v1/me/profile/imports` | 202 | Application |
 | `confirmProfileImport` | POST | `/api/v1/me/profile/imports/{jobId}/confirm` | 200 | Application |
 | `exportMyProfile` | GET | `/api/v1/me/profile/export` | 200 | Application |
+| `authorizeGitHub` | GET | `/api/v1/integrations/github/authorize` | 200 | Application |
 | `getMySources` | GET | `/api/v1/me/sources` | 200 | Application |
 | `connectMySource` | POST | `/api/v1/me/sources/{provider}/connect` | 200 | Application |
 | `syncMySource` | POST | `/api/v1/me/sources/{sourceId}/sync` | 202 | Application |
@@ -83,4 +84,4 @@ Generated from [`openapi.json`](openapi.json) by `codegen/generate.ts`. Do not e
 | `mockEmailCodes` | GET | `/__mock__/email-codes` | 200 | Development only |
 | `mockAdvanceClock` | POST | `/__mock__/clock` | 200 | Development only |
 
-Total documented operations: 78. Development controls are not production application endpoints.
+Total documented operations: 79. Development controls are not production application endpoints.

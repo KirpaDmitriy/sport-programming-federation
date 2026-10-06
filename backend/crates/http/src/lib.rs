@@ -8,7 +8,7 @@ use axum::extract::{Path, Query, Request, State};
 use axum::http::header::{CACHE_CONTROL, COOKIE, ORIGIN, SET_COOKIE, X_CONTENT_TYPE_OPTIONS};
 use axum::http::{HeaderMap, HeaderName, HeaderValue, StatusCode};
 use axum::middleware::{self, Next};
-use axum::response::{IntoResponse, Response};
+use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::{delete, get, post};
 use axum::{Json, Router};
 use chrono::Utc;
@@ -30,6 +30,8 @@ const SESSION_COOKIE: &str = "fsp_session";
 pub struct HttpConfig {
     pub allowed_origins: Vec<String>,
     pub secure_cookie: bool,
+    pub public_web_url: String,
+    pub github_callback_url: String,
 }
 
 #[derive(Clone)]
@@ -58,6 +60,27 @@ pub fn router(config: HttpConfig, service: Arc<PlatformService>) -> Router {
         .route("/api/v1/needs", get(get_needs))
         .route("/api/v1/candidates", get(search_candidates))
         .route("/api/v1/candidates/{candidate_id}", get(get_candidate))
+        .route(
+            "/api/v1/integrations/github/authorize",
+            get(authorize_github),
+        )
+        .route("/api/v1/integrations/github/callback", get(github_callback))
+        .route("/api/v1/me/sources", get(get_sources))
+        .route("/api/v1/me/skills", get(get_skills))
+        .route("/api/v1/me/graph", get(get_my_graph))
+        .route(
+            "/api/v1/candidates/{candidate_id}/graph",
+            get(get_candidate_graph),
+        )
+        .route(
+            "/api/v1/me/sources/{provider}/connect",
+            post(connect_source),
+        )
+        .route("/api/v1/me/sources/{source_id}/sync", post(sync_source))
+        .route("/api/v1/jobs/{job_id}", get(get_job))
+        .route("/api/v1/shortlists", get(get_shortlists))
+        .route("/api/v1/applications", get(get_company_applications))
+        .route("/api/v1/me/invitations", get(get_my_invitations))
         .fallback(not_found)
         .method_not_allowed_fallback(not_found)
         .layer(middleware::from_fn_with_state(state.clone(), transport))
@@ -79,17 +102,18 @@ async fn health() -> Json<Health> {
     })
 }
 
-async fn meta() -> Json<Value> {
+async fn meta(State(state): State<AppState>) -> Json<Value> {
     Json(json!({
         "contractVersion": "0.1.0",
         "mode": "live",
         "serverTime": Utc::now().to_rfc3339(),
         "scenario": "live",
         "capabilities": {
-            "emailVerification": true, "profilePdf": false, "githubFixture": true,
-            "fspFixture": true, "matching": false, "directInvitations": false,
+            "emailVerification": true, "profilePdf": false, "githubFixture": false,
+            "fspFixture": true, "matching": true, "directInvitations": false,
             "vacancyPublication": false, "selfApplication": false, "chat": false,
-            "recurringTasks": false, "realCodeExecution": false, "realLlm": false
+            "recurringTasks": false, "realCodeExecution": false, "realLlm": state.service.llm_configured(),
+            "githubOAuth": state.service.github_configured()
         },
         "assessmentPolicy": {
             "successfulGradeChangeCooldownDays": 90, "failedAttemptCooldownDays": 0,
@@ -296,6 +320,175 @@ async fn get_candidate(
         .map_err(api_error)
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AuthorizationUrlView {
+    authorization_url: String,
+}
+
+async fn authorize_github(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<AuthorizationUrlView>, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    state
+        .service
+        .github_authorization_url(&session, &state.config.github_callback_url)
+        .map(|authorization_url| Json(AuthorizationUrlView { authorization_url }))
+        .map_err(api_error)
+}
+
+#[derive(Deserialize)]
+struct OAuthCallbackQuery {
+    code: String,
+    state: String,
+}
+
+async fn github_callback(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<OAuthCallbackQuery>,
+) -> Result<Redirect, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    state
+        .service
+        .complete_github_authorization(&session, &query.state, &query.code)
+        .await
+        .map_err(api_error)?;
+    Ok(Redirect::to(&format!(
+        "{}/candidate/sources?github=authorized",
+        state.config.public_web_url.trim_end_matches('/')
+    )))
+}
+
+async fn get_sources(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<fsp_application::SourcesView>, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    state.service.sources(&session).map(Json).map_err(api_error)
+}
+
+async fn get_skills(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<fsp_application::SkillsView>, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    state.service.skills(&session).map(Json).map_err(api_error)
+}
+
+async fn get_my_graph(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<fsp_application::GraphView>, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    state
+        .service
+        .my_graph(&session)
+        .await
+        .map(Json)
+        .map_err(api_error)
+}
+
+async fn get_candidate_graph(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(candidate_id): Path<String>,
+) -> Result<Json<fsp_application::GraphView>, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    state
+        .service
+        .candidate_graph(&session, &candidate_id)
+        .await
+        .map(Json)
+        .map_err(api_error)
+}
+
+async fn connect_source(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(provider): Path<String>,
+    Json(input): Json<fsp_application::SourceConnectInput>,
+) -> Result<Json<fsp_application::SourceView>, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    state
+        .service
+        .connect_source(&session, &provider, input)
+        .await
+        .map(Json)
+        .map_err(api_error)
+}
+
+async fn sync_source(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(source_id): Path<String>,
+) -> Result<(StatusCode, Json<fsp_application::JobView>), ApiError> {
+    let session = authenticated(&state, &headers)?;
+    state
+        .service
+        .sync_source(&session, &source_id)
+        .await
+        .map(|job| (StatusCode::ACCEPTED, Json(job)))
+        .map_err(api_error)
+}
+
+async fn get_job(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(job_id): Path<String>,
+) -> Result<Json<fsp_application::JobView>, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    state
+        .service
+        .job(&session, &job_id)
+        .map(Json)
+        .map_err(api_error)
+}
+
+async fn get_shortlists(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    require_role(&session, "employer")?;
+    Ok(Json(json!({ "items": [] })))
+}
+
+async fn get_company_applications(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    require_role(&session, "employer")?;
+    Ok(Json(json!({ "items": [] })))
+}
+
+async fn get_my_invitations(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    require_role(&session, "candidate")?;
+    Ok(Json(json!({ "items": [] })))
+}
+
+fn require_role(session: &SessionView, role: &str) -> Result<(), ApiError> {
+    let allowed = matches!(
+        (session.role, role),
+        (fsp_domain::Role::Candidate, "candidate") | (fsp_domain::Role::Employer, "employer")
+    );
+    if allowed {
+        Ok(())
+    } else {
+        Err(ApiError::new(
+            StatusCode::FORBIDDEN,
+            "role_forbidden",
+            "Действие недоступно для этой роли",
+        ))
+    }
+}
+
 async fn not_found() -> ApiError {
     ApiError::not_found("Маршрут не найден")
 }
@@ -369,7 +562,10 @@ mod tests {
         ConsumeChallenge, PendingChallenge, PlatformRepository, RepositoryError,
         VerificationDelivery,
     };
-    use fsp_domain::{Account, CandidateIndexRecord, CandidateProfile, Company, HiringNeedRecord};
+    use fsp_domain::{
+        Account, CandidateIndexRecord, CandidateProfile, Company, HiringNeedRecord, JobRecord,
+        SourceRecord,
+    };
 
     struct EmptyRepository;
     impl PlatformRepository for EmptyRepository {
@@ -433,6 +629,30 @@ mod tests {
         fn need(&self, _: &str, _: &str) -> Result<Option<HiringNeedRecord>, RepositoryError> {
             Ok(None)
         }
+        fn save_oauth_state(&self, _: &str, _: &str, _: &str) -> Result<(), RepositoryError> {
+            Ok(())
+        }
+        fn consume_oauth_state(&self, _: &str, _: &str, _: &str) -> Result<bool, RepositoryError> {
+            Ok(false)
+        }
+        fn save_github_token(&self, _: &str, _: &str) -> Result<(), RepositoryError> {
+            Ok(())
+        }
+        fn github_token(&self, _: &str) -> Result<Option<String>, RepositoryError> {
+            Ok(None)
+        }
+        fn sources(&self, _: &str) -> Result<Vec<SourceRecord>, RepositoryError> {
+            Ok(Vec::new())
+        }
+        fn save_source(&self, _: &SourceRecord) -> Result<(), RepositoryError> {
+            Ok(())
+        }
+        fn save_job(&self, _: &JobRecord) -> Result<(), RepositoryError> {
+            Ok(())
+        }
+        fn job(&self, _: &str, _: &str) -> Result<Option<JobRecord>, RepositoryError> {
+            Ok(None)
+        }
         fn seed_demo(&self, _: &str) -> Result<(), RepositoryError> {
             Ok(())
         }
@@ -459,6 +679,9 @@ mod tests {
             HttpConfig {
                 allowed_origins: vec!["http://127.0.0.1:5173".into()],
                 secure_cookie: false,
+                public_web_url: "http://127.0.0.1:5173".into(),
+                github_callback_url: "http://127.0.0.1:8080/api/v1/integrations/github/callback"
+                    .into(),
             },
             service,
         )

@@ -1,6 +1,6 @@
 use fsp_domain::{
-    Company, Criticality, EvidencePolicy, EvidenceSource, EvidenceStatus, Grade, MatchScore, Role,
-    Specialization,
+    Company, Criticality, EvidencePolicy, EvidenceSource, EvidenceStatus, Grade, JobRecord,
+    MatchScore, RepositoryMetrics, Role, SourceProvider, SourceRecord, Specialization,
 };
 use serde::{Deserialize, Serialize};
 
@@ -323,4 +323,229 @@ pub fn match_status(score: &MatchScore, requirements: &[MatchRequirementView]) -
     } else {
         "needs_verification"
     }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SourceConnectInput {
+    pub account: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SourcesView {
+    pub items: Vec<SourceView>,
+    pub simulation: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SourceView {
+    pub id: String,
+    pub provider: SourceProvider,
+    pub status: &'static str,
+    pub synthetic: bool,
+    pub active_job_id: Option<String>,
+    pub account_label: Option<String>,
+    pub last_synced_at: Option<String>,
+    pub counts: SourceCountsView,
+    pub repositories: Vec<RepositoryView>,
+    pub active_days: Option<u32>,
+    pub observation_period: Option<ObservationPeriodView>,
+    pub verified_participation: bool,
+    pub competition_ids: Vec<String>,
+    pub notice: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SourceCountsView {
+    pub found: usize,
+    pub processed: usize,
+    pub queued: usize,
+    pub unavailable: usize,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryView {
+    pub id: String,
+    pub name: String,
+    pub url: String,
+    pub technologies: Vec<String>,
+    pub status: &'static str,
+    pub metrics: RepositoryMetrics,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ObservationPeriodView {
+    pub from: String,
+    pub to: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JobView {
+    pub id: String,
+    pub kind: &'static str,
+    pub status: String,
+    pub created_at: String,
+    pub updated_at: String,
+    pub result: Option<JobResultView>,
+    pub error: Option<JobErrorView>,
+    pub poll_after_ms: u32,
+    pub simulation: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum JobResultView {
+    SourceSync { source: SourceView },
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JobErrorView {
+    pub code: String,
+    pub message: String,
+    pub retryable: bool,
+}
+
+pub fn source_view(record: SourceRecord) -> SourceView {
+    let analysis = record.analysis;
+    let repositories = analysis
+        .as_ref()
+        .map(|value| {
+            value
+                .repositories
+                .iter()
+                .map(|repository| RepositoryView {
+                    id: repository.id.clone(),
+                    name: repository.name.clone(),
+                    url: repository.url.clone(),
+                    technologies: repository.technologies.clone(),
+                    status: "processed",
+                    metrics: repository.metrics.clone(),
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let observation_period = analysis.as_ref().and_then(|value| {
+        Some(ObservationPeriodView {
+            from: value.observed_from.clone()?,
+            to: value.observed_to.clone()?,
+        })
+    });
+    SourceView {
+        id: record.id,
+        provider: record.provider,
+        status: if record.account_label.is_some() {
+            "connected"
+        } else {
+            "not_connected"
+        },
+        synthetic: record.synthetic,
+        active_job_id: record.active_job_id,
+        account_label: record.account_label,
+        last_synced_at: record.last_synced_at,
+        counts: SourceCountsView {
+            found: repositories.len(),
+            processed: repositories.len(),
+            queued: 0,
+            unavailable: 0,
+        },
+        repositories,
+        active_days: analysis.as_ref().map(|value| value.active_days),
+        observation_period,
+        verified_participation: record.verified_participation,
+        competition_ids: record.competition_ids,
+        notice: if record.synthetic {
+            "Демонстрационные данные ФСП".into()
+        } else if analysis.is_some() {
+            "Метрики рассчитаны по данным GitHub".into()
+        } else {
+            String::new()
+        },
+    }
+}
+
+pub fn job_view(record: JobRecord, source: Option<SourceView>) -> JobView {
+    JobView {
+        id: record.id,
+        kind: "source_sync",
+        status: record.status,
+        created_at: record.created_at,
+        updated_at: record.updated_at,
+        result: source.map(|source| JobResultView::SourceSync { source }),
+        error: record.error_code.map(|code| JobErrorView {
+            code,
+            message: record.error_message.unwrap_or_default(),
+            retryable: true,
+        }),
+        poll_after_ms: 0,
+        simulation: false,
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SkillsView {
+    pub items: Vec<SelfSkillView>,
+    pub simulation: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SelfSkillView {
+    pub skill_id: String,
+    pub label: String,
+    pub status: EvidenceStatus,
+    pub evidence_grade: Option<Grade>,
+    pub evidence_sources: Vec<EvidenceSource>,
+    pub summary: String,
+    pub evidence_count: usize,
+    pub confirmed_at: Option<String>,
+    pub evidence: Vec<EvidenceView>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EvidenceView {
+    pub id: String,
+    pub source: EvidenceSource,
+    pub title: String,
+    pub url: Option<String>,
+    pub reference: Option<String>,
+    pub observed_at: String,
+    pub scope: &'static str,
+    pub synthetic: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GraphView {
+    pub audience: &'static str,
+    pub nodes: Vec<GraphNodeView>,
+    pub edges: Vec<GraphEdgeView>,
+    pub simulation: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GraphNodeView {
+    pub id: String,
+    pub kind: String,
+    pub label: String,
+    pub skill_id: Option<String>,
+    pub status: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GraphEdgeView {
+    pub id: String,
+    pub from: String,
+    pub to: String,
+    pub relation: String,
 }

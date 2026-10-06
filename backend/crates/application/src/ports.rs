@@ -1,5 +1,8 @@
+use async_trait::async_trait;
 use fsp_domain::{
-    Account, CandidateIndexRecord, CandidateProfile, Company, HiringNeedRecord, Role,
+    Account, CandidateIndexRecord, CandidateProfile, Company, ExtractedGraph, FspParticipation,
+    GitHubAnalysis, GraphExtractionRequest, HiringNeedRecord, JobRecord,
+    RepositoryCompetitionMatch, RepositoryMatchRequest, Role, SourceRecord,
 };
 
 use crate::PendingChallenge;
@@ -56,7 +59,62 @@ pub trait PlatformRepository: Send + Sync {
         company_id: &str,
         need_id: &str,
     ) -> Result<Option<HiringNeedRecord>, RepositoryError>;
+    fn save_oauth_state(
+        &self,
+        candidate_id: &str,
+        state: &str,
+        expires_at: &str,
+    ) -> Result<(), RepositoryError>;
+    fn consume_oauth_state(
+        &self,
+        candidate_id: &str,
+        state: &str,
+        now: &str,
+    ) -> Result<bool, RepositoryError>;
+    fn save_github_token(&self, candidate_id: &str, token: &str) -> Result<(), RepositoryError>;
+    fn github_token(&self, candidate_id: &str) -> Result<Option<String>, RepositoryError>;
+    fn sources(&self, candidate_id: &str) -> Result<Vec<SourceRecord>, RepositoryError>;
+    fn save_source(&self, source: &SourceRecord) -> Result<(), RepositoryError>;
+    fn save_job(&self, job: &JobRecord) -> Result<(), RepositoryError>;
+    fn job(&self, owner_id: &str, job_id: &str) -> Result<Option<JobRecord>, RepositoryError>;
     fn seed_demo(&self, now: &str) -> Result<(), RepositoryError>;
+}
+
+#[derive(Debug)]
+pub struct IntegrationError {
+    pub code: &'static str,
+    pub message: String,
+}
+
+#[async_trait]
+pub trait GitHubGateway: Send + Sync {
+    fn authorization_url(
+        &self,
+        state: &str,
+        redirect_uri: &str,
+    ) -> Result<String, IntegrationError>;
+    async fn exchange_code(&self, code: &str) -> Result<String, IntegrationError>;
+    async fn analyze(
+        &self,
+        username: &str,
+        token: &str,
+    ) -> Result<GitHubAnalysis, IntegrationError>;
+}
+
+#[async_trait]
+pub trait LlmGateway: Send + Sync {
+    async fn extract_graph(
+        &self,
+        request: &GraphExtractionRequest,
+    ) -> Result<ExtractedGraph, IntegrationError>;
+    async fn match_repository(
+        &self,
+        request: &RepositoryMatchRequest,
+    ) -> Result<RepositoryCompetitionMatch, IntegrationError>;
+}
+
+pub trait FspGateway: Send + Sync {
+    fn participation(&self, account: &str) -> Result<FspParticipation, IntegrationError>;
 }
 
 pub trait VerificationDelivery: Send + Sync {

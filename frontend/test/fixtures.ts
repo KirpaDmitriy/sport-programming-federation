@@ -117,6 +117,7 @@ export const meta: S['Meta'] = {
     emailVerification: true,
     profilePdf: true,
     githubFixture: true,
+    githubOAuth: false,
     fspFixture: true,
     matching: true,
     directInvitations: true,

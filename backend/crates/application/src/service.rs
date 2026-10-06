@@ -11,10 +11,12 @@ use uuid::Uuid;
 use crate::{
     AnonymousCandidateView, CandidateMatchView, CandidatePageView, CandidateSearch, CategoryView,
     CompanyPatch, CompanyView, ConsumeChallenge, EmailChallengeInput, EmailChallengeView,
-    EmailVerifyInput, EvidencePolicyView, FreshnessView, GradeEligibilityView,
-    MatchRequirementView, NeedView, NeedsView, OnboardingView, PendingChallenge,
+    EmailVerifyInput, EvidencePolicyView, EvidenceView, FreshnessView, FspGateway, GitHubGateway,
+    GradeEligibilityView, GraphEdgeView, GraphNodeView, GraphView, IntegrationError, JobView,
+    LlmGateway, MatchRequirementView, NeedView, NeedsView, OnboardingView, PendingChallenge,
     PlatformRepository, ProfilePatch, ProfileView, RepositoryError, RequirementView, SalaryView,
-    SessionView, SkillView, VerificationDelivery, match_status,
+    SelfSkillView, SessionView, SkillView, SkillsView, SourceConnectInput, SourceView, SourcesView,
+    VerificationDelivery, job_view, match_status, source_view,
 };
 
 #[derive(Debug)]
@@ -41,6 +43,9 @@ impl ApplicationError {
 pub struct PlatformService {
     repository: Arc<dyn PlatformRepository>,
     delivery: Arc<dyn VerificationDelivery>,
+    github: Option<Arc<dyn GitHubGateway>>,
+    llm: Option<Arc<dyn LlmGateway>>,
+    fsp: Option<Arc<dyn FspGateway>>,
 }
 
 impl PlatformService {
@@ -51,13 +56,44 @@ impl PlatformService {
         Self {
             repository,
             delivery,
+            github: None,
+            llm: None,
+            fsp: None,
         }
+    }
+
+    #[must_use]
+    pub fn with_github(mut self, github: Arc<dyn GitHubGateway>) -> Self {
+        self.github = Some(github);
+        self
+    }
+
+    #[must_use]
+    pub fn with_llm(mut self, llm: Arc<dyn LlmGateway>) -> Self {
+        self.llm = Some(llm);
+        self
+    }
+
+    #[must_use]
+    pub fn with_fsp(mut self, fsp: Arc<dyn FspGateway>) -> Self {
+        self.fsp = Some(fsp);
+        self
     }
 
     pub fn initialize(&self) -> Result<(), ApplicationError> {
         self.repository
             .seed_demo(&now())
             .map_err(ApplicationError::storage)
+    }
+
+    #[must_use]
+    pub fn github_configured(&self) -> bool {
+        self.github.is_some()
+    }
+
+    #[must_use]
+    pub fn llm_configured(&self) -> bool {
+        self.llm.is_some()
     }
 
     pub fn request_challenge(
@@ -439,6 +475,424 @@ impl PlatformService {
         Ok(anonymous_candidate(candidate, need.as_ref()))
     }
 
+    pub fn github_authorization_url(
+        &self,
+        session: &SessionView,
+        redirect_uri: &str,
+    ) -> Result<String, ApplicationError> {
+        let candidate_id = candidate_id(session)?;
+        let github = self.github()?;
+        let state = Uuid::new_v4().simple().to_string();
+        self.repository
+            .save_oauth_state(
+                candidate_id,
+                &state,
+                &(Utc::now() + Duration::minutes(10)).to_rfc3339(),
+            )
+            .map_err(ApplicationError::storage)?;
+        github
+            .authorization_url(&state, redirect_uri)
+            .map_err(integration_error)
+    }
+
+    pub async fn complete_github_authorization(
+        &self,
+        session: &SessionView,
+        state: &str,
+        code: &str,
+    ) -> Result<(), ApplicationError> {
+        let candidate_id = candidate_id(session)?;
+        let valid = self
+            .repository
+            .consume_oauth_state(candidate_id, state, &now())
+            .map_err(ApplicationError::storage)?;
+        if !valid {
+            return Err(ApplicationError::new(
+                400,
+                "oauth_state_invalid",
+                "Ссылка авторизации устарела или уже использована",
+            ));
+        }
+        let token = self
+            .github()?
+            .exchange_code(code)
+            .await
+            .map_err(integration_error)?;
+        self.repository
+            .save_github_token(candidate_id, &token)
+            .map_err(ApplicationError::storage)
+    }
+
+    pub fn sources(&self, session: &SessionView) -> Result<SourcesView, ApplicationError> {
+        let candidate_id = candidate_id(session)?;
+        let mut records = self
+            .repository
+            .sources(candidate_id)
+            .map_err(ApplicationError::storage)?;
+        for provider in [
+            fsp_domain::SourceProvider::Github,
+            fsp_domain::SourceProvider::Fsp,
+        ] {
+            if !records.iter().any(|record| record.provider == provider) {
+                records.push(fsp_domain::SourceRecord {
+                    id: format!("source-{}-{candidate_id}", source_provider(provider)),
+                    candidate_id: candidate_id.into(),
+                    provider,
+                    synthetic: provider == fsp_domain::SourceProvider::Fsp,
+                    active_job_id: None,
+                    account_label: None,
+                    last_synced_at: None,
+                    analysis: None,
+                    verified_participation: false,
+                    competition_ids: Vec::new(),
+                });
+            }
+        }
+        records.sort_by_key(|record| source_provider(record.provider));
+        Ok(SourcesView {
+            simulation: records.iter().any(|record| record.synthetic),
+            items: records.into_iter().map(source_view).collect(),
+        })
+    }
+
+    pub fn skills(&self, session: &SessionView) -> Result<SkillsView, ApplicationError> {
+        let candidate_id = candidate_id(session)?;
+        let record = self.candidate_index(candidate_id)?;
+        let observed_at = record.profile.updated_at.clone();
+        let items = record
+            .skills
+            .into_iter()
+            .map(|skill| {
+                let evidence = skill
+                    .sources
+                    .iter()
+                    .enumerate()
+                    .map(|(index, source)| EvidenceView {
+                        id: format!("evidence-{}-{index}", skill.skill_id),
+                        source: *source,
+                        title: format!("Свидетельство: {}", skill_label(&skill.skill_id)),
+                        url: None,
+                        reference: Some(format!("{}:{}", source_name(*source), skill.skill_id)),
+                        observed_at: observed_at.clone(),
+                        scope: "individual",
+                        synthetic: *source == fsp_domain::EvidenceSource::Fsp,
+                    })
+                    .collect::<Vec<_>>();
+                SelfSkillView {
+                    skill_id: skill.skill_id.clone(),
+                    label: skill_label(&skill.skill_id).into(),
+                    status: skill.status,
+                    evidence_grade: skill.evidence_grade,
+                    evidence_sources: skill.sources,
+                    summary: skill_summary(skill.status).into(),
+                    evidence_count: evidence.len(),
+                    confirmed_at: (skill.status == EvidenceStatus::Confirmed)
+                        .then(|| observed_at.clone()),
+                    evidence,
+                }
+            })
+            .collect();
+        Ok(SkillsView {
+            items,
+            simulation: true,
+        })
+    }
+
+    pub async fn my_graph(&self, session: &SessionView) -> Result<GraphView, ApplicationError> {
+        let candidate_id = candidate_id(session)?;
+        let record = self.candidate_index(candidate_id)?;
+        self.graph_from_skills("self", &record.profile.team_role, &record.skills)
+            .await
+    }
+
+    pub async fn candidate_graph(
+        &self,
+        session: &SessionView,
+        requested_candidate_id: &str,
+    ) -> Result<GraphView, ApplicationError> {
+        employer_company_id(session)?;
+        let record = self.candidate_index(requested_candidate_id)?;
+        if !record.profile.visible_to_employers() {
+            return Err(ApplicationError::new(
+                404,
+                "not_found",
+                "Кандидат не найден",
+            ));
+        }
+        self.graph_from_skills("employer", &record.profile.team_role, &record.skills)
+            .await
+    }
+
+    async fn graph_from_skills(
+        &self,
+        audience: &'static str,
+        subject: &str,
+        skills: &[fsp_domain::SkillEvidence],
+    ) -> Result<GraphView, ApplicationError> {
+        if let Some(llm) = &self.llm {
+            let extracted = llm
+                .extract_graph(&fsp_domain::GraphExtractionRequest {
+                    schema_version: "competence-graph-v1",
+                    subject: subject.into(),
+                    evidence: skills
+                        .iter()
+                        .map(|skill| fsp_domain::LlmEvidence {
+                            reference: format!("skill:{}", skill.skill_id),
+                            text: format!(
+                                "{}; status={:?}; grade={:?}; sources={:?}",
+                                skill.skill_id, skill.status, skill.evidence_grade, skill.sources
+                            ),
+                        })
+                        .collect(),
+                })
+                .await
+                .map_err(integration_error)?;
+            return graph_from_extracted(audience, extracted);
+        }
+        let root = GraphNodeView {
+            id: "role-main".into(),
+            kind: "role".into(),
+            label: if subject.trim().is_empty() {
+                "Профиль компетенций".into()
+            } else {
+                subject.into()
+            },
+            skill_id: None,
+            status: None,
+        };
+        let mut nodes = vec![root];
+        let mut edges = Vec::new();
+        for skill in skills {
+            let id = format!("skill-{}", skill.skill_id);
+            nodes.push(GraphNodeView {
+                id: id.clone(),
+                kind: "skill".into(),
+                label: skill_label(&skill.skill_id).into(),
+                skill_id: Some(skill.skill_id.clone()),
+                status: Some(evidence_status_name(skill.status).into()),
+            });
+            edges.push(GraphEdgeView {
+                id: format!("edge-role-{}", skill.skill_id),
+                from: "role-main".into(),
+                to: id,
+                relation: "uses".into(),
+            });
+        }
+        Ok(GraphView {
+            audience,
+            nodes,
+            edges,
+            simulation: true,
+        })
+    }
+
+    fn candidate_index(&self, id: &str) -> Result<CandidateIndexRecord, ApplicationError> {
+        self.repository
+            .candidates()
+            .map_err(ApplicationError::storage)?
+            .into_iter()
+            .find(|record| record.profile.id == id)
+            .ok_or_else(|| ApplicationError::new(404, "not_found", "Кандидат не найден"))
+    }
+
+    pub async fn connect_source(
+        &self,
+        session: &SessionView,
+        provider: &str,
+        input: SourceConnectInput,
+    ) -> Result<SourceView, ApplicationError> {
+        let candidate_id = candidate_id(session)?;
+        let account = input.account.trim();
+        if account.is_empty() || account.len() > 100 {
+            return Err(validation("Проверьте идентификатор аккаунта"));
+        }
+        let record = match provider {
+            "github" => {
+                let token = self
+                    .repository
+                    .github_token(candidate_id)
+                    .map_err(ApplicationError::storage)?
+                    .ok_or_else(|| {
+                        ApplicationError::new(
+                            409,
+                            "github_authorization_required",
+                            "Сначала авторизуйте доступ к GitHub",
+                        )
+                    })?;
+                let analysis = self
+                    .github()?
+                    .analyze(account, &token)
+                    .await
+                    .map_err(integration_error)?;
+                fsp_domain::SourceRecord {
+                    id: format!("source-github-{candidate_id}"),
+                    candidate_id: candidate_id.into(),
+                    provider: fsp_domain::SourceProvider::Github,
+                    synthetic: false,
+                    active_job_id: None,
+                    account_label: Some(analysis.username.clone()),
+                    last_synced_at: Some(now()),
+                    analysis: Some(analysis),
+                    verified_participation: false,
+                    competition_ids: Vec::new(),
+                }
+            }
+            "fsp" => {
+                let participation = self
+                    .fsp
+                    .as_ref()
+                    .ok_or_else(|| {
+                        ApplicationError::new(503, "fsp_not_configured", "Источник ФСП недоступен")
+                    })?
+                    .participation(account)
+                    .map_err(integration_error)?;
+                fsp_domain::SourceRecord {
+                    id: format!("source-fsp-{candidate_id}"),
+                    candidate_id: candidate_id.into(),
+                    provider: fsp_domain::SourceProvider::Fsp,
+                    synthetic: true,
+                    active_job_id: None,
+                    account_label: Some(participation.account_label),
+                    last_synced_at: Some(now()),
+                    analysis: None,
+                    verified_participation: participation.verified,
+                    competition_ids: participation.competition_ids,
+                }
+            }
+            _ => {
+                return Err(ApplicationError::new(
+                    404,
+                    "not_found",
+                    "Источник не найден",
+                ));
+            }
+        };
+        self.repository
+            .save_source(&record)
+            .map_err(ApplicationError::storage)?;
+        Ok(source_view(record))
+    }
+
+    pub async fn sync_source(
+        &self,
+        session: &SessionView,
+        source_id: &str,
+    ) -> Result<JobView, ApplicationError> {
+        let candidate_id = candidate_id(session)?;
+        let source = self
+            .repository
+            .sources(candidate_id)
+            .map_err(ApplicationError::storage)?
+            .into_iter()
+            .find(|source| source.id == source_id)
+            .ok_or_else(|| ApplicationError::new(404, "not_found", "Источник не найден"))?;
+        let created_at = now();
+        let mut job = fsp_domain::JobRecord {
+            id: format!("job-{}", Uuid::new_v4().simple()),
+            owner_id: candidate_id.into(),
+            status: "running".into(),
+            created_at: created_at.clone(),
+            updated_at: created_at,
+            result_source_id: None,
+            error_code: None,
+            error_message: None,
+        };
+        let result = match source.provider {
+            fsp_domain::SourceProvider::Github => {
+                let token = self
+                    .repository
+                    .github_token(candidate_id)
+                    .map_err(ApplicationError::storage)?
+                    .ok_or_else(|| {
+                        ApplicationError::new(
+                            409,
+                            "github_authorization_required",
+                            "Авторизуйте GitHub повторно",
+                        )
+                    })?;
+                let username = source.account_label.as_deref().ok_or_else(|| {
+                    ApplicationError::new(
+                        409,
+                        "source_not_connected",
+                        "Сначала подключите источник",
+                    )
+                })?;
+                self.github()?
+                    .analyze(username, &token)
+                    .await
+                    .map(|analysis| fsp_domain::SourceRecord {
+                        analysis: Some(analysis),
+                        last_synced_at: Some(now()),
+                        active_job_id: None,
+                        ..source
+                    })
+            }
+            fsp_domain::SourceProvider::Fsp => Ok(fsp_domain::SourceRecord {
+                last_synced_at: Some(now()),
+                active_job_id: None,
+                ..source
+            }),
+        };
+        match result {
+            Ok(updated) => {
+                self.repository
+                    .save_source(&updated)
+                    .map_err(ApplicationError::storage)?;
+                job.status = "succeeded".into();
+                job.updated_at = now();
+                job.result_source_id = Some(updated.id.clone());
+                self.repository
+                    .save_job(&job)
+                    .map_err(ApplicationError::storage)?;
+                Ok(job_view(job, Some(source_view(updated))))
+            }
+            Err(error) => {
+                job.status = "failed".into();
+                job.updated_at = now();
+                job.error_code = Some(error.code.into());
+                job.error_message = Some(error.message);
+                self.repository
+                    .save_job(&job)
+                    .map_err(ApplicationError::storage)?;
+                Ok(job_view(job, None))
+            }
+        }
+    }
+
+    pub fn job(&self, session: &SessionView, job_id: &str) -> Result<JobView, ApplicationError> {
+        let owner_id = session
+            .candidate_id
+            .as_deref()
+            .or(session.company_id.as_deref())
+            .ok_or_else(|| ApplicationError::new(403, "role_forbidden", "Недоступная операция"))?;
+        let record = self
+            .repository
+            .job(owner_id, job_id)
+            .map_err(ApplicationError::storage)?
+            .ok_or_else(|| ApplicationError::new(404, "not_found", "Задача не найдена"))?;
+        let source = if let Some(source_id) = record.result_source_id.as_ref() {
+            self.repository
+                .sources(owner_id)
+                .map_err(ApplicationError::storage)?
+                .into_iter()
+                .find(|source| &source.id == source_id)
+                .map(source_view)
+        } else {
+            None
+        };
+        Ok(job_view(record, source))
+    }
+
+    fn github(&self) -> Result<&Arc<dyn GitHubGateway>, ApplicationError> {
+        self.github.as_ref().ok_or_else(|| {
+            ApplicationError::new(
+                503,
+                "github_not_configured",
+                "Подключение GitHub временно недоступно",
+            )
+        })
+    }
+
     fn register_account(&self, email: String, role: Role) -> Result<Account, ApplicationError> {
         let suffix = Uuid::new_v4().simple().to_string();
         let account = Account {
@@ -523,6 +977,89 @@ impl PlatformService {
 fn employer_company_id(session: &SessionView) -> Result<&str, ApplicationError> {
     session.company_id.as_deref().ok_or_else(|| {
         ApplicationError::new(403, "role_forbidden", "Действие доступно работодателю")
+    })
+}
+
+fn candidate_id(session: &SessionView) -> Result<&str, ApplicationError> {
+    session
+        .candidate_id
+        .as_deref()
+        .ok_or_else(|| ApplicationError::new(403, "role_forbidden", "Действие доступно кандидату"))
+}
+
+fn integration_error(error: IntegrationError) -> ApplicationError {
+    ApplicationError::new(502, error.code, error.message)
+}
+
+fn source_provider(provider: fsp_domain::SourceProvider) -> &'static str {
+    match provider {
+        fsp_domain::SourceProvider::Github => "github",
+        fsp_domain::SourceProvider::Fsp => "fsp",
+    }
+}
+
+fn source_name(source: fsp_domain::EvidenceSource) -> &'static str {
+    match source {
+        fsp_domain::EvidenceSource::Assessment => "assessment",
+        fsp_domain::EvidenceSource::Github => "github",
+        fsp_domain::EvidenceSource::Fsp => "fsp",
+    }
+}
+
+fn evidence_status_name(status: EvidenceStatus) -> &'static str {
+    match status {
+        EvidenceStatus::Confirmed => "confirmed",
+        EvidenceStatus::Evidence => "evidence",
+        EvidenceStatus::Observed => "observed",
+        EvidenceStatus::Insufficient => "insufficient",
+    }
+}
+
+fn graph_from_extracted(
+    audience: &'static str,
+    graph: fsp_domain::ExtractedGraph,
+) -> Result<GraphView, ApplicationError> {
+    let valid_nodes = graph.nodes.iter().all(|node| {
+        ["role", "skill", "evidence"].contains(&node.kind.as_str())
+            && node.status.as_deref().is_none_or(|status| {
+                ["confirmed", "evidence", "observed", "insufficient"].contains(&status)
+            })
+    });
+    let valid_edges = graph
+        .edges
+        .iter()
+        .all(|edge| ["requires", "supports", "uses"].contains(&edge.relation.as_str()));
+    if !valid_nodes || !valid_edges {
+        return Err(ApplicationError::new(
+            502,
+            "bifrost_invalid_response",
+            "Модель вернула граф неподдерживаемого формата",
+        ));
+    }
+    Ok(GraphView {
+        audience,
+        nodes: graph
+            .nodes
+            .into_iter()
+            .map(|node| GraphNodeView {
+                id: node.id,
+                kind: node.kind,
+                label: node.label,
+                skill_id: node.skill_id,
+                status: node.status,
+            })
+            .collect(),
+        edges: graph
+            .edges
+            .into_iter()
+            .map(|edge| GraphEdgeView {
+                id: edge.id,
+                from: edge.from,
+                to: edge.to,
+                relation: edge.relation,
+            })
+            .collect(),
+        simulation: false,
     })
 }
 

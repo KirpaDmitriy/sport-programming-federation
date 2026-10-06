@@ -1566,6 +1566,143 @@
         }
       }
     },
+    "/api/v1/integrations/github/authorize": {
+      "get": {
+        "operationId": "authorizeGitHub",
+        "summary": "authorizeGitHub",
+        "tags": [
+          "Candidate"
+        ],
+        "description": "Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.",
+        "security": [
+          {
+            "mockSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GitHubAuthorization"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request or schema validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or expired mock session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role, consent, or origin restriction",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown resource or resource outside this actor/company",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "State, idempotency, or cooldown conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request body exceeds limit",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Unsupported media type",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Valid shape but invalid domain values",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many challenge attempts",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Response conformance or unexpected server failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Deterministic upstream error scenario",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/me/sources": {
       "get": {
         "operationId": "getMySources",
@@ -11813,6 +11950,9 @@
               "githubFixture": {
                 "type": "boolean"
               },
+              "githubOAuth": {
+                "type": "boolean"
+              },
               "fspFixture": {
                 "type": "boolean"
               },
@@ -11845,6 +11985,7 @@
               "emailVerification",
               "profilePdf",
               "githubFixture",
+              "githubOAuth",
               "fspFixture",
               "matching",
               "directInvitations",
@@ -12984,6 +13125,20 @@
         ],
         "additionalProperties": false
       },
+      "GitHubAuthorization": {
+        "type": "object",
+        "properties": {
+          "authorizationUrl": {
+            "type": "string",
+            "format": "uri",
+            "maxLength": 2048
+          }
+        },
+        "required": [
+          "authorizationUrl"
+        ],
+        "additionalProperties": false
+      },
       "Repository": {
         "type": "object",
         "properties": {
@@ -13021,6 +13176,46 @@
               "queued",
               "unavailable"
             ]
+          },
+          "metrics": {
+            "type": "object",
+            "properties": {
+              "stars": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "forks": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "openIssues": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "sizeKib": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "pushedAt": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "stars",
+              "forks",
+              "openIssues",
+              "sizeKib",
+              "pushedAt"
+            ],
+            "additionalProperties": false
           }
         },
         "required": [
@@ -13028,7 +13223,8 @@
           "name",
           "url",
           "technologies",
-          "status"
+          "status",
+          "metrics"
         ],
         "additionalProperties": false
       },

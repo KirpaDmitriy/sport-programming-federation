@@ -4,8 +4,8 @@ use std::sync::Mutex;
 use fsp_application::{ConsumeChallenge, PendingChallenge, PlatformRepository, RepositoryError};
 use fsp_domain::{
     Account, CandidateIndexRecord, CandidateProfile, Company, Consents, Criticality,
-    EvidencePolicy, EvidenceSource, EvidenceStatus, Grade, HiringNeed, HiringNeedRecord,
-    Requirement, Role, SkillEvidence, Specialization,
+    EvidencePolicy, EvidenceSource, EvidenceStatus, Grade, HiringNeed, HiringNeedRecord, JobRecord,
+    Requirement, Role, SkillEvidence, SourceProvider, SourceRecord, Specialization,
 };
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::de::DeserializeOwned;
@@ -233,6 +233,112 @@ impl PlatformRepository for SqliteRepository {
             .map_err(storage)
     }
 
+    fn save_oauth_state(
+        &self,
+        candidate_id: &str,
+        state: &str,
+        expires_at: &str,
+    ) -> Result<(), RepositoryError> {
+        self.connection()?
+            .execute(
+                "INSERT INTO oauth_states(state,candidate_id,expires_at,used) VALUES(?,?,?,0)",
+                params![state, candidate_id, expires_at],
+            )
+            .map_err(storage)?;
+        Ok(())
+    }
+
+    fn consume_oauth_state(
+        &self,
+        candidate_id: &str,
+        state: &str,
+        now: &str,
+    ) -> Result<bool, RepositoryError> {
+        let connection = self.connection()?;
+        let changed = connection
+            .execute(
+                "UPDATE oauth_states SET used=1 WHERE state=? AND candidate_id=? AND expires_at>? AND used=0",
+                params![state, candidate_id, now],
+            )
+            .map_err(storage)?;
+        Ok(changed == 1)
+    }
+
+    fn save_github_token(&self, candidate_id: &str, token: &str) -> Result<(), RepositoryError> {
+        self.connection()?
+            .execute(
+                "INSERT INTO github_credentials(candidate_id,access_token) VALUES(?,?) ON CONFLICT(candidate_id) DO UPDATE SET access_token=excluded.access_token",
+                params![candidate_id, token],
+            )
+            .map_err(storage)?;
+        Ok(())
+    }
+
+    fn github_token(&self, candidate_id: &str) -> Result<Option<String>, RepositoryError> {
+        self.connection()?
+            .query_row(
+                "SELECT access_token FROM github_credentials WHERE candidate_id=?",
+                [candidate_id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(storage)
+    }
+
+    fn sources(&self, candidate_id: &str) -> Result<Vec<SourceRecord>, RepositoryError> {
+        let connection = self.connection()?;
+        let mut statement = connection
+            .prepare("SELECT id,candidate_id,provider,synthetic,active_job_id,account_label,last_synced_at,analysis_json,verified_participation,competition_ids_json FROM sources WHERE candidate_id=?")
+            .map_err(storage)?;
+        statement
+            .query_map([candidate_id], source_record)
+            .map_err(storage)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(storage)
+    }
+
+    fn save_source(&self, source: &SourceRecord) -> Result<(), RepositoryError> {
+        self.connection()?
+            .execute(
+                "INSERT INTO sources(id,candidate_id,provider,synthetic,active_job_id,account_label,last_synced_at,analysis_json,verified_participation,competition_ids_json) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET active_job_id=excluded.active_job_id,account_label=excluded.account_label,last_synced_at=excluded.last_synced_at,analysis_json=excluded.analysis_json,verified_participation=excluded.verified_participation,competition_ids_json=excluded.competition_ids_json",
+                params![
+                    source.id,
+                    source.candidate_id,
+                    source_provider(source.provider),
+                    source.synthetic,
+                    source.active_job_id,
+                    source.account_label,
+                    source.last_synced_at,
+                    source.analysis.as_ref().map(serde_json::to_string).transpose().map_err(json_storage)?,
+                    source.verified_participation,
+                    serde_json::to_string(&source.competition_ids).map_err(json_storage)?
+                ],
+            )
+            .map_err(storage)?;
+        Ok(())
+    }
+
+    fn save_job(&self, job: &JobRecord) -> Result<(), RepositoryError> {
+        self.connection()?
+            .execute(
+                "INSERT INTO jobs(id,owner_id,status,created_at,updated_at,result_source_id,error_code,error_message) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET status=excluded.status,updated_at=excluded.updated_at,result_source_id=excluded.result_source_id,error_code=excluded.error_code,error_message=excluded.error_message",
+                params![job.id,job.owner_id,job.status,job.created_at,job.updated_at,job.result_source_id,job.error_code,job.error_message],
+            )
+            .map_err(storage)?;
+        Ok(())
+    }
+
+    fn job(&self, owner_id: &str, job_id: &str) -> Result<Option<JobRecord>, RepositoryError> {
+        self.connection()?
+            .query_row(
+                "SELECT id,owner_id,status,created_at,updated_at,result_source_id,error_code,error_message FROM jobs WHERE owner_id=? AND id=?",
+                params![owner_id, job_id],
+                |row| Ok(JobRecord { id: row.get(0)?, owner_id: row.get(1)?, status: row.get(2)?, created_at: row.get(3)?, updated_at: row.get(4)?, result_source_id: row.get(5)?, error_code: row.get(6)?, error_message: row.get(7)? }),
+            )
+            .optional()
+            .map_err(storage)
+    }
+
     fn seed_demo(&self, now: &str) -> Result<(), RepositoryError> {
         let connection = self.connection()?;
         if connection
@@ -312,6 +418,23 @@ fn seed(connection: &Connection, now: &str) -> Result<(), RepositoryError> {
             )
             .map_err(storage)?;
     }
+    connection
+        .execute(
+            "INSERT INTO sources(id,candidate_id,provider,synthetic,active_job_id,account_label,last_synced_at,analysis_json,verified_participation,competition_ids_json) VALUES(?,?,?,?,?,?,?,?,?,?)",
+            params![
+                "source-fsp-candidate-024",
+                "candidate-024",
+                "fsp",
+                true,
+                Option::<String>::None,
+                "fsp-demo-024",
+                now,
+                Option::<String>::None,
+                true,
+                "[\"competition-demo-api\"]"
+            ],
+        )
+        .map_err(storage)?;
     connection.execute("INSERT INTO companies(id,display_name,business_area,description,contact_email,website) VALUES(?,?,?,?,?,?)", params!["company-sever","Север Тех","Разработка ИТ-продуктов","Команда продуктовой разработки надёжных сервисов.","hr@sever-tech.example","https://sever-tech.example"]).map_err(storage)?;
     let need = demo_need();
     connection
@@ -630,6 +753,24 @@ fn need_record(row: &rusqlite::Row<'_>) -> rusqlite::Result<HiringNeedRecord> {
     })
 }
 
+fn source_record(row: &rusqlite::Row<'_>) -> rusqlite::Result<SourceRecord> {
+    Ok(SourceRecord {
+        id: row.get(0)?,
+        candidate_id: row.get(1)?,
+        provider: parse_source_provider(&row.get::<_, String>(2)?),
+        synthetic: row.get(3)?,
+        active_job_id: row.get(4)?,
+        account_label: row.get(5)?,
+        last_synced_at: row.get(6)?,
+        analysis: row
+            .get::<_, Option<String>>(7)?
+            .map(parse_json)
+            .transpose()?,
+        verified_participation: row.get(8)?,
+        competition_ids: parse_json(row.get::<_, String>(9)?)?,
+    })
+}
+
 fn parse_json<T: DeserializeOwned>(value: String) -> rusqlite::Result<T> {
     serde_json::from_str(&value).map_err(|error| {
         rusqlite::Error::FromSqlConversionFailure(
@@ -725,6 +866,19 @@ fn parse_specialization(value: &str) -> Specialization {
         _ => Specialization::Backend,
     }
 }
+fn source_provider(value: SourceProvider) -> &'static str {
+    match value {
+        SourceProvider::Github => "github",
+        SourceProvider::Fsp => "fsp",
+    }
+}
+fn parse_source_provider(value: &str) -> SourceProvider {
+    if value == "fsp" {
+        SourceProvider::Fsp
+    } else {
+        SourceProvider::Github
+    }
+}
 fn storage(error: rusqlite::Error) -> RepositoryError {
     RepositoryError::Storage(error.to_string())
 }
@@ -750,6 +904,10 @@ CREATE TABLE IF NOT EXISTS challenges(id TEXT PRIMARY KEY,account_id TEXT NOT NU
 CREATE TABLE IF NOT EXISTS sessions(token_hash TEXT PRIMARY KEY,account_id TEXT NOT NULL REFERENCES accounts(id),expires_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS candidate_index(candidate_id TEXT PRIMARY KEY REFERENCES candidates(id),work_modes_json TEXT NOT NULL,available_for_offers INTEGER NOT NULL,skills_json TEXT NOT NULL,source_kinds_json TEXT NOT NULL,fsp_verified INTEGER NOT NULL,last_signal_at TEXT);
 CREATE TABLE IF NOT EXISTS needs(id TEXT PRIMARY KEY,company_id TEXT NOT NULL REFERENCES companies(id),title TEXT NOT NULL,specialization TEXT NOT NULL,grade TEXT NOT NULL,work_mode TEXT NOT NULL,salary_from INTEGER NOT NULL,salary_to INTEGER NOT NULL,description TEXT NOT NULL,requirements_json TEXT NOT NULL,published INTEGER NOT NULL,published_at TEXT,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,revision INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS oauth_states(state TEXT PRIMARY KEY,candidate_id TEXT NOT NULL,expires_at TEXT NOT NULL,used INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS github_credentials(candidate_id TEXT PRIMARY KEY,access_token TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS sources(id TEXT PRIMARY KEY,candidate_id TEXT NOT NULL,provider TEXT NOT NULL,synthetic INTEGER NOT NULL,active_job_id TEXT,account_label TEXT,last_synced_at TEXT,analysis_json TEXT,verified_participation INTEGER NOT NULL,competition_ids_json TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS jobs(id TEXT PRIMARY KEY,owner_id TEXT NOT NULL,status TEXT NOT NULL,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,result_source_id TEXT,error_code TEXT,error_message TEXT);
 "#;
 
 #[cfg(test)]

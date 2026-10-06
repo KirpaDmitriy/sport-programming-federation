@@ -6,6 +6,9 @@ use std::sync::Arc;
 
 use fsp_application::{PlatformService, VerificationDelivery};
 use fsp_http::HttpConfig;
+use fsp_integration_bifrost::BifrostGateway;
+use fsp_integration_fsp_synthetic::SyntheticFsp;
+use fsp_integration_github::GitHubApi;
 use fsp_storage_sqlite::SqliteRepository;
 use tokio::net::TcpListener;
 use tokio::signal;
@@ -61,13 +64,37 @@ async fn main() -> Result<(), Box<dyn Error>> {
         code: env::var("FSP_DEMO_EMAIL_CODE").unwrap_or_else(|_| "123456".into()),
         mock,
     });
-    let service = Arc::new(PlatformService::new(repository, delivery));
+    let mut platform = PlatformService::new(repository, delivery).with_fsp(Arc::new(SyntheticFsp));
+    if let (Some(client_id), Some(client_secret)) = (
+        nonempty_env("GITHUB_CLIENT_ID"),
+        nonempty_env("GITHUB_CLIENT_SECRET"),
+    ) {
+        let github = GitHubApi::new(client_id, client_secret)
+            .map_err(|error| format!("GitHub adapter: {}", error.message))?;
+        platform = platform.with_github(Arc::new(github));
+    }
+    if let Some(chat_url) = nonempty_env("BIFROST_CHAT_URL") {
+        let bifrost = BifrostGateway::new(
+            chat_url,
+            nonempty_env("BIFROST_API_KEY"),
+            nonempty_env("BIFROST_MODEL").unwrap_or_else(|| "openai/gpt-5-mini".into()),
+        )
+        .map_err(|error| format!("Bifrost adapter: {}", error.message))?;
+        platform = platform.with_llm(Arc::new(bifrost));
+    }
+    let service = Arc::new(platform);
     service.initialize().map_err(|error| error.message)?;
     let secure_cookie = env::var("FSP_SECURE_COOKIE").is_ok_and(|value| value == "1");
+    let public_web_url =
+        env::var("FSP_PUBLIC_WEB_URL").unwrap_or_else(|_| "http://127.0.0.1:5173".into());
+    let github_callback_url = env::var("GITHUB_CALLBACK_URL")
+        .unwrap_or_else(|_| "http://127.0.0.1:8080/api/v1/integrations/github/callback".into());
     let app = fsp_http::router(
         HttpConfig {
             allowed_origins,
             secure_cookie,
+            public_web_url,
+            github_callback_url,
         },
         service,
     );
@@ -77,6 +104,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .with_graceful_shutdown(shutdown())
         .await?;
     Ok(())
+}
+
+fn nonempty_env(name: &str) -> Option<String> {
+    env::var(name).ok().filter(|value| !value.trim().is_empty())
 }
 
 async fn shutdown() {
