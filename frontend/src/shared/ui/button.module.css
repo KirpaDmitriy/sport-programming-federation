@@ -32,6 +32,10 @@
 
 .block {
   width: 100%;
+  padding-block: var(--fsp-space-2);
+  /* A full-width label wraps instead of widening its container on narrow screens. */
+  white-space: normal;
+  text-align: center;
 }
 
 .primary {

@@ -71,6 +71,8 @@ test('narrow screens reflow without horizontal page scroll and keep navigation r
     '/candidate/profile',
     '/candidate/vacancies',
     '/candidate/vacancies/need-002',
+    '/candidate/applications',
+    '/candidate/tasks',
   ]) {
     await page.goto(path);
     await expect(page.getByRole('heading', { level: 1 }).first()).toBeVisible();

@@ -10,6 +10,11 @@ html {
   -webkit-text-size-adjust: 100%;
 }
 
+/* Browsers give fieldsets min-content width, so one long e-mail would widen the whole form on narrow screens. */
+fieldset {
+  min-inline-size: 0;
+}
+
 body {
   margin: 0;
   min-width: 320px;
