@@ -62,7 +62,7 @@ branches on `code`; `message` is user-facing Russian text. Implemented codes are
 | `401` | No or expired session | Clear the cache, go to sign-in |
 | `403` | Wrong role, missing verification or consent, foreign origin | «Действие недоступно» with the message |
 | `404` | Missing or someone else's record | «Не найдено»: the record is unavailable to this account |
-| `409` | Conflict: cooldown, active attempt, terminal invitation, existing invitation, idempotency conflict, stale import | Refetch and show the current state |
+| `409` | Conflict: cooldown, active attempt, terminal invitation or application, existing invitation or application, application not allowed yet, idempotency conflict, stale import | Refetch and show the current state |
 | `413`, `415` | File too large or wrong media type | Explain the limit |
 | `422` | Business validation (salary range, evidence policy, incomplete company, unsupported scope, downgrade) | Show the message next to the form |
 | `429` | Too many wrong codes | Ask for a new code |
@@ -74,7 +74,8 @@ request never falls back to fixture data.
 
 ## Idempotency
 
-`Idempotency-Key` is required for starting an assessment, submitting it and creating an invitation. The server
+`Idempotency-Key` is required for starting an assessment, submitting it, creating an invitation and applying to a
+vacancy. The server
 scopes a key to actor, operation and path: the same key with the same body replays the stored response with
 `X-Idempotent-Replay: true`; the same key with a different body is `409 idempotency_conflict`. The frontend makes one
 key per intended command, reuses it when the same command is retried after a transport failure, and drops it once
@@ -90,8 +91,8 @@ reload. A job belongs to the actor who started it; a failure carries `{ code, me
 
 ## Pagination
 
-`GET /api/v1/candidates` takes `page` (from 1) and `pageSize` (1–50, default 10) and returns `items`, `page`,
-`pageSize`, `total` and `hasNextPage`. Other lists are returned whole.
+`GET /api/v1/candidates` and `GET /api/v1/vacancies` take `page` (from 1) and `pageSize` (1–50, default 10) and
+return `items`, `page`, `pageSize`, `total` and `hasNextPage`. Other lists are returned whole.
 
 ## PDF
 
@@ -117,8 +118,8 @@ features whose capability is off and shows the «Демо» dialog while `mode` 
 
 ## Privacy projections and caching
 
-Employer responses about candidates are always the anonymous projection; contacts come only from
-`GET /api/v1/candidates/{candidateId}/disclosure`. Every private query key in the frontend starts with
+Employer responses about candidates, including applications, are always the anonymous projection; contacts come
+only from `GET /api/v1/candidates/{candidateId}/disclosure`. Every private query key in the frontend starts with
 `[role, actorId, companyId]`, so data of different actors never share cache entries, and the whole cache is cleared
 on sign-in, logout, a `401` or an actor change.
 
@@ -136,15 +137,19 @@ on sign-in, logout, a `401` or an actor change.
 | `/candidate/assessments/{id}/workspace` | `getAssessment`, `saveAssessmentAnswer`, `runAssessmentChecks`, `getJob`, `askAssessmentAssistant`, `submitAssessment` |
 | `/candidate/assessments/{id}/result` | `getAssessment` (polled while evaluating), `getMyProfile`, `getMySkills`, `startAssessment`, `exportMyProfile` |
 | `/candidate/invitations`, `/{id}` | `listMyInvitations`, `getMyInvitation`, `viewMyInvitation`, `getMyGapPlan`, `acceptMyInvitation`, `declineMyInvitation` |
+| `/candidate/vacancies`, `/{id}` | `searchVacancies`, `getVacancy`, `getMyProfile`, `createApplication` |
+| `/candidate/applications`, `/{id}` | `listMyApplications`, `getMyApplication`, `withdrawMyApplication` |
 | `/candidate/settings` | `getMyProfile`, `updateMyProfile`, `getMySources`, `logout` |
-| `/employer/needs`, `/new`, `/{id}` | `listNeeds`, `getNeed`, `createNeed`, `updateNeed`, `deleteNeed`, `getCompany` |
+| `/employer/needs`, `/new`, `/{id}` | `listNeeds`, `getNeed`, `createNeed`, `updateNeed`, `deleteNeed`, `publishNeed`, `unpublishNeed`, `listApplications`, `getCompany` |
 | `/employer/candidates` | `listNeeds`, `searchCandidates`, `listShortlists`, `getShortlist`, `createShortlist`, `addShortlistMember`, `removeShortlistMember` |
 | `/employer/candidates/{id}` | `getCandidate`, `getCandidateGraph`, `getCandidateGapPlan`, `getCandidateDisclosure`, `listNeeds`, `getCompany`, `createInvitation`, shortlist operations |
 | `/employer/shortlists`, `/{id}` | `listShortlists`, `createShortlist`, `getShortlist`, `updateShortlist`, `deleteShortlist`, `removeShortlistMember` |
 | `/employer/invitations` | `listInvitations`, `withdrawInvitation` |
+| `/employer/applications`, `/{id}` | `listApplications`, `getApplication`, `viewApplication`, `acceptApplication`, `declineApplication`, `getCandidate`, `getCandidateDisclosure` |
 | `/employer/company`, `/settings` | `getCompany`, `updateCompany`, `logout` |
 
-The candidate shell also reads `listMyInvitations` for the new-invitation badge. `getNeedGraph` and the employer's
+The candidate shell also reads `listMyInvitations` for the new-invitation badge, the employer shell
+`listApplications` for the new-application badge. `getNeedGraph` and the employer's
 `getInvitation` are in the contract but not used by the current screens.
 
 ## Backend cutover checklist

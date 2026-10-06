@@ -33,12 +33,12 @@ The specification supplies no FSP API, schema or dataset (§2, p2; §4, p6), so 
 | OR-16 | Search the whole bank with filters: specialization, grade, category, stack, confirmed FSP (§2.1, p3) | done | «Весь банк» mode; filters for verified specialization and grade, stack and verified FSP live in the URL | e2e «UI-17 UI-19 filters live in the URL…» |
 | OR-17 | Ranking by confirmed profile, assessment and FSP; search by need fit with explanation (§2, p1; p4) | done | Deterministic server order (grade fit, required, desired, FSP as a tie-breaker) | mock test «candidate bank is anonymous, deterministic…» |
 | OR-18 | Changing filters does not lose the shortlist (p4) | done | Shortlists are a persisted company resource independent of filters | e2e «UI-17 UI-19 …», «an emptied bank keeps saved shortlist entries…», mock test «shortlists persist…» |
-| OR-19 | Invite a candidate with an offer without publishing a vacancy (§2, p2; §2.1, p3) | done | Invitation composer from the candidate profile; needs are never published | e2e invitations suite |
-| OR-20 | Mandatory salary range in RUB in every offer (§2.2.1, p4) | done | Whole-ruble monthly gross range validated in the form and on the server | unit `need-form.test.ts`, e2e «UI-16 salary validation…» |
+| OR-19 | Invite a candidate with an offer without publishing a vacancy (§2, p2; §2.1, p3) | done | Invitation composer from the candidate profile; a need does not have to be published | e2e invitations suite |
+| OR-20 | Mandatory salary range in RUB in every offer and vacancy (§2.2.1, p4) | done | Whole-ruble monthly gross range validated in the form and on the server; a vacancy is a published need, so it always carries the range | unit `need-form.test.ts`, e2e «UI-16 salary validation…» |
 | OR-21 | Offer shows description, salary, company and employer contact before communication (§2.2.1–2, p4) | done | Candidate invitation page shows the frozen terms and the company contact before the decision | e2e «UI-20 UI-21 UI-23 …» |
-| OR-22 | Accept or decline; both sides see the status (§2.1, p3; §2.2.3, p4) | done | Candidate decision, employer withdrawal, statuses and timeline on both sides | e2e «UI-22 …», «UI-24 …», unit `invitation-decision.test.tsx` |
-| OR-23 | No candidate contacts for the employer before acceptance (§2.1, p4; §2.2.2, p4) | done | Anonymous projection everywhere; contacts only through the per-company disclosure resource after acceptance | e2e «UI-20 UI-21 UI-23 …», mock test «direct invitations… disclose only selected fields…» |
-| OR-24 | A candidate sees only their own invitations (§2.1, p3) | done | Server scoping answers `404` for other records | mock test «health, request validation, session, role…», «direct invitations…» |
+| OR-22 | Accept or decline; both sides see the status of invitations and applications (§2.1, p3; §2.2.3, p4) | done | Candidate decision and employer withdrawal for invitations, employer decision and candidate withdrawal for applications; statuses and timeline on both sides | e2e «UI-22 …», «UI-24 …», «UI-28 …», «UI-29 …», unit `invitation-decision.test.tsx` |
+| OR-23 | No candidate contacts for the employer before acceptance or a self-application (§2.1, p4; §2.2.2, p4) | done | Anonymous projection everywhere; contacts only through the per-company disclosure resource after the candidate accepts or applies, limited to the chosen fields | e2e «UI-20 UI-21 UI-23 …», «UI-28 …», mock tests «direct invitations… disclose only selected fields…», «applications disclose…» |
+| OR-24 | A candidate sees only their own invitations and applications (§2.1, p3) | done | Server scoping answers `404` for other records | mock tests «health, request validation, session, role…», «direct invitations…», «applications disclose…» |
 | OR-25 | Privacy settings, processing and publication consent, role-based access (§2.1, p3; §3.5, p6) | done | Separate processing and publication consents; disclosure per invitation and company | e2e «UI-02 UI-07 …», mock test «profile category…» |
 | OR-26 | End-to-end demo: registration → questionnaire → assessment → category → search → invitation and contact (§3.3, p5) | done | Full path on the HTTPS stand; scripted in [`DEMO_SCRIPT_RU.md`](../../frontend/docs/DEMO_SCRIPT_RU.md) | e2e public «a new candidate and two companies complete the reverse-hiring flow» |
 
@@ -46,8 +46,8 @@ The specification supplies no FSP API, schema or dataset (§2, p2; §4, p6), so 
 
 | Feature | Organizer position | Status |
 | --- | --- | --- |
-| Vacancy browsing, self-application, application history | Desirable, not MVP (§2.1, p3) | not implemented; capability reported as off, no controls |
-| Vacancy publication and incoming applications | Desirable, not MVP (§2.1, p4) | not implemented; needs stay unpublished |
+| Vacancy browsing, self-application, application history | Desirable, not MVP (§2.1, p3) | done: «Вакансии» with filters and the candidate's fit, an application that opens only the chosen contacts, «Отклики» with statuses and withdrawal (e2e «UI-27»–«UI-30», mock tests «vacancy publication…», «applications disclose…») |
+| Vacancy publication and incoming applications | Desirable, not MVP (§2.1, p4) | done: publish and unpublish a need, edit it while published, «Отклики» with the frozen terms, the match and accept or decline ([`BUSINESS_RULES.md` §10](BUSINESS_RULES.md#10-vacancies-and-applications)) |
 | Recurring short employer tasks | Desirable, not MVP (§2.1, p3) | not implemented |
 | Anti-fraud checks for employers, ATS integration | After MVP (§2, p2–3) | not implemented; no «verified company» badge |
 | Keycloak or FSP ID sign-in | Future recommendation (§2, p2; §3.5, p6) | not implemented; e-mail sign-in only |
@@ -58,4 +58,4 @@ The specification supplies no FSP API, schema or dataset (§2, p2; §4, p6), so 
 
 Production security, personal-data compliance, real e-mail delivery, live GitHub/FSP integrations, code execution
 and measured assessment or matching quality are not covered by the mock and remain backend work
-([`BUSINESS_RULES.md` §13](BUSINESS_RULES.md#13-capabilities-and-simulation)).
+([`BUSINESS_RULES.md` §14](BUSINESS_RULES.md#14-capabilities-and-simulation)).

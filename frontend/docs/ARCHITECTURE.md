@@ -16,10 +16,10 @@ code.
 | Layer | Slices |
 | --- | --- |
 | `app` | `app.tsx` (query client and router wiring, global 401 handling), `router.tsx`, `query-client.ts`, `guards.ts`, `route-states.tsx`, file routes in `routes/`, global styles and tokens in `styles/` |
-| `pages` | `login`; candidate: `candidate-onboarding`, `candidate-overview`, `candidate-profile`, `candidate-sources`, `candidate-skills`, `candidate-assessments`, `assessment-workspace`, `assessment-result`, `candidate-invitations`, `candidate-invitation`, `candidate-settings`; employer: `employer-needs`, `employer-need-editor`, `employer-candidates`, `employer-candidate`, `employer-shortlists`, `employer-shortlist`, `employer-invitations`, `employer-company`, `employer-settings` |
+| `pages` | `login`; candidate: `candidate-onboarding`, `candidate-overview`, `candidate-profile`, `candidate-sources`, `candidate-skills`, `candidate-assessments`, `assessment-workspace`, `assessment-result`, `candidate-invitations`, `candidate-invitation`, `candidate-vacancies`, `candidate-vacancy`, `candidate-applications`, `candidate-application`, `candidate-settings`; employer: `employer-needs`, `employer-need-editor`, `employer-candidates`, `employer-candidate`, `employer-shortlists`, `employer-shortlist`, `employer-invitations`, `employer-applications`, `employer-application`, `employer-company`, `employer-settings` |
 | `widgets` | `app-shell` (navigation, account menu, «Демо» dialog, dev controls), `competence-graph` (React Flow), `shortlist-panel`, `assessment-next-step` |
-| `features` | `auth`, `edit-profile`, `consents`, `profile-pdf`, `connect-source`, `start-assessment`, `shortlist-membership`, `send-invitation`, `respond-invitation` |
-| `entities` | `session`, `meta`, `profile`, `qualification`, `skill`, `source`, `job`, `assessment`, `invitation`, `company`, `need`, `candidate`, `shortlist` |
+| `features` | `auth`, `edit-profile`, `consents`, `profile-pdf`, `connect-source`, `start-assessment`, `shortlist-membership`, `send-invitation`, `respond-invitation`, `publish-need`, `apply-vacancy`, `review-application` |
+| `entities` | `session`, `meta`, `profile`, `qualification`, `skill`, `source`, `job`, `assessment`, `invitation`, `application`, `vacancy`, `company`, `need`, `candidate`, `shortlist` |
 | `shared` | `api` (client, errors, scope, generated types), `config`, `lib` (labels, formatting, document title), `ui` (UI kit) |
 
 An entity holds the query options, query keys, request functions and small display components for one resource.
@@ -34,8 +34,8 @@ every route is a separate chunk). Route files are thin: search validation, guard
 | --- | --- | --- |
 | `/` | Redirects to the role's home (`/candidate/overview`, `/employer/needs`) or `/login` | — |
 | `/login` | Public | `redirect` (path starting with `/`), `reason=expired` |
-| `/candidate/*` | Candidate session | `/candidate/skills`: `view` (`list`/`graph`), `node`; `/candidate/invitations`: `status` |
-| `/employer/*` | Employer session | `/employer/candidates`: `needId`, `mode`, `specialization`, `grade`, `skill`, `fsp`, `page`, `shortlistId`; `/employer/candidates/{id}`: `needId`, `tab` (`match`/`skills`/`checks`), `shortlistId`; `/employer/invitations`: `status` |
+| `/candidate/*` | Candidate session | `/candidate/skills`: `view` (`list`/`graph`), `node`; `/candidate/invitations`: `status`; `/candidate/vacancies`: `specialization`, `grade`, `workMode`, `skill`, `page`; `/candidate/applications`: `status` |
+| `/employer/*` | Employer session | `/employer/candidates`: `needId`, `mode`, `specialization`, `grade`, `skill`, `fsp`, `page`, `shortlistId`; `/employer/candidates/{id}`: `needId`, `tab` (`match`/`skills`/`checks`), `shortlistId`; `/employer/invitations`: `status`; `/employer/applications`: `status`, `needId` |
 
 - Search parameters are parsed with zod; a malformed value falls back to its default (`.catch(undefined)`) instead of
   reaching the API, so links with filters are shareable and survive reloads.
@@ -69,14 +69,14 @@ every route is a separate chunk). Route files are thin: search validation, guard
 
 - A mutation shows success only after the server confirms it and then updates the cache with the returned record
   (`setQueryData`) or invalidates the affected keys. Recoverable errors keep the user's input.
-- **Idempotent commands** (start assessment, submit, create invitation) keep one key per intended command in a ref,
+- **Idempotent commands** (start assessment, submit, create invitation, apply to a vacancy) keep one key per intended command in a ref,
   reuse it when the same command is retried after a transport failure and drop it after any server answer.
 - **Assessment draft:** the workspace autosaves 1.2 seconds after the last edit; the status line says «Черновик
   сохранён» only after the server acknowledges the save. Running checks and submitting first flush the draft; leaving
   with unsaved changes asks for confirmation (`UnsavedChangesGuard`, which also covers reloads).
 - **Shortlist membership** is optimistic: the change appears at once, rolls back if the server rejects it, and
   every place showing the shortlist reads the same cache entry.
-- **Conflicts** (`409`) on invitations and drafts refetch the canonical record and explain that the state changed.
+- **Conflicts** (`409`) on invitations, applications and drafts refetch the canonical record and explain that the state changed.
 
 ## Forms
 

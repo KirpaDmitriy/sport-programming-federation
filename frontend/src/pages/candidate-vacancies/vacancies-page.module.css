@@ -1,0 +1,38 @@
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--fsp-space-4);
+  margin-top: var(--fsp-space-5);
+  padding-block: var(--fsp-space-4);
+}
+
+.filterGrid {
+  display: grid;
+  flex: 1 1 40rem;
+  grid-template-columns: repeat(4, minmax(10rem, 1fr));
+  gap: var(--fsp-space-4);
+}
+
+.card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--fsp-space-4);
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .filterGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .filterGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .card {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

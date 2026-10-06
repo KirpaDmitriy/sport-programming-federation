@@ -1,6 +1,7 @@
 import type { OperationId, Route } from './contract.ts';
 import {
   type Actor,
+  type ApplicationRecord,
   type AssessmentRecord,
   type Candidate,
   COMPETITIONS,
@@ -54,7 +55,7 @@ const rank: Record<Grade, number> = { junior: 1, middle: 2, senior: 3 };
 // A missing grade compares as NaN, so every comparison with it is false.
 const rankOf = (grade: Grade | null | undefined) => (grade ? rank[grade] : Number.NaN);
 const activeAssessment = new Set<AssessmentRecord['status']>(['draft', 'in_progress', 'submitted', 'evaluating']);
-const terminalInvitation = new Set<InvitationRecord['status']>(['accepted', 'declined', 'withdrawn']);
+const terminalStatus = new Set<InvitationRecord['status']>(['accepted', 'declined', 'withdrawn']);
 const pick = <T, K extends keyof T>(value: T, keys: readonly K[]): Pick<T, K> =>
   Object.fromEntries(keys.map((key) => [key, value[key]])) as Pick<T, K>;
 const plusDays = (date: string, days: number) => new Date(Date.parse(date) + days * 86400000).toISOString();
@@ -88,6 +89,13 @@ function own<K extends 'companyId' | 'candidateId', T extends Record<K, string |
 const needFor = ({ s, actor }: Ctx, id: string) => own(s.needs.get(id), actor, 'companyId');
 const invitationFor = ({ s, actor }: Ctx, id: string): InvitationRecord => {
   const item = s.invitations.get(id);
+  return item &&
+    (actor.role === 'candidate' ? item.candidateId === actor.candidateId : item.company.id === actor.companyId)
+    ? item
+    : fail(404, 'not_found', 'Ресурс не найден');
+};
+const applicationFor = ({ s, actor }: Ctx, id: string): ApplicationRecord => {
+  const item = s.applications.get(id);
   return item &&
     (actor.role === 'candidate' ? item.candidateId === actor.candidateId : item.company.id === actor.companyId)
     ? item
@@ -223,6 +231,14 @@ function isVisible(s: State, candidate: Candidate | undefined): candidate is Can
 function visibleCandidate(s: State, id: string): Candidate {
   const candidate = s.candidates.get(id);
   return isVisible(s, candidate) ? candidate : fail(404, 'not_found', 'Ресурс не найден');
+}
+/** A company also sees the anonymous profile of a candidate who applied to it, even outside the public bank. */
+function candidateForCompany(s: State, actor: Actor, id: string): Candidate {
+  const candidate = s.candidates.get(id);
+  const applied = [...s.applications.values()].some(
+    (item) => item.candidateId === id && item.company.id === actor.companyId && item.status !== 'withdrawn',
+  );
+  return candidate && (applied || isVisible(s, candidate)) ? candidate : fail(404, 'not_found', 'Ресурс не найден');
 }
 function match(candidate: Candidate, need: Need): Schemas['Match'] {
   const requirements = need.requirements.map((requirement): Schemas['MatchRequirement'] => {
@@ -415,6 +431,113 @@ const invitationKeys = [
   'disclosureFields',
 ] as const;
 const invitationDto = (item: InvitationRecord): Schemas['Invitation'] => pick(item, invitationKeys);
+const applicationKeys = [
+  'id',
+  'candidateId',
+  'candidateAlias',
+  'company',
+  'vacancy',
+  'message',
+  'status',
+  'createdAt',
+  'viewedAt',
+  'respondedAt',
+  'disclosureFields',
+] as const;
+function applicationDto(s: State, item: ApplicationRecord): Schemas['Application'] {
+  const candidate = must(s.candidates.get(item.candidateId), 'application candidate');
+  return { ...pick(item, applicationKeys), match: match(candidate, item.needDefinition) };
+}
+/** Newest first; records created at the same mock instant keep their creation order through the ID. */
+const newestFirst = (a: { createdAt: string; id: string }, b: { createdAt: string; id: string }) =>
+  b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id);
+const activeApplication = (s: State, candidateId: string, needId: string) =>
+  [...s.applications.values()]
+    .filter((item) => item.candidateId === candidateId && item.vacancy.id === needId && item.status !== 'withdrawn')
+    .sort(newestFirst)[0];
+const eligibilityMessage = {
+  email: 'Подтвердите почту, чтобы откликаться на вакансии',
+  questionnaire: 'Заполните анкету, чтобы откликаться на вакансии',
+  assessment: 'Подтвердите грейд практической проверкой, чтобы откликаться на вакансии',
+  processing_consent: 'Для отклика необходимо согласие на обработку данных',
+  application_exists: 'Вы уже откликнулись на эту вакансию',
+} as const satisfies Record<NonNullable<Schemas['ApplicationEligibility']['reason']>, string>;
+function applicationEligibility(s: State, candidate: Candidate, need: Need): Schemas['ApplicationEligibility'] {
+  const form = onboarding(candidate);
+  const reason = !form.emailVerified
+    ? 'email'
+    : !form.questionnaireComplete
+      ? 'questionnaire'
+      : !form.assessmentPassed
+        ? 'assessment'
+        : !candidate.consents.processing
+          ? 'processing_consent'
+          : activeApplication(s, candidate.id, need.id)
+            ? 'application_exists'
+            : null;
+  return { canApply: reason === null, reason };
+}
+function publishedNeed(s: State, id: string): Need {
+  const need = s.needs.get(id);
+  return need?.published ? need : fail(404, 'not_found', 'Вакансия не найдена или снята с публикации');
+}
+function vacancyDto(s: State, need: Need, candidate: Candidate): Schemas['Vacancy'] {
+  const company = companyDto(must(s.companies.get(need.companyId), 'vacancy company'));
+  const qualified = onboarding(candidate).assessmentPassed && candidate.consents.processing;
+  return {
+    id: need.id,
+    company: pick(company, ['id', 'displayName', 'businessArea', 'description', 'contactEmail']),
+    ...structuredClone(pick(need, ['title', 'specialization', 'grade', 'workMode', 'salary', 'description'])),
+    requirements: need.requirements.map((item) => pick(item, ['skillId', 'criticality', 'minimumGrade'])),
+    publishedAt: must(need.publishedAt, 'published vacancy without publication date'),
+    updatedAt: need.updatedAt,
+    match: qualified ? match(candidate, need) : null,
+    applicationId: activeApplication(s, candidate.id, need.id)?.id ?? null,
+    eligibility: applicationEligibility(s, candidate, need),
+  };
+}
+const latestBy = <T>(items: T[], time: (item: T) => string): T | undefined =>
+  [...items].sort((a, b) => time(b).localeCompare(time(a)))[0];
+/**
+ * Recomputes what a company may see of a candidate from every grant: accepted invitations and applications the
+ * candidate has not withdrawn. Withdrawing the only grant removes access.
+ */
+function refreshDisclosure(s: State, companyId: string, candidate: Candidate) {
+  const key = `${companyId}:${candidate.id}`;
+  const invitations = [...s.invitations.values()].filter(
+    (item) => item.company.id === companyId && item.candidateId === candidate.id && item.status === 'accepted',
+  );
+  const applications = [...s.applications.values()].filter(
+    (item) => item.company.id === companyId && item.candidateId === candidate.id && item.status !== 'withdrawn',
+  );
+  const granted = new Set([...invitations, ...applications].flatMap((item) => item.disclosureFields));
+  if (granted.size === 0) {
+    s.disclosures.delete(key);
+    return;
+  }
+  const invitation = latestBy(invitations, (item) => item.respondedAt ?? item.createdAt);
+  const application = latestBy(applications, (item) => item.createdAt);
+  const fields: Schemas['Disclosure']['fields'] = {};
+  if (granted.has('name')) fields.name = candidate.name;
+  if (granted.has('email')) fields.email = candidate.email;
+  if (granted.has('sourceLinks'))
+    fields.sourceLinks = [
+      ...new Set(candidate.sources.flatMap((source) => source.repositories.map((repo) => repo.url))),
+    ];
+  const grantedAt = [invitation?.respondedAt, application?.createdAt]
+    .filter((value) => value != null)
+    .sort()
+    .at(-1);
+  s.disclosures.set(key, {
+    candidateId: candidate.id,
+    companyId,
+    granted: true,
+    invitationId: invitation?.id ?? null,
+    applicationId: application?.id ?? null,
+    grantedAt: grantedAt ?? null,
+    fields,
+  });
+}
 const assessmentKeys = [
   'id',
   'specialization',
@@ -695,8 +818,8 @@ const handlers: Handlers = {
       fspFixture: true,
       matching: true,
       directInvitations: true,
-      vacancyPublication: false,
-      selfApplication: false,
+      vacancyPublication: true,
+      selfApplication: true,
       chat: false,
       recurringTasks: false,
       realCodeExecution: false,
@@ -980,32 +1103,18 @@ const handlers: Handlers = {
     const disclose = [...ctx.body.disclose].sort();
     if (item.status === 'accepted' && JSON.stringify([...item.disclosureFields].sort()) === JSON.stringify(disclose))
       return invitationDto(item);
-    if (terminalInvitation.has(item.status)) fail(409, 'invitation_terminal', 'Решение по приглашению уже принято');
+    if (terminalStatus.has(item.status)) fail(409, 'invitation_terminal', 'Решение по приглашению уже принято');
     if (!candidate.emailVerified) fail(403, 'email_not_verified', 'Подтвердите почту');
     item.status = 'accepted';
     item.respondedAt = ctx.s.clock;
     item.disclosureFields = disclose;
-    const disclosed: Schemas['Disclosure']['fields'] = {};
-    if (disclose.includes('name')) disclosed.name = candidate.name;
-    if (disclose.includes('email')) disclosed.email = candidate.email;
-    if (disclose.includes('sourceLinks'))
-      disclosed.sourceLinks = [
-        ...new Set(candidate.sources.flatMap((source) => source.repositories.map((repo) => repo.url))),
-      ];
-    ctx.s.disclosures.set(`${item.company.id}:${candidate.id}`, {
-      candidateId: candidate.id,
-      companyId: item.company.id,
-      granted: true,
-      invitationId: item.id,
-      grantedAt: ctx.s.clock,
-      fields: disclosed,
-    });
+    refreshDisclosure(ctx.s, item.company.id, candidate);
     return invitationDto(item);
   },
   declineMyInvitation: (ctx) => {
     const item = invitationFor(ctx, param(ctx, 'invitationId'));
     if (item.status === 'declined') return invitationDto(item);
-    if (terminalInvitation.has(item.status)) fail(409, 'invitation_terminal', 'Решение по приглашению уже принято');
+    if (terminalStatus.has(item.status)) fail(409, 'invitation_terminal', 'Решение по приглашению уже принято');
     item.status = 'declined';
     item.respondedAt = ctx.s.clock;
     return invitationDto(item);
@@ -1024,6 +1133,7 @@ const handlers: Handlers = {
       id: nextId(ctx.s, 'need'),
       companyId: must(ctx.actor.companyId, 'employer company'),
       published: false,
+      publishedAt: null,
       createdAt: ctx.s.clock,
       updatedAt: ctx.s.clock,
       revision: 1,
@@ -1042,6 +1152,24 @@ const handlers: Handlers = {
     const item = needFor(ctx, param(ctx, 'needId'));
     ctx.s.needs.delete(item.id);
     return null;
+  },
+  publishNeed: (ctx) => {
+    const item = needFor(ctx, param(ctx, 'needId'));
+    if (item.published) return item;
+    const company = companyDto(found(ctx.actor.companyId ? ctx.s.companies.get(ctx.actor.companyId) : undefined));
+    if (!company.readyToInvite)
+      fail(422, 'company_incomplete', 'Заполните описание компании со сферой деятельности и контактную почту');
+    if (!ctx.actor.emailVerified) fail(403, 'email_not_verified', 'Подтвердите почту работодателя');
+    validateNeed(item);
+    item.published = true;
+    item.publishedAt = ctx.s.clock;
+    return item;
+  },
+  unpublishNeed: (ctx) => {
+    const item = needFor(ctx, param(ctx, 'needId'));
+    item.published = false;
+    item.publishedAt = null;
+    return item;
   },
   getNeedGraph: (ctx) => {
     const need = needFor(ctx, param(ctx, 'needId'));
@@ -1110,12 +1238,15 @@ const handlers: Handlers = {
   },
   getCandidate: (ctx) => {
     const needId = queryText(ctx.query, 'needId');
-    return anonymous(visibleCandidate(ctx.s, param(ctx, 'candidateId')), needId ? needFor(ctx, needId) : null);
+    return anonymous(
+      candidateForCompany(ctx.s, ctx.actor, param(ctx, 'candidateId')),
+      needId ? needFor(ctx, needId) : null,
+    );
   },
-  getCandidateGraph: (ctx) => graph(visibleCandidate(ctx.s, param(ctx, 'candidateId')), 'employer'),
+  getCandidateGraph: (ctx) => graph(candidateForCompany(ctx.s, ctx.actor, param(ctx, 'candidateId')), 'employer'),
   getCandidateGapPlan: (ctx) =>
     gapPlan(
-      visibleCandidate(ctx.s, param(ctx, 'candidateId')),
+      candidateForCompany(ctx.s, ctx.actor, param(ctx, 'candidateId')),
       needFor(ctx, must(queryText(ctx.query, 'needId'), 'validated needId')),
     ),
   getCandidateDisclosure: (ctx) => {
@@ -1123,8 +1254,16 @@ const handlers: Handlers = {
     const companyId = must(ctx.actor.companyId, 'employer company');
     const grant = ctx.s.disclosures.get(`${companyId}:${candidateId}`);
     if (grant) return grant;
-    visibleCandidate(ctx.s, candidateId);
-    return { candidateId, companyId, granted: false, invitationId: null, grantedAt: null, fields: {} };
+    candidateForCompany(ctx.s, ctx.actor, candidateId);
+    return {
+      candidateId,
+      companyId,
+      granted: false,
+      invitationId: null,
+      applicationId: null,
+      grantedAt: null,
+      fields: {},
+    };
   },
   listShortlists: (ctx) => ({
     items: [...ctx.s.shortlists.values()]
@@ -1209,10 +1348,118 @@ const handlers: Handlers = {
     return invitationDto(item);
   },
   getInvitation: (ctx) => invitationDto(invitationFor(ctx, param(ctx, 'invitationId'))),
+  searchVacancies: (ctx) => {
+    const candidate = me(ctx);
+    const specialization = queryText(ctx.query, 'specialization');
+    const grade = queryText(ctx.query, 'grade');
+    const workMode = queryText(ctx.query, 'workMode');
+    const skill = queryText(ctx.query, 'skill');
+    const items = [...ctx.s.needs.values()]
+      .filter(
+        (need) =>
+          need.published &&
+          (!specialization || need.specialization === specialization) &&
+          (!grade || need.grade === grade) &&
+          (!workMode || need.workMode === workMode) &&
+          (!skill || need.requirements.some((item) => item.skillId === skill)),
+      )
+      .sort((a, b) => (b.publishedAt ?? '').localeCompare(a.publishedAt ?? '') || a.id.localeCompare(b.id))
+      .map((need) => vacancyDto(ctx.s, need, candidate));
+    const page = typeof ctx.query.page === 'number' ? ctx.query.page : 1;
+    const pageSize = typeof ctx.query.pageSize === 'number' ? ctx.query.pageSize : 10;
+    return {
+      items: items.slice((page - 1) * pageSize, page * pageSize),
+      page,
+      pageSize,
+      total: items.length,
+      hasNextPage: page * pageSize < items.length,
+    };
+  },
+  getVacancy: (ctx) => vacancyDto(ctx.s, publishedNeed(ctx.s, param(ctx, 'vacancyId')), me(ctx)),
+  listMyApplications: (ctx) => ({
+    items: [...ctx.s.applications.values()]
+      .filter((item) => item.candidateId === ctx.actor.candidateId)
+      .sort(newestFirst)
+      .map((item) => applicationDto(ctx.s, item)),
+  }),
+  createApplication: (ctx) => {
+    const candidate = me(ctx);
+    processing(candidate);
+    const need = publishedNeed(ctx.s, ctx.body.vacancyId);
+    const { reason } = applicationEligibility(ctx.s, candidate, need);
+    if (reason === 'application_exists') fail(409, 'application_exists', eligibilityMessage.application_exists);
+    if (reason) fail(409, 'application_not_eligible', eligibilityMessage[reason]);
+    const company = must(ctx.s.companies.get(need.companyId), 'vacancy company');
+    const item: ApplicationRecord = {
+      id: nextId(ctx.s, 'application'),
+      candidateId: candidate.id,
+      candidateAlias: candidate.alias,
+      company: pick(company, ['id', 'displayName', 'businessArea', 'description', 'contactEmail']),
+      vacancy: structuredClone(
+        pick(need, ['id', 'title', 'specialization', 'grade', 'workMode', 'salary', 'description']),
+      ),
+      needDefinition: structuredClone(need),
+      message: ctx.body.message,
+      status: 'sent',
+      createdAt: ctx.s.clock,
+      viewedAt: null,
+      respondedAt: null,
+      disclosureFields: [...ctx.body.disclose].sort(),
+    };
+    ctx.s.applications.set(item.id, item);
+    refreshDisclosure(ctx.s, company.id, candidate);
+    return applicationDto(ctx.s, item);
+  },
+  getMyApplication: (ctx) => applicationDto(ctx.s, applicationFor(ctx, param(ctx, 'applicationId'))),
+  withdrawMyApplication: (ctx) => {
+    const item = applicationFor(ctx, param(ctx, 'applicationId'));
+    if (item.status === 'withdrawn') return applicationDto(ctx.s, item);
+    if (terminalStatus.has(item.status)) fail(409, 'application_terminal', 'Решение по отклику уже принято');
+    item.status = 'withdrawn';
+    item.respondedAt = ctx.s.clock;
+    refreshDisclosure(ctx.s, item.company.id, me(ctx));
+    return applicationDto(ctx.s, item);
+  },
+  listApplications: (ctx) => {
+    const needId = queryText(ctx.query, 'needId');
+    return {
+      items: [...ctx.s.applications.values()]
+        .filter((item) => item.company.id === ctx.actor.companyId && (!needId || item.vacancy.id === needId))
+        .sort(newestFirst)
+        .map((item) => applicationDto(ctx.s, item)),
+    };
+  },
+  getApplication: (ctx) => applicationDto(ctx.s, applicationFor(ctx, param(ctx, 'applicationId'))),
+  viewApplication: (ctx) => {
+    const item = applicationFor(ctx, param(ctx, 'applicationId'));
+    if (item.status === 'sent') {
+      item.status = 'viewed';
+      item.viewedAt = ctx.s.clock;
+    }
+    return applicationDto(ctx.s, item);
+  },
+  acceptApplication: (ctx) => {
+    const item = applicationFor(ctx, param(ctx, 'applicationId'));
+    if (item.status === 'accepted') return applicationDto(ctx.s, item);
+    if (terminalStatus.has(item.status)) fail(409, 'application_terminal', 'Решение по отклику уже принято');
+    item.status = 'accepted';
+    item.viewedAt ??= ctx.s.clock;
+    item.respondedAt = ctx.s.clock;
+    return applicationDto(ctx.s, item);
+  },
+  declineApplication: (ctx) => {
+    const item = applicationFor(ctx, param(ctx, 'applicationId'));
+    if (item.status === 'declined') return applicationDto(ctx.s, item);
+    if (terminalStatus.has(item.status)) fail(409, 'application_terminal', 'Решение по отклику уже принято');
+    item.status = 'declined';
+    item.viewedAt ??= ctx.s.clock;
+    item.respondedAt = ctx.s.clock;
+    return applicationDto(ctx.s, item);
+  },
   withdrawInvitation: (ctx) => {
     const item = invitationFor(ctx, param(ctx, 'invitationId'));
     if (item.status === 'withdrawn') return invitationDto(item);
-    if (terminalInvitation.has(item.status)) fail(409, 'invitation_terminal', 'Решение по приглашению уже принято');
+    if (terminalStatus.has(item.status)) fail(409, 'invitation_terminal', 'Решение по приглашению уже принято');
     item.status = 'withdrawn';
     item.respondedAt = ctx.s.clock;
     return invitationDto(item);

@@ -1,8 +1,10 @@
-import { useMutation, useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
 import { useState } from 'react';
+import { companyApplicationsQuery } from '@/entities/application';
 import { skillLabel, useMeta } from '@/entities/meta';
 import { deleteNeed, type Need, needsKey, needsQuery } from '@/entities/need';
 import { useScope } from '@/entities/session';
+import { PublishControl } from '@/features/publish-need';
 import { describeError } from '@/shared/api';
 import {
   formatDate,
@@ -15,7 +17,9 @@ import {
 } from '@/shared/lib';
 import { Button, ButtonLink, Callout, Card, ConfirmDialog, EmptyState, PageHeader, StatusChip } from '@/shared/ui';
 
-function NeedCard({ need, onDelete }: { need: Need; onDelete: (need: Need) => void }) {
+type CardProps = { need: Need; applications: number; onDelete: (need: Need) => void };
+
+function NeedCard({ need, applications, onDelete }: CardProps) {
   const meta = useMeta();
   const required = need.requirements.filter((item) => item.criticality === 'required');
   const desired = need.requirements.filter((item) => item.criticality === 'desired');
@@ -29,9 +33,15 @@ function NeedCard({ need, onDelete }: { need: Need; onDelete: (need: Need) => vo
               {specializationLabel[need.specialization]} · {gradeLabel[need.grade]} · {workModeLabel[need.workMode]}
             </span>
           </div>
-          <StatusChip tone="neutral" icon="lock">
-            Не опубликована — приглашать можно без публикации
-          </StatusChip>
+          {need.published && need.publishedAt ? (
+            <StatusChip tone="success" icon="eye">
+              Опубликована {formatDate(need.publishedAt)}
+            </StatusChip>
+          ) : (
+            <StatusChip tone="neutral" icon="lock">
+              Не опубликована — приглашать можно без публикации
+            </StatusChip>
+          )}
         </div>
         <p>
           <strong>{formatSalaryRange(need.salary)}</strong>{' '}
@@ -54,6 +64,12 @@ function NeedCard({ need, onDelete }: { need: Need; onDelete: (need: Need) => vo
           <ButtonLink to="/employer/needs/$needId" params={{ needId: need.id }} icon="edit">
             Редактировать
           </ButtonLink>
+          <PublishControl need={need} />
+          {(need.published || applications > 0) && (
+            <ButtonLink to="/employer/applications" search={{ needId: need.id }} icon="inbox">
+              Отклики: {applications}
+            </ButtonLink>
+          )}
           <Button variant="quiet" icon="trash" onClick={() => onDelete(need)}>
             Удалить
           </Button>
@@ -68,6 +84,9 @@ export function EmployerNeedsPage() {
   const scope = useScope();
   const queryClient = useQueryClient();
   const { data } = useSuspenseQuery(needsQuery(scope));
+  const applications = useQuery(companyApplicationsQuery(scope));
+  const countFor = (needId: string) =>
+    applications.data?.items.filter((item) => item.vacancy.id === needId).length ?? 0;
   const [pendingDelete, setPendingDelete] = useState<Need | null>(null);
   const remove = useMutation({
     mutationFn: (need: Need) => deleteNeed(need.id),
@@ -80,7 +99,7 @@ export function EmployerNeedsPage() {
     <>
       <PageHeader
         title="Потребности"
-        subtitle="Опишите, кого ищете. Подбор и приглашения работают без публикации вакансии."
+        subtitle="Опишите, кого ищете. Подбор и приглашения работают без публикации; опубликованная потребность становится вакансией для откликов."
         actions={
           <ButtonLink to="/employer/needs/new" variant="primary" icon="plus">
             Новая потребность
@@ -105,7 +124,7 @@ export function EmployerNeedsPage() {
         <ul className="stack-lg" style={{ margin: 0, padding: 0, listStyle: 'none' }}>
           {data.items.map((need) => (
             <li key={need.id}>
-              <NeedCard need={need} onDelete={setPendingDelete} />
+              <NeedCard need={need} applications={countFor(need.id)} onDelete={setPendingDelete} />
             </li>
           ))}
         </ul>
@@ -123,7 +142,10 @@ export function EmployerNeedsPage() {
         }}
       >
         <div className="stack">
-          <p>«{pendingDelete?.title}» исчезнет из подбора. Уже отправленные приглашения сохранят свои условия.</p>
+          <p>
+            «{pendingDelete?.title}» исчезнет из подбора{pendingDelete?.published ? ' и из списка вакансий' : ''}. Уже
+            отправленные приглашения и полученные отклики сохранят свои условия.
+          </p>
           {remove.error && <Callout tone="danger">{describeError(remove.error).message}</Callout>}
         </div>
       </ConfirmDialog>

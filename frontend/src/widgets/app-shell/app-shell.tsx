@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, type LinkProps, useNavigate, useRouterState } from '@tanstack/react-router';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
+import { companyApplicationsQuery } from '@/entities/application';
 import { myInvitationsQuery } from '@/entities/invitation';
 import { useMeta } from '@/entities/meta';
 import { type Session, scopeOf, sessionQueryOptions, useSession } from '@/entities/session';
@@ -21,6 +22,8 @@ const navigation: Record<Session['role'], { cabinet: string; items: NavItem[]; s
       { to: '/candidate/skills', label: 'Навыки', icon: 'chart' },
       { to: '/candidate/assessments', label: 'Проверки', icon: 'shield' },
       { to: '/candidate/invitations', label: 'Приглашения', icon: 'mail' },
+      { to: '/candidate/vacancies', label: 'Вакансии', icon: 'briefcase' },
+      { to: '/candidate/applications', label: 'Отклики', icon: 'send' },
     ],
     settings: { to: '/candidate/settings', label: 'Настройки', icon: 'sliders' },
   },
@@ -31,6 +34,7 @@ const navigation: Record<Session['role'], { cabinet: string; items: NavItem[]; s
       { to: '/employer/candidates', label: 'Кандидаты', icon: 'users' },
       { to: '/employer/shortlists', label: 'Подборки', icon: 'folder' },
       { to: '/employer/invitations', label: 'Приглашения', icon: 'send' },
+      { to: '/employer/applications', label: 'Отклики', icon: 'inbox' },
       { to: '/employer/company', label: 'Компания', icon: 'building' },
     ],
     settings: { to: '/employer/settings', label: 'Настройки', icon: 'sliders' },
@@ -44,6 +48,23 @@ function CandidateInvitationsLink() {
   const label = fresh ? `Приглашения: ${fresh} новых` : 'Приглашения: новых нет';
   return (
     <Link to="/candidate/invitations" className={styles.iconLink} aria-label={label} title={label}>
+      <Icon name="bell" size={22} />
+      {fresh > 0 && (
+        <span className={styles.badge} aria-hidden="true">
+          {fresh}
+        </span>
+      )}
+    </Link>
+  );
+}
+
+function EmployerApplicationsLink() {
+  const session = useSession();
+  const { data } = useQuery(companyApplicationsQuery(scopeOf(session)));
+  const fresh = data?.items.filter((item) => item.status === 'sent').length ?? 0;
+  const label = fresh ? `Отклики: ${fresh} новых` : 'Отклики: новых нет';
+  return (
+    <Link to="/employer/applications" className={styles.iconLink} aria-label={label} title={label}>
       <Icon name="bell" size={22} />
       {fresh > 0 && (
         <span className={styles.badge} aria-hidden="true">
@@ -148,7 +169,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           </nav>
           <div className={styles.headerActions}>
             {meta.mode === 'mock' && <DemoButton />}
-            {session.role === 'candidate' && <CandidateInvitationsLink />}
+            {session.role === 'candidate' ? <CandidateInvitationsLink /> : <EmployerApplicationsLink />}
             <AccountMenu session={session} settingsTo={config.settings.to} />
           </div>
         </header>

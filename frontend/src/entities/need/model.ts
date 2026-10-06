@@ -29,6 +29,14 @@ export async function updateNeed(needId: string, input: NeedInput) {
   return requireData(await api.PATCH('/api/v1/needs/{needId}', { params: { path: { needId } }, body: input }));
 }
 
+export async function publishNeed(needId: string) {
+  return requireData(await api.POST('/api/v1/needs/{needId}/publish', { params: { path: { needId } } }));
+}
+
+export async function unpublishNeed(needId: string) {
+  return requireData(await api.POST('/api/v1/needs/{needId}/unpublish', { params: { path: { needId } } }));
+}
+
 export async function deleteNeed(needId: string) {
   requireOk(await api.DELETE('/api/v1/needs/{needId}', { params: { path: { needId } } }));
 }

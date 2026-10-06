@@ -463,9 +463,11 @@ export function EmployerNeedEditorPage({ need }: { need?: Need }) {
             </form.Subscribe>
             <hr className="divider" />
             <p className="small muted" style={{ margin: '0.75rem 0' }}>
-              {meta.capabilities.vacancyPublication
-                ? 'Публикация вакансии настраивается отдельно.'
-                : 'Публиковать вакансию не нужно: кандидатов из подборки можно пригласить напрямую.'}
+              {!meta.capabilities.vacancyPublication
+                ? 'Публиковать вакансию не нужно: кандидатов из подборки можно пригласить напрямую.'
+                : need?.published
+                  ? 'Вакансия опубликована: кандидаты увидят изменения сразу, полученные отклики сохранят условия на момент отклика.'
+                  : 'Приглашать кандидатов можно без публикации. Опубликовать потребность как вакансию можно в списке потребностей.'}
             </p>
             {company.data && !company.data.readyToInvite && (
               <Callout
