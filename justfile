@@ -20,8 +20,12 @@ contract:
     bun run --cwd mock-server contract
     bun run --cwd contracts/codegen generate
 
-# Mock tests (including contract drift) and the full frontend check
+# Types, lint and tests of the contract generator, the mock and the frontend
 verify:
+    bun run --cwd contracts/codegen typecheck
+    bun run --cwd contracts/codegen lint
+    bun run --cwd mock-server typecheck
+    bun run --cwd mock-server lint
     bun run --cwd mock-server test
     bun run --cwd frontend verify
 

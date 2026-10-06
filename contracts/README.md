@@ -13,19 +13,19 @@ private dialect.
 
 ## Where the contract comes from
 
-Today `openapi.json` is built from [`../mock-server/src/contract.mjs`](../mock-server/src/contract.mjs), the same
+Today `openapi.json` is built from [`../mock-server/src/contract.ts`](../mock-server/src/contract.ts), the same
 module the mock uses to validate requests and responses. Three checks keep the copies aligned:
 
 - `bun run --cwd mock-server test` fails when `openapi.json` differs from the builder;
 - `bun run --cwd contracts/codegen check` (also part of `bun run --cwd frontend verify`) fails when the frontend
   types or the operation index are stale;
-- the frontend's TypeScript build fails when the code no longer matches the generated types.
+- the frontend's and the mock's TypeScript builds fail when their code no longer matches the generated types.
 
 ## Changing the contract
 
 A contract change is one reviewed change on a named branch that updates every side together:
 
-1. Edit `mock-server/src/contract.mjs`, and the mock's behavior and tests when semantics change.
+1. Edit `mock-server/src/contract.ts`, and the mock's behavior and tests when semantics change.
 2. Run `just contract` (or `bun run --cwd mock-server contract` and `bun run --cwd contracts/codegen generate`).
 3. Adapt the frontend and the backend, then run `just verify` and the backend's own tests.
 

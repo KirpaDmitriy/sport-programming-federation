@@ -23,6 +23,7 @@ bun install --cwd contracts/codegen --frozen-lockfile
 bun run --cwd contracts/codegen generate    # write the outputs
 bun run --cwd contracts/codegen check       # fail if any output is stale
 bun run --cwd contracts/codegen typecheck   # tsc 7 over generate.ts
+bun run --cwd contracts/codegen lint        # Biome
 ```
 
 `bun run codegen` and `bun run codegen:check` in `frontend/` call the same scripts; `just contract` rebuilds the
@@ -33,6 +34,7 @@ contract from the mock and then runs `generate`.
 | File | Contents |
 | --- | --- |
 | `../../frontend/src/shared/api/generated/schema.d.ts` | `paths`, `components`, `operations` for `openapi-fetch` |
+| `../../mock-server/src/generated/schema.d.ts` | The same declarations for the mock's typed handlers |
 | `../../frontend/src/shared/api/generated/manifest.json` | Contract version and SHA-256, generator, output SHA-256; no timestamp, so identical input gives identical files |
 | `../API_OPERATIONS.md` | The operation index in contract order |
 
