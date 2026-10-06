@@ -1002,7 +1002,7 @@ export interface components {
             /** @enum {string} */
             status: "ok";
             /** @enum {string} */
-            service: "fsp-mock-api";
+            service: "fsp-mock-api" | "fsp-career-api";
             /** @enum {string} */
             version: "0.1.0";
         };

@@ -9,7 +9,7 @@ backend, stand).
 | Path | Owner | Contents |
 | --- | --- | --- |
 | `app/`, `tests/`, `tools/`, `deploy/`, `experiments/`, `output/`, `docs/*.md`, `pyproject.toml`, `requirements*.txt` | Дима | Python MVP (FastAPI) with its tests, deployment and submission artifacts; see [`README.md`](README.md) |
-| [`backend/`](backend/README.md) | Дима | Rust backend that implements the contract (not started) |
+| [`backend/`](backend/README.md) | Дима | Hexagonal Rust backend that implements the contract (skeleton: crate boundaries, transport rules, `/health`) |
 | [`contracts/`](contracts/README.md) | shared | OpenAPI contract, error codes, generated operation index, TypeScript generator |
 | [`mock-server/`](mock-server/README.md) | Данил | Stateful HTTP mock of the contract: frontend dev server and behavior reference for the backend |
 | [`frontend/`](frontend/README.md) | Данил | React/TypeScript/TanStack application (FSD); its own rules are in [`frontend/AGENTS.md`](frontend/AGENTS.md) |
@@ -34,7 +34,7 @@ backend, stand).
 | --- | --- | --- |
 | contract, mock, frontend | Bun 1.4.2; Vitest on Node 26 (24.15 or newer works) | `just verify`, `just e2e` |
 | Python MVP | Python 3.14 | `pytest`, `python tools/offline_smoke.py`, `python tools/experiments.py check` |
-| backend | Rust, pinned by the backend owner | defined with the backend |
+| backend | Rust 1.99.0 (`backend/rust-toolchain.toml`), edition 2024 | `just backend-check` |
 
 `just` lists the tasks for the JS modules and the stand. CI: `.github/workflows/test.yml` (Python MVP) and
-`.github/workflows/platform.yml` (contract, mock, frontend).
+`.github/workflows/platform.yml` (contract, mock, frontend) and `.github/workflows/backend.yml` (Rust).
