@@ -6,12 +6,14 @@ on:
       - contracts/**
       - mock-server/**
       - frontend/**
+      - biome.json
       - .github/workflows/platform.yml
   pull_request:
     paths:
       - contracts/**
       - mock-server/**
       - frontend/**
+      - biome.json
       - .github/workflows/platform.yml
 
 jobs:
@@ -25,10 +27,16 @@ jobs:
       # Vitest's jsdom environment runs on Node (see frontend/README.md); everything else runs on Bun.
       - uses: actions/setup-node@v7
         with:
-          node-version: 24
+          node-version: 26
       - run: bun install --cwd mock-server --frozen-lockfile
       - run: bun install --cwd contracts/codegen --frozen-lockfile
       - run: bun install --cwd frontend --frozen-lockfile
+      - name: Contract generator and mock types and lint
+        run: |
+          bun run --cwd contracts/codegen typecheck
+          bun run --cwd contracts/codegen lint
+          bun run --cwd mock-server typecheck
+          bun run --cwd mock-server lint
       - name: Mock tests and contract drift
         run: bun run --cwd mock-server test
       - name: Codegen check, types, lint, unit tests, build, bundle check

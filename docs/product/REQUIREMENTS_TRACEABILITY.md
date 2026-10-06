@@ -4,7 +4,7 @@ How each requirement of the organizer's specification ([`sources/organizer-spec.
 printed page numbers) is covered by the current code. Rules are detailed in [`BUSINESS_RULES.md`](BUSINESS_RULES.md);
 screens in [`frontend/docs/SCREENS.md`](../../frontend/docs/SCREENS.md); tests in
 [`frontend/docs/TESTING.md`](../../frontend/docs/TESTING.md). "Mock test" refers to
-[`mock-server/test/mock-api.test.mjs`](../../mock-server/test/mock-api.test.mjs), "e2e" to `frontend/e2e/`.
+[`mock-server/test/mock-api.test.ts`](../../mock-server/test/mock-api.test.ts), "e2e" to `frontend/e2e/`.
 
 Status: **done** — implemented end to end against the mock API; **done, simulated** — the workflow is implemented,
 the underlying data or evaluation is a fixture; **not implemented**.

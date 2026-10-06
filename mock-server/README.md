@@ -8,7 +8,7 @@ or a mail server.
 
 ## Run
 
-Bun 1.4.2 or newer; dependencies are pinned in `package.json` and `bun.lock`.
+Written in strict TypeScript 7 and run by Bun 1.4.2 or newer; dependencies are pinned in `package.json` and `bun.lock`.
 
 ```sh
 bun install --frozen-lockfile
@@ -82,7 +82,7 @@ curl -b jar http://127.0.0.1:4010/api/v1/me/profile
 ## Boundaries
 
 - Requests are validated with Ajv 2020 against the contract schemas; successful responses are validated too.
-  Cross-field rules, access and state transitions are in `src/domain.mjs`.
+  Cross-field rules, access and state transitions are in `src/domain.ts`.
 - Only loopback `Host` headers are accepted (`403 host_not_allowed`); behind nginx the stand rewrites `Host`.
 - Jobs are timers: running after about 300 ms, finished after about one second.
 - Assessment outcomes, checks and the assistant answer come from the scenario. The PDF import returns a fixed
@@ -93,21 +93,24 @@ curl -b jar http://127.0.0.1:4010/api/v1/me/profile
 
 | File | Role |
 | --- | --- |
-| `src/server.mjs` | HTTP boundary: routing, session cookie, origin and host checks, body parsing, idempotency, error envelope |
-| `src/domain.mjs` | Business rules, projections, jobs |
-| `src/data.mjs` | Seed data, task, rubric, catalogs |
-| `src/contract.mjs` | Route table and schemas; builds `contracts/openapi.json` |
-| `src/validation.mjs` | Ajv validators compiled from the schemas |
-| `src/pdf.mjs` | PDF export |
-| `scripts/build-contract.mjs` | Writes `../contracts/openapi.json` (`bun run contract`) |
-| `test/mock-api.test.mjs` | HTTP tests; `test/contract-coverage.json` records the operations and statuses they hit |
+| `src/generated/schema.d.ts` | Contract types written by `../contracts/codegen`; the handlers' inputs and outputs are typed by them |
+| `src/server.ts` | HTTP boundary: routing, session cookie, origin and host checks, body parsing, idempotency, error envelope |
+| `src/domain.ts` | Business rules, projections, jobs; one handler per operation, checked for completeness and response shape by the compiler |
+| `src/data.ts` | Seed data, task, rubric, catalogs |
+| `src/contract.ts` | Route table and schemas; builds `contracts/openapi.json` |
+| `src/validation.ts` | Ajv validators compiled from the schemas |
+| `src/pdf.ts` | PDF export |
+| `scripts/build-contract.ts` | Writes `../contracts/openapi.json` (`bun run contract`) |
+| `test/mock-api.test.ts` | HTTP tests; `test/contract-coverage.json` records the operations and statuses they hit |
 
 ## Tests
 
 ```sh
+bun run typecheck                  # tsc 7 over src, scripts and test
+bun run lint                       # Biome with the repository configuration
 bun run test                       # 17 HTTP tests against an in-process server
 UPDATE_FIXTURES=1 bun run test     # also rewrites fixtures/profile-export.pdf
-bun run contract                   # rebuild ../contracts/openapi.json after editing src/contract.mjs
+bun run contract                   # rebuild ../contracts/openapi.json after editing src/contract.ts
 ```
 
 The tests cover the contract drift, origin/host/role boundaries, e-mail verification, profile category, source

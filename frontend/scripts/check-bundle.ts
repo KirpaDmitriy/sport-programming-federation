@@ -13,7 +13,7 @@ const forbidden = [
 // Demo account hints are allowed only in an explicitly configured demonstration-stand build.
 if (process.env.VITE_DEMO_STAND !== '1') forbidden.push('alexey@example.com', 'hr@sever-tech.example');
 
-const found = [];
+const found: string[] = [];
 for (const name of await readdir(assets)) {
   if (!name.endsWith('.js')) continue;
   const source = await readFile(join(assets, name), 'utf8');

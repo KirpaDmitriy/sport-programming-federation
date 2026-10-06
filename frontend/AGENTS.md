@@ -11,7 +11,7 @@ is in [`../docs/product/BUSINESS_RULES.md`](../docs/product/BUSINESS_RULES.md); 
 - Use only generated contract types (`bun run codegen`); never hand-write DTOs or edit `src/shared/api/generated/`.
   A contract change goes through [`../contracts/README.md`](../contracts/README.md).
 - Call `/api/v1` through the shared client. `/__mock__` is allowed only in development-only code behind
-  `import.meta.env.DEV`; `scripts/check-bundle.mjs` must stay green.
+  `import.meta.env.DEV`; `scripts/check-bundle.ts` must stay green.
 - Employer views use the anonymous projection and read contacts only from the disclosure resource. Never fetch
   private data and hide it in the UI.
 - An API error stays an error: no silent fallback to fixtures or cached success.

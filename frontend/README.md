@@ -28,8 +28,8 @@ routes), TanStack Query 5.104, TanStack Form 1.33, openapi-fetch 0.17 with types
 (URL search parameters), @xyflow/react 12.12 (competence graph, loaded lazily), Vitest 5 with Testing Library, jsdom
 and MSW 3, Playwright 1.63 with axe, Biome 2.5. Exact versions are pinned in `package.json` and `bun.lock`.
 
-Everything runs on Bun except Vitest, which runs on Node 24.15 or newer: its jsdom environment fails on Bun's
-`EventTarget` and MSW cannot patch Bun's globals. `bun run test` starts it on Node.
+Everything runs on Bun except Vitest, which runs on Node (26 in CI, 24.15 or newer works): its jsdom environment
+fails on Bun's `EventTarget` and MSW cannot patch Bun's globals. `bun run test` starts it on Node.
 
 TypeScript is strict (`exactOptionalPropertyTypes`, `noUncheckedIndexedAccess`). `skipLibCheck` is on because the
 @xyflow/react declarations do not compile under `exactOptionalPropertyTypes`; project sources are checked in full.
@@ -65,11 +65,11 @@ FSP_API_TARGET=http://127.0.0.1:8080 bun run dev
 | `bun run mock` | Starts the mock API |
 | `bun run codegen` / `codegen:check` | Regenerates or checks `src/shared/api/generated/` from the contract |
 | `bun run typecheck` | `tsc --noEmit` |
-| `bun run lint` | Biome and the FSD layer check (`scripts/check-layers.mjs`) |
+| `bun run lint` | Biome and the FSD layer check (`scripts/check-layers.ts`) |
 | `bun run test` | Vitest unit and component tests |
 | `bun run e2e` | Playwright against the mock (starts the mock and Vite if needed) |
 | `bun run e2e:public` | Playwright smoke against a deployed stand (`FSP_PUBLIC_URL`) |
-| `bun run verify` | codegen check, typecheck, lint, unit tests, build and bundle check (`scripts/check-bundle.mjs`) |
+| `bun run verify` | codegen check, typecheck, lint, unit tests, build and bundle check (`scripts/check-bundle.ts`) |
 
 ## Configuration
 

@@ -23,7 +23,7 @@ from reportlab.platypus import (
 
 
 ROOT = Path(__file__).resolve().parents[1]
-OUTPUT = ROOT / "output" / "Выготский_техническая_документация.pdf"
+OUTPUT = ROOT / "output" / "ФСП_Карьера_техническая_документация.pdf"
 FONT = ROOT / "app" / "assets" / "fonts" / "Roboto.ttf"
 
 PURPLE = colors.HexColor("#57107B")
@@ -50,7 +50,7 @@ def page_chrome(canvas, doc) -> None:
     canvas.rect(0, height - 13 * mm, width, 13 * mm, fill=1, stroke=0)
     canvas.setFont("Roboto", 8)
     canvas.setFillColor(colors.white)
-    canvas.drawString(15 * mm, height - 8.5 * mm, "ВЫГОТСКИЙ · ФСП 2026 · ТЕХНИЧЕСКАЯ ДОКУМЕНТАЦИЯ")
+    canvas.drawString(15 * mm, height - 8.5 * mm, "ФСП / КАРЬЕРА · 2026 · ТЕХНИЧЕСКАЯ ДОКУМЕНТАЦИЯ")
     canvas.setFillColor(MUTED)
     canvas.drawRightString(width - 15 * mm, 9 * mm, f"{doc.page}")
     canvas.setStrokeColor(RULE)
@@ -110,7 +110,7 @@ def build() -> None:
 
     doc = BaseDocTemplate(
         str(OUTPUT), pagesize=A4, leftMargin=15 * mm, rightMargin=15 * mm,
-        topMargin=19 * mm, bottomMargin=17 * mm, title="Выготский — техническая документация",
+        topMargin=19 * mm, bottomMargin=17 * mm, title="ФСП / Карьера — техническая документация",
         author="Дмитрий Кирпа",
     )
     frame = Frame(doc.leftMargin, doc.bottomMargin, doc.width, doc.height, id="main")
@@ -118,7 +118,7 @@ def build() -> None:
 
     story: list = []
     cover = Table(
-        [[p("ВЫГОТСКИЙ", styles["title"])],
+        [[p("ФСП / КАРЬЕРА", styles["title"])],
          [p("Обратный найм ИТ-специалистов по доказательствам навыков", styles["subtitle"])],
          [p("Рабочий MVP · два ролевых кабинета · проверяемый грейд · объяснимый мэтчинг", styles["subtitle"])],
          [p("Федерация спортивного программирования · специальный трек 2026", styles["subtitle"])],
@@ -139,7 +139,7 @@ def build() -> None:
     story.append(PageBreak())
 
     story.extend(section("1. Продукт и граница данных", [
-        p("«Выготский» меняет направление первого шага: работодатель ищет кандидата в банке доказательных профилей и отправляет персональное приглашение. Входной сигнал — не текстовое совпадение резюме, а подтверждённая категория, карта навыков, уверенность и объяснимые пробелы относительно потребности.", styles["body"]),
+        p("«ФСП / Карьера» меняет направление первого шага: работодатель ищет кандидата в банке доказательных профилей и отправляет персональное приглашение. Входной сигнал — не текстовое совпадение резюме, а подтверждённая категория, карта навыков, уверенность и объяснимые пробелы относительно потребности.", styles["body"]),
         p("Обновлённое ТЗ не предоставляет API, структуру реестра или набор данных ФСП. Поэтому демонстрационные спортивные результаты маркируются как синтетические. Собственный версионированный контракт FSP-sync существует как интеграционная граница, защищён ключом и не является заявлением о доступе к официальным данным.", styles["callout"]),
         *bullets([
             "кандидат без FSP ID проходит полный сценарий и не получает вымышленных достижений;",

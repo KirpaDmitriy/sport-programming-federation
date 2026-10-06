@@ -90,5 +90,5 @@ def profile_pdf(user: dict = Depends(require_role("candidate")), database=Depend
     return Response(
         content,
         media_type="application/pdf",
-        headers={"Content-Disposition": 'attachment; filename="vygotsky-profile.pdf"'},
+        headers={"Content-Disposition": 'attachment; filename="fsp-career-profile.pdf"'},
     )

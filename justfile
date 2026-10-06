@@ -20,14 +20,28 @@ contract:
     bun run --cwd mock-server contract
     bun run --cwd contracts/codegen generate
 
-# Mock tests (including contract drift) and the full frontend check
+# Types, lint and tests of the contract generator, the mock and the frontend
 verify:
+    bun run --cwd contracts/codegen typecheck
+    bun run --cwd contracts/codegen lint
+    bun run --cwd mock-server typecheck
+    bun run --cwd mock-server lint
     bun run --cwd mock-server test
     bun run --cwd frontend verify
 
 # Browser acceptance tests against the mock
 e2e:
     bun run --cwd frontend e2e
+
+# Rust backend on 127.0.0.1:8080
+backend:
+    cd backend && cargo run -p fsp-server
+
+# Rust backend: format check, clippy and tests
+backend-check:
+    cd backend && cargo fmt --all --check
+    cd backend && cargo clippy --workspace --all-targets --locked -- -D warnings
+    cd backend && cargo test --workspace --locked
 
 # Build a git ref on the demo stand and switch to it
 deploy ref="main":

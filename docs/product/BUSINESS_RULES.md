@@ -1,8 +1,8 @@
 # Business rules
 
 The rules the platform implements today. The domain logic lives in the mock API
-([`mock-server/src/domain.mjs`](../../mock-server/src/domain.mjs), seed data in
-[`data.mjs`](../../mock-server/src/data.mjs)); the frontend renders its decisions and never re-computes grades,
+([`mock-server/src/domain.ts`](../../mock-server/src/domain.ts), seed data in
+[`data.ts`](../../mock-server/src/data.ts)); the frontend renders its decisions and never re-computes grades,
 eligibility, matching or access. The Rust backend must reproduce these rules
 ([`backend/README.md`](../../backend/README.md)). Wire fields and enums are defined in
 [`contracts/openapi.json`](../../contracts/openapi.json); transport rules (session, errors, idempotency, jobs) are in

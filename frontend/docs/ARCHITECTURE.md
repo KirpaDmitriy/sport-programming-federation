@@ -10,7 +10,7 @@ matching, ranking or access: it renders what the API returns. API behavior is de
 
 The code follows Feature-Sliced Design. Imports go only downward (`app → pages → widgets → features → entities →
 shared`), slices of one layer do not import each other, and other layers reach a slice only through its `index.ts`.
-`scripts/check-layers.mjs` (part of `bun run lint`) enforces these rules and keeps test helpers out of production
+`scripts/check-layers.ts` (part of `bun run lint`) enforces these rules and keeps test helpers out of production
 code.
 
 | Layer | Slices |
@@ -62,7 +62,7 @@ every route is a separate chunk). Route files are thin: search validation, guard
 - **Jobs.** `useJob` polls `GET /api/v1/jobs/{id}` at the server's `pollAfterMs` (at least 250 ms), stops at a terminal
   state and calls back once; callers then invalidate what the job changed. Source cards resume polling from
   `activeJobId` after a reload.
-- **Generated types** in `src/shared/api/generated/` come from `bun run codegen` (the isolated generator in
+- **Generated types** in `src/shared/api/generated/` come from `bun run codegen` (the TypeScript 7 generator in
   [`contracts/codegen`](../../contracts/codegen/README.md)); there are no hand-written DTO types.
 
 ## Mutations
@@ -102,7 +102,7 @@ navigation.
 | Demo-stand notes and seed account hints on `/login` | Present | Only with `VITE_DEMO_STAND=1` |
 | «Демо» dialog | Shown while `meta.mode` is `mock` | Shown while `meta.mode` is `mock` |
 
-`scripts/check-bundle.mjs` fails the build check if built JavaScript contains `/__mock__`, the mailbox or dev-control
+`scripts/check-bundle.ts` fails the build check if built JavaScript contains `/__mock__`, the mailbox or dev-control
 strings, or the seed account addresses outside a `VITE_DEMO_STAND=1` build.
 
 ## Accessibility

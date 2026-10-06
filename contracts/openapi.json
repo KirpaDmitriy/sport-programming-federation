@@ -8703,7 +8703,8 @@
           "service": {
             "type": "string",
             "enum": [
-              "fsp-mock-api"
+              "fsp-mock-api",
+              "fsp-career-api"
             ]
           },
           "version": {

@@ -14,7 +14,7 @@ def test_reverse_invitation_reveals_contact_only_after_acceptance(tmp_path) -> N
 
         with TestClient(app) as employer:
             authenticated_client(employer, "employer@example.test", "employer", "Работодатель")
-            employer_profile(employer, "Выготский Лаб")
+            employer_profile(employer, "Карьера Лаб")
             created = employer.post(
                 "/api/v1/invitations",
                 json={

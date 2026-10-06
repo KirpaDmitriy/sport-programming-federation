@@ -12,7 +12,7 @@ from reportlab.platypus import KeepTogether, Paragraph, SimpleDocTemplate, Space
 
 
 FONT_PATH = Path(__file__).parent / "assets" / "fonts" / "Roboto.ttf"
-FONT_NAME = "VygotskyRoboto"
+FONT_NAME = "FspCareerRoboto"
 PURPLE = colors.HexColor("#52056B")
 VIOLET = colors.HexColor("#7A1CAC")
 LIME = colors.HexColor("#D8FF75")
@@ -36,7 +36,7 @@ def build_candidate_pdf(profile: dict, computed_profile: dict, evidence: list[di
         topMargin=20 * mm,
         bottomMargin=18 * mm,
         title=f"Профиль кандидата — {profile['name']}",
-        author="Выготский",
+        author="ФСП / Карьера",
     )
     styles = getSampleStyleSheet()
     title = ParagraphStyle(
@@ -64,7 +64,7 @@ def build_candidate_pdf(profile: dict, computed_profile: dict, evidence: list[di
     verified_grade = profile.get("verified_grade") or "не подтверждён"
     category = f"{profile['specialization']} · {verified_grade}"
     story = [
-        Paragraph("ВЫГОТСКИЙ · СТАНДАРТИЗИРОВАННЫЙ ПРОФИЛЬ", small),
+        Paragraph("ФСП / КАРЬЕРА · СТАНДАРТИЗИРОВАННЫЙ ПРОФИЛЬ", small),
         Paragraph(profile["name"], title),
         Table(
             [[
@@ -165,7 +165,7 @@ def build_candidate_pdf(profile: dict, computed_profile: dict, evidence: list[di
         canvas.rect(0, A4[1] - 7 * mm, A4[0], 7 * mm, fill=1, stroke=0)
         canvas.setFont(FONT_NAME, 7.5)
         canvas.setFillColor(MUTED)
-        canvas.drawRightString(A4[0] - 18 * mm, 9 * mm, f"Выготский · стр. {doc.page}")
+        canvas.drawRightString(A4[0] - 18 * mm, 9 * mm, f"ФСП / Карьера · стр. {doc.page}")
         canvas.restoreState()
 
     document.build(story, onFirstPage=draw_page, onLaterPages=draw_page)

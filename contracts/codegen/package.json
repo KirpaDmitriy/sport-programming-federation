@@ -7,11 +7,14 @@
     "bun": ">=1.4.2"
   },
   "scripts": {
-    "generate": "bun generate.mjs",
-    "check": "bun generate.mjs --check"
+    "generate": "bun generate.ts",
+    "check": "bun generate.ts --check",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check ."
   },
   "devDependencies": {
-    "openapi-typescript": "7.13.0",
-    "typescript": "5.9.3"
+    "@biomejs/biome": "2.5.15",
+    "@types/node": "26.6.4",
+    "typescript": "7.0.2"
   }
 }
