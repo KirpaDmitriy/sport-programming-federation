@@ -14,7 +14,7 @@ import {
   useDocumentTitle,
   workModeLabel,
 } from '@/shared/lib';
-import { Avatar, ButtonLink, Card, Icon, SalaryBlock, Tag } from '@/shared/ui';
+import { Avatar, ButtonLink, Card, Icon, SalaryBlock, TableWrap, Tag } from '@/shared/ui';
 
 export function CandidateVacancyPage({ vacancyId }: { vacancyId: string }) {
   const scope = useScope();
@@ -68,7 +68,7 @@ export function CandidateVacancyPage({ vacancyId }: { vacancyId: string }) {
                   </h3>
                   {vacancy.match && <VacancyFitChip status={vacancy.match.status} />}
                 </div>
-                <div className="table-wrap">
+                <TableWrap label="Требования вакансии">
                   <table className="table">
                     <thead>
                       <tr>
@@ -94,7 +94,7 @@ export function CandidateVacancyPage({ vacancyId }: { vacancyId: string }) {
                       })}
                     </tbody>
                   </table>
-                </div>
+                </TableWrap>
                 {vacancy.match ? (
                   <p className="small muted">
                     {vacancy.match.explanation} Соответствие рассчитано сервером по вашему подтверждённому профилю.

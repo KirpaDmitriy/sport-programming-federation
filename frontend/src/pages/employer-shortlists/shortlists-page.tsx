@@ -5,7 +5,7 @@ import { useScope } from '@/entities/session';
 import { shortlistsQuery } from '@/entities/shortlist';
 import { CreateShortlistDialog } from '@/features/shortlist-membership';
 import { formatDate, pluralRu, useDocumentTitle } from '@/shared/lib';
-import { Button, Card, EmptyState, PageHeader } from '@/shared/ui';
+import { Button, Card, EmptyState, PageHeader, TableWrap } from '@/shared/ui';
 
 export function EmployerShortlistsPage() {
   useDocumentTitle('Подборки');
@@ -31,7 +31,7 @@ export function EmployerShortlistsPage() {
         </Card>
       ) : (
         <Card>
-          <div className="table-wrap">
+          <TableWrap label="Подборки">
             <table className="table">
               <thead>
                 <tr>
@@ -56,7 +56,7 @@ export function EmployerShortlistsPage() {
                 ))}
               </tbody>
             </table>
-          </div>
+          </TableWrap>
         </Card>
       )}
       <CreateShortlistDialog open={creating} onClose={() => setCreating(false)} onCreated={() => setCreating(false)} />
