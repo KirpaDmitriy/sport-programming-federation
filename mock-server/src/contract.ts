@@ -762,10 +762,10 @@ export function buildOpenApi(): OpenApiDocument {
     openapi: '3.1.0',
     jsonSchemaDialect: 'https://json-schema.org/draft/2020-12/schema',
     info: {
-      title: 'FSP frontend handoff API',
+      title: 'FSP Career API',
       version: '0.1.0',
       description:
-        'PROPOSED CONTRACT. Local stateful mock with synthetic data. This is not a statement that the Rust backend exists. JSON responses use camelCase. Salary is integer RUB/month before tax. No production authentication, code execution, external provider, or real LLM is implemented.',
+        'PROPOSED CONTRACT. Local stateful mock with synthetic data. The Rust backend in backend/ serves only GET /health so far; every other operation is implemented by this mock. JSON responses use camelCase. Salary is integer RUB/month before tax. No production authentication, code execution, external provider, or real LLM is implemented.',
     },
     servers: [{ url: '/', description: 'Same origin; development Vite proxy forwards /api to 127.0.0.1:4010.' }],
     paths,

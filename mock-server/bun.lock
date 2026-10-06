@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "fsp-handoff-mock-api",
+      "name": "@fsp/mock-server",
       "dependencies": {
         "ajv": "8.20.0",
         "ajv-formats": "3.0.1",
