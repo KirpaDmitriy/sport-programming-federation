@@ -1,0 +1,12 @@
+.git
+.github
+.fsp-infra
+**/node_modules
+**/dist
+**/target
+frontend/test-results
+frontend/playwright-report
+frontend/docs
+mock-server/test
+mock-server/fixtures/profile-export*
+**/.DS_Store

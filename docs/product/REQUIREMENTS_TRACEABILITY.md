@@ -51,6 +51,7 @@ The specification supplies no FSP API, schema or dataset (§2, p2; §4, p6), so 
 | Recurring short employer tasks | Desirable, not MVP (§2, p2; §2.1, p3) | done: companies author short tasks and review answers; each week a qualified candidate gets one task on an evidenced skill, solves it or proposes an approach, and the answer keeps the profile fresh for employers ([`BUSINESS_RULES.md` §11](BUSINESS_RULES.md#11-short-tasks-and-profile-freshness); e2e «UI-31», «UI-32», mock tests «weekly tasks…», «companies author…») |
 | Anti-fraud checks for employers, ATS integration | After MVP (§2, p2–3) | not implemented; no «verified company» badge |
 | Keycloak or FSP ID sign-in | Future recommendation (§2, p2; §3.5, p6) | not implemented; e-mail sign-in only |
+| Docker images and `docker-compose.yml` | Desirable, a plus at evaluation (§3.5, p5) | done: `docker compose up --build` runs the frontend behind nginx and the API; images for the mock, the frontend and the Rust skeleton, checked in CI by `.github/workflows/docker.yml` ([`infra/README.md`](../../infra/README.md#docker)) |
 | Mobile and tablet layout | Optional (§3.5, p6) | done: responsive layout with a navigation drawer below 1024 px, checked without horizontal scroll (e2e accessibility «narrow screens reflow…») |
 | In-app chat | Not required | not implemented; parties contact each other directly after acceptance |
 

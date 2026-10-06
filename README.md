@@ -17,12 +17,27 @@
 | [`contracts/`](contracts/README.md) | единый OpenAPI-контракт между фронтендом и бэкендом, коды ошибок, генератор типов |
 | [`mock-server/`](mock-server/README.md) | HTTP-мок контракта: среда разработки фронтенда и эталон бизнес-логики для бэкенда |
 | [`backend/`](backend/README.md) | гексагональный бэкенд на Rust: что реализовать по контракту и как подключить фронтенд и стенд |
-| [`infra/`](infra/README.md) | демо-стенд: подготовка сервера, деплой, nginx |
+| [`infra/`](infra/README.md) | демо-стенд: подготовка сервера, деплой, nginx; конфигурация nginx для Docker |
 | [`docs/product/`](docs/product/BUSINESS_RULES.md) | бизнес-правила платформы, матрица требований и ТЗ организаторов |
 
 Владельцы модулей и правила работы — в [AGENTS.md](AGENTS.md).
 
-## Быстрый старт
+## Запуск в Docker
+
+Нужны только Docker и Docker Compose:
+
+```sh
+docker compose up --build        # затем http://localhost:8080, код из письма — 123456
+docker compose restart api       # вернуть демонстрационные данные к исходному состоянию
+docker compose down
+```
+
+Контейнер `web` (nginx) отдаёт собранный фронтенд и проксирует `/api/v1` в контейнер `api` (мок на Bun). API слушает
+только loopback своего сетевого пространства, которое делит с `web`, поэтому снаружи доступен лишь порт 8080. Другой
+порт задаётся `FSP_PORT=9090 docker compose up --build`. Каркас Rust-бэкенда (`GET /health`) запускается отдельно:
+`docker compose --profile backend up --build backend`, порт 8081.
+
+## Разработка
 
 ```sh
 just install   # зависимости мока, генератора типов и фронтенда (Bun)

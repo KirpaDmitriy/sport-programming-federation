@@ -34,5 +34,6 @@ stand. Dima's first version, a Python (FastAPI) MVP, lives in branch `dima/mvp` 
 | contract, mock, frontend | TypeScript 7.0.2 (strict) on Bun 1.4.2; Vitest on Node 26 (24.15 or newer works); Biome 2.5 from the root `biome.json` | `just verify`, `just e2e` |
 | backend | Rust 1.99.0 (`backend/rust-toolchain.toml`), edition 2024 | `just backend-check` |
 
-`just` lists the tasks for the TypeScript modules, the backend and the stand. CI: `.github/workflows/platform.yml`
-(contract, mock, frontend) and `.github/workflows/backend.yml` (Rust).
+`just` lists the tasks for the TypeScript modules, the backend, Docker and the stand. CI:
+`.github/workflows/platform.yml` (contract, mock, frontend), `.github/workflows/backend.yml` (Rust) and
+`.github/workflows/docker.yml` (images and a smoke run of `docker-compose.yml`).
