@@ -471,6 +471,9 @@ pub fn source_view(record: SourceRecord) -> SourceView {
 }
 
 pub fn job_view(record: JobRecord, source: Option<SourceView>) -> JobView {
+    // The mock asks clients to poll in-flight jobs every 250 ms and stops
+    // polling once a job is terminal.
+    let terminal = record.status == "succeeded" || record.status == "failed";
     JobView {
         id: record.id,
         kind: "source_sync",
@@ -483,8 +486,8 @@ pub fn job_view(record: JobRecord, source: Option<SourceView>) -> JobView {
             message: record.error_message.unwrap_or_default(),
             retryable: true,
         }),
-        poll_after_ms: 0,
-        simulation: false,
+        poll_after_ms: if terminal { 0 } else { 250 },
+        simulation: true,
     }
 }
 

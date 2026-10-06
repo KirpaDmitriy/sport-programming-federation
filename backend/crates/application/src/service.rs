@@ -377,7 +377,7 @@ impl PlatformService {
                 .candidates()
                 .map_err(ApplicationError::storage)?
                 .into_iter()
-                .filter(|item| item.profile.visible_to_employers())
+                .filter(|item| item.profile.visible_to_employers(item.email_verified))
                 .filter(|item| {
                     item.profile.verified_specialization.is_some_and(|value| {
                         search.specialization.is_none_or(|filter| filter == value)
@@ -464,7 +464,10 @@ impl PlatformService {
             .candidates()
             .map_err(ApplicationError::storage)?
             .into_iter()
-            .find(|item| item.profile.id == candidate_id && item.profile.visible_to_employers())
+            .find(|item| {
+                item.profile.id == candidate_id
+                    && item.profile.visible_to_employers(item.email_verified)
+            })
             .ok_or_else(|| ApplicationError::new(404, "not_found", "Кандидат не найден"))?;
         Ok(anonymous_candidate(candidate, need.as_ref()))
     }
@@ -606,7 +609,7 @@ impl PlatformService {
     ) -> Result<GraphView, ApplicationError> {
         employer_company_id(session)?;
         let record = self.candidate_index(requested_candidate_id)?;
-        if !record.profile.visible_to_employers() {
+        if !record.profile.visible_to_employers(record.email_verified) {
             return Err(ApplicationError::new(
                 404,
                 "not_found",
@@ -668,9 +671,29 @@ impl PlatformService {
             edges.push(GraphEdgeView {
                 id: format!("edge-role-{}", skill.skill_id),
                 from: "role-main".into(),
-                to: id,
+                to: id.clone(),
                 relation: "uses".into(),
             });
+            // Evidence nodes are disclosed only to the candidate, as in the
+            // mock's `graph(candidate, audience)`.
+            if audience == "self" {
+                for index in 0..skill.sources.len() {
+                    let evidence_id = format!("evidence-{}-{index}", skill.skill_id);
+                    nodes.push(GraphNodeView {
+                        id: evidence_id.clone(),
+                        kind: "evidence".into(),
+                        label: format!("Свидетельство: {}", skill_label(&skill.skill_id)),
+                        skill_id: None,
+                        status: None,
+                    });
+                    edges.push(GraphEdgeView {
+                        id: format!("edge-{evidence_id}"),
+                        from: evidence_id,
+                        to: id.clone(),
+                        relation: "supports".into(),
+                    });
+                }
+            }
         }
         Ok(GraphView {
             audience,
@@ -689,6 +712,24 @@ impl PlatformService {
             .ok_or_else(|| ApplicationError::new(404, "not_found", "Кандидат не найден"))
     }
 
+    /// Mirrors the mock's `processing(candidate)` guard on data-processing
+    /// operations (source connect/sync, assessments, task responses, …).
+    fn require_processing_consent(&self, candidate_id: &str) -> Result<(), ApplicationError> {
+        let profile = self
+            .repository
+            .candidate(candidate_id)
+            .map_err(ApplicationError::storage)?
+            .ok_or_else(|| ApplicationError::new(404, "not_found", "Кандидат не найден"))?;
+        if !profile.consents.processing {
+            return Err(ApplicationError::new(
+                403,
+                "processing_consent_required",
+                "Для обработки данных необходимо согласие",
+            ));
+        }
+        Ok(())
+    }
+
     pub async fn connect_source(
         &self,
         session: &SessionView,
@@ -696,6 +737,7 @@ impl PlatformService {
         input: SourceConnectInput,
     ) -> Result<SourceView, ApplicationError> {
         let candidate_id = candidate_id(session)?;
+        self.require_processing_consent(candidate_id)?;
         let account = input.account.trim();
         if account.is_empty() || account.len() > 100 {
             return Err(validation("Проверьте идентификатор аккаунта"));
@@ -773,6 +815,7 @@ impl PlatformService {
         source_id: &str,
     ) -> Result<JobView, ApplicationError> {
         let candidate_id = candidate_id(session)?;
+        self.require_processing_consent(candidate_id)?;
         let source = self
             .repository
             .sources(candidate_id)
@@ -780,6 +823,17 @@ impl PlatformService {
             .into_iter()
             .find(|source| source.id == source_id)
             .ok_or_else(|| ApplicationError::new(404, "not_found", "Источник не найден"))?;
+        // A source already being synced returns its running job, like the mock.
+        if let Some(active_job_id) = &source.active_job_id
+            && let Some(active) = self
+                .repository
+                .job(candidate_id, active_job_id)
+                .map_err(ApplicationError::storage)?
+            && active.status != "succeeded"
+            && active.status != "failed"
+        {
+            return Ok(job_view(active, Some(source_view(source))));
+        }
         let created_at = now();
         let mut job = fsp_domain::JobRecord {
             id: format!("job-{}", Uuid::new_v4().simple()),
@@ -1123,12 +1177,7 @@ fn anonymous_candidate(
             .collect(),
         source_kinds: record.source_kinds,
         fsp_verified: record.fsp_verified,
-        freshness: FreshnessView {
-            last_signal_at: record.last_signal_at,
-            last_signal: Some("assessment"),
-            fresh: true,
-            window_days: 90,
-        },
+        freshness: freshness_view(record.last_signal_at.clone()),
         r#match: candidate_match,
         simulation: true,
     }
@@ -1236,10 +1285,30 @@ fn skill_summary(status: EvidenceStatus) -> &'static str {
     }
 }
 
+/// The mock's `FRESHNESS_DAYS`: a verified grade or a counted task answer keeps a
+/// profile fresh for this window.
+const FRESHNESS_DAYS: i64 = 90;
+/// `successfulGradeChangeCooldownDays` from `meta.assessmentPolicy`.
+const GRADE_COOLDOWN_DAYS: i64 = 90;
+
+fn freshness_view(last_signal_at: Option<String>) -> FreshnessView {
+    let fresh = last_signal_at
+        .as_deref()
+        .and_then(|at| chrono::DateTime::parse_from_rfc3339(at).ok())
+        .is_some_and(|at| Utc::now() - at.with_timezone(&Utc) <= Duration::days(FRESHNESS_DAYS));
+    FreshnessView {
+        last_signal: last_signal_at.as_ref().map(|_| "assessment"),
+        last_signal_at,
+        fresh,
+        window_days: FRESHNESS_DAYS as u16,
+    }
+}
+
 fn profile_view(profile: CandidateProfile, email_verified: bool) -> ProfileView {
     let questionnaire_complete = profile.questionnaire_complete();
-    let assessment_passed = profile.verified_grade.is_some();
-    let visible = profile.visible_to_employers();
+    let assessment_passed =
+        profile.verified_grade.is_some() && profile.verified_specialization.is_some();
+    let visible = profile.visible_to_employers(email_verified);
     let mut blockers = Vec::new();
     if !email_verified {
         blockers.push("email");
@@ -1256,8 +1325,44 @@ fn profile_view(profile: CandidateProfile, email_verified: bool) -> ProfileView 
     if !profile.consents.publication {
         blockers.push("publication_consent");
     }
-    let can_start = email_verified && questionnaire_complete;
     let processing_consent = profile.consents.processing;
+    // Mirrors the mock's eligibility(): onboarding gates starting any check; a
+    // successful verification freezes upgrades for the cooldown window; the
+    // selected scope additionally rejects non-backend specializations and
+    // downgrades.
+    let onboarding_incomplete = !(email_verified && questionnaire_complete && processing_consent);
+    let next_eligible_at = profile
+        .grade_confirmed_at
+        .as_deref()
+        .and_then(|at| chrono::DateTime::parse_from_rfc3339(at).ok())
+        .map(|at| (at + Duration::days(GRADE_COOLDOWN_DAYS)).to_rfc3339());
+    let cooling = next_eligible_at
+        .as_deref()
+        .is_some_and(|at| at > Utc::now().to_rfc3339().as_str());
+    let same_grade = profile.verified_grade == Some(profile.selected_grade)
+        && profile.verified_specialization == Some(profile.specialization);
+    let reason = if onboarding_incomplete {
+        Some("onboarding_incomplete")
+    } else if cooling {
+        Some("cooldown")
+    } else {
+        None
+    };
+    let selected_reason = if onboarding_incomplete {
+        Some("onboarding_incomplete")
+    } else if profile.specialization != Specialization::Backend {
+        Some("unsupported_scope")
+    } else if profile.verified_specialization == Some(profile.specialization)
+        && profile
+            .verified_grade
+            .is_some_and(|grade| profile.selected_grade < grade)
+    {
+        Some("grade_downgrade")
+    } else if cooling && !same_grade {
+        Some("cooldown")
+    } else {
+        None
+    };
     ProfileView {
         id: profile.id,
         alias: profile.alias,
@@ -1275,18 +1380,13 @@ fn profile_view(profile: CandidateProfile, email_verified: bool) -> ProfileView 
         consents: profile.consents,
         verified_grade: profile.verified_grade,
         verified_specialization: profile.verified_specialization,
-        grade_confirmed_at: profile.grade_confirmed_at,
+        grade_confirmed_at: profile.grade_confirmed_at.clone(),
         category: CategoryView {
             specialization: profile.verified_specialization,
             grade: profile.verified_grade,
-            eligible: assessment_passed,
+            eligible: visible,
         },
-        freshness: FreshnessView {
-            last_signal_at: None,
-            last_signal: None,
-            fresh: false,
-            window_days: 90,
-        },
+        freshness: freshness_view(profile.grade_confirmed_at.clone()),
         onboarding: OnboardingView {
             email_verified,
             questionnaire_complete,
@@ -1301,12 +1401,12 @@ fn profile_view(profile: CandidateProfile, email_verified: bool) -> ProfileView 
         assessment_eligibility: GradeEligibilityView {
             selected_specialization: profile.specialization,
             selected_grade: profile.selected_grade,
-            can_start_selected: can_start,
-            selected_reason: (!can_start).then_some("onboarding_incomplete"),
-            can_start_upgrade: can_start,
-            next_eligible_at: None,
-            cooldown_days: 0,
-            reason: (!can_start).then_some("onboarding_incomplete"),
+            can_start_selected: selected_reason.is_none(),
+            selected_reason,
+            can_start_upgrade: reason.is_none(),
+            next_eligible_at,
+            cooldown_days: GRADE_COOLDOWN_DAYS as u16,
+            reason,
         },
         revision: profile.revision,
         updated_at: profile.updated_at,

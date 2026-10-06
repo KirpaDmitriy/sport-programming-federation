@@ -153,9 +153,7 @@ async fn meta(State(state): State<AppState>) -> Json<Value> {
             "serviceFailureCooldownDays": 0, "sameGradeRetryCooldownDays": 0,
             "aiAllowed": true, "externalAiAllowed": true,
             "supportedScopes": [
-                {"specialization":"backend","grades":["junior","middle","senior"]},
-                {"specialization":"frontend","grades":["junior","middle","senior"]},
-                {"specialization":"fullstack","grades":["junior","middle","senior"]}
+                {"specialization":"backend","grades":["junior","middle","senior"]}
             ]
         },
         "competitions": [

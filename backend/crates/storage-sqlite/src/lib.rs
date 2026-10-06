@@ -101,11 +101,12 @@ impl PlatformRepository for SqliteRepository {
         let Some((account_id, expected, expires_at, attempts, used)) = challenge else {
             return Ok((ConsumeChallenge::Missing, None));
         };
-        if used {
-            return Ok((ConsumeChallenge::Used, None));
-        }
+        // The mock checks expiry before consumption so a stale code reports expired.
         if expires_at.as_str() <= now {
             return Ok((ConsumeChallenge::Expired, None));
+        }
+        if used {
+            return Ok((ConsumeChallenge::Used, None));
         }
         if attempts >= 5 {
             return Ok((ConsumeChallenge::Locked, None));
@@ -400,6 +401,9 @@ fn seed(connection: &Connection, now: &str) -> Result<(), RepositoryError> {
         true,
     )?;
     for profile in demo_candidates(now) {
+        // Demo candidates are pre-verified fixtures: give each one a verified
+        // account so employer visibility checks see the same state as the mock.
+        connection.execute("INSERT INTO accounts(id,email,role,candidate_id,company_id,email_verified,created_at) VALUES(?,?,?,?,?,?,?)", params![format!("account-{}", profile.id),profile.email,role(Role::Candidate),profile.id,Option::<String>::None,true,now]).map_err(storage)?;
         save_candidate(connection, &profile, true)?;
     }
     for (id, skills, sources, fsp_verified) in demo_candidate_indexes() {
@@ -720,8 +724,18 @@ fn candidate_index(
                 None,
             )
         });
+    let email_verified = connection
+        .query_row(
+            "SELECT email_verified FROM accounts WHERE candidate_id=?",
+            [&profile.id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(storage)?
+        .unwrap_or(false);
     Ok(CandidateIndexRecord {
         profile,
+        email_verified,
         work_modes,
         available_for_offers,
         skills,

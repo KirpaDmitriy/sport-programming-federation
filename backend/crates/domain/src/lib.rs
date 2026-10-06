@@ -76,6 +76,7 @@ pub struct CandidateProfile {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CandidateIndexRecord {
     pub profile: CandidateProfile,
+    pub email_verified: bool,
     pub work_modes: Vec<String>,
     pub available_for_offers: bool,
     pub skills: Vec<SkillEvidence>,
@@ -117,13 +118,21 @@ pub struct HiringNeedRecord {
 impl CandidateProfile {
     #[must_use]
     pub fn questionnaire_complete(&self) -> bool {
-        !self.name.trim().is_empty() && !self.stack.is_empty() && !self.team_role.trim().is_empty()
+        !self.name.trim().is_empty()
+            && !self.stack.is_empty()
+            && !self.team_role.trim().is_empty()
+            && !self.experience.trim().is_empty()
     }
 
+    /// Mirrors the mock's `onboarding.visibleToEmployers`: verified e-mail,
+    /// complete questionnaire, a passed assessment (grade and specialization)
+    /// and both consents.
     #[must_use]
-    pub fn visible_to_employers(&self) -> bool {
-        self.questionnaire_complete()
+    pub fn visible_to_employers(&self, email_verified: bool) -> bool {
+        email_verified
+            && self.questionnaire_complete()
             && self.verified_grade.is_some()
+            && self.verified_specialization.is_some()
             && self.consents.processing
             && self.consents.publication
     }
@@ -182,7 +191,7 @@ mod tests {
             stack: vec!["rust".into()],
             team_role: "Разработчик".into(),
             experience_months: Some(12),
-            experience: String::new(),
+            experience: "Два года в продуктовой разработке".into(),
             soft_skills: Vec::new(),
             consents: Consents {
                 processing: true,
@@ -194,8 +203,9 @@ mod tests {
             revision: 1,
             updated_at: "2026-10-06T00:00:00Z".into(),
         };
-        assert!(profile.visible_to_employers());
+        assert!(profile.visible_to_employers(true));
+        assert!(!profile.visible_to_employers(false));
         profile.consents.publication = false;
-        assert!(!profile.visible_to_employers());
+        assert!(!profile.visible_to_employers(true));
     }
 }
