@@ -98,7 +98,7 @@ impl CandidateIndexRecord {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HiringNeedRecord {
     pub id: String,
     pub company_id: String,
@@ -157,6 +157,106 @@ pub struct ShortlistRecord {
     pub member_ids: Vec<String>,
     pub created_at: String,
     pub updated_at: String,
+}
+
+/// Lifecycle shared by employer invitations and candidate applications.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum InteractionStatus {
+    Sent,
+    Viewed,
+    Accepted,
+    Declined,
+    Withdrawn,
+}
+
+impl InteractionStatus {
+    /// Terminal states cannot transition further; re-issuing the same
+    /// terminal outcome is the caller's idempotent replay.
+    #[must_use]
+    pub fn terminal(self) -> bool {
+        matches!(self, Self::Accepted | Self::Declined | Self::Withdrawn)
+    }
+
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Sent => "sent",
+            Self::Viewed => "viewed",
+            Self::Accepted => "accepted",
+            Self::Declined => "declined",
+            Self::Withdrawn => "withdrawn",
+        }
+    }
+
+    #[must_use]
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "sent" => Some(Self::Sent),
+            "viewed" => Some(Self::Viewed),
+            "accepted" => Some(Self::Accepted),
+            "declined" => Some(Self::Declined),
+            "withdrawn" => Some(Self::Withdrawn),
+            _ => None,
+        }
+    }
+}
+
+/// The company card frozen into an invitation or application snapshot.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CompanyCard {
+    pub id: String,
+    pub display_name: String,
+    pub business_area: String,
+    pub description: String,
+    pub contact_email: String,
+}
+
+/// The need fields frozen into an invitation snapshot.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NeedSnapshot {
+    pub id: String,
+    pub title: String,
+    pub work_mode: String,
+    pub salary_from: u64,
+    pub salary_to: u64,
+    pub description: String,
+}
+
+/// An employer's invitation to a candidate, with the company card and the
+/// need frozen at creation so later edits do not rewrite sent terms.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InvitationRecord {
+    pub id: String,
+    pub company_id: String,
+    pub candidate_id: String,
+    pub candidate_alias: String,
+    pub company: CompanyCard,
+    pub need: NeedSnapshot,
+    pub need_definition: HiringNeedRecord,
+    pub message: String,
+    pub status: InteractionStatus,
+    pub created_at: String,
+    pub viewed_at: Option<String>,
+    pub responded_at: Option<String>,
+    pub disclosure_fields: Vec<String>,
+}
+
+/// The aggregated disclosure grant a company holds over a candidate.
+/// Row existence means `granted: true`; an absent row renders the
+/// not-granted disclosure shell.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DisclosureRecord {
+    pub candidate_id: String,
+    pub company_id: String,
+    pub invitation_id: Option<String>,
+    pub application_id: Option<String>,
+    pub granted_at: Option<String>,
+    pub name: Option<String>,
+    pub email: Option<String>,
+    pub source_links: Vec<String>,
 }
 
 impl Company {

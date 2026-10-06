@@ -105,8 +105,30 @@ pub fn router(config: HttpConfig, service: Arc<PlatformService>) -> Router {
             "/api/v1/shortlists/{shortlist_id}/members/{candidate_id}",
             delete(remove_shortlist_member),
         )
-        .route("/api/v1/applications", get(get_company_applications))
+        .route("/api/v1/invitations", get(get_invitations))
+        .route("/api/v1/invitations/{invitation_id}", get(get_invitation))
+        .route(
+            "/api/v1/invitations/{invitation_id}/withdraw",
+            post(withdraw_invitation),
+        )
         .route("/api/v1/me/invitations", get(get_my_invitations))
+        .route(
+            "/api/v1/me/invitations/{invitation_id}",
+            get(get_my_invitation),
+        )
+        .route(
+            "/api/v1/me/invitations/{invitation_id}/view",
+            post(view_my_invitation),
+        )
+        .route(
+            "/api/v1/me/invitations/{invitation_id}/decline",
+            post(decline_my_invitation),
+        )
+        .route(
+            "/api/v1/candidates/{candidate_id}/disclosure",
+            get(get_candidate_disclosure),
+        )
+        .route("/api/v1/applications", get(get_company_applications))
         .route_layer(middleware::from_fn(no_body));
     let bodied = Router::new()
         .route(
@@ -120,6 +142,11 @@ pub fn router(config: HttpConfig, service: Arc<PlatformService>) -> Router {
         .route("/api/v1/needs/{need_id}", patch(update_need))
         .route("/api/v1/shortlists", post(create_shortlist))
         .route("/api/v1/shortlists/{shortlist_id}", patch(update_shortlist))
+        .route("/api/v1/invitations", post(create_invitation))
+        .route(
+            "/api/v1/me/invitations/{invitation_id}/accept",
+            post(accept_my_invitation),
+        )
         .route(
             "/api/v1/me/sources/{provider}/connect",
             post(connect_source),
@@ -792,13 +819,161 @@ async fn get_company_applications(
     Ok(Json(json!({ "items": [] })))
 }
 
+async fn get_invitations(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<fsp_application::InvitationsView>, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    require_role(&session, "employer")?;
+    state
+        .service
+        .invitations(&session)
+        .map(Json)
+        .map_err(api_error)
+}
+
+async fn create_invitation(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    IdempotencyKey(key): IdempotencyKey,
+    ContractJson(input): ContractJson<fsp_application::InvitationInput>,
+) -> Result<Response, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    require_role(&session, "employer")?;
+    let body = serde_json::to_value(&input).map_err(|_| {
+        ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "validation_error",
+            "Запрос не соответствует контракту",
+        )
+    })?;
+    let outcome = state
+        .service
+        .idempotent(
+            &session,
+            fsp_application::IdempotencyContext {
+                operation: "createInvitation",
+                path: "/api/v1/invitations",
+                key: &key,
+                body: &body,
+                status: StatusCode::CREATED.as_u16(),
+            },
+            || state.service.create_invitation(&session, input),
+        )
+        .map_err(api_error)?;
+    Ok(idempotent_response(StatusCode::CREATED, outcome))
+}
+
+async fn get_invitation(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ContractPath(invitation_id): ContractPath<String>,
+) -> Result<Json<fsp_application::InvitationView>, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    require_role(&session, "employer")?;
+    state
+        .service
+        .get_invitation(&session, &invitation_id)
+        .map(Json)
+        .map_err(api_error)
+}
+
+async fn withdraw_invitation(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ContractPath(invitation_id): ContractPath<String>,
+) -> Result<Json<fsp_application::InvitationView>, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    require_role(&session, "employer")?;
+    state
+        .service
+        .withdraw_invitation(&session, &invitation_id)
+        .map(Json)
+        .map_err(api_error)
+}
+
 async fn get_my_invitations(
     State(state): State<AppState>,
     headers: HeaderMap,
-) -> Result<Json<Value>, ApiError> {
+) -> Result<Json<fsp_application::InvitationsView>, ApiError> {
     let session = authenticated(&state, &headers)?;
     require_role(&session, "candidate")?;
-    Ok(Json(json!({ "items": [] })))
+    state
+        .service
+        .my_invitations(&session)
+        .map(Json)
+        .map_err(api_error)
+}
+
+async fn get_my_invitation(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ContractPath(invitation_id): ContractPath<String>,
+) -> Result<Json<fsp_application::InvitationView>, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    require_role(&session, "candidate")?;
+    state
+        .service
+        .get_invitation(&session, &invitation_id)
+        .map(Json)
+        .map_err(api_error)
+}
+
+async fn view_my_invitation(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ContractPath(invitation_id): ContractPath<String>,
+) -> Result<Json<fsp_application::InvitationView>, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    require_role(&session, "candidate")?;
+    state
+        .service
+        .view_my_invitation(&session, &invitation_id)
+        .map(Json)
+        .map_err(api_error)
+}
+
+async fn accept_my_invitation(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ContractPath(invitation_id): ContractPath<String>,
+    ContractJson(input): ContractJson<fsp_application::AcceptInvitationInput>,
+) -> Result<Json<fsp_application::InvitationView>, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    require_role(&session, "candidate")?;
+    state
+        .service
+        .accept_my_invitation(&session, &invitation_id, input)
+        .map(Json)
+        .map_err(api_error)
+}
+
+async fn decline_my_invitation(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ContractPath(invitation_id): ContractPath<String>,
+) -> Result<Json<fsp_application::InvitationView>, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    require_role(&session, "candidate")?;
+    state
+        .service
+        .decline_my_invitation(&session, &invitation_id)
+        .map(Json)
+        .map_err(api_error)
+}
+
+async fn get_candidate_disclosure(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ContractPath(candidate_id): ContractPath<String>,
+) -> Result<Json<fsp_application::DisclosureView>, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    require_role(&session, "employer")?;
+    state
+        .service
+        .candidate_disclosure(&session, &candidate_id)
+        .map(Json)
+        .map_err(api_error)
 }
 
 fn require_role(session: &SessionView, role: &str) -> Result<(), ApiError> {
@@ -1010,6 +1185,40 @@ mod tests {
             Ok(())
         }
         fn delete_shortlist(&self, _: &str, _: &str) -> Result<(), RepositoryError> {
+            Ok(())
+        }
+        fn invitations(
+            &self,
+            _: &str,
+        ) -> Result<Vec<fsp_domain::InvitationRecord>, RepositoryError> {
+            Ok(Vec::new())
+        }
+        fn candidate_invitations(
+            &self,
+            _: &str,
+        ) -> Result<Vec<fsp_domain::InvitationRecord>, RepositoryError> {
+            Ok(Vec::new())
+        }
+        fn invitation(
+            &self,
+            _: &str,
+        ) -> Result<Option<fsp_domain::InvitationRecord>, RepositoryError> {
+            Ok(None)
+        }
+        fn save_invitation(&self, _: &fsp_domain::InvitationRecord) -> Result<(), RepositoryError> {
+            Ok(())
+        }
+        fn disclosure(
+            &self,
+            _: &str,
+            _: &str,
+        ) -> Result<Option<fsp_domain::DisclosureRecord>, RepositoryError> {
+            Ok(None)
+        }
+        fn save_disclosure(&self, _: &fsp_domain::DisclosureRecord) -> Result<(), RepositoryError> {
+            Ok(())
+        }
+        fn delete_disclosure(&self, _: &str, _: &str) -> Result<(), RepositoryError> {
             Ok(())
         }
         fn save_oauth_state(&self, _: &str, _: &str, _: &str) -> Result<(), RepositoryError> {

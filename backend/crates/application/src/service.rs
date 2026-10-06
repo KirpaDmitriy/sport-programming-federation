@@ -3,21 +3,23 @@ use std::sync::Arc;
 use chrono::{Duration, Utc};
 use fsp_domain::{
     Account, CandidateIndexRecord, CandidateProfile, Company, Consents, EvidenceStatus, Grade,
-    HiringNeedRecord, Requirement, Role, Specialization, rank_candidates, score,
+    HiringNeedRecord, InteractionStatus, Requirement, Role, Specialization, rank_candidates, score,
 };
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::{
-    AnonymousCandidateView, ApplicationEligibilityView, CandidateMatchView, CandidatePageView,
-    CandidateSearch, CategoryView, CompanyCardView, CompanyPatch, CompanyView, ConsumeChallenge,
-    EmailChallengeInput, EmailChallengeView, EmailVerifyInput, EvidencePolicyView, EvidenceView,
-    FreshnessView, FspGateway, GitHubGateway, GradeEligibilityView, GraphEdgeView, GraphNodeView,
-    GraphView, IntegrationError, JobView, LlmGateway, MatchRequirementView, NeedInput, NeedPatch,
-    NeedView, NeedsView, OnboardingView, PendingChallenge, PlatformRepository, ProfilePatch,
-    ProfileView, RepositoryError, RequirementView, SalaryView, SelfSkillView, SessionView,
-    ShortlistInput, ShortlistMemberView, ShortlistSummaryView, ShortlistView, ShortlistsView,
-    SkillView, SkillsView, SourceConnectInput, SourceView, SourcesView, VacancyPageView,
+    AcceptInvitationInput, AnonymousCandidateView, ApplicationEligibilityView, CandidateMatchView,
+    CandidatePageView, CandidateSearch, CategoryView, CompanyCardView, CompanyPatch, CompanyView,
+    ConsumeChallenge, DisclosureFieldsView, DisclosureView, EmailChallengeInput,
+    EmailChallengeView, EmailVerifyInput, EvidencePolicyView, EvidenceView, FreshnessView,
+    FspGateway, GitHubGateway, GradeEligibilityView, GraphEdgeView, GraphNodeView, GraphView,
+    IntegrationError, InvitationInput, InvitationNeedView, InvitationView, InvitationsView,
+    JobView, LlmGateway, MatchRequirementView, NeedInput, NeedPatch, NeedView, NeedsView,
+    OnboardingView, PendingChallenge, PlatformRepository, ProfilePatch, ProfileView,
+    RepositoryError, RequirementView, SalaryView, SelfSkillView, SessionView, ShortlistInput,
+    ShortlistMemberView, ShortlistSummaryView, ShortlistView, ShortlistsView, SkillView,
+    SkillsView, SourceConnectInput, SourceView, SourcesView, VacancyPageView,
     VacancyRequirementView, VacancySearch, VacancyView, VerificationDelivery, job_view,
     match_status, source_view,
 };
@@ -966,6 +968,403 @@ impl PlatformService {
         self.shortlist_detail(record)
     }
 
+    /// The mock's `invitationFor`: candidates reach their own invitations,
+    /// employers reach their company's, everything else is missing.
+    fn invitation_for(
+        &self,
+        session: &SessionView,
+        invitation_id: &str,
+    ) -> Result<fsp_domain::InvitationRecord, ApplicationError> {
+        let record = self
+            .repository
+            .invitation(invitation_id)
+            .map_err(ApplicationError::storage)?;
+        match record {
+            Some(item)
+                if match session.role {
+                    Role::Candidate => {
+                        session.candidate_id.as_deref() == Some(item.candidate_id.as_str())
+                    }
+                    Role::Employer => {
+                        session.company_id.as_deref() == Some(item.company_id.as_str())
+                    }
+                } =>
+            {
+                Ok(item)
+            }
+            _ => Err(ApplicationError::new(404, "not_found", "Ресурс не найден")),
+        }
+    }
+
+    /// The mock's `visibleCandidate`: a candidate reachable by employers.
+    fn visible_candidate(
+        &self,
+        candidate_id: &str,
+    ) -> Result<CandidateIndexRecord, ApplicationError> {
+        self.repository
+            .candidates()
+            .map_err(ApplicationError::storage)?
+            .into_iter()
+            .find(|item| {
+                item.profile.id == candidate_id
+                    && item.profile.visible_to_employers(item.email_verified)
+            })
+            .ok_or_else(|| ApplicationError::new(404, "not_found", "Ресурс не найден"))
+    }
+
+    fn employer_company(&self, session: &SessionView) -> Result<Company, ApplicationError> {
+        let company_id = employer_company_id(session)?;
+        self.repository
+            .company(company_id)
+            .map_err(ApplicationError::storage)?
+            .ok_or_else(|| ApplicationError::new(404, "not_found", "Ресурс не найден"))
+    }
+
+    /// The shared publication preconditions: a complete company card and a
+    /// verified employer e-mail, in the mock's check order.
+    fn require_invitable_employer(
+        &self,
+        session: &SessionView,
+    ) -> Result<Company, ApplicationError> {
+        let company = self.employer_company(session)?;
+        if !company.ready_to_invite() {
+            return Err(ApplicationError::new(
+                422,
+                "company_incomplete",
+                "Заполните описание компании со сферой деятельности и контактную почту",
+            ));
+        }
+        if !session.email_verified {
+            return Err(ApplicationError::new(
+                403,
+                "email_not_verified",
+                "Подтвердите почту работодателя",
+            ));
+        }
+        Ok(company)
+    }
+
+    pub fn invitations(&self, session: &SessionView) -> Result<InvitationsView, ApplicationError> {
+        let company_id = employer_company_id(session)?;
+        let items = self
+            .repository
+            .invitations(company_id)
+            .map_err(ApplicationError::storage)?
+            .into_iter()
+            .map(invitation_view)
+            .collect();
+        Ok(InvitationsView { items })
+    }
+
+    /// The mock's `createInvitation`, run inside `idempotent` by the caller.
+    pub fn create_invitation(
+        &self,
+        session: &SessionView,
+        input: InvitationInput,
+    ) -> Result<InvitationView, ApplicationError> {
+        if !(1..=4000).contains(&input.message.chars().count()) {
+            return Err(validation("Запрос не соответствует контракту"));
+        }
+        let company = self.require_invitable_employer(session)?;
+        let need = self.own_need(session, &input.need_id)?;
+        validate_need_rules(need.salary_from, need.salary_to, &need.need.requirements)?;
+        let candidate = self.visible_candidate(&input.candidate_id)?;
+        let duplicate = self
+            .repository
+            .invitations(&company.id)
+            .map_err(ApplicationError::storage)?
+            .into_iter()
+            .any(|item| {
+                item.candidate_id == candidate.profile.id
+                    && item.need.id == need.id
+                    && matches!(
+                        item.status,
+                        InteractionStatus::Sent
+                            | InteractionStatus::Viewed
+                            | InteractionStatus::Accepted
+                    )
+            });
+        if duplicate {
+            return Err(ApplicationError::new(
+                409,
+                "invitation_exists",
+                "Приглашение по этой потребности уже существует",
+            ));
+        }
+        let timestamp = now();
+        let record = fsp_domain::InvitationRecord {
+            id: format!("invitation-{}", Uuid::new_v4().simple()),
+            company_id: company.id.clone(),
+            candidate_id: candidate.profile.id.clone(),
+            candidate_alias: candidate.profile.alias.clone(),
+            company: fsp_domain::CompanyCard {
+                id: company.id,
+                display_name: company.display_name,
+                business_area: company.business_area,
+                description: company.description,
+                contact_email: company.contact_email,
+            },
+            need: fsp_domain::NeedSnapshot {
+                id: need.id.clone(),
+                title: need.title.clone(),
+                work_mode: need.work_mode.clone(),
+                salary_from: need.salary_from,
+                salary_to: need.salary_to,
+                description: need.description.clone(),
+            },
+            need_definition: need,
+            message: input.message,
+            status: InteractionStatus::Sent,
+            created_at: timestamp,
+            viewed_at: None,
+            responded_at: None,
+            disclosure_fields: Vec::new(),
+        };
+        self.repository
+            .save_invitation(&record)
+            .map_err(ApplicationError::storage)?;
+        Ok(invitation_view(record))
+    }
+
+    pub fn get_invitation(
+        &self,
+        session: &SessionView,
+        invitation_id: &str,
+    ) -> Result<InvitationView, ApplicationError> {
+        self.invitation_for(session, invitation_id)
+            .map(invitation_view)
+    }
+
+    pub fn withdraw_invitation(
+        &self,
+        session: &SessionView,
+        invitation_id: &str,
+    ) -> Result<InvitationView, ApplicationError> {
+        let mut record = self.invitation_for(session, invitation_id)?;
+        if record.status == InteractionStatus::Withdrawn {
+            return Ok(invitation_view(record));
+        }
+        if record.status.terminal() {
+            return Err(ApplicationError::new(
+                409,
+                "invitation_terminal",
+                "Решение по приглашению уже принято",
+            ));
+        }
+        record.status = InteractionStatus::Withdrawn;
+        record.responded_at = Some(now());
+        self.repository
+            .save_invitation(&record)
+            .map_err(ApplicationError::storage)?;
+        Ok(invitation_view(record))
+    }
+
+    pub fn my_invitations(
+        &self,
+        session: &SessionView,
+    ) -> Result<InvitationsView, ApplicationError> {
+        let candidate_id = candidate_id(session)?;
+        let items = self
+            .repository
+            .candidate_invitations(candidate_id)
+            .map_err(ApplicationError::storage)?
+            .into_iter()
+            .map(invitation_view)
+            .collect();
+        Ok(InvitationsView { items })
+    }
+
+    pub fn view_my_invitation(
+        &self,
+        session: &SessionView,
+        invitation_id: &str,
+    ) -> Result<InvitationView, ApplicationError> {
+        let mut record = self.invitation_for(session, invitation_id)?;
+        if record.status == InteractionStatus::Sent {
+            record.status = InteractionStatus::Viewed;
+            record.viewed_at = Some(now());
+            self.repository
+                .save_invitation(&record)
+                .map_err(ApplicationError::storage)?;
+        }
+        Ok(invitation_view(record))
+    }
+
+    pub fn accept_my_invitation(
+        &self,
+        session: &SessionView,
+        invitation_id: &str,
+        input: AcceptInvitationInput,
+    ) -> Result<InvitationView, ApplicationError> {
+        let mut disclose = input.disclose;
+        validate_disclose(&disclose)?;
+        disclose.sort();
+        let mut record = self.invitation_for(session, invitation_id)?;
+        if record.status == InteractionStatus::Accepted && record.disclosure_fields == disclose {
+            return Ok(invitation_view(record));
+        }
+        if record.status.terminal() {
+            return Err(ApplicationError::new(
+                409,
+                "invitation_terminal",
+                "Решение по приглашению уже принято",
+            ));
+        }
+        let candidate = self.candidate_index(candidate_id(session)?)?;
+        if !candidate.email_verified {
+            return Err(ApplicationError::new(
+                403,
+                "email_not_verified",
+                "Подтвердите почту",
+            ));
+        }
+        record.status = InteractionStatus::Accepted;
+        record.responded_at = Some(now());
+        record.disclosure_fields = disclose;
+        self.repository
+            .save_invitation(&record)
+            .map_err(ApplicationError::storage)?;
+        self.refresh_disclosure(&record.company_id.clone(), &candidate)?;
+        Ok(invitation_view(record))
+    }
+
+    pub fn decline_my_invitation(
+        &self,
+        session: &SessionView,
+        invitation_id: &str,
+    ) -> Result<InvitationView, ApplicationError> {
+        let mut record = self.invitation_for(session, invitation_id)?;
+        if record.status == InteractionStatus::Declined {
+            return Ok(invitation_view(record));
+        }
+        if record.status.terminal() {
+            return Err(ApplicationError::new(
+                409,
+                "invitation_terminal",
+                "Решение по приглашению уже принято",
+            ));
+        }
+        record.status = InteractionStatus::Declined;
+        record.responded_at = Some(now());
+        self.repository
+            .save_invitation(&record)
+            .map_err(ApplicationError::storage)?;
+        Ok(invitation_view(record))
+    }
+
+    /// The mock's `refreshDisclosure`: recomputes a company's disclosure grant
+    /// from accepted invitations (and, once applications land, active
+    /// applications). Removing the last grant deletes the record.
+    fn refresh_disclosure(
+        &self,
+        company_id: &str,
+        candidate: &CandidateIndexRecord,
+    ) -> Result<(), ApplicationError> {
+        let invitations = self
+            .repository
+            .invitations(company_id)
+            .map_err(ApplicationError::storage)?
+            .into_iter()
+            .filter(|item| {
+                item.candidate_id == candidate.profile.id
+                    && item.status == InteractionStatus::Accepted
+            })
+            .collect::<Vec<_>>();
+        let granted = invitations
+            .iter()
+            .flat_map(|item| item.disclosure_fields.iter().cloned())
+            .collect::<std::collections::BTreeSet<_>>();
+        // Applications extend the grant; they join this union in W2.5.
+        if granted.is_empty() {
+            return self
+                .repository
+                .delete_disclosure(company_id, &candidate.profile.id)
+                .map_err(ApplicationError::storage);
+        }
+        let invitation = invitations.iter().max_by(|a, b| {
+            (a.responded_at.as_deref().unwrap_or(&a.created_at))
+                .cmp(b.responded_at.as_deref().unwrap_or(&b.created_at))
+        });
+        let source_links = if granted.contains("sourceLinks") {
+            let mut links = Vec::new();
+            for source in self
+                .repository
+                .sources(&candidate.profile.id)
+                .map_err(ApplicationError::storage)?
+            {
+                if let Some(analysis) = source.analysis {
+                    for repository in analysis.repositories {
+                        if !links.contains(&repository.url) {
+                            links.push(repository.url);
+                        }
+                    }
+                }
+            }
+            links
+        } else {
+            Vec::new()
+        };
+        let record = fsp_domain::DisclosureRecord {
+            candidate_id: candidate.profile.id.clone(),
+            company_id: company_id.to_owned(),
+            invitation_id: invitation.map(|item| item.id.clone()),
+            application_id: None,
+            granted_at: invitation.and_then(|item| item.responded_at.clone()),
+            name: granted
+                .contains("name")
+                .then(|| candidate.profile.name.clone()),
+            email: granted
+                .contains("email")
+                .then(|| candidate.profile.email.clone()),
+            source_links,
+        };
+        self.repository
+            .save_disclosure(&record)
+            .map_err(ApplicationError::storage)
+    }
+
+    /// The mock's `getCandidateDisclosure`: the grant row or the explicit
+    /// not-granted shell when the company may see the candidate at all.
+    pub fn candidate_disclosure(
+        &self,
+        session: &SessionView,
+        requested_candidate_id: &str,
+    ) -> Result<DisclosureView, ApplicationError> {
+        let company_id = employer_company_id(session)?;
+        if let Some(grant) = self
+            .repository
+            .disclosure(company_id, requested_candidate_id)
+            .map_err(ApplicationError::storage)?
+        {
+            return Ok(DisclosureView {
+                candidate_id: grant.candidate_id,
+                company_id: grant.company_id,
+                granted: true,
+                invitation_id: grant.invitation_id,
+                application_id: grant.application_id,
+                granted_at: grant.granted_at,
+                fields: DisclosureFieldsView {
+                    name: grant.name,
+                    email: grant.email,
+                    source_links: (!grant.source_links.is_empty()).then_some(grant.source_links),
+                },
+            });
+        }
+        // Without a grant the candidate must still be reachable: the mock's
+        // `candidateForCompany` also accepts a live application, which joins
+        // this check when applications land.
+        self.visible_candidate(requested_candidate_id)?;
+        Ok(DisclosureView {
+            candidate_id: requested_candidate_id.to_owned(),
+            company_id: company_id.to_owned(),
+            granted: false,
+            invitation_id: None,
+            application_id: None,
+            granted_at: None,
+            fields: DisclosureFieldsView::default(),
+        })
+    }
+
     pub fn candidate_search(
         &self,
         session: &SessionView,
@@ -1334,16 +1733,15 @@ impl PlatformService {
     /// require it. The key is scoped by actor, operation and path; an
     /// identical payload replays the stored response verbatim, a changed
     /// payload conflicts, and only successful results are stored.
-    pub async fn idempotent<T, F, Fut>(
+    pub fn idempotent<T, F>(
         &self,
         session: &SessionView,
         context: IdempotencyContext<'_>,
         run: F,
     ) -> Result<Idempotent<T>, ApplicationError>
     where
-        T: serde::Serialize + serde::de::DeserializeOwned,
-        F: FnOnce() -> Fut,
-        Fut: std::future::Future<Output = Result<T, ApplicationError>>,
+        T: serde::Serialize,
+        F: FnOnce() -> Result<T, ApplicationError>,
     {
         let IdempotencyContext {
             operation,
@@ -1375,7 +1773,7 @@ impl PlatformService {
                 body: stored.body,
             });
         }
-        let value = run().await?;
+        let value = run()?;
         let stored_body = serde_json::to_string(&value).map_err(|_| {
             ApplicationError::new(500, "internal_error", "Сервис временно недоступен")
         })?;
@@ -1817,6 +2215,56 @@ fn need_view(record: HiringNeedRecord) -> NeedView {
         updated_at: record.updated_at,
         revision: record.revision,
     }
+}
+
+fn invitation_view(record: fsp_domain::InvitationRecord) -> InvitationView {
+    InvitationView {
+        id: record.id,
+        candidate_id: record.candidate_id,
+        candidate_alias: record.candidate_alias,
+        company: CompanyCardView {
+            id: record.company.id,
+            display_name: record.company.display_name,
+            business_area: record.company.business_area,
+            description: record.company.description,
+            contact_email: record.company.contact_email,
+        },
+        need: InvitationNeedView {
+            id: record.need.id,
+            title: record.need.title,
+            work_mode: record.need.work_mode,
+            salary: SalaryView {
+                from: record.need.salary_from,
+                to: record.need.salary_to,
+                currency: "RUB",
+                period: "month",
+                tax_basis: "gross",
+            },
+            description: record.need.description,
+        },
+        message: record.message,
+        status: record.status,
+        created_at: record.created_at,
+        viewed_at: record.viewed_at,
+        responded_at: record.responded_at,
+        disclosure_fields: record.disclosure_fields,
+    }
+}
+
+/// The contract's `disclose` array: at least one field, unique, from the
+/// disclosure enum.
+fn validate_disclose(disclose: &[String]) -> Result<(), ApplicationError> {
+    const FIELDS: [&str; 3] = ["name", "email", "sourceLinks"];
+    let unique = disclose.iter().collect::<std::collections::BTreeSet<_>>();
+    if disclose.is_empty()
+        || unique.len() != disclose.len()
+        || disclose
+            .iter()
+            .any(|field| !FIELDS.contains(&field.as_str()))
+    {
+        return Err(validation("Запрос не соответствует контракту"));
+    }
+    Ok(())
 }
 
 fn anonymous_candidate(

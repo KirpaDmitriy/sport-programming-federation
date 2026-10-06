@@ -234,6 +234,76 @@ pub struct ShortlistView {
     pub members: Vec<ShortlistMemberView>,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct InvitationInput {
+    pub candidate_id: String,
+    pub need_id: String,
+    pub message: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AcceptInvitationInput {
+    pub disclose: Vec<String>,
+}
+
+/// The need fields frozen into an invitation, as the contract exposes them.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InvitationNeedView {
+    pub id: String,
+    pub title: String,
+    pub work_mode: String,
+    pub salary: SalaryView,
+    pub description: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InvitationView {
+    pub id: String,
+    pub candidate_id: String,
+    pub candidate_alias: String,
+    pub company: CompanyCardView,
+    pub need: InvitationNeedView,
+    pub message: String,
+    pub status: fsp_domain::InteractionStatus,
+    pub created_at: String,
+    pub viewed_at: Option<String>,
+    pub responded_at: Option<String>,
+    pub disclosure_fields: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InvitationsView {
+    pub items: Vec<InvitationView>,
+}
+
+#[derive(Debug, Clone, Serialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct DisclosureFieldsView {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub email: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_links: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DisclosureView {
+    pub candidate_id: String,
+    pub company_id: String,
+    pub granted: bool,
+    pub invitation_id: Option<String>,
+    pub application_id: Option<String>,
+    pub granted_at: Option<String>,
+    pub fields: DisclosureFieldsView,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SalaryView {

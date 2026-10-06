@@ -78,6 +78,39 @@ pub trait PlatformRepository: Send + Sync {
     ) -> Result<(), RepositoryError>;
     fn delete_shortlist(&self, company_id: &str, shortlist_id: &str)
     -> Result<(), RepositoryError>;
+    /// Invitations sent by a company, in creation order.
+    fn invitations(
+        &self,
+        company_id: &str,
+    ) -> Result<Vec<fsp_domain::InvitationRecord>, RepositoryError>;
+    /// Invitations addressed to a candidate, in creation order.
+    fn candidate_invitations(
+        &self,
+        candidate_id: &str,
+    ) -> Result<Vec<fsp_domain::InvitationRecord>, RepositoryError>;
+    /// Unscoped lookup; the service applies the caller's tenancy rule.
+    fn invitation(
+        &self,
+        invitation_id: &str,
+    ) -> Result<Option<fsp_domain::InvitationRecord>, RepositoryError>;
+    fn save_invitation(
+        &self,
+        invitation: &fsp_domain::InvitationRecord,
+    ) -> Result<(), RepositoryError>;
+    fn disclosure(
+        &self,
+        company_id: &str,
+        candidate_id: &str,
+    ) -> Result<Option<fsp_domain::DisclosureRecord>, RepositoryError>;
+    fn save_disclosure(
+        &self,
+        disclosure: &fsp_domain::DisclosureRecord,
+    ) -> Result<(), RepositoryError>;
+    fn delete_disclosure(
+        &self,
+        company_id: &str,
+        candidate_id: &str,
+    ) -> Result<(), RepositoryError>;
     fn save_oauth_state(
         &self,
         candidate_id: &str,

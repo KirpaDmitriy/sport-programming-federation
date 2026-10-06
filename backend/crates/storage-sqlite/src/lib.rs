@@ -348,6 +348,120 @@ impl PlatformRepository for SqliteRepository {
         Ok(())
     }
 
+    fn invitations(
+        &self,
+        company_id: &str,
+    ) -> Result<Vec<fsp_domain::InvitationRecord>, RepositoryError> {
+        let connection = self.connection()?;
+        connection
+            .prepare("SELECT * FROM invitations WHERE company_id=? ORDER BY rowid")
+            .map_err(storage)?
+            .query_map([company_id], invitation_record)
+            .map_err(storage)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(storage)
+    }
+
+    fn candidate_invitations(
+        &self,
+        candidate_id: &str,
+    ) -> Result<Vec<fsp_domain::InvitationRecord>, RepositoryError> {
+        let connection = self.connection()?;
+        connection
+            .prepare("SELECT * FROM invitations WHERE candidate_id=? ORDER BY rowid")
+            .map_err(storage)?
+            .query_map([candidate_id], invitation_record)
+            .map_err(storage)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(storage)
+    }
+
+    fn invitation(
+        &self,
+        invitation_id: &str,
+    ) -> Result<Option<fsp_domain::InvitationRecord>, RepositoryError> {
+        self.connection()?
+            .query_row(
+                "SELECT * FROM invitations WHERE id=?",
+                params![invitation_id],
+                invitation_record,
+            )
+            .optional()
+            .map_err(storage)
+    }
+
+    fn save_invitation(&self, value: &fsp_domain::InvitationRecord) -> Result<(), RepositoryError> {
+        self.connection()?
+            .execute(
+                "INSERT OR REPLACE INTO invitations(id,company_id,candidate_id,candidate_alias,company_json,need_json,need_definition_json,message,status,created_at,viewed_at,responded_at,disclosure_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                params![
+                    value.id,
+                    value.company_id,
+                    value.candidate_id,
+                    value.candidate_alias,
+                    serde_json::to_string(&value.company).map_err(json_storage)?,
+                    serde_json::to_string(&value.need).map_err(json_storage)?,
+                    serde_json::to_string(&value.need_definition).map_err(json_storage)?,
+                    value.message,
+                    value.status.as_str(),
+                    value.created_at,
+                    value.viewed_at,
+                    value.responded_at,
+                    serde_json::to_string(&value.disclosure_fields).map_err(json_storage)?,
+                ],
+            )
+            .map_err(storage)?;
+        Ok(())
+    }
+
+    fn disclosure(
+        &self,
+        company_id: &str,
+        candidate_id: &str,
+    ) -> Result<Option<fsp_domain::DisclosureRecord>, RepositoryError> {
+        self.connection()?
+            .query_row(
+                "SELECT candidate_id,company_id,invitation_id,application_id,granted_at,name,email,source_links_json FROM disclosures WHERE company_id=? AND candidate_id=?",
+                params![company_id, candidate_id],
+                disclosure_record,
+            )
+            .optional()
+            .map_err(storage)
+    }
+
+    fn save_disclosure(&self, value: &fsp_domain::DisclosureRecord) -> Result<(), RepositoryError> {
+        self.connection()?
+            .execute(
+                "INSERT OR REPLACE INTO disclosures(company_id,candidate_id,invitation_id,application_id,granted_at,name,email,source_links_json) VALUES(?,?,?,?,?,?,?,?)",
+                params![
+                    value.company_id,
+                    value.candidate_id,
+                    value.invitation_id,
+                    value.application_id,
+                    value.granted_at,
+                    value.name,
+                    value.email,
+                    serde_json::to_string(&value.source_links).map_err(json_storage)?,
+                ],
+            )
+            .map_err(storage)?;
+        Ok(())
+    }
+
+    fn delete_disclosure(
+        &self,
+        company_id: &str,
+        candidate_id: &str,
+    ) -> Result<(), RepositoryError> {
+        self.connection()?
+            .execute(
+                "DELETE FROM disclosures WHERE company_id=? AND candidate_id=?",
+                params![company_id, candidate_id],
+            )
+            .map_err(storage)?;
+        Ok(())
+    }
+
     fn save_oauth_state(
         &self,
         candidate_id: &str,
@@ -916,6 +1030,44 @@ fn candidate_index(
     })
 }
 
+fn invitation_record(row: &rusqlite::Row<'_>) -> rusqlite::Result<fsp_domain::InvitationRecord> {
+    let status: String = row.get(8)?;
+    Ok(fsp_domain::InvitationRecord {
+        id: row.get(0)?,
+        company_id: row.get(1)?,
+        candidate_id: row.get(2)?,
+        candidate_alias: row.get(3)?,
+        company: parse_json(row.get::<_, String>(4)?)?,
+        need: parse_json(row.get::<_, String>(5)?)?,
+        need_definition: parse_json(row.get::<_, String>(6)?)?,
+        message: row.get(7)?,
+        status: fsp_domain::InteractionStatus::parse(&status).ok_or_else(|| {
+            rusqlite::Error::FromSqlConversionFailure(
+                8,
+                rusqlite::types::Type::Text,
+                format!("unknown invitation status {status}").into(),
+            )
+        })?,
+        created_at: row.get(9)?,
+        viewed_at: row.get(10)?,
+        responded_at: row.get(11)?,
+        disclosure_fields: parse_json(row.get::<_, String>(12)?)?,
+    })
+}
+
+fn disclosure_record(row: &rusqlite::Row<'_>) -> rusqlite::Result<fsp_domain::DisclosureRecord> {
+    Ok(fsp_domain::DisclosureRecord {
+        candidate_id: row.get(0)?,
+        company_id: row.get(1)?,
+        invitation_id: row.get(2)?,
+        application_id: row.get(3)?,
+        granted_at: row.get(4)?,
+        name: row.get(5)?,
+        email: row.get(6)?,
+        source_links: parse_json(row.get::<_, String>(7)?)?,
+    })
+}
+
 fn shortlist_record(row: &rusqlite::Row<'_>) -> rusqlite::Result<fsp_domain::ShortlistRecord> {
     let members: String = row.get(3)?;
     Ok(fsp_domain::ShortlistRecord {
@@ -1113,6 +1265,8 @@ CREATE TABLE IF NOT EXISTS sources(id TEXT PRIMARY KEY,candidate_id TEXT NOT NUL
 CREATE TABLE IF NOT EXISTS jobs(id TEXT PRIMARY KEY,owner_id TEXT NOT NULL,status TEXT NOT NULL,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,result_source_id TEXT,error_code TEXT,error_message TEXT);
 CREATE TABLE IF NOT EXISTS idempotency_keys(scope TEXT PRIMARY KEY,fingerprint TEXT NOT NULL,status INTEGER NOT NULL,body_json TEXT NOT NULL,created_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS shortlists(id TEXT PRIMARY KEY,company_id TEXT NOT NULL REFERENCES companies(id),title TEXT NOT NULL,members_json TEXT NOT NULL,created_at TEXT NOT NULL,updated_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS invitations(id TEXT PRIMARY KEY,company_id TEXT NOT NULL,candidate_id TEXT NOT NULL,candidate_alias TEXT NOT NULL,company_json TEXT NOT NULL,need_json TEXT NOT NULL,need_definition_json TEXT NOT NULL,message TEXT NOT NULL,status TEXT NOT NULL,created_at TEXT NOT NULL,viewed_at TEXT,responded_at TEXT,disclosure_json TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS disclosures(company_id TEXT NOT NULL,candidate_id TEXT NOT NULL,invitation_id TEXT,application_id TEXT,granted_at TEXT,name TEXT,email TEXT,source_links_json TEXT NOT NULL,PRIMARY KEY(company_id,candidate_id));
 "#;
 
 #[cfg(test)]
@@ -1373,6 +1527,116 @@ mod tests {
                 .shortlists("company-sever")
                 .expect("list works")
                 .is_empty()
+        );
+        drop(repository);
+        std::fs::remove_file(path).expect("temporary database is removed");
+    }
+
+    #[test]
+    fn invitations_and_disclosures_round_trip() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system clock must be after Unix epoch")
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("fsp-invitations-{nonce}.sqlite3"));
+        let repository = SqliteRepository::open(&path).expect("database opens");
+        let need = HiringNeedRecord {
+            id: "need-test".into(),
+            company_id: "company-sever".into(),
+            title: "Backend-разработчик".into(),
+            need: demo_need(),
+            work_mode: "remote".into(),
+            salary_from: 200_000,
+            salary_to: 300_000,
+            description: "Описание вакансии".into(),
+            published: true,
+            published_at: Some("2026-10-06T00:00:00Z".into()),
+            created_at: "2026-10-06T00:00:00Z".into(),
+            updated_at: "2026-10-06T00:00:00Z".into(),
+            revision: 1,
+        };
+        let record = fsp_domain::InvitationRecord {
+            id: "invitation-test".into(),
+            company_id: "company-sever".into(),
+            candidate_id: "candidate018".into(),
+            candidate_alias: "Кандидат №018".into(),
+            company: fsp_domain::CompanyCard {
+                id: "company-sever".into(),
+                display_name: "Север Тех".into(),
+                business_area: "Разработка".into(),
+                description: String::new(),
+                contact_email: "hr@sever-tech.example".into(),
+            },
+            need: fsp_domain::NeedSnapshot {
+                id: need.id.clone(),
+                title: need.title.clone(),
+                work_mode: need.work_mode.clone(),
+                salary_from: need.salary_from,
+                salary_to: need.salary_to,
+                description: need.description.clone(),
+            },
+            need_definition: need,
+            message: "Приглашаем на интервью".into(),
+            status: fsp_domain::InteractionStatus::Sent,
+            created_at: "2026-10-06T00:00:00Z".into(),
+            viewed_at: None,
+            responded_at: None,
+            disclosure_fields: Vec::new(),
+        };
+        repository
+            .save_invitation(&record)
+            .expect("invitation is stored");
+
+        let stored = repository
+            .invitation("invitation-test")
+            .expect("lookup works")
+            .expect("invitation exists");
+        assert_eq!(stored.status, fsp_domain::InteractionStatus::Sent);
+        assert_eq!(stored.need.id, "need-test");
+        assert_eq!(stored.need_definition.id, "need-test");
+        assert_eq!(repository.invitations("company-sever").unwrap().len(), 1);
+        assert_eq!(
+            repository
+                .candidate_invitations("candidate018")
+                .unwrap()
+                .len(),
+            1
+        );
+        assert!(
+            repository
+                .candidate_invitations("candidate031")
+                .unwrap()
+                .is_empty()
+        );
+
+        repository
+            .save_disclosure(&fsp_domain::DisclosureRecord {
+                candidate_id: "candidate018".into(),
+                company_id: "company-sever".into(),
+                invitation_id: Some("invitation-test".into()),
+                application_id: None,
+                granted_at: Some("2026-10-06T00:00:00Z".into()),
+                name: Some("Илья Соколов".into()),
+                email: None,
+                source_links: vec!["https://github.com/example".into()],
+            })
+            .expect("disclosure is stored");
+        let grant = repository
+            .disclosure("company-sever", "candidate018")
+            .expect("lookup works")
+            .expect("grant exists");
+        assert_eq!(grant.name.as_deref(), Some("Илья Соколов"));
+        assert!(grant.email.is_none());
+        assert_eq!(grant.source_links, ["https://github.com/example"]);
+
+        repository
+            .delete_disclosure("company-sever", "candidate018")
+            .expect("disclosure is removed");
+        assert!(
+            repository
+                .disclosure("company-sever", "candidate018")
+                .expect("lookup works")
+                .is_none()
         );
         drop(repository);
         std::fs::remove_file(path).expect("temporary database is removed");
