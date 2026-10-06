@@ -53,6 +53,9 @@ pub trait PlatformRepository: Send + Sync {
     fn company(&self, company_id: &str) -> Result<Option<Company>, RepositoryError>;
     fn save_company(&self, company: &Company) -> Result<(), RepositoryError>;
     fn candidates(&self) -> Result<Vec<CandidateIndexRecord>, RepositoryError>;
+    /// Persists the derived candidate index (skills, visibility flags); the
+    /// row is created on first save when seeding missed the candidate.
+    fn save_candidate_index(&self, record: &CandidateIndexRecord) -> Result<(), RepositoryError>;
     fn needs(&self, company_id: &str) -> Result<Vec<HiringNeedRecord>, RepositoryError>;
     fn need(
         &self,
@@ -155,6 +158,20 @@ pub trait PlatformRepository: Send + Sync {
     fn save_task_response(
         &self,
         response: &fsp_domain::TaskResponseRecord,
+    ) -> Result<(), RepositoryError>;
+    /// Assessments owned by a candidate.
+    fn candidate_assessments(
+        &self,
+        candidate_id: &str,
+    ) -> Result<Vec<fsp_domain::AssessmentRecord>, RepositoryError>;
+    /// Unscoped lookup; the service applies the caller's tenancy rule.
+    fn assessment(
+        &self,
+        assessment_id: &str,
+    ) -> Result<Option<fsp_domain::AssessmentRecord>, RepositoryError>;
+    fn save_assessment(
+        &self,
+        assessment: &fsp_domain::AssessmentRecord,
     ) -> Result<(), RepositoryError>;
     fn save_oauth_state(
         &self,

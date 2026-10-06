@@ -10,14 +10,15 @@ use uuid::Uuid;
 
 use crate::{
     AcceptInvitationInput, AnonymousCandidateView, ApplicationEligibilityView, ApplicationInput,
-    ApplicationVacancyView, ApplicationView, ApplicationsView, CandidateMatchView,
+    ApplicationVacancyView, ApplicationView, ApplicationsView, AssessmentStartInput,
+    AssessmentView, AssessmentsView, AssistantInput, AssistantReplyView, CandidateMatchView,
     CandidatePageView, CandidateSearch, CategoryView, CompanyCardView, CompanyPatch, CompanyView,
     ConsumeChallenge, DisclosureFieldsView, DisclosureView, EmailChallengeInput,
     EmailChallengeView, EmailVerifyInput, EvidencePolicyView, EvidenceView, FreshnessView,
     FspGateway, GitHubGateway, GradeEligibilityView, GraphEdgeView, GraphNodeView, GraphView,
     IntegrationError, InvitationInput, InvitationNeedView, InvitationView, InvitationsView,
-    JobView, LlmGateway, MatchRequirementView, MyTasksView, NeedInput, NeedPatch, NeedView,
-    NeedsView, OfferedCompanyView, OfferedTaskView, OnboardingView, PendingChallenge,
+    JobResultView, JobView, LlmGateway, MatchRequirementView, MyTasksView, NeedInput, NeedPatch,
+    NeedView, NeedsView, OfferedCompanyView, OfferedTaskView, OnboardingView, PendingChallenge,
     PlatformRepository, ProfilePatch, ProfileView, RepositoryError, RequirementView, SalaryView,
     SelfSkillView, SessionView, ShortlistInput, ShortlistMemberView, ShortlistSummaryView,
     ShortlistView, ShortlistsView, SkillView, SkillsView, SourceConnectInput, SourceView,
@@ -258,7 +259,13 @@ impl PlatformService {
             .map_err(ApplicationError::storage)?
             .ok_or_else(|| ApplicationError::new(404, "not_found", "Профиль не найден"))?;
         let signals = self.freshness_signals(&profile.id, profile.grade_confirmed_at.as_deref())?;
-        Ok(profile_view(profile, session.email_verified, &signals))
+        let assessment_running = self.has_active_assessment(&profile.id)?;
+        Ok(profile_view(
+            profile,
+            session.email_verified,
+            &signals,
+            assessment_running,
+        ))
     }
 
     pub fn update_profile(
@@ -315,7 +322,13 @@ impl PlatformService {
             .save_candidate(&profile)
             .map_err(ApplicationError::storage)?;
         let signals = self.freshness_signals(&profile.id, profile.grade_confirmed_at.as_deref())?;
-        Ok(profile_view(profile, session.email_verified, &signals))
+        let assessment_running = self.has_active_assessment(&profile.id)?;
+        Ok(profile_view(
+            profile,
+            session.email_verified,
+            &signals,
+            assessment_running,
+        ))
     }
 
     pub fn company(&self, session: &SessionView) -> Result<CompanyView, ApplicationError> {
@@ -2101,6 +2114,390 @@ impl PlatformService {
         Ok(task_response_view(&record))
     }
 
+    /// The mock's `listMyAssessments`, newest id first.
+    pub fn my_assessments(
+        &self,
+        session: &SessionView,
+    ) -> Result<AssessmentsView, ApplicationError> {
+        let candidate_id = candidate_id(session)?;
+        let mut records = self
+            .repository
+            .candidate_assessments(candidate_id)
+            .map_err(ApplicationError::storage)?;
+        records.sort_by(|a, b| b.id.cmp(&a.id));
+        Ok(AssessmentsView {
+            items: records.iter().map(assessment_view).collect(),
+        })
+    }
+
+    /// The mock's `startAssessment`, run inside `idempotent` by the caller:
+    /// consent, onboarding, backend-only scope, one active attempt,
+    /// no same-scope downgrade and the grade-change cooldown, in this order.
+    pub fn start_assessment(
+        &self,
+        session: &SessionView,
+        input: AssessmentStartInput,
+    ) -> Result<AssessmentView, ApplicationError> {
+        let candidate_id = candidate_id(session)?;
+        let candidate = self.candidate_index(candidate_id)?;
+        self.require_processing_consent(candidate_id)?;
+        if !candidate.email_verified || !candidate.profile.questionnaire_complete() {
+            return Err(ApplicationError::new(
+                409,
+                "onboarding_incomplete",
+                "Подтвердите почту и заполните анкету",
+            ));
+        }
+        if input.specialization != Specialization::Backend {
+            return Err(ApplicationError::new(
+                422,
+                "assessment_scope_unavailable",
+                "Демонстрационные задания доступны только для бэкенда",
+            ));
+        }
+        let running = self
+            .repository
+            .candidate_assessments(candidate_id)
+            .map_err(ApplicationError::storage)?
+            .iter()
+            .any(|item| item.status.active());
+        if running {
+            return Err(ApplicationError::new(
+                409,
+                "assessment_active",
+                "Сначала завершите текущую проверку",
+            ));
+        }
+        if candidate.profile.verified_specialization == Some(input.specialization)
+            && candidate
+                .profile
+                .verified_grade
+                .is_some_and(|grade| input.grade < grade)
+        {
+            return Err(ApplicationError::new(
+                422,
+                "grade_downgrade_forbidden",
+                "Проверка не должна понижать подтверждённый грейд",
+            ));
+        }
+        let changing = candidate.profile.verified_grade.is_some()
+            && (candidate.profile.verified_grade != Some(input.grade)
+                || candidate.profile.verified_specialization != Some(input.specialization));
+        let cooling_off = candidate
+            .profile
+            .grade_confirmed_at
+            .as_deref()
+            .and_then(timestamp_at)
+            .is_some_and(|at| at + Duration::days(GRADE_COOLDOWN_DAYS) > Utc::now());
+        if changing && cooling_off {
+            return Err(ApplicationError::new(
+                409,
+                "grade_change_cooldown",
+                "Изменить грейд можно после nextEligibleAt в профиле",
+            ));
+        }
+        let task = assessment_task(input.grade);
+        let timestamp = now();
+        let record = fsp_domain::AssessmentRecord {
+            id: format!("assessment-{}", Uuid::new_v4().simple()),
+            candidate_id: candidate_id.to_string(),
+            specialization: input.specialization,
+            grade: input.grade,
+            status: fsp_domain::AssessmentStatus::Draft,
+            answer: fsp_domain::AssessmentAnswer {
+                code: task.starter_code.clone(),
+                explanation: String::new(),
+                external_ai_used: false,
+            },
+            checks: assessment_checks("preview"),
+            task,
+            result: None,
+            created_at: timestamp.clone(),
+            updated_at: timestamp,
+            revision: 1,
+        };
+        self.repository
+            .save_assessment(&record)
+            .map_err(ApplicationError::storage)?;
+        Ok(assessment_view(&record))
+    }
+
+    pub fn get_assessment(
+        &self,
+        session: &SessionView,
+        assessment_id: &str,
+    ) -> Result<AssessmentView, ApplicationError> {
+        Ok(assessment_view(
+            &self.assessment_for(session, assessment_id)?,
+        ))
+    }
+
+    /// The mock's `saveAssessmentAnswer`: stores the answer and moves the
+    /// draft into `in_progress`.
+    pub fn save_assessment_answer(
+        &self,
+        session: &SessionView,
+        assessment_id: &str,
+        input: fsp_domain::AssessmentAnswer,
+    ) -> Result<AssessmentView, ApplicationError> {
+        if input.code.chars().count() > 100_000 || input.explanation.chars().count() > 20_000 {
+            return Err(validation("Запрос не соответствует контракту"));
+        }
+        let mut record = self.assessment_for(session, assessment_id)?;
+        self.require_processing_consent(&record.candidate_id)?;
+        mutable_assessment(&record)?;
+        record.answer = input;
+        record.status = fsp_domain::AssessmentStatus::InProgress;
+        record.revision += 1;
+        record.updated_at = now();
+        self.repository
+            .save_assessment(&record)
+            .map_err(ApplicationError::storage)?;
+        Ok(assessment_view(&record))
+    }
+
+    /// The mock's `runAssessmentChecks` job, run inline: the demo checks
+    /// complete synchronously, so the returned job is already terminal.
+    pub fn run_assessment_checks(
+        &self,
+        session: &SessionView,
+        assessment_id: &str,
+    ) -> Result<JobView, ApplicationError> {
+        let mut record = self.assessment_for(session, assessment_id)?;
+        self.require_processing_consent(&record.candidate_id)?;
+        mutable_assessment(&record)?;
+        let mut job = self.new_job(
+            &record.candidate_id,
+            "checks",
+            Some(&record.id),
+            Some(record.revision),
+        );
+        record.checks = assessment_checks("pass");
+        record.updated_at = now();
+        self.repository
+            .save_assessment(&record)
+            .map_err(ApplicationError::storage)?;
+        job.status = "succeeded".into();
+        job.updated_at = now();
+        job.result_json = Some(self.job_result(&JobResultView::Checks {
+            assessment_id: record.id.clone(),
+            checks: record.checks.clone(),
+            simulation: true,
+        })?);
+        self.repository
+            .save_job(&job)
+            .map_err(ApplicationError::storage)?;
+        Ok(job_view(job, None))
+    }
+
+    /// The mock's `askAssessmentAssistant`: a fixed demo reply, no model call.
+    pub fn ask_assessment_assistant(
+        &self,
+        session: &SessionView,
+        assessment_id: &str,
+        _input: AssistantInput,
+    ) -> Result<AssistantReplyView, ApplicationError> {
+        let record = self.assessment_for(session, assessment_id)?;
+        self.require_processing_consent(&record.candidate_id)?;
+        mutable_assessment(&record)?;
+        Ok(AssistantReplyView {
+            message: "Демонстрационный ответ: зафиксируйте ключ идемпотентности и создание заказа в одной транзакции. Добавьте уникальное ограничение, определите поведение конкурентных запросов и объясните повтор после ошибки. Ответ подготовлен заранее; модель не вызывалась.".into(),
+            simulation: true,
+            ai_allowed: true,
+            external_ai_allowed: true,
+        })
+    }
+
+    /// The mock's `submitAssessment`, run inside `idempotent` by the caller:
+    /// guards, then the submitted attempt completes inline.
+    pub fn submit_assessment(
+        &self,
+        session: &SessionView,
+        assessment_id: &str,
+    ) -> Result<JobView, ApplicationError> {
+        let candidate_id = candidate_id(session)?;
+        self.require_processing_consent(candidate_id)?;
+        let mut record = self.assessment_for(session, assessment_id)?;
+        mutable_assessment(&record)?;
+        if record.answer.code.trim().is_empty() || record.answer.explanation.trim().is_empty() {
+            return Err(ApplicationError::new(
+                422,
+                "answer_incomplete",
+                "Сохраните решение и его объяснение",
+            ));
+        }
+        record.status = fsp_domain::AssessmentStatus::Submitted;
+        record.updated_at = now();
+        record.revision += 1;
+        self.repository
+            .save_assessment(&record)
+            .map_err(ApplicationError::storage)?;
+        let mut job = self.new_job(&record.candidate_id, "assessment", Some(&record.id), None);
+        self.complete_assessment(&mut record)?;
+        self.repository
+            .save_assessment(&record)
+            .map_err(ApplicationError::storage)?;
+        job.status = if record.status == fsp_domain::AssessmentStatus::ServiceError {
+            job.error_code = Some("assessment_service_unavailable".into());
+            job.error_message = Some("Симулированная ошибка оценивания".into());
+            "failed"
+        } else {
+            "succeeded"
+        }
+        .into();
+        job.updated_at = now();
+        job.result_json = Some(self.job_result(&JobResultView::Assessment {
+            assessment: assessment_view(&record),
+        })?);
+        self.repository
+            .save_job(&job)
+            .map_err(ApplicationError::storage)?;
+        Ok(job_view(job, None))
+    }
+
+    /// The mock's `completeAssessment` happy path: confirm or raise the
+    /// verified grade, refresh the two demo skills and build the result.
+    fn complete_assessment(
+        &self,
+        record: &mut fsp_domain::AssessmentRecord,
+    ) -> Result<(), ApplicationError> {
+        let mut candidate = self.candidate_index(&record.candidate_id)?;
+        let previous_grade = candidate.profile.verified_grade;
+        let grade_changed = candidate.profile.verified_grade != Some(record.grade)
+            || candidate.profile.verified_specialization != Some(record.specialization);
+        if candidate.profile.verified_specialization != Some(record.specialization)
+            || candidate.profile.verified_grade.is_none()
+            || candidate
+                .profile
+                .verified_grade
+                .is_some_and(|grade| record.grade >= grade)
+        {
+            candidate.profile.verified_grade = Some(record.grade);
+            candidate.profile.verified_specialization = Some(record.specialization);
+            if grade_changed {
+                candidate.profile.grade_confirmed_at = Some(now());
+                candidate.last_signal_at = candidate.profile.grade_confirmed_at.clone();
+            }
+            for skill_id in ["rust", "postgresql"] {
+                let skill = candidate
+                    .skills
+                    .iter_mut()
+                    .find(|item| item.skill_id == skill_id);
+                match skill {
+                    Some(item) => {
+                        item.status = EvidenceStatus::Confirmed;
+                        item.evidence_grade = Some(record.grade);
+                        if !item
+                            .sources
+                            .contains(&fsp_domain::EvidenceSource::Assessment)
+                        {
+                            item.sources.push(fsp_domain::EvidenceSource::Assessment);
+                        }
+                    }
+                    None => candidate.skills.push(fsp_domain::SkillEvidence {
+                        skill_id: skill_id.into(),
+                        status: EvidenceStatus::Confirmed,
+                        evidence_grade: Some(record.grade),
+                        sources: vec![fsp_domain::EvidenceSource::Assessment],
+                    }),
+                }
+            }
+            candidate.profile.revision += 1;
+            candidate.profile.updated_at = now();
+            self.repository
+                .save_candidate(&candidate.profile)
+                .map_err(ApplicationError::storage)?;
+            self.repository
+                .save_candidate_index(&candidate)
+                .map_err(ApplicationError::storage)?;
+        }
+        record.checks = assessment_checks("pass");
+        record.status = fsp_domain::AssessmentStatus::Passed;
+        record.updated_at = now();
+        record.revision += 1;
+        record.result = Some(fsp_domain::AssessmentResultData {
+            assessment_id: record.id.clone(),
+            outcome: "passed".into(),
+            confirmed_grade: candidate.profile.verified_grade,
+            previous_grade,
+            grade_changed,
+            rubric: ASSESSMENT_RUBRIC
+                .iter()
+                .map(|(id, label, _)| fsp_domain::RubricOutcome {
+                    criterion_id: (*id).into(),
+                    label: (*label).into(),
+                    outcome: "met".into(),
+                    feedback: "Критерий выполнен в демонстрационном сценарии.".into(),
+                })
+                .collect(),
+            checks: record.checks.clone(),
+            feedback: "Проверка пройдена. Результат симулирован для демонстрации интерфейса."
+                .into(),
+            next_eligible_at: candidate
+                .profile
+                .grade_confirmed_at
+                .as_deref()
+                .and_then(timestamp_at)
+                .map(|at| (at + Duration::days(GRADE_COOLDOWN_DAYS)).to_rfc3339()),
+            simulation: true,
+        });
+        Ok(())
+    }
+
+    fn assessment_for(
+        &self,
+        session: &SessionView,
+        assessment_id: &str,
+    ) -> Result<fsp_domain::AssessmentRecord, ApplicationError> {
+        let candidate_id = candidate_id(session)?;
+        self.repository
+            .assessment(assessment_id)
+            .map_err(ApplicationError::storage)?
+            .filter(|item| item.candidate_id == candidate_id)
+            .ok_or_else(|| ApplicationError::new(404, "not_found", "Ресурс не найден"))
+    }
+
+    /// Whether the candidate has an assessment in the mock's active set —
+    /// feeds the `active_assessment` eligibility reason.
+    fn has_active_assessment(&self, candidate_id: &str) -> Result<bool, ApplicationError> {
+        Ok(self
+            .repository
+            .candidate_assessments(candidate_id)
+            .map_err(ApplicationError::storage)?
+            .iter()
+            .any(|item| item.status.active()))
+    }
+
+    fn new_job(
+        &self,
+        candidate_id: &str,
+        kind: &str,
+        assessment_id: Option<&str>,
+        input_revision: Option<u64>,
+    ) -> fsp_domain::JobRecord {
+        let timestamp = now();
+        fsp_domain::JobRecord {
+            id: format!("job-{}", Uuid::new_v4().simple()),
+            owner_id: candidate_id.to_string(),
+            kind: kind.into(),
+            status: "running".into(),
+            candidate_id: Some(candidate_id.to_string()),
+            assessment_id: assessment_id.map(str::to_string),
+            input_revision,
+            result_json: None,
+            created_at: timestamp.clone(),
+            updated_at: timestamp,
+            result_source_id: None,
+            error_code: None,
+            error_message: None,
+        }
+    }
+
+    fn job_result(&self, result: &JobResultView) -> Result<String, ApplicationError> {
+        serde_json::to_string(result)
+            .map_err(|error| ApplicationError::new(500, "internal_error", error.to_string()))
+    }
+
     pub fn candidate_search(
         &self,
         session: &SessionView,
@@ -2678,7 +3075,12 @@ impl PlatformService {
         let mut job = fsp_domain::JobRecord {
             id: format!("job-{}", Uuid::new_v4().simple()),
             owner_id: candidate_id.into(),
+            kind: "source_sync".into(),
             status: "running".into(),
+            candidate_id: Some(candidate_id.into()),
+            assessment_id: None,
+            input_revision: None,
+            result_json: None,
             created_at: created_at.clone(),
             updated_at: created_at,
             result_source_id: None,
@@ -2729,6 +3131,14 @@ impl PlatformService {
                 job.status = "succeeded".into();
                 job.updated_at = now();
                 job.result_source_id = Some(updated.id.clone());
+                job.result_json = Some(
+                    serde_json::to_string(&JobResultView::SourceSync {
+                        source: source_view(updated.clone()),
+                    })
+                    .map_err(|error| {
+                        ApplicationError::new(500, "internal_error", error.to_string())
+                    })?,
+                );
                 self.repository
                     .save_job(&job)
                     .map_err(ApplicationError::storage)?;
@@ -3253,6 +3663,114 @@ fn task_view(record: &fsp_domain::TaskRecord, response_count: usize) -> TaskView
     }
 }
 
+/// The mock's `RUBRIC` fixture.
+const ASSESSMENT_RUBRIC: [(&str, &str, u32); 4] = [
+    ("correctness", "Корректность", 4),
+    ("reliability", "Надёжность", 3),
+    ("tests", "Проверки", 2),
+    ("explanation", "Объяснение решения", 1),
+];
+
+/// The mock's `TASK.acceptanceCriteria`.
+const ASSESSMENT_CRITERIA: [&str; 4] = [
+    "Первый запрос создаёт заказ",
+    "Повторный запрос возвращает тот же заказ",
+    "Одновременные запросы не создают дубликаты",
+    "Повтор после ошибки не оставляет неконсистентные данные",
+];
+
+/// The mock's `TASK` fixture; the variant id encodes the target grade.
+fn assessment_task(grade: Grade) -> fsp_domain::AssessmentTask {
+    fsp_domain::AssessmentTask {
+        id: "task-idempotency-v1".into(),
+        family: "idempotent-api".into(),
+        version: "1".into(),
+        variant_id: format!("orders-{}-a", grade.as_str()),
+        title: "Идемпотентное создание заказа".into(),
+        prompt: "Опишите и реализуйте обработку создания заказа с ключом идемпотентности. Повторный и одновременный запросы с одним ключом должны возвращать один результат. Объясните границы транзакции и поведение после ошибки. Это демонстрационная проверка: код здесь не исполняется, результаты берутся из сценария.".into(),
+        language: "rust".into(),
+        starter_code:
+            "pub async fn create_order(key: &str, payload: OrderInput) -> Result<Order, Error> {\n    todo!()\n}\n"
+                .into(),
+        acceptance_criteria: ASSESSMENT_CRITERIA.iter().map(|item| (*item).into()).collect(),
+        rubric: ASSESSMENT_RUBRIC
+            .iter()
+            .map(|(id, label, weight)| fsp_domain::RubricCriterion {
+                id: (*id).into(),
+                label: (*label).into(),
+                weight: *weight,
+            })
+            .collect(),
+        ai_allowed: true,
+        external_ai_allowed: true,
+        execution: "simulated".into(),
+    }
+}
+
+/// The mock's `checks()`: `preview` keeps the first two checks green, the
+/// third red and the last not run; `pass` greens all, `fail` reds the tail.
+fn assessment_checks(outcome: &str) -> Vec<fsp_domain::AssessmentCheck> {
+    ASSESSMENT_CRITERIA
+        .iter()
+        .enumerate()
+        .map(|(index, label)| {
+            let status = if outcome == "pass" || index < 2 {
+                "passed"
+            } else if outcome == "fail" || index == 2 {
+                "failed"
+            } else {
+                "not_run"
+            };
+            let message = if outcome == "pass" || index < 2 {
+                "Успешно в демонстрационном сценарии"
+            } else if index == 2 {
+                "Проверьте атомарность операции"
+            } else {
+                "Проверка ещё не запускалась"
+            };
+            fsp_domain::AssessmentCheck {
+                id: format!("check-{}", index + 1),
+                label: (*label).into(),
+                status: status.into(),
+                message: message.into(),
+            }
+        })
+        .collect()
+}
+
+/// The mock's `mutableAssessment`: only drafts and in-progress attempts
+/// accept edits and new runs.
+fn mutable_assessment(record: &fsp_domain::AssessmentRecord) -> Result<(), ApplicationError> {
+    if !matches!(
+        record.status,
+        fsp_domain::AssessmentStatus::Draft | fsp_domain::AssessmentStatus::InProgress
+    ) {
+        return Err(ApplicationError::new(
+            409,
+            "assessment_not_editable",
+            "Проверка уже отправлена или завершена",
+        ));
+    }
+    Ok(())
+}
+
+fn assessment_view(record: &fsp_domain::AssessmentRecord) -> AssessmentView {
+    AssessmentView {
+        id: record.id.clone(),
+        specialization: record.specialization,
+        grade: record.grade,
+        status: record.status,
+        task: record.task.clone(),
+        answer: record.answer.clone(),
+        checks: record.checks.clone(),
+        result: record.result.clone(),
+        created_at: record.created_at.clone(),
+        updated_at: record.updated_at.clone(),
+        revision: record.revision,
+        simulation: true,
+    }
+}
+
 /// The mock's `freshness()`: the latest verified-grade or counted task
 /// signal decides `lastSignal`; `assessment` sorts first on ties because the
 /// mock pushes it before task signals and uses a stable sort.
@@ -3275,6 +3793,7 @@ fn profile_view(
     profile: CandidateProfile,
     email_verified: bool,
     signals: &[(String, &'static str)],
+    assessment_running: bool,
 ) -> ProfileView {
     let questionnaire_complete = profile.questionnaire_complete();
     let assessment_passed =
@@ -3314,13 +3833,19 @@ fn profile_view(
         && profile.verified_specialization == Some(profile.specialization);
     let reason = if onboarding_incomplete {
         Some("onboarding_incomplete")
+    } else if assessment_running {
+        Some("active_assessment")
     } else if cooling {
         Some("cooldown")
     } else {
         None
     };
-    let selected_reason = if onboarding_incomplete {
-        Some("onboarding_incomplete")
+    let selected_reason = if onboarding_incomplete || assessment_running {
+        Some(if onboarding_incomplete {
+            "onboarding_incomplete"
+        } else {
+            "active_assessment"
+        })
     } else if profile.specialization != Specialization::Backend {
         Some("unsupported_scope")
     } else if profile.verified_specialization == Some(profile.specialization)

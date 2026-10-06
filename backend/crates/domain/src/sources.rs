@@ -60,7 +60,20 @@ pub struct SourceRecord {
 pub struct JobRecord {
     pub id: String,
     pub owner_id: String,
+    /// `source_sync`, `checks`, `assessment` or `profile_import` — the
+    /// contract's `Job.kind` discriminator.
+    pub kind: String,
     pub status: String,
+    /// Owning candidate when the work mutates a candidate profile; the consent
+    /// gate is checked against it before the job body runs.
+    pub candidate_id: Option<String>,
+    /// Assessment the job reports on, for `checks` and `assessment` kinds.
+    pub assessment_id: Option<String>,
+    /// Assessment revision the `checks` job was launched against; a later
+    /// answer save makes the run stale.
+    pub input_revision: Option<u64>,
+    /// Serialized result payload (`Job.result` in the contract).
+    pub result_json: Option<String>,
     pub created_at: String,
     pub updated_at: String,
     pub result_source_id: Option<String>,

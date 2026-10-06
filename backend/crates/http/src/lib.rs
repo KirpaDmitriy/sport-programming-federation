@@ -158,6 +158,19 @@ pub fn router(config: HttpConfig, service: Arc<PlatformService>) -> Router {
         .route("/api/v1/tasks", get(list_tasks))
         .route("/api/v1/tasks/{task_id}/archive", post(archive_task))
         .route("/api/v1/task-responses", get(list_task_responses))
+        .route("/api/v1/me/assessments", get(get_my_assessments))
+        .route(
+            "/api/v1/me/assessments/{assessment_id}",
+            get(get_assessment),
+        )
+        .route(
+            "/api/v1/me/assessments/{assessment_id}/checks",
+            post(run_assessment_checks),
+        )
+        .route(
+            "/api/v1/me/assessments/{assessment_id}/submit",
+            post(submit_assessment),
+        )
         .route_layer(middleware::from_fn(no_body));
     let bodied = Router::new()
         .route(
@@ -189,6 +202,15 @@ pub fn router(config: HttpConfig, service: Arc<PlatformService>) -> Router {
         .route(
             "/api/v1/me/sources/{provider}/connect",
             post(connect_source),
+        )
+        .route("/api/v1/me/assessments", post(start_assessment))
+        .route(
+            "/api/v1/me/assessments/{assessment_id}/answer",
+            put(save_assessment_answer),
+        )
+        .route(
+            "/api/v1/me/assessments/{assessment_id}/assistant",
+            post(ask_assessment_assistant),
         );
     let router: Router = bodyless
         .merge(bodied)
@@ -1045,6 +1067,135 @@ async fn respond_to_task(
     Ok(idempotent_response(StatusCode::CREATED, outcome))
 }
 
+async fn get_my_assessments(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<fsp_application::AssessmentsView>, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    require_role(&session, "candidate")?;
+    state
+        .service
+        .my_assessments(&session)
+        .map(Json)
+        .map_err(api_error)
+}
+
+async fn start_assessment(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    IdempotencyKey(key): IdempotencyKey,
+    ContractJson(input): ContractJson<fsp_application::AssessmentStartInput>,
+) -> Result<Response, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    require_role(&session, "candidate")?;
+    let body = serde_json::to_value(&input).map_err(|_| {
+        ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "validation_error",
+            "Запрос не соответствует контракту",
+        )
+    })?;
+    let outcome = state
+        .service
+        .idempotent(
+            &session,
+            fsp_application::IdempotencyContext {
+                operation: "startAssessment",
+                path: "/api/v1/me/assessments",
+                key: &key,
+                body: &body,
+                status: StatusCode::CREATED.as_u16(),
+            },
+            || state.service.start_assessment(&session, input),
+        )
+        .map_err(api_error)?;
+    Ok(idempotent_response(StatusCode::CREATED, outcome))
+}
+
+async fn get_assessment(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ContractPath(assessment_id): ContractPath<String>,
+) -> Result<Json<fsp_application::AssessmentView>, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    require_role(&session, "candidate")?;
+    state
+        .service
+        .get_assessment(&session, &assessment_id)
+        .map(Json)
+        .map_err(api_error)
+}
+
+async fn save_assessment_answer(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ContractPath(assessment_id): ContractPath<String>,
+    ContractJson(input): ContractJson<fsp_domain::AssessmentAnswer>,
+) -> Result<Json<fsp_application::AssessmentView>, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    require_role(&session, "candidate")?;
+    state
+        .service
+        .save_assessment_answer(&session, &assessment_id, input)
+        .map(Json)
+        .map_err(api_error)
+}
+
+async fn run_assessment_checks(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ContractPath(assessment_id): ContractPath<String>,
+) -> Result<Response, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    require_role(&session, "candidate")?;
+    state
+        .service
+        .run_assessment_checks(&session, &assessment_id)
+        .map(|view| (StatusCode::ACCEPTED, Json(view)).into_response())
+        .map_err(api_error)
+}
+
+async fn ask_assessment_assistant(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ContractPath(assessment_id): ContractPath<String>,
+    ContractJson(input): ContractJson<fsp_application::AssistantInput>,
+) -> Result<Json<fsp_application::AssistantReplyView>, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    require_role(&session, "candidate")?;
+    state
+        .service
+        .ask_assessment_assistant(&session, &assessment_id, input)
+        .map(Json)
+        .map_err(api_error)
+}
+
+async fn submit_assessment(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    IdempotencyKey(key): IdempotencyKey,
+    ContractPath(assessment_id): ContractPath<String>,
+) -> Result<Response, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    require_role(&session, "candidate")?;
+    let path = format!("/api/v1/me/assessments/{assessment_id}/submit");
+    let outcome = state
+        .service
+        .idempotent(
+            &session,
+            fsp_application::IdempotencyContext {
+                operation: "submitAssessment",
+                path: &path,
+                key: &key,
+                body: &serde_json::Value::Null,
+                status: StatusCode::ACCEPTED.as_u16(),
+            },
+            || state.service.submit_assessment(&session, &assessment_id),
+        )
+        .map_err(api_error)?;
+    Ok(idempotent_response(StatusCode::ACCEPTED, outcome))
+}
+
 async fn list_tasks(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -1577,6 +1728,24 @@ mod tests {
             &self,
             _: &fsp_domain::TaskResponseRecord,
         ) -> Result<(), RepositoryError> {
+            Ok(())
+        }
+        fn candidate_assessments(
+            &self,
+            _: &str,
+        ) -> Result<Vec<fsp_domain::AssessmentRecord>, RepositoryError> {
+            Ok(Vec::new())
+        }
+        fn assessment(
+            &self,
+            _: &str,
+        ) -> Result<Option<fsp_domain::AssessmentRecord>, RepositoryError> {
+            Ok(None)
+        }
+        fn save_assessment(&self, _: &fsp_domain::AssessmentRecord) -> Result<(), RepositoryError> {
+            Ok(())
+        }
+        fn save_candidate_index(&self, _: &CandidateIndexRecord) -> Result<(), RepositoryError> {
             Ok(())
         }
         fn save_oauth_state(&self, _: &str, _: &str, _: &str) -> Result<(), RepositoryError> {

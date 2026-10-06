@@ -458,6 +458,51 @@ pub struct MyTasksView {
     pub freshness: FreshnessView,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AssessmentStartInput {
+    pub specialization: Specialization,
+    pub grade: Grade,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AssistantInput {
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AssistantReplyView {
+    pub message: String,
+    pub simulation: bool,
+    pub ai_allowed: bool,
+    pub external_ai_allowed: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AssessmentView {
+    pub id: String,
+    pub specialization: Specialization,
+    pub grade: Grade,
+    pub status: fsp_domain::AssessmentStatus,
+    pub task: fsp_domain::AssessmentTask,
+    pub answer: fsp_domain::AssessmentAnswer,
+    pub checks: Vec<fsp_domain::AssessmentCheck>,
+    pub result: Option<fsp_domain::AssessmentResultData>,
+    pub created_at: String,
+    pub updated_at: String,
+    pub revision: u64,
+    pub simulation: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AssessmentsView {
+    pub items: Vec<AssessmentView>,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SalaryView {
@@ -782,20 +827,35 @@ pub struct ObservationPeriodView {
 #[serde(rename_all = "camelCase")]
 pub struct JobView {
     pub id: String,
-    pub kind: &'static str,
+    pub kind: String,
     pub status: String,
     pub created_at: String,
     pub updated_at: String,
-    pub result: Option<JobResultView>,
+    /// Contract-shaped result payload; `kind` discriminates the variant.
+    pub result: Option<serde_json::Value>,
     pub error: Option<JobErrorView>,
     pub poll_after_ms: u32,
     pub simulation: bool,
 }
 
+/// Typed constructors for `Job.result`; serialized values persist on the job
+/// record so polling replays them without recomputation. Serialize-only DTO,
+/// so variant size does not matter.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum JobResultView {
-    SourceSync { source: SourceView },
+    SourceSync {
+        source: SourceView,
+    },
+    Checks {
+        assessment_id: String,
+        checks: Vec<fsp_domain::AssessmentCheck>,
+        simulation: bool,
+    },
+    Assessment {
+        assessment: AssessmentView,
+    },
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -868,13 +928,22 @@ pub fn job_view(record: JobRecord, source: Option<SourceView>) -> JobView {
     // The mock asks clients to poll in-flight jobs every 250 ms and stops
     // polling once a job is terminal.
     let terminal = record.status == "succeeded" || record.status == "failed";
+    let result = record
+        .result_json
+        .as_deref()
+        .and_then(|json| serde_json::from_str::<serde_json::Value>(json).ok())
+        .or_else(|| {
+            source.map(|source| {
+                serde_json::to_value(JobResultView::SourceSync { source }).unwrap_or_default()
+            })
+        });
     JobView {
         id: record.id,
-        kind: "source_sync",
+        kind: record.kind,
         status: record.status,
         created_at: record.created_at,
         updated_at: record.updated_at,
-        result: source.map(|source| JobResultView::SourceSync { source }),
+        result,
         error: record.error_code.map(|code| JobErrorView {
             code,
             message: record.error_message.unwrap_or_default(),
