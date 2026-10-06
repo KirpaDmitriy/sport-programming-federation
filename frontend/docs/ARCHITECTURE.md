@@ -62,7 +62,7 @@ every route is a separate chunk). Route files are thin: search validation, guard
 - **Jobs.** `useJob` polls `GET /api/v1/jobs/{id}` at the server's `pollAfterMs` (at least 250 ms), stops at a terminal
   state and calls back once; callers then invalidate what the job changed. Source cards resume polling from
   `activeJobId` after a reload.
-- **Generated types** in `src/shared/api/generated/` come from `bun run codegen` (the isolated generator in
+- **Generated types** in `src/shared/api/generated/` come from `bun run codegen` (the TypeScript 7 generator in
   [`contracts/codegen`](../../contracts/codegen/README.md)); there are no hand-written DTO types.
 
 ## Mutations

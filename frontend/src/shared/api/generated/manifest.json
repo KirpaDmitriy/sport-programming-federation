@@ -2,8 +2,7 @@
   "contract": "contracts/openapi.json",
   "contractVersion": "0.1.0",
   "contractSha256": "da575e5ff6ba0263c466e5a1e590855f5d91cc3bd1eba78b0bda5907f16423b2",
-  "generator": "openapi-typescript@7.13.0",
-  "generatorCompiler": "typescript@5.9.3",
+  "generator": "contracts/codegen",
   "binaryRepresentation": "Blob",
-  "outputSha256": "180b8be86402e626ec8dd6694cec74883d1d70179cfd33c1670b5bb7261b90e8"
+  "outputSha256": "5ccaec2e974aa8aa86d1b9e5cba25fe2cc3f3bc3d360e8fee2eced46d747237b"
 }

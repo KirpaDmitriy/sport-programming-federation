@@ -1,6 +1,6 @@
 # API operation index
 
-Generated from [`openapi.json`](openapi.json) by `codegen/generate.mjs`. Do not edit the table independently. Contract version: 0.1.0. The exact bodies, error schemas, authorization descriptions and parameters remain in OpenAPI.
+Generated from [`openapi.json`](openapi.json) by `codegen/generate.ts`. Do not edit the table independently. Contract version: 0.1.0. The exact bodies, error schemas, authorization descriptions and parameters remain in OpenAPI.
 
 | Operation | Method | Path | Success | Scope |
 | --- | --- | --- | --- | --- |

@@ -9,7 +9,7 @@ private dialect.
 | [`error-codes.json`](error-codes.json) | Error codes the mock implements, by scope (`http`, `job`) |
 | [`API_OPERATIONS.md`](API_OPERATIONS.md) | Generated operation index (do not edit by hand) |
 | [`API_INTEGRATION.md`](API_INTEGRATION.md) | API behavior on the wire and in the frontend: session, origin, validation, errors, idempotency, jobs, PDF, time, metadata, screen-to-operation map, backend cutover checklist |
-| [`codegen/`](codegen/README.md) | Isolated generator for the frontend's TypeScript types and the operation index |
+| [`codegen/`](codegen/README.md) | TypeScript 7 generator for the frontend's contract types and the operation index |
 
 ## Where the contract comes from
 
