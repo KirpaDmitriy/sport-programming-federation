@@ -36,7 +36,8 @@ impl ApplicationError {
     }
 
     fn storage(error: RepositoryError) -> Self {
-        Self::new(500, "storage_error", format!("Ошибка хранилища: {error:?}"))
+        tracing::error!(error = ?error, "storage operation failed");
+        Self::new(500, "internal_error", "Сервис временно недоступен")
     }
 }
 
@@ -152,11 +153,7 @@ impl PlatformService {
         input: EmailVerifyInput,
     ) -> Result<(SessionView, String), ApplicationError> {
         if input.code.len() != 6 || !input.code.bytes().all(|byte| byte.is_ascii_digit()) {
-            return Err(ApplicationError::new(
-                400,
-                "invalid_code",
-                "Неверный код подтверждения",
-            ));
+            return Err(ApplicationError::new(400, "invalid_code", "Неверный код"));
         }
         let (outcome, account) = self
             .repository
@@ -189,19 +186,16 @@ impl PlatformService {
                 return Err(ApplicationError::new(
                     429,
                     "challenge_locked",
-                    "Слишком много неверных попыток",
+                    "Создайте новый запрос подтверждения",
                 ));
             }
             ConsumeChallenge::WrongCode => {
-                return Err(ApplicationError::new(
-                    400,
-                    "invalid_code",
-                    "Неверный код подтверждения",
-                ));
+                return Err(ApplicationError::new(400, "invalid_code", "Неверный код"));
             }
         }
-        let account = account
-            .ok_or_else(|| ApplicationError::new(500, "storage_error", "Аккаунт не найден"))?;
+        let account = account.ok_or_else(|| {
+            ApplicationError::new(500, "internal_error", "Сервис временно недоступен")
+        })?;
         let raw_token = Uuid::new_v4().to_string();
         self.repository
             .create_session(
@@ -283,9 +277,9 @@ impl PlatformService {
         }
         if profile.consents.publication && !profile.consents.processing {
             return Err(ApplicationError::new(
-                422,
-                "publication_requires_processing",
-                "Для публикации нужно согласие на обработку данных",
+                403,
+                "processing_consent_required",
+                "Для обработки данных необходимо согласие",
             ));
         }
         profile.revision += 1;

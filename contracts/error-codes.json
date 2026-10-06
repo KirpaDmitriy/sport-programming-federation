@@ -1,6 +1,6 @@
 {
   "contractVersion": "0.1.0",
-  "scope": "Implemented by the local mock; error code behavior is proposed for the Rust backend.",
+  "scope": "Implemented by the local mock and by the Rust backend.",
   "http": [
     {
       "code": "ambiguous_competition_policy",
@@ -76,6 +76,20 @@
       "messages": [
         "Демонстрационные задания доступны только для бэкенда"
       ]
+    },
+    {
+      "code": "bifrost_invalid_response",
+      "statuses": [
+        502
+      ],
+      "messages": []
+    },
+    {
+      "code": "bifrost_unavailable",
+      "statuses": [
+        502
+      ],
+      "messages": []
     },
     {
       "code": "body_not_allowed",
@@ -214,6 +228,57 @@
       ]
     },
     {
+      "code": "fsp_account_invalid",
+      "statuses": [
+        502
+      ],
+      "messages": [
+        "Укажите идентификатор участника ФСП"
+      ]
+    },
+    {
+      "code": "fsp_not_configured",
+      "statuses": [
+        503
+      ],
+      "messages": [
+        "Источник ФСП недоступен"
+      ]
+    },
+    {
+      "code": "github_authorization_required",
+      "statuses": [
+        409
+      ],
+      "messages": [
+        "Сначала авторизуйте доступ к GitHub",
+        "Авторизуйте GitHub повторно"
+      ]
+    },
+    {
+      "code": "github_not_configured",
+      "statuses": [
+        503
+      ],
+      "messages": [
+        "Подключение GitHub временно недоступно"
+      ]
+    },
+    {
+      "code": "github_oauth_failed",
+      "statuses": [
+        502
+      ],
+      "messages": []
+    },
+    {
+      "code": "github_unavailable",
+      "statuses": [
+        502
+      ],
+      "messages": []
+    },
+    {
       "code": "grade_change_cooldown",
       "statuses": [
         409
@@ -273,7 +338,8 @@
         500
       ],
       "messages": [
-        "Ошибка мок-сервера"
+        "Ошибка мок-сервера",
+        "Сервис временно недоступен"
       ]
     },
     {
@@ -386,7 +452,22 @@
         "Источник не найден",
         "Потребность недоступна этому кандидату",
         "Вакансия не найдена или снята с публикации",
-        "Маршрут не найден"
+        "Маршрут не найден",
+        "Запрос подтверждения не найден",
+        "Потребность не найдена",
+        "Кандидат не найден",
+        "Задача не найдена",
+        "Профиль не найден",
+        "Компания не найдена"
+      ]
+    },
+    {
+      "code": "oauth_state_invalid",
+      "statuses": [
+        400
+      ],
+      "messages": [
+        "Ссылка авторизации устарела или уже использована"
       ]
     },
     {
@@ -449,7 +530,10 @@
         403
       ],
       "messages": [
-        "Действие недоступно для этой роли"
+        "Действие недоступно для этой роли",
+        "Действие доступно работодателю",
+        "Действие доступно кандидату",
+        "Недоступная операция"
       ]
     },
     {
@@ -458,7 +542,8 @@
         409
       ],
       "messages": [
-        "Роль существующего аккаунта изменить нельзя"
+        "Роль существующего аккаунта изменить нельзя",
+        "Этот адрес зарегистрирован с другой ролью"
       ]
     },
     {
@@ -530,25 +615,56 @@
         400
       ],
       "messages": [
-        "Запрос не соответствует контракту"
+        "Запрос не соответствует контракту",
+        "Проверьте адрес электронной почты",
+        "Проверьте параметры страницы",
+        "Проверьте параметры поиска",
+        "Проверьте идентификатор аккаунта",
+        "Передайте хотя бы одно поле профиля",
+        "Имя должно содержать от 1 до 120 символов",
+        "Поддерживается только ИТ-специализация",
+        "Опыт не может превышать 1200 месяцев",
+        "Текстовое поле превышает допустимую длину",
+        "Проверьте технологии в стеке",
+        "Проверьте список гибких навыков",
+        "Передайте хотя бы одно поле компании"
       ]
+    },
+    {
+      "code": "verification_delivery_failed",
+      "statuses": [
+        502
+      ],
+      "messages": []
     }
   ],
   "job": [
+    {
+      "code": "assessment_service_unavailable",
+      "retryable": true
+    },
+    {
+      "code": "bifrost_invalid_response",
+      "retryable": true
+    },
+    {
+      "code": "bifrost_unavailable",
+      "retryable": true
+    },
+    {
+      "code": "fixture_job_failed",
+      "retryable": true
+    },
+    {
+      "code": "github_unavailable",
+      "retryable": true
+    },
     {
       "code": "processing_consent_revoked",
       "retryable": true
     },
     {
       "code": "stale_input",
-      "retryable": true
-    },
-    {
-      "code": "assessment_service_unavailable",
-      "retryable": true
-    },
-    {
-      "code": "fixture_job_failed",
       "retryable": true
     }
   ]

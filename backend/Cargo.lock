@@ -279,6 +279,7 @@ dependencies = [
  "fsp-domain",
  "serde",
  "sha2",
+ "tracing",
  "uuid",
 ]
 

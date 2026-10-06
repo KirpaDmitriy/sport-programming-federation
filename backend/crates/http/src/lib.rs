@@ -199,8 +199,8 @@ async fn verify_email(
         .map_err(|_| {
             ApiError::new(
                 StatusCode::INTERNAL_SERVER_ERROR,
-                "session_error",
-                "Не удалось создать сессию",
+                "internal_error",
+                "Сервис временно недоступен",
             )
         })?,
     );

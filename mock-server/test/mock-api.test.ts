@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
+import { readdirSync } from 'node:fs';
 import { readFile, writeFile } from 'node:fs/promises';
 import { request as rawHttpRequest } from 'node:http';
+import { fileURLToPath } from 'node:url';
 import test, { after, type TestContext } from 'node:test';
 import { buildOpenApi, routes, routeTable } from '../src/contract.ts';
 import { createMockServer, type MockServerOptions } from '../src/server.ts';
@@ -140,6 +142,73 @@ test('error-codes.json lists every code, status and literal message the mock rai
       assert.ok(entry, `${code} is missing from error-codes.json`);
       assert.ok(entry.statuses.includes(Number(status)), `${code} lacks status ${status}`);
       if (message !== undefined) assert.ok(entry.messages.includes(message), `${code} lacks «${message}»`);
+    }
+  }
+});
+
+test('error-codes.json catalogues every code, status and literal message the Rust backend raises', async () => {
+  const catalog: Body = JSON.parse(
+    await readFile(new URL('../../contracts/error-codes.json', import.meta.url), 'utf8'),
+  );
+  const documented = new Map<string, Body>(catalog.http.map((entry: Body) => [entry.code, entry]));
+  const jobCodes = new Set<string>(catalog.job.map((entry: Body) => entry.code));
+  const statusByName: Record<string, number> = {
+    BAD_REQUEST: 400,
+    UNAUTHORIZED: 401,
+    FORBIDDEN: 403,
+    NOT_FOUND: 404,
+    CONFLICT: 409,
+    PAYLOAD_TOO_LARGE: 413,
+    UNSUPPORTED_MEDIA_TYPE: 415,
+    UNPROCESSABLE_ENTITY: 422,
+    TOO_MANY_REQUESTS: 429,
+    INTERNAL_SERVER_ERROR: 500,
+    BAD_GATEWAY: 502,
+    SERVICE_UNAVAILABLE: 503,
+  };
+  const assertCode = (status: number | undefined, code: string, message: string | undefined) => {
+    const entry = documented.get(code);
+    assert.ok(entry || jobCodes.has(code), `${code} is missing from error-codes.json`);
+    if (!entry) return;
+    if (status !== undefined) assert.ok(entry.statuses.includes(status), `${code} lacks status ${status}`);
+    if (message !== undefined && entry.messages.length)
+      assert.ok(entry.messages.includes(message), `${code} lacks «${message}»`);
+  };
+  const rustDir = fileURLToPath(new URL('../../backend/crates/', import.meta.url));
+  const files: string[] = [];
+  const walk = (dir: string) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const path = `${dir}/${entry.name}`;
+      if (entry.isDirectory()) walk(path);
+      else if (entry.name.endsWith('.rs')) files.push(path);
+    }
+  };
+  walk(rustDir);
+  for (const file of files) {
+    const source = await readFile(file, 'utf8');
+    const triples = [
+      ...source.matchAll(/(?:ApplicationError::new|Self::new)\(\s*(\d{3})\s*,\s*"([a-z_]+)"(?:\s*,\s*"([^"]*)")?/g),
+    ].map((m) => ({ status: Number(m[1]), code: m[2] ?? '', message: m[3] }));
+    for (const m of source.matchAll(
+      /ApiError::new\(\s*StatusCode::([A-Z_]+)\s*,\s*"([a-z_]+)"(?:\s*,\s*"([^"]*)")?/g,
+    ))
+      triples.push({ status: statusByName[m[1] ?? ''] ?? -1, code: m[2] ?? '', message: m[3] });
+    for (const m of source.matchAll(/ApiError::forbidden\(\s*"([a-z_]+)"\s*,\s*"([^"]*)"/g))
+      triples.push({ status: 403, code: m[1] ?? '', message: m[2] });
+    for (const m of source.matchAll(/ApiError::not_found\(\s*"([^"]*)"/g))
+      triples.push({ status: 404, code: 'not_found', message: m[1] });
+    for (const m of source.matchAll(/validation\(\s*"([^"]+)"\s*\)/g))
+      triples.push({ status: 400, code: 'validation_error', message: m[1] });
+    for (const m of source.matchAll(/\bcode:\s*"([a-z_]+)"/g))
+      triples.push({ status: undefined, code: m[1] ?? '', message: undefined });
+    for (const { status, code, message } of triples) {
+      try {
+        assertCode(status, code, message);
+      } catch (error) {
+        throw new assert.AssertionError({
+          message: `${file}: ${error instanceof Error ? error.message : error}`,
+        });
+      }
     }
   }
 });
