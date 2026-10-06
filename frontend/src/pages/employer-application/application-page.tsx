@@ -19,7 +19,7 @@ import {
   useDocumentTitle,
   workModeLabel,
 } from '@/shared/lib';
-import { Avatar, ButtonLink, Card, Icon, LoadingState, SalaryBlock, StatusChip, Tag } from '@/shared/ui';
+import { Avatar, ButtonLink, Card, Icon, LoadingState, SalaryBlock, StatusChip, TableWrap, Tag } from '@/shared/ui';
 
 function Contacts({ candidateId }: { candidateId: string }) {
   const scope = useScope();
@@ -127,6 +127,7 @@ export function EmployerApplicationPage({ applicationId }: { applicationId: stri
                   to="/employer/candidates/$candidateId"
                   params={{ candidateId: application.candidateId }}
                   icon="user"
+                  block
                 >
                   Полный профиль и граф навыков
                 </ButtonLink>
@@ -145,7 +146,7 @@ export function EmployerApplicationPage({ applicationId }: { applicationId: stri
           <Card title="Соответствие вакансии">
             <div className="stack">
               <p>{match.explanation}</p>
-              <div className="table-wrap">
+              <TableWrap label="Соответствие требованиям вакансии">
                 <table className="table">
                   <thead>
                     <tr>
@@ -169,7 +170,7 @@ export function EmployerApplicationPage({ applicationId }: { applicationId: stri
                     ))}
                   </tbody>
                 </table>
-              </div>
+              </TableWrap>
               <p className="small muted">
                 Рассчитано сервером по подтверждённому профилю и требованиям на момент отклика ({match.algorithmVersion}
                 ).

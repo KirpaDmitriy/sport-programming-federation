@@ -43,6 +43,7 @@ import {
   SelectField,
   StatusChip,
   type TabItem,
+  TableWrap,
   Tabs,
   tabId,
 } from '@/shared/ui';
@@ -117,7 +118,7 @@ function MatchTab({ candidateId, needId }: { candidateId: string; needId: string
         </StatusChip>
       </div>
       {!match.gradeMatches && <p>{match.explanation}</p>}
-      <div className="table-wrap">
+      <TableWrap label="Проверка соответствия требованиям">
         <table className="table">
           <thead>
             <tr>
@@ -135,7 +136,7 @@ function MatchTab({ candidateId, needId }: { candidateId: string; needId: string
             ))}
           </tbody>
         </table>
-      </div>
+      </TableWrap>
       <p className="small muted">
         Подтверждённый грейд и требование по отдельному навыку — разные статусы. Алгоритм: {match.algorithmVersion}; это
         объяснение правил, а не вероятность успеха.

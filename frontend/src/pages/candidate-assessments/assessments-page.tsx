@@ -5,7 +5,7 @@ import { useMeta } from '@/entities/meta';
 import { profileQuery } from '@/entities/profile';
 import { useScope } from '@/entities/session';
 import { formatDate, gradeLabel, pluralRu, specializationLabel, useDocumentTitle } from '@/shared/lib';
-import { Card, EmptyState, ErrorState, Icon, LoadingState, PageHeader } from '@/shared/ui';
+import { Card, EmptyState, ErrorState, Icon, LoadingState, PageHeader, TableWrap } from '@/shared/ui';
 import { AssessmentNextStep } from '@/widgets/assessment-next-step';
 
 function categoryEffect(assessment: Assessment) {
@@ -37,7 +37,7 @@ function History() {
         </EmptyState>
       )}
       {assessments.data && assessments.data.items.length > 0 && (
-        <div className="table-wrap">
+        <TableWrap label="История проверок">
           <table className="table">
             <thead>
               <tr>
@@ -79,7 +79,7 @@ function History() {
               ))}
             </tbody>
           </table>
-        </div>
+        </TableWrap>
       )}
     </Card>
   );

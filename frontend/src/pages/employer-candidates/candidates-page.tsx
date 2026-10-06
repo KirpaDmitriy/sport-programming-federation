@@ -29,6 +29,7 @@ import {
   Segmented,
   SelectField,
   StatusChip,
+  TableWrap,
 } from '@/shared/ui';
 import { ShortlistPanel } from '@/widgets/shortlist-panel';
 import styles from './candidates-page.module.css';
@@ -272,7 +273,7 @@ export function EmployerCandidatesPage({ search, onSearchChange }: Props) {
             </EmptyState>
           )}
           {results.data && results.data.items.length > 0 && (
-            <div className="table-wrap">
+            <TableWrap label="Найденные кандидаты">
               <table className="table">
                 <thead>
                   <tr>
@@ -382,7 +383,7 @@ export function EmployerCandidatesPage({ search, onSearchChange }: Props) {
                   </tbody>
                 ))}
               </table>
-            </div>
+            </TableWrap>
           )}
           {results.data && (
             <Pagination

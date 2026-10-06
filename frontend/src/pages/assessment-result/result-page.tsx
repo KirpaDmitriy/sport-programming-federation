@@ -16,7 +16,7 @@ import { ExportProfileButton } from '@/features/profile-pdf';
 import { useStartAssessment } from '@/features/start-assessment';
 import { describeError } from '@/shared/api';
 import { formatDate, gradeLabel, initials, specializationLabel, useDocumentTitle } from '@/shared/lib';
-import { Avatar, Button, ButtonLink, Callout, Card, Icon, InlineStatus, StatusChip } from '@/shared/ui';
+import { Avatar, Button, ButtonLink, Callout, Card, Icon, InlineStatus, StatusChip, TableWrap } from '@/shared/ui';
 import styles from './result-page.module.css';
 
 function headline(assessment: Assessment) {
@@ -244,7 +244,7 @@ export function AssessmentResultPage({ assessmentId }: { assessmentId: string })
             <div className="stack-lg">
               {result.rubric.length > 0 && (
                 <Card title="Результаты по критериям">
-                  <div className="table-wrap">
+                  <TableWrap label="Результаты по критериям">
                     <table className="table">
                       <thead>
                         <tr>
@@ -267,7 +267,7 @@ export function AssessmentResultPage({ assessmentId }: { assessmentId: string })
                         ))}
                       </tbody>
                     </table>
-                  </div>
+                  </TableWrap>
                 </Card>
               )}
               {result.checks.length > 0 && (

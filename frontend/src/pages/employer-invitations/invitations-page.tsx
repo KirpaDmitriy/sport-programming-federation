@@ -13,7 +13,17 @@ import {
 import { useScope } from '@/entities/session';
 import { describeError, isApiError } from '@/shared/api';
 import { formatDateTime, formatSalaryRange, taxBasisLabel, useDocumentTitle, workModeLabel } from '@/shared/lib';
-import { Button, Callout, Card, ConfirmDialog, EmptyState, PageHeader, type TabItem, Tabs } from '@/shared/ui';
+import {
+  Button,
+  Callout,
+  Card,
+  ConfirmDialog,
+  EmptyState,
+  PageHeader,
+  type TabItem,
+  TableWrap,
+  Tabs,
+} from '@/shared/ui';
 
 export type EmployerInvitationFilter = 'all' | 'open' | 'accepted' | 'closed';
 
@@ -80,7 +90,7 @@ export function EmployerInvitationsPage({ filter, onFilterChange }: Props) {
               Найдите кандидата в поиске и отправьте приглашение с зарплатной вилкой — публикация вакансии не нужна.
             </EmptyState>
           ) : (
-            <div className="table-wrap" style={{ marginTop: '1rem' }}>
+            <TableWrap label="Отправленные приглашения" style={{ marginTop: '1rem' }}>
               <table className="table">
                 <thead>
                   <tr>
@@ -137,7 +147,7 @@ export function EmployerInvitationsPage({ filter, onFilterChange }: Props) {
                   ))}
                 </tbody>
               </table>
-            </div>
+            </TableWrap>
           )}
         </div>
       </Card>

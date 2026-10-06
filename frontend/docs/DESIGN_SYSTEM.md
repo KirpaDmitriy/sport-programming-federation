@@ -86,4 +86,5 @@ Salaries read «200 000 – 260 000 ₽/мес» with «До вычета нал
 Every control has a visible label, errors are linked to their fields and announced, focus rings use the focus
 tokens, standard controls are at least 44px high (small buttons 36px), status is never conveyed by color alone (chips
 carry text and an icon), the graph has a keyboard-operable list equivalent, and motion respects
-`prefers-reduced-motion`.
+`prefers-reduced-motion`. Tables sit in `TableWrap`, a labelled region that scrolls horizontally and takes focus, so
+keyboard users can scroll it on narrow screens; full-width buttons wrap their label instead of widening the layout.

@@ -20,6 +20,7 @@ import {
   LoadingState,
   PageHeader,
   StatusChip,
+  TableWrap,
   TagList,
 } from '@/shared/ui';
 import { AssessmentNextStep } from '@/widgets/assessment-next-step';
@@ -65,7 +66,7 @@ function SkillsCard() {
         </EmptyState>
       )}
       {skills.data && skills.data.items.length > 0 && (
-        <div className="table-wrap">
+        <TableWrap label="Навыки">
           <table className="table">
             <thead>
               <tr>
@@ -95,7 +96,7 @@ function SkillsCard() {
               ))}
             </tbody>
           </table>
-        </div>
+        </TableWrap>
       )}
       <SourcesSummary />
     </Card>

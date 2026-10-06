@@ -18,6 +18,7 @@ import {
   SelectField,
   StatusChip,
   type TabItem,
+  TableWrap,
   Tabs,
 } from '@/shared/ui';
 
@@ -108,7 +109,7 @@ export function EmployerApplicationsPage({ filter, needId, onChange }: Props) {
                 : 'Опубликуйте потребность как вакансию — отклики кандидатов появятся здесь.'}
             </EmptyState>
           ) : (
-            <div className="table-wrap" style={{ marginTop: '1rem' }}>
+            <TableWrap label="Отклики" style={{ marginTop: '1rem' }}>
               <table className="table">
                 <thead>
                   <tr>
@@ -161,7 +162,7 @@ export function EmployerApplicationsPage({ filter, needId, onChange }: Props) {
                   ))}
                 </tbody>
               </table>
-            </div>
+            </TableWrap>
           )}
         </div>
       </Card>

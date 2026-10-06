@@ -1,4 +1,4 @@
-import type { HTMLAttributes, ReactNode } from 'react';
+import type { CSSProperties, HTMLAttributes, ReactNode } from 'react';
 import type { components } from '@/shared/api';
 import { formatSalaryRange, taxBasisLabel } from '@/shared/lib';
 import { cx } from './cx';
@@ -154,5 +154,15 @@ export function SalaryBlock({ salary }: { salary: components['schemas']['Salary'
       <span className={styles.salaryAmount}>{formatSalaryRange(salary)}</span>
       <span className={styles.salaryBasis}>{taxBasisLabel[salary.taxBasis]}</span>
     </div>
+  );
+}
+
+/** A horizontally scrollable table; focusable so keyboard users can scroll it when it is wider than the screen. */
+export function TableWrap({ label, children, style }: { label: string; children: ReactNode; style?: CSSProperties }) {
+  return (
+    // biome-ignore lint/a11y/noNoninteractiveTabindex: a scrollable region must be reachable by keyboard
+    <section className="table-wrap" tabIndex={0} aria-label={label} style={style}>
+      {children}
+    </section>
   );
 }

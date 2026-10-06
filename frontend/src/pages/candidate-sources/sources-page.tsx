@@ -22,6 +22,7 @@ import {
   PageHeader,
   Pagination,
   StatusChip,
+  TableWrap,
   TagList,
   type Tone,
 } from '@/shared/ui';
@@ -48,7 +49,7 @@ function RepositoryTable({ repositories }: { repositories: Repository[] }) {
         </span>
       }
     >
-      <div className="table-wrap">
+      <TableWrap label="Репозитории">
         <table className="table">
           <thead>
             <tr>
@@ -92,7 +93,7 @@ function RepositoryTable({ repositories }: { repositories: Repository[] }) {
             ))}
           </tbody>
         </table>
-      </div>
+      </TableWrap>
       <Pagination page={page} pageSize={PAGE_SIZE} total={repositories.length} onChange={setPage} />
     </Card>
   );
