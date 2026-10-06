@@ -480,6 +480,33 @@
       ]
     },
     {
+      "code": "task_not_offered",
+      "statuses": [
+        409
+      ],
+      "messages": [
+        "Это задание сейчас не предложено"
+      ]
+    },
+    {
+      "code": "task_response_exists",
+      "statuses": [
+        409
+      ],
+      "messages": [
+        "Ответ на задание этой недели уже отправлен"
+      ]
+    },
+    {
+      "code": "task_response_reviewed",
+      "statuses": [
+        409
+      ],
+      "messages": [
+        "Ответ уже оценён"
+      ]
+    },
+    {
       "code": "unauthenticated",
       "statuses": [
         401

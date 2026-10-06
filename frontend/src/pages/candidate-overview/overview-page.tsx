@@ -3,7 +3,7 @@ import { Link } from '@tanstack/react-router';
 import { AssessmentStatusChip, assessmentsQuery } from '@/entities/assessment';
 import { skillLabel, useMeta } from '@/entities/meta';
 import { blockerLabel, type Profile, profileQuery } from '@/entities/profile';
-import { TargetGradeBadge, VerifiedGradeBadge } from '@/entities/qualification';
+import { FreshnessChip, TargetGradeBadge, VerifiedGradeBadge } from '@/entities/qualification';
 import { useScope } from '@/entities/session';
 import { mySkillsQuery, SkillStatusChip } from '@/entities/skill';
 import { mySourcesQuery, type Source } from '@/entities/source';
@@ -208,6 +208,7 @@ export function CandidateOverviewPage() {
               <div className="row">
                 <VerifiedGradeBadge grade={profile.verifiedGrade} />
                 {showTarget && <TargetGradeBadge grade={profile.selectedGrade} />}
+                {profile.verifiedGrade && <FreshnessChip freshness={profile.freshness} />}
                 {!profile.onboarding.questionnaireComplete && (
                   <StatusChip tone="warning">Анкета не заполнена</StatusChip>
                 )}

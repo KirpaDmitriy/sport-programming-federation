@@ -89,6 +89,15 @@ test('documentation screenshots of the implemented screens', async ({ browser, p
   await employer.page.getByRole('link', { name: 'Кандидат №024' }).click();
   await expect(employer.page.getByRole('heading', { name: 'Отклик: Кандидат №024' })).toBeVisible();
   await shot(employer.page, '22-employer-application');
+  await page.goto('/candidate/tasks');
+  await page
+    .getByLabel('Ваш подход')
+    .fill('Очередь попыток в PostgreSQL со временем следующей попытки, экспоненциальная задержка и предел попыток.');
+  await shot(page, '23-candidate-tasks');
+  await page.getByRole('button', { name: 'Отправить ответ' }).click();
+  await expect(page.getByText('Ждёт оценки компании')).toBeVisible();
+  await employer.page.goto('/employer/tasks?tab=responses');
+  await shot(employer.page, '24-employer-task-responses');
 
   await resetMock('assessment_failure');
   const failing = await actor(browser, ALEXEY, 'candidate');

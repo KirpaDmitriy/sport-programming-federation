@@ -29,6 +29,8 @@ Generated from [`openapi.json`](openapi.json) by `codegen/generate.ts`. Do not e
 | `askAssessmentAssistant` | POST | `/api/v1/me/assessments/{assessmentId}/assistant` | 200 | Application |
 | `submitAssessment` | POST | `/api/v1/me/assessments/{assessmentId}/submit` | 202 | Application |
 | `getJob` | GET | `/api/v1/jobs/{jobId}` | 200 | Application |
+| `getMyTasks` | GET | `/api/v1/me/tasks` | 200 | Application |
+| `respondToTask` | POST | `/api/v1/me/tasks/{taskId}/responses` | 201 | Application |
 | `listMyInvitations` | GET | `/api/v1/me/invitations` | 200 | Application |
 | `getMyInvitation` | GET | `/api/v1/me/invitations/{invitationId}` | 200 | Application |
 | `viewMyInvitation` | POST | `/api/v1/me/invitations/{invitationId}/view` | 200 | Application |
@@ -66,6 +68,11 @@ Generated from [`openapi.json`](openapi.json) by `codegen/generate.ts`. Do not e
 | `createInvitation` | POST | `/api/v1/invitations` | 201 | Application |
 | `getInvitation` | GET | `/api/v1/invitations/{invitationId}` | 200 | Application |
 | `withdrawInvitation` | POST | `/api/v1/invitations/{invitationId}/withdraw` | 200 | Application |
+| `listTasks` | GET | `/api/v1/tasks` | 200 | Application |
+| `createTask` | POST | `/api/v1/tasks` | 201 | Application |
+| `archiveTask` | POST | `/api/v1/tasks/{taskId}/archive` | 200 | Application |
+| `listTaskResponses` | GET | `/api/v1/task-responses` | 200 | Application |
+| `reviewTaskResponse` | POST | `/api/v1/task-responses/{responseId}/review` | 200 | Application |
 | `listApplications` | GET | `/api/v1/applications` | 200 | Application |
 | `getApplication` | GET | `/api/v1/applications/{applicationId}` | 200 | Application |
 | `viewApplication` | POST | `/api/v1/applications/{applicationId}/view` | 200 | Application |
@@ -76,4 +83,4 @@ Generated from [`openapi.json`](openapi.json) by `codegen/generate.ts`. Do not e
 | `mockEmailCodes` | GET | `/__mock__/email-codes` | 200 | Development only |
 | `mockAdvanceClock` | POST | `/__mock__/clock` | 200 | Development only |
 
-Total documented operations: 71. Development controls are not production application endpoints.
+Total documented operations: 78. Development controls are not production application endpoints.

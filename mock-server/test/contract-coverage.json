@@ -1,7 +1,7 @@
 {
   "contractVersion": "0.1.0",
-  "routeCount": 71,
-  "coveredOperationCount": 71,
+  "routeCount": 78,
+  "coveredOperationCount": 78,
   "operations": [
     {
       "operationId": "getHealth",
@@ -218,6 +218,24 @@
       "observedStatuses": [
         200,
         404
+      ]
+    },
+    {
+      "operationId": "getMyTasks",
+      "method": "GET",
+      "path": "/api/v1/me/tasks",
+      "observedStatuses": [
+        200
+      ]
+    },
+    {
+      "operationId": "respondToTask",
+      "method": "POST",
+      "path": "/api/v1/me/tasks/{taskId}/responses",
+      "observedStatuses": [
+        201,
+        403,
+        409
       ]
     },
     {
@@ -541,6 +559,51 @@
       "path": "/api/v1/invitations/{invitationId}/withdraw",
       "observedStatuses": [
         200,
+        409
+      ]
+    },
+    {
+      "operationId": "listTasks",
+      "method": "GET",
+      "path": "/api/v1/tasks",
+      "observedStatuses": [
+        200
+      ]
+    },
+    {
+      "operationId": "createTask",
+      "method": "POST",
+      "path": "/api/v1/tasks",
+      "observedStatuses": [
+        201,
+        400,
+        422
+      ]
+    },
+    {
+      "operationId": "archiveTask",
+      "method": "POST",
+      "path": "/api/v1/tasks/{taskId}/archive",
+      "observedStatuses": [
+        200,
+        404
+      ]
+    },
+    {
+      "operationId": "listTaskResponses",
+      "method": "GET",
+      "path": "/api/v1/task-responses",
+      "observedStatuses": [
+        200
+      ]
+    },
+    {
+      "operationId": "reviewTaskResponse",
+      "method": "POST",
+      "path": "/api/v1/task-responses/{responseId}/review",
+      "observedStatuses": [
+        200,
+        404,
         409
       ]
     },

@@ -12,10 +12,13 @@ const pages = {
     '/candidate/vacancies',
     '/candidate/vacancies/need-002',
     '/candidate/applications',
+    '/candidate/tasks',
   ],
   employer: [
     '/employer/needs',
     '/employer/applications',
+    '/employer/tasks',
+    '/employer/tasks?tab=responses',
     '/employer/needs/need-001',
     '/employer/candidates?needId=need-001&mode=recommended',
     '/employer/candidates/candidate024?needId=need-001',

@@ -48,7 +48,7 @@ The specification supplies no FSP API, schema or dataset (§2, p2; §4, p6), so 
 | --- | --- | --- |
 | Vacancy browsing, self-application, application history | Desirable, not MVP (§2.1, p3) | done: «Вакансии» with filters and the candidate's fit, an application that opens only the chosen contacts, «Отклики» with statuses and withdrawal (e2e «UI-27»–«UI-30», mock tests «vacancy publication…», «applications disclose…») |
 | Vacancy publication and incoming applications | Desirable, not MVP (§2.1, p4) | done: publish and unpublish a need, edit it while published, «Отклики» with the frozen terms, the match and accept or decline ([`BUSINESS_RULES.md` §10](BUSINESS_RULES.md#10-vacancies-and-applications)) |
-| Recurring short employer tasks | Desirable, not MVP (§2.1, p3) | not implemented |
+| Recurring short employer tasks | Desirable, not MVP (§2, p2; §2.1, p3) | done: companies author short tasks and review answers; each week a qualified candidate gets one task on an evidenced skill, solves it or proposes an approach, and the answer keeps the profile fresh for employers ([`BUSINESS_RULES.md` §11](BUSINESS_RULES.md#11-short-tasks-and-profile-freshness); e2e «UI-31», «UI-32», mock tests «weekly tasks…», «companies author…») |
 | Anti-fraud checks for employers, ATS integration | After MVP (§2, p2–3) | not implemented; no «verified company» badge |
 | Keycloak or FSP ID sign-in | Future recommendation (§2, p2; §3.5, p6) | not implemented; e-mail sign-in only |
 | Mobile and tablet layout | Optional (§3.5, p6) | done: responsive layout with a navigation drawer below 1024 px, checked without horizontal scroll (e2e accessibility «narrow screens reflow…») |
@@ -58,4 +58,4 @@ The specification supplies no FSP API, schema or dataset (§2, p2; §4, p6), so 
 
 Production security, personal-data compliance, real e-mail delivery, live GitHub/FSP integrations, code execution
 and measured assessment or matching quality are not covered by the mock and remain backend work
-([`BUSINESS_RULES.md` §14](BUSINESS_RULES.md#14-capabilities-and-simulation)).
+([`BUSINESS_RULES.md` §15](BUSINESS_RULES.md#15-capabilities-and-simulation)).
