@@ -57,6 +57,7 @@ export const schemas = {
           'emailVerification',
           'profilePdf',
           'githubFixture',
+          'githubOAuth',
           'fspFixture',
           'matching',
           'directInvitations',
@@ -181,12 +182,20 @@ export const schemas = {
     evidence: arr(ref('Evidence')),
   }),
   Skills: obj({ items: arr(ref('SelfSkill')), simulation: bool }),
+  GitHubAuthorization: obj({ authorizationUrl: url }),
   Repository: obj({
     id,
     name: str(),
     url,
     technologies: arr(skillId),
     status: en('processed', 'queued', 'unavailable'),
+    metrics: obj({
+      stars: num({ minimum: 0 }),
+      forks: num({ minimum: 0 }),
+      openIssues: num({ minimum: 0 }),
+      sizeKib: num({ minimum: 0 }),
+      pushedAt: nullable(dt),
+    }),
   }),
   Source: obj({
     id,
@@ -646,6 +655,9 @@ export const routes = [
     body: 'ImportConfirmInput',
   }),
   route('get', '/api/v1/me/profile/export', 'exportMyProfile', null, { auth: 'candidate', pdf: true }),
+  route('get', '/api/v1/integrations/github/authorize', 'authorizeGitHub', 'GitHubAuthorization', {
+    auth: 'candidate',
+  }),
   route('get', '/api/v1/me/sources', 'getMySources', 'Sources', { auth: 'candidate' }),
   route('post', '/api/v1/me/sources/{provider}/connect', 'connectMySource', 'Source', {
     auth: 'candidate',

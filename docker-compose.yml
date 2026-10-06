@@ -1,23 +1,34 @@
-# The demo platform in containers: `docker compose up --build`, then http://localhost:8080.
-# All data is synthetic and lives in memory; `docker compose restart api` resets it. The e-mail code is 123456.
+# The platform in containers: `docker compose up --build`, then http://localhost:8080.
 name: fsp-career
 
 services:
   api:
     build:
       context: .
-      dockerfile: mock-server/Dockerfile
+      dockerfile: backend/Dockerfile
     environment:
-      # Browser origins the API accepts; add yours when opening the demo by another host name or port.
-      FSP_MOCK_ALLOWED_ORIGINS: ${FSP_ALLOWED_ORIGINS:-http://localhost:${FSP_PORT:-8080},http://127.0.0.1:${FSP_PORT:-8080}}
-    # The web service shares this network namespace, so its port is published here; the API port is not.
+      HOST: 127.0.0.1
+      PORT: 4010
+      FSP_DATABASE: /var/lib/fsp/fsp.sqlite3
+      FSP_AUTH_MODE: ${FSP_AUTH_MODE:-demo}
+      FSP_DEMO_EMAIL_CODE: ${FSP_DEMO_EMAIL_CODE:-123456}
+      FSP_ALLOWED_ORIGINS: ${FSP_ALLOWED_ORIGINS:-http://localhost:${FSP_PORT:-8080},http://127.0.0.1:${FSP_PORT:-8080}}
+      FSP_PUBLIC_WEB_URL: ${FSP_PUBLIC_WEB_URL:-http://localhost:${FSP_PORT:-8080}}
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
+      GITHUB_CALLBACK_URL: ${GITHUB_CALLBACK_URL:-http://localhost:${FSP_PORT:-8080}/api/v1/integrations/github/callback}
+      BIFROST_CHAT_URL: ${BIFROST_CHAT_URL:-}
+      BIFROST_API_KEY: ${BIFROST_API_KEY:-}
+      BIFROST_MODEL: ${BIFROST_MODEL:-}
     ports:
       - "${FSP_PORT:-8080}:8080"
     read_only: true
+    volumes:
+      - fsp-data:/var/lib/fsp
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:4010/health"]
+      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:4010/health"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -42,16 +53,5 @@ services:
       retries: 10
     restart: unless-stopped
 
-  backend:
-    profiles: [backend]
-    build:
-      context: .
-      dockerfile: backend/Dockerfile
-    environment:
-      FSP_ALLOWED_ORIGINS: ${FSP_ALLOWED_ORIGINS:-http://localhost:${FSP_PORT:-8080},http://127.0.0.1:${FSP_PORT:-8080}}
-    ports:
-      - "${FSP_BACKEND_PORT:-8081}:8080"
-    read_only: true
-    cap_drop: [ALL]
-    security_opt: [no-new-privileges:true]
-    restart: unless-stopped
+volumes:
+  fsp-data:

@@ -205,6 +205,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/integrations/github/authorize": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * authorizeGitHub
+         * @description Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.
+         */
+        get: operations["authorizeGitHub"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/me/sources": {
         parameters: {
             query?: never;
@@ -1386,6 +1406,7 @@ export interface components {
                 emailVerification: boolean;
                 profilePdf: boolean;
                 githubFixture: boolean;
+                githubOAuth: boolean;
                 fspFixture: boolean;
                 matching: boolean;
                 directInvitations: boolean;
@@ -1587,6 +1608,10 @@ export interface components {
             items: components["schemas"]["SelfSkill"][];
             simulation: boolean;
         };
+        GitHubAuthorization: {
+            /** Format: uri */
+            authorizationUrl: string;
+        };
         Repository: {
             id: string;
             name: string;
@@ -1595,6 +1620,13 @@ export interface components {
             technologies: ("rust" | "postgresql" | "docker" | "redis" | "react")[];
             /** @enum {string} */
             status: "processed" | "queued" | "unavailable";
+            metrics: {
+                stars: number;
+                forks: number;
+                openIssues: number;
+                sizeKib: number;
+                pushedAt: string | null;
+            };
         };
         Source: {
             id: string;
@@ -3472,6 +3504,125 @@ export interface operations {
                 };
                 content: {
                     "application/pdf": Blob;
+                };
+            };
+            /** @description Malformed request or schema validation error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Missing or expired mock session */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Role, consent, or origin restriction */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unknown resource or resource outside this actor/company */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description State, idempotency, or cooldown conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Request body exceeds limit */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unsupported media type */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Valid shape but invalid domain values */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Too many challenge attempts */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Response conformance or unexpected server failure */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Deterministic upstream error scenario */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    authorizeGitHub: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GitHubAuthorization"];
                 };
             };
             /** @description Malformed request or schema validation error */

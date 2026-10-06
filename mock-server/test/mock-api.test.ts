@@ -329,6 +329,8 @@ test('source enrichment is automatic, asynchronous, private and does not infer h
   const candidate = await login('candidate024');
   const other = await login('candidate-new');
   const employer = await login('employer-a');
+  const authorization = await request('GET', '/api/v1/integrations/github/authorize', { actor: candidate });
+  assert.match(authorization.body.authorizationUrl, /^https:\/\/github\.com\/login\/oauth\/authorize/);
   const sources = (await request('GET', '/api/v1/me/sources', { actor: candidate })).body.items;
   const github = sources.find((source: Body) => source.provider === 'github');
   assert.deepEqual(github.counts, { found: 12, processed: 8, queued: 3, unavailable: 1 });

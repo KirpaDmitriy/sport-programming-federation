@@ -11,7 +11,12 @@ path = "src/main.rs"
 
 [dependencies]
 axum.workspace = true
+fsp-application.workspace = true
 fsp-http.workspace = true
+fsp-integration-bifrost.workspace = true
+fsp-integration-fsp-synthetic.workspace = true
+fsp-integration-github.workspace = true
+fsp-storage-sqlite.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true

@@ -1,8 +1,9 @@
 import { useForm } from '@tanstack/react-form';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useId } from 'react';
+import { useMeta } from '@/entities/meta';
 import { useScope } from '@/entities/session';
-import { connectSource, type Source, sourcesKey } from '@/entities/source';
+import { authorizeGitHub, connectSource, type Source, sourcesKey } from '@/entities/source';
 import { describeError } from '@/shared/api';
 import { Button, Callout, TextField } from '@/shared/ui';
 
@@ -18,6 +19,7 @@ type Props = {
 export function ConnectSourceForm({ provider, label, submitLabel, hint, placeholder, onConnected }: Props) {
   const id = useId();
   const scope = useScope();
+  const meta = useMeta();
   const queryClient = useQueryClient();
   const connect = useMutation({
     mutationFn: (account: string) => connectSource(provider, account),
@@ -25,6 +27,10 @@ export function ConnectSourceForm({ provider, label, submitLabel, hint, placehol
       await queryClient.invalidateQueries({ queryKey: sourcesKey(scope) });
       onConnected?.();
     },
+  });
+  const authorization = useMutation({
+    mutationFn: authorizeGitHub,
+    onSuccess: ({ authorizationUrl }) => window.location.assign(authorizationUrl),
   });
   const form = useForm({
     defaultValues: { account: '' },
@@ -56,12 +62,32 @@ export function ConnectSourceForm({ provider, label, submitLabel, hint, placehol
           />
         )}
       </form.Field>
-      {connect.error && (
+      {(connect.error || authorization.error) && (
         <Callout tone="danger" role="alert">
-          {describeError(connect.error).message}
+          {describeError(connect.error ?? authorization.error).message}
         </Callout>
       )}
-      <Button type="submit" variant="primary" pending={connect.isPending} pendingLabel="Подключаем…">
+      {provider === 'github' && !meta.capabilities.githubOAuth && (
+        <Callout tone="info">Подключение GitHub сейчас недоступно.</Callout>
+      )}
+      {provider === 'github' && meta.capabilities.githubOAuth && (
+        <Button
+          type="button"
+          variant="secondary"
+          pending={authorization.isPending}
+          pendingLabel="Переходим в GitHub…"
+          onClick={() => authorization.mutate()}
+        >
+          Авторизовать GitHub
+        </Button>
+      )}
+      <Button
+        type="submit"
+        variant="primary"
+        disabled={provider === 'github' && !meta.capabilities.githubOAuth}
+        pending={connect.isPending}
+        pendingLabel="Подключаем…"
+      >
         {submitLabel}
       </Button>
     </form>

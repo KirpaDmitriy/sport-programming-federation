@@ -1,0 +1,1423 @@
+use std::sync::Arc;
+
+use chrono::{Duration, Utc};
+use fsp_domain::{
+    Account, CandidateIndexRecord, CandidateProfile, Company, Consents, EvidenceStatus, Grade,
+    HiringNeedRecord, Requirement, Role, Specialization, rank_candidates, score,
+};
+use sha2::{Digest, Sha256};
+use uuid::Uuid;
+
+use crate::{
+    AnonymousCandidateView, CandidateMatchView, CandidatePageView, CandidateSearch, CategoryView,
+    CompanyPatch, CompanyView, ConsumeChallenge, EmailChallengeInput, EmailChallengeView,
+    EmailVerifyInput, EvidencePolicyView, EvidenceView, FreshnessView, FspGateway, GitHubGateway,
+    GradeEligibilityView, GraphEdgeView, GraphNodeView, GraphView, IntegrationError, JobView,
+    LlmGateway, MatchRequirementView, NeedView, NeedsView, OnboardingView, PendingChallenge,
+    PlatformRepository, ProfilePatch, ProfileView, RepositoryError, RequirementView, SalaryView,
+    SelfSkillView, SessionView, SkillView, SkillsView, SourceConnectInput, SourceView, SourcesView,
+    VerificationDelivery, job_view, match_status, source_view,
+};
+
+#[derive(Debug)]
+pub struct ApplicationError {
+    pub status: u16,
+    pub code: &'static str,
+    pub message: String,
+}
+
+impl ApplicationError {
+    fn new(status: u16, code: &'static str, message: impl Into<String>) -> Self {
+        Self {
+            status,
+            code,
+            message: message.into(),
+        }
+    }
+
+    fn storage(error: RepositoryError) -> Self {
+        Self::new(500, "storage_error", format!("Ошибка хранилища: {error:?}"))
+    }
+}
+
+pub struct PlatformService {
+    repository: Arc<dyn PlatformRepository>,
+    delivery: Arc<dyn VerificationDelivery>,
+    github: Option<Arc<dyn GitHubGateway>>,
+    llm: Option<Arc<dyn LlmGateway>>,
+    fsp: Option<Arc<dyn FspGateway>>,
+}
+
+impl PlatformService {
+    pub fn new(
+        repository: Arc<dyn PlatformRepository>,
+        delivery: Arc<dyn VerificationDelivery>,
+    ) -> Self {
+        Self {
+            repository,
+            delivery,
+            github: None,
+            llm: None,
+            fsp: None,
+        }
+    }
+
+    #[must_use]
+    pub fn with_github(mut self, github: Arc<dyn GitHubGateway>) -> Self {
+        self.github = Some(github);
+        self
+    }
+
+    #[must_use]
+    pub fn with_llm(mut self, llm: Arc<dyn LlmGateway>) -> Self {
+        self.llm = Some(llm);
+        self
+    }
+
+    #[must_use]
+    pub fn with_fsp(mut self, fsp: Arc<dyn FspGateway>) -> Self {
+        self.fsp = Some(fsp);
+        self
+    }
+
+    pub fn initialize(&self) -> Result<(), ApplicationError> {
+        self.repository
+            .seed_demo(&now())
+            .map_err(ApplicationError::storage)
+    }
+
+    #[must_use]
+    pub fn github_configured(&self) -> bool {
+        self.github.is_some()
+    }
+
+    #[must_use]
+    pub fn llm_configured(&self) -> bool {
+        self.llm.is_some()
+    }
+
+    pub fn request_challenge(
+        &self,
+        input: EmailChallengeInput,
+    ) -> Result<EmailChallengeView, ApplicationError> {
+        let email = input.email.trim().to_lowercase();
+        if !email.contains('@') || email.len() > 254 {
+            return Err(ApplicationError::new(
+                400,
+                "validation_error",
+                "Проверьте адрес электронной почты",
+            ));
+        }
+        let account = match self
+            .repository
+            .account_by_email(&email)
+            .map_err(ApplicationError::storage)?
+        {
+            Some(account) if account.role != input.role => {
+                return Err(ApplicationError::new(
+                    409,
+                    "role_mismatch",
+                    "Этот адрес зарегистрирован с другой ролью",
+                ));
+            }
+            Some(account) => account,
+            None => self.register_account(email.clone(), input.role)?,
+        };
+        let code = self.delivery.code_for();
+        let issued_at = Utc::now();
+        let expires_at = issued_at + Duration::minutes(15);
+        let challenge = PendingChallenge {
+            id: format!("challenge-{}", Uuid::new_v4().simple()),
+            account_id: account.id,
+            code_hash: digest(&code),
+            expires_at: expires_at.to_rfc3339(),
+            attempts: 0,
+            used: false,
+        };
+        self.repository
+            .save_challenge(&challenge)
+            .map_err(ApplicationError::storage)?;
+        self.delivery.deliver(&email, &code).map_err(|message| {
+            ApplicationError::new(502, "verification_delivery_failed", message)
+        })?;
+        Ok(EmailChallengeView {
+            challenge_id: challenge.id,
+            expires_at: challenge.expires_at,
+            delivery: self.delivery.contract_name(),
+        })
+    }
+
+    pub fn verify_email(
+        &self,
+        input: EmailVerifyInput,
+    ) -> Result<(SessionView, String), ApplicationError> {
+        if input.code.len() != 6 || !input.code.bytes().all(|byte| byte.is_ascii_digit()) {
+            return Err(ApplicationError::new(
+                400,
+                "invalid_code",
+                "Неверный код подтверждения",
+            ));
+        }
+        let (outcome, account) = self
+            .repository
+            .consume_challenge(&input.challenge_id, &digest(&input.code), &now())
+            .map_err(ApplicationError::storage)?;
+        match outcome {
+            ConsumeChallenge::Consumed => {}
+            ConsumeChallenge::Missing => {
+                return Err(ApplicationError::new(
+                    404,
+                    "not_found",
+                    "Запрос подтверждения не найден",
+                ));
+            }
+            ConsumeChallenge::Used => {
+                return Err(ApplicationError::new(
+                    409,
+                    "challenge_used",
+                    "Код уже использован",
+                ));
+            }
+            ConsumeChallenge::Expired => {
+                return Err(ApplicationError::new(
+                    400,
+                    "challenge_expired",
+                    "Срок действия кода истёк",
+                ));
+            }
+            ConsumeChallenge::Locked => {
+                return Err(ApplicationError::new(
+                    429,
+                    "challenge_locked",
+                    "Слишком много неверных попыток",
+                ));
+            }
+            ConsumeChallenge::WrongCode => {
+                return Err(ApplicationError::new(
+                    400,
+                    "invalid_code",
+                    "Неверный код подтверждения",
+                ));
+            }
+        }
+        let account = account
+            .ok_or_else(|| ApplicationError::new(500, "storage_error", "Аккаунт не найден"))?;
+        let raw_token = Uuid::new_v4().to_string();
+        self.repository
+            .create_session(
+                &digest(&raw_token),
+                &account.id,
+                &(Utc::now() + Duration::days(30)).to_rfc3339(),
+            )
+            .map_err(ApplicationError::storage)?;
+        Ok((self.session_view(&account)?, raw_token))
+    }
+
+    pub fn session(&self, raw_token: &str) -> Result<SessionView, ApplicationError> {
+        let account = self
+            .repository
+            .account_for_session(&digest(raw_token), &now())
+            .map_err(ApplicationError::storage)?
+            .ok_or_else(|| ApplicationError::new(401, "unauthenticated", "Войдите в аккаунт"))?;
+        self.session_view(&account)
+    }
+
+    pub fn logout(&self, raw_token: &str) -> Result<(), ApplicationError> {
+        self.repository
+            .delete_session(&digest(raw_token))
+            .map_err(ApplicationError::storage)
+    }
+
+    pub fn profile(&self, session: &SessionView) -> Result<ProfileView, ApplicationError> {
+        let id = session.candidate_id.as_deref().ok_or_else(|| {
+            ApplicationError::new(403, "role_forbidden", "Действие доступно кандидату")
+        })?;
+        let profile = self
+            .repository
+            .candidate(id)
+            .map_err(ApplicationError::storage)?
+            .ok_or_else(|| ApplicationError::new(404, "not_found", "Профиль не найден"))?;
+        Ok(profile_view(profile, session.email_verified))
+    }
+
+    pub fn update_profile(
+        &self,
+        session: &SessionView,
+        patch: ProfilePatch,
+    ) -> Result<ProfileView, ApplicationError> {
+        validate_profile_patch(&patch)?;
+        let id = session.candidate_id.as_deref().ok_or_else(|| {
+            ApplicationError::new(403, "role_forbidden", "Действие доступно кандидату")
+        })?;
+        let mut profile = self
+            .repository
+            .candidate(id)
+            .map_err(ApplicationError::storage)?
+            .ok_or_else(|| ApplicationError::new(404, "not_found", "Профиль не найден"))?;
+        if let Some(name) = patch.name {
+            profile.name = name.trim().to_owned();
+        }
+        if let Some(value) = patch.specialization {
+            profile.specialization = value;
+        }
+        if let Some(value) = patch.selected_grade {
+            profile.selected_grade = value;
+        }
+        if let Some(value) = patch.stack {
+            profile.stack = unique(value);
+        }
+        if let Some(value) = patch.team_role {
+            profile.team_role = value.trim().to_owned();
+        }
+        if let Some(value) = patch.experience_months {
+            profile.experience_months = value;
+        }
+        if let Some(value) = patch.experience {
+            profile.experience = value;
+        }
+        if let Some(value) = patch.soft_skills {
+            profile.soft_skills = unique(value);
+        }
+        if let Some(value) = patch.consents {
+            profile.consents = value;
+        }
+        if profile.consents.publication && !profile.consents.processing {
+            return Err(ApplicationError::new(
+                422,
+                "publication_requires_processing",
+                "Для публикации нужно согласие на обработку данных",
+            ));
+        }
+        profile.revision += 1;
+        profile.updated_at = now();
+        self.repository
+            .save_candidate(&profile)
+            .map_err(ApplicationError::storage)?;
+        Ok(profile_view(profile, session.email_verified))
+    }
+
+    pub fn company(&self, session: &SessionView) -> Result<CompanyView, ApplicationError> {
+        let id = session.company_id.as_deref().ok_or_else(|| {
+            ApplicationError::new(403, "role_forbidden", "Действие доступно работодателю")
+        })?;
+        self.repository
+            .company(id)
+            .map_err(ApplicationError::storage)?
+            .map(CompanyView::from)
+            .ok_or_else(|| ApplicationError::new(404, "not_found", "Компания не найдена"))
+    }
+
+    pub fn update_company(
+        &self,
+        session: &SessionView,
+        patch: CompanyPatch,
+    ) -> Result<CompanyView, ApplicationError> {
+        validate_company_patch(&patch)?;
+        let id = session.company_id.as_deref().ok_or_else(|| {
+            ApplicationError::new(403, "role_forbidden", "Действие доступно работодателю")
+        })?;
+        let mut company = self
+            .repository
+            .company(id)
+            .map_err(ApplicationError::storage)?
+            .ok_or_else(|| ApplicationError::new(404, "not_found", "Компания не найдена"))?;
+        if let Some(value) = patch.display_name {
+            company.display_name = value.trim().to_owned();
+        }
+        if let Some(value) = patch.business_area {
+            company.business_area = value.trim().to_owned();
+        }
+        if let Some(value) = patch.description {
+            company.description = value.trim().to_owned();
+        }
+        if let Some(value) = patch.contact_email {
+            company.contact_email = value.trim().to_lowercase();
+        }
+        if let Some(value) = patch.website {
+            company.website = value;
+        }
+        self.repository
+            .save_company(&company)
+            .map_err(ApplicationError::storage)?;
+        Ok(company.into())
+    }
+
+    pub fn needs(&self, session: &SessionView) -> Result<NeedsView, ApplicationError> {
+        let company_id = employer_company_id(session)?;
+        let items = self
+            .repository
+            .needs(company_id)
+            .map_err(ApplicationError::storage)?
+            .into_iter()
+            .map(need_view)
+            .collect();
+        Ok(NeedsView { items })
+    }
+
+    pub fn candidate_search(
+        &self,
+        session: &SessionView,
+        search: CandidateSearch,
+    ) -> Result<CandidatePageView, ApplicationError> {
+        let company_id = employer_company_id(session)?;
+        let need = match search.need_id.as_deref() {
+            Some(id) => Some(
+                self.repository
+                    .need(company_id, id)
+                    .map_err(ApplicationError::storage)?
+                    .ok_or_else(|| {
+                        ApplicationError::new(404, "not_found", "Потребность не найдена")
+                    })?,
+            ),
+            None if search.recommended => {
+                return Err(ApplicationError::new(
+                    422,
+                    "need_required",
+                    "Для рекомендаций выберите потребность",
+                ));
+            }
+            None => None,
+        };
+        let mut records =
+            self.repository
+                .candidates()
+                .map_err(ApplicationError::storage)?
+                .into_iter()
+                .filter(|item| item.profile.visible_to_employers())
+                .filter(|item| {
+                    item.profile.verified_specialization.is_some_and(|value| {
+                        search.specialization.is_none_or(|filter| filter == value)
+                    }) && item
+                        .profile
+                        .verified_grade
+                        .is_some_and(|value| search.grade.is_none_or(|filter| filter == value))
+                        && search.skill.as_ref().is_none_or(|filter| {
+                            item.skills.iter().any(|skill| {
+                                skill.skill_id == *filter
+                                    && skill.status != EvidenceStatus::Insufficient
+                            })
+                        })
+                        && (!search.fsp_verified || item.fsp_verified)
+                })
+                .collect::<Vec<_>>();
+        if search.recommended {
+            let selected = need.as_ref().expect("recommended search has a need");
+            records.retain(|item| {
+                item.profile.verified_specialization == Some(selected.need.specialization)
+                    && item
+                        .profile
+                        .verified_grade
+                        .is_some_and(|grade| grade >= selected.need.grade)
+            });
+        }
+        if let Some(selected) = &need {
+            let rankable = records
+                .iter()
+                .filter_map(CandidateIndexRecord::rankable)
+                .collect::<Vec<_>>();
+            let order = rank_candidates(&rankable, &selected.need)
+                .into_iter()
+                .enumerate()
+                .map(|(position, item)| (item.0, position))
+                .collect::<std::collections::HashMap<_, _>>();
+            records.sort_by_key(|item| order.get(&item.profile.id).copied().unwrap_or(usize::MAX));
+        } else {
+            records.sort_by(|left, right| {
+                left.profile
+                    .verified_specialization
+                    .cmp(&right.profile.verified_specialization)
+                    .then_with(|| {
+                        right
+                            .profile
+                            .verified_grade
+                            .cmp(&left.profile.verified_grade)
+                    })
+                    .then_with(|| right.fsp_verified.cmp(&left.fsp_verified))
+                    .then_with(|| left.profile.id.cmp(&right.profile.id))
+            });
+        }
+        let total = records.len();
+        let start = (search.page - 1).saturating_mul(search.page_size);
+        let items = records
+            .into_iter()
+            .skip(start)
+            .take(search.page_size)
+            .map(|candidate| anonymous_candidate(candidate, need.as_ref()))
+            .collect();
+        Ok(CandidatePageView {
+            items,
+            page: search.page,
+            page_size: search.page_size,
+            total,
+            has_next_page: start.saturating_add(search.page_size) < total,
+        })
+    }
+
+    pub fn candidate(
+        &self,
+        session: &SessionView,
+        candidate_id: &str,
+        need_id: Option<&str>,
+    ) -> Result<AnonymousCandidateView, ApplicationError> {
+        let company_id = employer_company_id(session)?;
+        let need = need_id
+            .map(|id| self.repository.need(company_id, id))
+            .transpose()
+            .map_err(ApplicationError::storage)?
+            .flatten();
+        let candidate = self
+            .repository
+            .candidates()
+            .map_err(ApplicationError::storage)?
+            .into_iter()
+            .find(|item| item.profile.id == candidate_id && item.profile.visible_to_employers())
+            .ok_or_else(|| ApplicationError::new(404, "not_found", "Кандидат не найден"))?;
+        Ok(anonymous_candidate(candidate, need.as_ref()))
+    }
+
+    pub fn github_authorization_url(
+        &self,
+        session: &SessionView,
+        redirect_uri: &str,
+    ) -> Result<String, ApplicationError> {
+        let candidate_id = candidate_id(session)?;
+        let github = self.github()?;
+        let state = Uuid::new_v4().simple().to_string();
+        self.repository
+            .save_oauth_state(
+                candidate_id,
+                &state,
+                &(Utc::now() + Duration::minutes(10)).to_rfc3339(),
+            )
+            .map_err(ApplicationError::storage)?;
+        github
+            .authorization_url(&state, redirect_uri)
+            .map_err(integration_error)
+    }
+
+    pub async fn complete_github_authorization(
+        &self,
+        session: &SessionView,
+        state: &str,
+        code: &str,
+    ) -> Result<(), ApplicationError> {
+        let candidate_id = candidate_id(session)?;
+        let valid = self
+            .repository
+            .consume_oauth_state(candidate_id, state, &now())
+            .map_err(ApplicationError::storage)?;
+        if !valid {
+            return Err(ApplicationError::new(
+                400,
+                "oauth_state_invalid",
+                "Ссылка авторизации устарела или уже использована",
+            ));
+        }
+        let token = self
+            .github()?
+            .exchange_code(code)
+            .await
+            .map_err(integration_error)?;
+        self.repository
+            .save_github_token(candidate_id, &token)
+            .map_err(ApplicationError::storage)
+    }
+
+    pub fn sources(&self, session: &SessionView) -> Result<SourcesView, ApplicationError> {
+        let candidate_id = candidate_id(session)?;
+        let mut records = self
+            .repository
+            .sources(candidate_id)
+            .map_err(ApplicationError::storage)?;
+        for provider in [
+            fsp_domain::SourceProvider::Github,
+            fsp_domain::SourceProvider::Fsp,
+        ] {
+            if !records.iter().any(|record| record.provider == provider) {
+                records.push(fsp_domain::SourceRecord {
+                    id: format!("source-{}-{candidate_id}", source_provider(provider)),
+                    candidate_id: candidate_id.into(),
+                    provider,
+                    synthetic: provider == fsp_domain::SourceProvider::Fsp,
+                    active_job_id: None,
+                    account_label: None,
+                    last_synced_at: None,
+                    analysis: None,
+                    verified_participation: false,
+                    competition_ids: Vec::new(),
+                });
+            }
+        }
+        records.sort_by_key(|record| source_provider(record.provider));
+        Ok(SourcesView {
+            simulation: records.iter().any(|record| record.synthetic),
+            items: records.into_iter().map(source_view).collect(),
+        })
+    }
+
+    pub fn skills(&self, session: &SessionView) -> Result<SkillsView, ApplicationError> {
+        let candidate_id = candidate_id(session)?;
+        let record = self.candidate_index(candidate_id)?;
+        let observed_at = record.profile.updated_at.clone();
+        let items = record
+            .skills
+            .into_iter()
+            .map(|skill| {
+                let evidence = skill
+                    .sources
+                    .iter()
+                    .enumerate()
+                    .map(|(index, source)| EvidenceView {
+                        id: format!("evidence-{}-{index}", skill.skill_id),
+                        source: *source,
+                        title: format!("Свидетельство: {}", skill_label(&skill.skill_id)),
+                        url: None,
+                        reference: Some(format!("{}:{}", source_name(*source), skill.skill_id)),
+                        observed_at: observed_at.clone(),
+                        scope: "individual",
+                        synthetic: *source == fsp_domain::EvidenceSource::Fsp,
+                    })
+                    .collect::<Vec<_>>();
+                SelfSkillView {
+                    skill_id: skill.skill_id.clone(),
+                    label: skill_label(&skill.skill_id).into(),
+                    status: skill.status,
+                    evidence_grade: skill.evidence_grade,
+                    evidence_sources: skill.sources,
+                    summary: skill_summary(skill.status).into(),
+                    evidence_count: evidence.len(),
+                    confirmed_at: (skill.status == EvidenceStatus::Confirmed)
+                        .then(|| observed_at.clone()),
+                    evidence,
+                }
+            })
+            .collect();
+        Ok(SkillsView {
+            items,
+            simulation: true,
+        })
+    }
+
+    pub async fn my_graph(&self, session: &SessionView) -> Result<GraphView, ApplicationError> {
+        let candidate_id = candidate_id(session)?;
+        let record = self.candidate_index(candidate_id)?;
+        self.graph_from_skills("self", &record.profile.team_role, &record.skills)
+            .await
+    }
+
+    pub async fn candidate_graph(
+        &self,
+        session: &SessionView,
+        requested_candidate_id: &str,
+    ) -> Result<GraphView, ApplicationError> {
+        employer_company_id(session)?;
+        let record = self.candidate_index(requested_candidate_id)?;
+        if !record.profile.visible_to_employers() {
+            return Err(ApplicationError::new(
+                404,
+                "not_found",
+                "Кандидат не найден",
+            ));
+        }
+        self.graph_from_skills("employer", &record.profile.team_role, &record.skills)
+            .await
+    }
+
+    async fn graph_from_skills(
+        &self,
+        audience: &'static str,
+        subject: &str,
+        skills: &[fsp_domain::SkillEvidence],
+    ) -> Result<GraphView, ApplicationError> {
+        if let Some(llm) = &self.llm {
+            let extracted = llm
+                .extract_graph(&fsp_domain::GraphExtractionRequest {
+                    schema_version: "competence-graph-v1",
+                    subject: subject.into(),
+                    evidence: skills
+                        .iter()
+                        .map(|skill| fsp_domain::LlmEvidence {
+                            reference: format!("skill:{}", skill.skill_id),
+                            text: format!(
+                                "{}; status={:?}; grade={:?}; sources={:?}",
+                                skill.skill_id, skill.status, skill.evidence_grade, skill.sources
+                            ),
+                        })
+                        .collect(),
+                })
+                .await
+                .map_err(integration_error)?;
+            return graph_from_extracted(audience, extracted);
+        }
+        let root = GraphNodeView {
+            id: "role-main".into(),
+            kind: "role".into(),
+            label: if subject.trim().is_empty() {
+                "Профиль компетенций".into()
+            } else {
+                subject.into()
+            },
+            skill_id: None,
+            status: None,
+        };
+        let mut nodes = vec![root];
+        let mut edges = Vec::new();
+        for skill in skills {
+            let id = format!("skill-{}", skill.skill_id);
+            nodes.push(GraphNodeView {
+                id: id.clone(),
+                kind: "skill".into(),
+                label: skill_label(&skill.skill_id).into(),
+                skill_id: Some(skill.skill_id.clone()),
+                status: Some(evidence_status_name(skill.status).into()),
+            });
+            edges.push(GraphEdgeView {
+                id: format!("edge-role-{}", skill.skill_id),
+                from: "role-main".into(),
+                to: id,
+                relation: "uses".into(),
+            });
+        }
+        Ok(GraphView {
+            audience,
+            nodes,
+            edges,
+            simulation: true,
+        })
+    }
+
+    fn candidate_index(&self, id: &str) -> Result<CandidateIndexRecord, ApplicationError> {
+        self.repository
+            .candidates()
+            .map_err(ApplicationError::storage)?
+            .into_iter()
+            .find(|record| record.profile.id == id)
+            .ok_or_else(|| ApplicationError::new(404, "not_found", "Кандидат не найден"))
+    }
+
+    pub async fn connect_source(
+        &self,
+        session: &SessionView,
+        provider: &str,
+        input: SourceConnectInput,
+    ) -> Result<SourceView, ApplicationError> {
+        let candidate_id = candidate_id(session)?;
+        let account = input.account.trim();
+        if account.is_empty() || account.len() > 100 {
+            return Err(validation("Проверьте идентификатор аккаунта"));
+        }
+        let record = match provider {
+            "github" => {
+                let token = self
+                    .repository
+                    .github_token(candidate_id)
+                    .map_err(ApplicationError::storage)?
+                    .ok_or_else(|| {
+                        ApplicationError::new(
+                            409,
+                            "github_authorization_required",
+                            "Сначала авторизуйте доступ к GitHub",
+                        )
+                    })?;
+                let analysis = self
+                    .github()?
+                    .analyze(account, &token)
+                    .await
+                    .map_err(integration_error)?;
+                fsp_domain::SourceRecord {
+                    id: format!("source-github-{candidate_id}"),
+                    candidate_id: candidate_id.into(),
+                    provider: fsp_domain::SourceProvider::Github,
+                    synthetic: false,
+                    active_job_id: None,
+                    account_label: Some(analysis.username.clone()),
+                    last_synced_at: Some(now()),
+                    analysis: Some(analysis),
+                    verified_participation: false,
+                    competition_ids: Vec::new(),
+                }
+            }
+            "fsp" => {
+                let participation = self
+                    .fsp
+                    .as_ref()
+                    .ok_or_else(|| {
+                        ApplicationError::new(503, "fsp_not_configured", "Источник ФСП недоступен")
+                    })?
+                    .participation(account)
+                    .map_err(integration_error)?;
+                fsp_domain::SourceRecord {
+                    id: format!("source-fsp-{candidate_id}"),
+                    candidate_id: candidate_id.into(),
+                    provider: fsp_domain::SourceProvider::Fsp,
+                    synthetic: true,
+                    active_job_id: None,
+                    account_label: Some(participation.account_label),
+                    last_synced_at: Some(now()),
+                    analysis: None,
+                    verified_participation: participation.verified,
+                    competition_ids: participation.competition_ids,
+                }
+            }
+            _ => {
+                return Err(ApplicationError::new(
+                    404,
+                    "not_found",
+                    "Источник не найден",
+                ));
+            }
+        };
+        self.repository
+            .save_source(&record)
+            .map_err(ApplicationError::storage)?;
+        Ok(source_view(record))
+    }
+
+    pub async fn sync_source(
+        &self,
+        session: &SessionView,
+        source_id: &str,
+    ) -> Result<JobView, ApplicationError> {
+        let candidate_id = candidate_id(session)?;
+        let source = self
+            .repository
+            .sources(candidate_id)
+            .map_err(ApplicationError::storage)?
+            .into_iter()
+            .find(|source| source.id == source_id)
+            .ok_or_else(|| ApplicationError::new(404, "not_found", "Источник не найден"))?;
+        let created_at = now();
+        let mut job = fsp_domain::JobRecord {
+            id: format!("job-{}", Uuid::new_v4().simple()),
+            owner_id: candidate_id.into(),
+            status: "running".into(),
+            created_at: created_at.clone(),
+            updated_at: created_at,
+            result_source_id: None,
+            error_code: None,
+            error_message: None,
+        };
+        let result = match source.provider {
+            fsp_domain::SourceProvider::Github => {
+                let token = self
+                    .repository
+                    .github_token(candidate_id)
+                    .map_err(ApplicationError::storage)?
+                    .ok_or_else(|| {
+                        ApplicationError::new(
+                            409,
+                            "github_authorization_required",
+                            "Авторизуйте GitHub повторно",
+                        )
+                    })?;
+                let username = source.account_label.as_deref().ok_or_else(|| {
+                    ApplicationError::new(
+                        409,
+                        "source_not_connected",
+                        "Сначала подключите источник",
+                    )
+                })?;
+                self.github()?
+                    .analyze(username, &token)
+                    .await
+                    .map(|analysis| fsp_domain::SourceRecord {
+                        analysis: Some(analysis),
+                        last_synced_at: Some(now()),
+                        active_job_id: None,
+                        ..source
+                    })
+            }
+            fsp_domain::SourceProvider::Fsp => Ok(fsp_domain::SourceRecord {
+                last_synced_at: Some(now()),
+                active_job_id: None,
+                ..source
+            }),
+        };
+        match result {
+            Ok(updated) => {
+                self.repository
+                    .save_source(&updated)
+                    .map_err(ApplicationError::storage)?;
+                job.status = "succeeded".into();
+                job.updated_at = now();
+                job.result_source_id = Some(updated.id.clone());
+                self.repository
+                    .save_job(&job)
+                    .map_err(ApplicationError::storage)?;
+                Ok(job_view(job, Some(source_view(updated))))
+            }
+            Err(error) => {
+                job.status = "failed".into();
+                job.updated_at = now();
+                job.error_code = Some(error.code.into());
+                job.error_message = Some(error.message);
+                self.repository
+                    .save_job(&job)
+                    .map_err(ApplicationError::storage)?;
+                Ok(job_view(job, None))
+            }
+        }
+    }
+
+    pub fn job(&self, session: &SessionView, job_id: &str) -> Result<JobView, ApplicationError> {
+        let owner_id = session
+            .candidate_id
+            .as_deref()
+            .or(session.company_id.as_deref())
+            .ok_or_else(|| ApplicationError::new(403, "role_forbidden", "Недоступная операция"))?;
+        let record = self
+            .repository
+            .job(owner_id, job_id)
+            .map_err(ApplicationError::storage)?
+            .ok_or_else(|| ApplicationError::new(404, "not_found", "Задача не найдена"))?;
+        let source = if let Some(source_id) = record.result_source_id.as_ref() {
+            self.repository
+                .sources(owner_id)
+                .map_err(ApplicationError::storage)?
+                .into_iter()
+                .find(|source| &source.id == source_id)
+                .map(source_view)
+        } else {
+            None
+        };
+        Ok(job_view(record, source))
+    }
+
+    fn github(&self) -> Result<&Arc<dyn GitHubGateway>, ApplicationError> {
+        self.github.as_ref().ok_or_else(|| {
+            ApplicationError::new(
+                503,
+                "github_not_configured",
+                "Подключение GitHub временно недоступно",
+            )
+        })
+    }
+
+    fn register_account(&self, email: String, role: Role) -> Result<Account, ApplicationError> {
+        let suffix = Uuid::new_v4().simple().to_string();
+        let account = Account {
+            id: format!("actor-{}", &suffix[..12]),
+            email: email.clone(),
+            role,
+            candidate_id: (role == Role::Candidate).then(|| format!("candidate-{}", &suffix[..12])),
+            company_id: (role == Role::Employer).then(|| format!("company-{}", &suffix[..12])),
+            email_verified: false,
+        };
+        self.repository
+            .create_account(&account, &now())
+            .map_err(ApplicationError::storage)?;
+        if let Some(candidate_id) = &account.candidate_id {
+            self.repository
+                .create_candidate(&CandidateProfile {
+                    id: candidate_id.clone(),
+                    alias: format!("Кандидат №{}", suffix[..3].to_uppercase()),
+                    email: email.clone(),
+                    name: "Новый кандидат".into(),
+                    specialization: Specialization::Backend,
+                    selected_grade: Grade::Junior,
+                    stack: Vec::new(),
+                    team_role: String::new(),
+                    experience_months: None,
+                    experience: String::new(),
+                    soft_skills: Vec::new(),
+                    consents: Consents {
+                        processing: false,
+                        publication: false,
+                    },
+                    verified_grade: None,
+                    verified_specialization: None,
+                    grade_confirmed_at: None,
+                    revision: 1,
+                    updated_at: now(),
+                })
+                .map_err(ApplicationError::storage)?;
+        }
+        if let Some(company_id) = &account.company_id {
+            self.repository
+                .create_company(&Company {
+                    id: company_id.clone(),
+                    display_name: "Новая компания".into(),
+                    business_area: String::new(),
+                    description: String::new(),
+                    contact_email: email,
+                    website: None,
+                })
+                .map_err(ApplicationError::storage)?;
+        }
+        Ok(account)
+    }
+
+    fn session_view(&self, account: &Account) -> Result<SessionView, ApplicationError> {
+        let display_name = if let Some(id) = &account.candidate_id {
+            self.repository
+                .candidate(id)
+                .map_err(ApplicationError::storage)?
+                .map(|profile| profile.name)
+                .unwrap_or_else(|| "Кандидат".into())
+        } else if let Some(id) = &account.company_id {
+            self.repository
+                .company(id)
+                .map_err(ApplicationError::storage)?
+                .map(|company| company.display_name)
+                .unwrap_or_else(|| "Работодатель".into())
+        } else {
+            String::new()
+        };
+        Ok(SessionView {
+            actor_id: account.id.clone(),
+            role: account.role,
+            email_verified: account.email_verified,
+            candidate_id: account.candidate_id.clone(),
+            company_id: account.company_id.clone(),
+            display_name,
+        })
+    }
+}
+
+fn employer_company_id(session: &SessionView) -> Result<&str, ApplicationError> {
+    session.company_id.as_deref().ok_or_else(|| {
+        ApplicationError::new(403, "role_forbidden", "Действие доступно работодателю")
+    })
+}
+
+fn candidate_id(session: &SessionView) -> Result<&str, ApplicationError> {
+    session
+        .candidate_id
+        .as_deref()
+        .ok_or_else(|| ApplicationError::new(403, "role_forbidden", "Действие доступно кандидату"))
+}
+
+fn integration_error(error: IntegrationError) -> ApplicationError {
+    ApplicationError::new(502, error.code, error.message)
+}
+
+fn source_provider(provider: fsp_domain::SourceProvider) -> &'static str {
+    match provider {
+        fsp_domain::SourceProvider::Github => "github",
+        fsp_domain::SourceProvider::Fsp => "fsp",
+    }
+}
+
+fn source_name(source: fsp_domain::EvidenceSource) -> &'static str {
+    match source {
+        fsp_domain::EvidenceSource::Assessment => "assessment",
+        fsp_domain::EvidenceSource::Github => "github",
+        fsp_domain::EvidenceSource::Fsp => "fsp",
+    }
+}
+
+fn evidence_status_name(status: EvidenceStatus) -> &'static str {
+    match status {
+        EvidenceStatus::Confirmed => "confirmed",
+        EvidenceStatus::Evidence => "evidence",
+        EvidenceStatus::Observed => "observed",
+        EvidenceStatus::Insufficient => "insufficient",
+    }
+}
+
+fn graph_from_extracted(
+    audience: &'static str,
+    graph: fsp_domain::ExtractedGraph,
+) -> Result<GraphView, ApplicationError> {
+    let valid_nodes = graph.nodes.iter().all(|node| {
+        ["role", "skill", "evidence"].contains(&node.kind.as_str())
+            && node.status.as_deref().is_none_or(|status| {
+                ["confirmed", "evidence", "observed", "insufficient"].contains(&status)
+            })
+    });
+    let valid_edges = graph
+        .edges
+        .iter()
+        .all(|edge| ["requires", "supports", "uses"].contains(&edge.relation.as_str()));
+    if !valid_nodes || !valid_edges {
+        return Err(ApplicationError::new(
+            502,
+            "bifrost_invalid_response",
+            "Модель вернула граф неподдерживаемого формата",
+        ));
+    }
+    Ok(GraphView {
+        audience,
+        nodes: graph
+            .nodes
+            .into_iter()
+            .map(|node| GraphNodeView {
+                id: node.id,
+                kind: node.kind,
+                label: node.label,
+                skill_id: node.skill_id,
+                status: node.status,
+            })
+            .collect(),
+        edges: graph
+            .edges
+            .into_iter()
+            .map(|edge| GraphEdgeView {
+                id: edge.id,
+                from: edge.from,
+                to: edge.to,
+                relation: edge.relation,
+            })
+            .collect(),
+        simulation: false,
+    })
+}
+
+fn need_view(record: HiringNeedRecord) -> NeedView {
+    NeedView {
+        id: record.id,
+        company_id: record.company_id,
+        title: record.title,
+        specialization: record.need.specialization,
+        grade: record.need.grade,
+        work_mode: record.work_mode,
+        salary: SalaryView {
+            from: record.salary_from,
+            to: record.salary_to,
+            currency: "RUB",
+            period: "month",
+            tax_basis: "gross",
+        },
+        description: record.description,
+        requirements: record
+            .need
+            .requirements
+            .into_iter()
+            .map(|item| RequirementView {
+                skill_id: item.skill_id,
+                criticality: item.criticality,
+                minimum_grade: item.minimum_grade,
+                evidence_policy: EvidencePolicyView::from(&item.evidence_policy),
+            })
+            .collect(),
+        published: record.published,
+        published_at: record.published_at,
+        created_at: record.created_at,
+        updated_at: record.updated_at,
+        revision: record.revision,
+    }
+}
+
+fn anonymous_candidate(
+    record: CandidateIndexRecord,
+    need: Option<&HiringNeedRecord>,
+) -> AnonymousCandidateView {
+    let rankable = record.rankable().expect("visible candidate is rankable");
+    let candidate_match = need.map(|selected| match_view(&rankable, selected));
+    AnonymousCandidateView {
+        id: record.profile.id,
+        alias: record.profile.alias,
+        specialization: rankable.specialization,
+        verified_grade: rankable.verified_grade,
+        grade_confirmed_at: record.profile.grade_confirmed_at.unwrap_or_default(),
+        work_modes: record.work_modes,
+        available_for_offers: record.available_for_offers,
+        skills: record
+            .skills
+            .into_iter()
+            .map(|skill| SkillView {
+                label: skill_label(&skill.skill_id).into(),
+                summary: skill_summary(skill.status).into(),
+                evidence_count: skill.sources.len(),
+                confirmed_at: (skill.status == EvidenceStatus::Confirmed)
+                    .then(|| record.profile.updated_at.clone()),
+                skill_id: skill.skill_id,
+                status: skill.status,
+                evidence_grade: skill.evidence_grade,
+                evidence_sources: skill.sources,
+            })
+            .collect(),
+        source_kinds: record.source_kinds,
+        fsp_verified: record.fsp_verified,
+        freshness: FreshnessView {
+            last_signal_at: record.last_signal_at,
+            last_signal: Some("assessment"),
+            fresh: true,
+            window_days: 90,
+        },
+        r#match: candidate_match,
+        simulation: true,
+    }
+}
+
+fn match_view(
+    candidate: &fsp_domain::RankableCandidate,
+    need: &HiringNeedRecord,
+) -> CandidateMatchView {
+    let result = score(candidate, &need.need);
+    let requirements = need
+        .need
+        .requirements
+        .iter()
+        .map(|requirement| match_requirement(candidate, requirement))
+        .collect::<Vec<_>>();
+    let status = match_status(&result, &requirements);
+    CandidateMatchView {
+        need_id: need.id.clone(),
+        status,
+        grade_matches: result.grade_matches,
+        required_met: result.required_met,
+        required_total: result.required_total,
+        desired_met: result.desired_met,
+        desired_total: result.desired_total,
+        requirements,
+        explanation: if result.grade_matches {
+            format!(
+                "Подтверждено обязательных требований: {} из {}.",
+                result.required_met, result.required_total
+            )
+        } else {
+            "Подтверждённая специализация или грейд пока не соответствуют потребности.".into()
+        },
+        algorithm_version: result.algorithm_version,
+    }
+}
+
+fn match_requirement(
+    candidate: &fsp_domain::RankableCandidate,
+    requirement: &Requirement,
+) -> MatchRequirementView {
+    let skill = candidate
+        .skills
+        .iter()
+        .find(|item| item.skill_id == requirement.skill_id);
+    let accepted = skill.is_some_and(|item| {
+        item.sources.iter().any(|source| match source {
+            fsp_domain::EvidenceSource::Assessment => {
+                requirement.evidence_policy.accept_assessments
+            }
+            fsp_domain::EvidenceSource::Github => requirement.evidence_policy.accept_github,
+            fsp_domain::EvidenceSource::Fsp => requirement.evidence_policy.accept_fsp,
+        })
+    });
+    let meets = skill.is_some_and(|item| {
+        item.status == EvidenceStatus::Confirmed
+            && accepted
+            && item
+                .evidence_grade
+                .is_some_and(|grade| grade >= requirement.minimum_grade)
+    });
+    let evidence_status = skill.map_or(EvidenceStatus::Insufficient, |item| item.status);
+    let status = if meets {
+        "meets"
+    } else if skill.is_none_or(|item| item.status == EvidenceStatus::Insufficient) {
+        "not_evidenced"
+    } else {
+        "needs_verification"
+    };
+    MatchRequirementView {
+        skill_id: requirement.skill_id.clone(),
+        criticality: requirement.criticality,
+        status,
+        evidence_status,
+        reason: if meets {
+            "Навык подтверждён на требуемом уровне."
+        } else if status == "not_evidenced" {
+            "Пока нет достаточных свидетельств по этому навыку."
+        } else if !accepted {
+            "Источник свидетельства не входит в политику потребности."
+        } else {
+            "Уровень навыка требует дополнительного подтверждения."
+        },
+    }
+}
+
+fn skill_label(skill_id: &str) -> &str {
+    match skill_id {
+        "rust" => "Rust",
+        "postgresql" => "PostgreSQL",
+        "docker" => "Docker",
+        "redis" => "Redis",
+        "react" => "React",
+        _ => skill_id,
+    }
+}
+
+fn skill_summary(status: EvidenceStatus) -> &'static str {
+    match status {
+        EvidenceStatus::Confirmed => "Навык подтверждён проверяемым свидетельством.",
+        EvidenceStatus::Evidence => "Есть свидетельства, требуется подтверждение уровня.",
+        EvidenceStatus::Observed => "Навык обнаружен в подключённых источниках.",
+        EvidenceStatus::Insufficient => "Недостаточно данных для подтверждения.",
+    }
+}
+
+fn profile_view(profile: CandidateProfile, email_verified: bool) -> ProfileView {
+    let questionnaire_complete = profile.questionnaire_complete();
+    let assessment_passed = profile.verified_grade.is_some();
+    let visible = profile.visible_to_employers();
+    let mut blockers = Vec::new();
+    if !email_verified {
+        blockers.push("email");
+    }
+    if !questionnaire_complete {
+        blockers.push("questionnaire");
+    }
+    if !assessment_passed {
+        blockers.push("assessment");
+    }
+    if !profile.consents.processing {
+        blockers.push("processing_consent");
+    }
+    if !profile.consents.publication {
+        blockers.push("publication_consent");
+    }
+    let can_start = email_verified && questionnaire_complete;
+    let processing_consent = profile.consents.processing;
+    ProfileView {
+        id: profile.id,
+        alias: profile.alias,
+        email: profile.email,
+        email_verified,
+        name: profile.name,
+        industry: "it",
+        specialization: profile.specialization,
+        selected_grade: profile.selected_grade,
+        stack: profile.stack,
+        team_role: profile.team_role,
+        experience_months: profile.experience_months,
+        experience: profile.experience,
+        soft_skills: profile.soft_skills,
+        consents: profile.consents,
+        verified_grade: profile.verified_grade,
+        verified_specialization: profile.verified_specialization,
+        grade_confirmed_at: profile.grade_confirmed_at,
+        category: CategoryView {
+            specialization: profile.verified_specialization,
+            grade: profile.verified_grade,
+            eligible: assessment_passed,
+        },
+        freshness: FreshnessView {
+            last_signal_at: None,
+            last_signal: None,
+            fresh: false,
+            window_days: 90,
+        },
+        onboarding: OnboardingView {
+            email_verified,
+            questionnaire_complete,
+            assessment_passed,
+            ready_for_publication: email_verified
+                && questionnaire_complete
+                && assessment_passed
+                && processing_consent,
+            visible_to_employers: visible,
+            blockers,
+        },
+        assessment_eligibility: GradeEligibilityView {
+            selected_specialization: profile.specialization,
+            selected_grade: profile.selected_grade,
+            can_start_selected: can_start,
+            selected_reason: (!can_start).then_some("onboarding_incomplete"),
+            can_start_upgrade: can_start,
+            next_eligible_at: None,
+            cooldown_days: 0,
+            reason: (!can_start).then_some("onboarding_incomplete"),
+        },
+        revision: profile.revision,
+        updated_at: profile.updated_at,
+    }
+}
+
+fn digest(value: &str) -> String {
+    format!("{:x}", Sha256::digest(value.as_bytes()))
+}
+
+fn now() -> String {
+    Utc::now().to_rfc3339()
+}
+
+fn unique(values: Vec<String>) -> Vec<String> {
+    let mut result = Vec::new();
+    for value in values {
+        if !result.contains(&value) {
+            result.push(value);
+        }
+    }
+    result
+}
+
+fn validate_profile_patch(patch: &ProfilePatch) -> Result<(), ApplicationError> {
+    let has_property = patch.name.is_some()
+        || patch.industry.is_some()
+        || patch.specialization.is_some()
+        || patch.selected_grade.is_some()
+        || patch.stack.is_some()
+        || patch.team_role.is_some()
+        || patch.experience_months.is_some()
+        || patch.experience.is_some()
+        || patch.soft_skills.is_some()
+        || patch.consents.is_some();
+    if !has_property {
+        return Err(validation("Передайте хотя бы одно поле профиля"));
+    }
+    if patch
+        .name
+        .as_ref()
+        .is_some_and(|value| value.trim().is_empty() || value.chars().count() > 120)
+    {
+        return Err(validation("Имя должно содержать от 1 до 120 символов"));
+    }
+    if patch.industry.as_deref().is_some_and(|value| value != "it") {
+        return Err(validation("Поддерживается только ИТ-специализация"));
+    }
+    if patch
+        .experience_months
+        .is_some_and(|value| value.is_some_and(|months| months > 1200))
+    {
+        return Err(validation("Опыт не может превышать 1200 месяцев"));
+    }
+    if patch
+        .team_role
+        .as_ref()
+        .is_some_and(|value| value.chars().count() > 120)
+        || patch
+            .experience
+            .as_ref()
+            .is_some_and(|value| value.chars().count() > 4000)
+    {
+        return Err(validation("Текстовое поле превышает допустимую длину"));
+    }
+    if let Some(stack) = &patch.stack {
+        let supported = ["rust", "postgresql", "docker", "redis", "react"];
+        if stack.len() > 5
+            || stack
+                .iter()
+                .any(|value| !supported.contains(&value.as_str()))
+            || unique_count(stack) != stack.len()
+        {
+            return Err(validation("Проверьте технологии в стеке"));
+        }
+    }
+    if patch.soft_skills.as_ref().is_some_and(|values| {
+        values.len() > 12
+            || values.iter().any(|value| value.chars().count() > 100)
+            || unique_count(values) != values.len()
+    }) {
+        return Err(validation("Проверьте список гибких навыков"));
+    }
+    Ok(())
+}
+
+fn validate_company_patch(patch: &CompanyPatch) -> Result<(), ApplicationError> {
+    let has_property = patch.display_name.is_some()
+        || patch.business_area.is_some()
+        || patch.description.is_some()
+        || patch.contact_email.is_some()
+        || patch.website.is_some();
+    if !has_property {
+        return Err(validation("Передайте хотя бы одно поле компании"));
+    }
+    Ok(())
+}
+
+fn unique_count(values: &[String]) -> usize {
+    let mut deduplicated = values.to_vec();
+    deduplicated.sort();
+    deduplicated.dedup();
+    deduplicated.len()
+}
+
+fn validation(message: &'static str) -> ApplicationError {
+    ApplicationError::new(400, "validation_error", message)
+}

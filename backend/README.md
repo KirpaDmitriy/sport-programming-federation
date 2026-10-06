@@ -1,22 +1,21 @@
 # Backend
 
-The Rust service that replaces the mock behind the same `/api/v1` paths, built as a hexagonal architecture. Today it
-is a skeleton: the workspace, the crate boundaries, the contract's transport rules and `GET /health`; no use case
-is implemented yet. [`Dockerfile`](Dockerfile) builds it into a small image (`docker compose --profile backend up
---build backend` serves it on port 8081); nginx and Redis are the planned surroundings.
+The Rust service that replaces the mock behind the same `/api/v1` paths, built as a hexagonal architecture.
+[`Dockerfile`](Dockerfile) builds the production API image used by `docker compose up --build`. SQLite persists
+accounts, sessions, profiles, sources, processing jobs and the matching index.
 
 ## Layout
 
 | Crate | Package | Role |
 | --- | --- | --- |
 | `crates/domain` | `fsp-domain` | Domain model: entities, value objects and rules, no I/O and no framework. Holds the contract vocabulary (`Grade` with its order, `Specialization`, `Role`) |
+| `crates/application` | `fsp-application` | Use cases and outbound ports for persistence, verification, GitHub, FSP and LLM analysis |
 | `crates/http` | `fsp-http` | Inbound adapter on axum: routing, origin check, `X-Request-Id`, the error envelope `{ code, message, requestId, details }`, `GET /health`, `404 not_found` for unknown routes |
+| `crates/storage-sqlite` | `fsp-storage-sqlite` | Persistent SQLite adapter and synthetic demo seed |
+| `crates/integration-github` | `fsp-integration-github` | GitHub OAuth and bounded repository analysis |
+| `crates/integration-fsp-synthetic` | `fsp-integration-fsp-synthetic` | Synthetic FSP data behind the production FSP port |
+| `crates/integration-bifrost` | `fsp-integration-bifrost` | Optional Bifrost adapter for graph extraction and repository-to-competition matching |
 | `crates/server` | `fsp-server` (binary `fsp-career-api`) | Composition root: configuration, wiring, graceful shutdown on SIGINT/SIGTERM |
-
-The next pieces have their place in the hexagon: `crates/application` for use cases and the ports they need
-(repositories, clock, mailer, source connectors, assessment runner) as traits, and outbound adapters such as
-`crates/storage-*` and `crates/integrations-*` that implement those ports. The workspace includes every crate under
-`crates/` automatically.
 
 **Dependency rule:** `domain` ← `application` ← adapters (`http`, storage, integrations) ← `server`. The domain
 depends on no other crate of the project and no framework; the application depends only on the domain and owns
@@ -45,10 +44,17 @@ cargo test --workspace --locked      # `just backend-check` runs all three
 | `HOST` | `127.0.0.1` | Bind address |
 | `PORT` | `8080` | Bind port |
 | `FSP_ALLOWED_ORIGINS` | `http://127.0.0.1:5173,http://localhost:5173` | Comma-separated browser origins accepted on requests with `Origin`; others get `403 origin_not_allowed` |
+| `FSP_DATABASE` | `fsp.sqlite3` | SQLite database path |
+| `FSP_AUTH_MODE` | `demo` | `demo` exposes the fixed verification code; other values require a delivery adapter |
+| `FSP_DEMO_EMAIL_CODE` | `123456` | Verification code used only in demo mode |
+| `FSP_PUBLIC_WEB_URL` | `http://127.0.0.1:5173` | Browser URL used after OAuth callbacks |
+| `FSP_STATIC_DIR` | unset | Serve a built SPA from this directory and use its `index.html` as the non-API fallback |
+| `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `GITHUB_CALLBACK_URL` | unset | Enable GitHub OAuth when all three are non-empty |
+| `BIFROST_CHAT_URL`, `BIFROST_API_KEY`, `BIFROST_MODEL` | unset | Enable Bifrost analysis when all three are non-empty |
 
 CI runs the same checks in `.github/workflows/backend.yml` on changes to `backend/`.
 
-## What to implement
+## Remaining contract work
 
 | Source | What it defines |
 | --- | --- |

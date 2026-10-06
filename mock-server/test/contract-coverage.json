@@ -1,7 +1,7 @@
 {
   "contractVersion": "0.1.0",
-  "routeCount": 78,
-  "coveredOperationCount": 78,
+  "routeCount": 79,
+  "coveredOperationCount": 79,
   "operations": [
     {
       "operationId": "getHealth",
@@ -97,6 +97,14 @@
       "operationId": "exportMyProfile",
       "method": "GET",
       "path": "/api/v1/me/profile/export",
+      "observedStatuses": [
+        200
+      ]
+    },
+    {
+      "operationId": "authorizeGitHub",
+      "method": "GET",
+      "path": "/api/v1/integrations/github/authorize",
       "observedStatuses": [
         200
       ]

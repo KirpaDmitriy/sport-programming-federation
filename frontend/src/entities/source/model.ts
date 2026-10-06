@@ -18,6 +18,10 @@ export async function connectSource(provider: Source['provider'], account: strin
   );
 }
 
+export async function authorizeGitHub() {
+  return requireData(await api.GET('/api/v1/integrations/github/authorize'));
+}
+
 export async function syncSource(sourceId: string) {
   return requireData(await api.POST('/api/v1/me/sources/{sourceId}/sync', { params: { path: { sourceId } } }));
 }

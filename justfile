@@ -29,6 +29,11 @@ verify:
     bun run --cwd mock-server test
     bun run --cwd frontend verify
 
+# Production frontend bundle for the public demo stand
+stand-frontend:
+    cd frontend && VITE_DEMO_STAND=1 VITE_DEMO_EMAIL_CODE=123456 bun run build
+    cd frontend && VITE_DEMO_STAND=1 bun scripts/check-bundle.ts
+
 # Browser acceptance tests against the mock
 e2e:
     bun run --cwd frontend e2e

@@ -900,6 +900,7 @@ const handlers: Handlers = {
       emailVerification: true,
       profilePdf: true,
       githubFixture: true,
+      githubOAuth: false,
       fspFixture: true,
       matching: true,
       directInvitations: true,
@@ -1025,6 +1026,9 @@ const handlers: Handlers = {
     return patchProfile(ctx.s, candidate, ctx.body.profile);
   },
   exportMyProfile: (ctx) => ({ pdfProfile: profileDto(ctx.s, me(ctx)) }),
+  authorizeGitHub: () => ({
+    authorizationUrl: 'https://github.com/login/oauth/authorize?client_id=fixture&state=fixture',
+  }),
   getMySources: (ctx) => ({ items: me(ctx).sources, simulation: true }),
   connectMySource: (ctx) => {
     const candidate = me(ctx);
