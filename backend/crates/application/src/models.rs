@@ -301,6 +301,60 @@ impl NeedPatch {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct CompanyCardView {
+    pub id: String,
+    pub display_name: String,
+    pub business_area: String,
+    pub description: String,
+    pub contact_email: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VacancyRequirementView {
+    pub skill_id: String,
+    pub criticality: Criticality,
+    pub minimum_grade: Grade,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApplicationEligibilityView {
+    pub can_apply: bool,
+    pub reason: Option<&'static str>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VacancyView {
+    pub id: String,
+    pub company: CompanyCardView,
+    pub title: String,
+    pub specialization: Specialization,
+    pub grade: Grade,
+    pub work_mode: String,
+    pub salary: SalaryView,
+    pub description: String,
+    pub requirements: Vec<VacancyRequirementView>,
+    pub published_at: String,
+    pub updated_at: String,
+    pub r#match: Option<CandidateMatchView>,
+    pub application_id: Option<String>,
+    pub eligibility: ApplicationEligibilityView,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VacancyPageView {
+    pub items: Vec<VacancyView>,
+    pub page: usize,
+    pub page_size: usize,
+    pub total: usize,
+    pub has_next_page: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CandidatePageView {
     pub items: Vec<AnonymousCandidateView>,
     pub page: usize,
@@ -373,6 +427,16 @@ pub struct CandidateSearch {
     pub grade: Option<Grade>,
     pub skill: Option<String>,
     pub fsp_verified: bool,
+    pub page: usize,
+    pub page_size: usize,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct VacancySearch {
+    pub specialization: Option<Specialization>,
+    pub grade: Option<Grade>,
+    pub work_mode: Option<String>,
+    pub skill: Option<String>,
     pub page: usize,
     pub page_size: usize,
 }

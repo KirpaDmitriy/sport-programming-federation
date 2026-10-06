@@ -9,15 +9,16 @@ use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::{
-    AnonymousCandidateView, CandidateMatchView, CandidatePageView, CandidateSearch, CategoryView,
-    CompanyPatch, CompanyView, ConsumeChallenge, EmailChallengeInput, EmailChallengeView,
-    EmailVerifyInput, EvidencePolicyView, EvidenceView, FreshnessView, FspGateway, GitHubGateway,
-    GradeEligibilityView, GraphEdgeView, GraphNodeView, GraphView, IntegrationError, JobView,
-    LlmGateway, MatchRequirementView, NeedInput, NeedPatch, NeedView, NeedsView, OnboardingView,
-    PendingChallenge, PlatformRepository, ProfilePatch, ProfileView, RepositoryError,
-    RequirementView, SalaryView, SelfSkillView, SessionView, SkillView, SkillsView,
-    SourceConnectInput, SourceView, SourcesView, VerificationDelivery, job_view, match_status,
-    source_view,
+    AnonymousCandidateView, ApplicationEligibilityView, CandidateMatchView, CandidatePageView,
+    CandidateSearch, CategoryView, CompanyCardView, CompanyPatch, CompanyView, ConsumeChallenge,
+    EmailChallengeInput, EmailChallengeView, EmailVerifyInput, EvidencePolicyView, EvidenceView,
+    FreshnessView, FspGateway, GitHubGateway, GradeEligibilityView, GraphEdgeView, GraphNodeView,
+    GraphView, IntegrationError, JobView, LlmGateway, MatchRequirementView, NeedInput, NeedPatch,
+    NeedView, NeedsView, OnboardingView, PendingChallenge, PlatformRepository, ProfilePatch,
+    ProfileView, RepositoryError, RequirementView, SalaryView, SelfSkillView, SessionView,
+    SkillView, SkillsView, SourceConnectInput, SourceView, SourcesView, VacancyPageView,
+    VacancyRequirementView, VacancySearch, VacancyView, VerificationDelivery, job_view,
+    match_status, source_view,
 };
 
 #[derive(Debug)]
@@ -600,6 +601,182 @@ impl PlatformService {
             edges,
             simulation: true,
         })
+    }
+
+    /// The mock's `applicationEligibility`: onboarding gates first, an existing
+    /// active application last.
+    fn application_eligibility(
+        &self,
+        record: &CandidateIndexRecord,
+        need_id: &str,
+    ) -> Result<ApplicationEligibilityView, ApplicationError> {
+        let profile = &record.profile;
+        let assessment_passed =
+            profile.verified_grade.is_some() && profile.verified_specialization.is_some();
+        let reason = if !record.email_verified {
+            Some("email")
+        } else if !profile.questionnaire_complete() {
+            Some("questionnaire")
+        } else if !assessment_passed {
+            Some("assessment")
+        } else if !profile.consents.processing {
+            Some("processing_consent")
+        } else if self.active_application(&profile.id, need_id)?.is_some() {
+            Some("application_exists")
+        } else {
+            None
+        };
+        Ok(ApplicationEligibilityView {
+            can_apply: reason.is_none(),
+            reason,
+        })
+    }
+
+    /// The latest non-withdrawn application of this candidate to the vacancy,
+    /// if applications exist (wired in the applications vertical).
+    fn active_application(
+        &self,
+        _candidate_id: &str,
+        _need_id: &str,
+    ) -> Result<Option<String>, ApplicationError> {
+        Ok(None)
+    }
+
+    fn vacancy_view(
+        &self,
+        need: HiringNeedRecord,
+        candidate: &CandidateIndexRecord,
+    ) -> Result<VacancyView, ApplicationError> {
+        let company = self
+            .repository
+            .company(&need.company_id)
+            .map_err(ApplicationError::storage)?
+            .ok_or_else(|| {
+                ApplicationError::new(500, "internal_error", "Сервис временно недоступен")
+            })?;
+        let assessment_passed = candidate.profile.verified_grade.is_some()
+            && candidate.profile.verified_specialization.is_some();
+        let qualified = assessment_passed && candidate.profile.consents.processing;
+        let company_card = CompanyCardView {
+            id: company.id,
+            display_name: company.display_name,
+            business_area: company.business_area,
+            description: company.description,
+            contact_email: company.contact_email,
+        };
+        let eligibility = self.application_eligibility(candidate, &need.id)?;
+        let application_id = self.active_application(&candidate.profile.id, &need.id)?;
+        let r#match = candidate
+            .rankable()
+            .filter(|_| qualified)
+            .map(|rankable| match_view(&rankable, &need));
+        Ok(VacancyView {
+            id: need.id.clone(),
+            company: company_card,
+            title: need.title,
+            specialization: need.need.specialization,
+            grade: need.need.grade,
+            work_mode: need.work_mode,
+            salary: SalaryView {
+                from: need.salary_from,
+                to: need.salary_to,
+                currency: "RUB",
+                period: "month",
+                tax_basis: "gross",
+            },
+            description: need.description,
+            requirements: need
+                .need
+                .requirements
+                .into_iter()
+                .map(|item| VacancyRequirementView {
+                    skill_id: item.skill_id,
+                    criticality: item.criticality,
+                    minimum_grade: item.minimum_grade,
+                })
+                .collect(),
+            published_at: need.published_at.unwrap_or_default(),
+            updated_at: need.updated_at,
+            r#match,
+            application_id,
+            eligibility,
+        })
+    }
+
+    pub fn search_vacancies(
+        &self,
+        session: &SessionView,
+        search: &VacancySearch,
+    ) -> Result<VacancyPageView, ApplicationError> {
+        let candidate_id = candidate_id(session)?;
+        let candidate = self.candidate_index(candidate_id)?;
+        let mut needs = self
+            .repository
+            .published_needs()
+            .map_err(ApplicationError::storage)?;
+        // The mock sorts newest publication first and breaks ties by id.
+        needs.sort_by(|left, right| {
+            right
+                .published_at
+                .cmp(&left.published_at)
+                .then_with(|| left.id.cmp(&right.id))
+        });
+        let filtered = needs
+            .into_iter()
+            .filter(|need| {
+                search
+                    .specialization
+                    .is_none_or(|value| need.need.specialization == value)
+                    && search.grade.is_none_or(|value| need.need.grade == value)
+                    && search
+                        .work_mode
+                        .as_deref()
+                        .is_none_or(|value| need.work_mode == value)
+                    && search.skill.as_deref().is_none_or(|skill| {
+                        need.need
+                            .requirements
+                            .iter()
+                            .any(|item| item.skill_id == skill)
+                    })
+            })
+            .collect::<Vec<_>>();
+        let total = filtered.len();
+        let items = filtered
+            .into_iter()
+            .skip((search.page - 1).saturating_mul(search.page_size))
+            .take(search.page_size)
+            .map(|need| self.vacancy_view(need, &candidate))
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(VacancyPageView {
+            items,
+            page: search.page,
+            page_size: search.page_size,
+            total,
+            has_next_page: search.page * search.page_size < total,
+        })
+    }
+
+    pub fn get_vacancy(
+        &self,
+        session: &SessionView,
+        vacancy_id: &str,
+    ) -> Result<VacancyView, ApplicationError> {
+        let candidate_id = candidate_id(session)?;
+        let candidate = self.candidate_index(candidate_id)?;
+        let need = self
+            .repository
+            .published_needs()
+            .map_err(ApplicationError::storage)?
+            .into_iter()
+            .find(|need| need.id == vacancy_id)
+            .ok_or_else(|| {
+                ApplicationError::new(
+                    404,
+                    "not_found",
+                    "Вакансия не найдена или снята с публикации",
+                )
+            })?;
+        self.vacancy_view(need, &candidate)
     }
 
     pub fn candidate_search(
@@ -1533,18 +1710,16 @@ fn match_requirement(
         .skills
         .iter()
         .find(|item| item.skill_id == requirement.skill_id);
-    let accepted = skill.is_some_and(|item| {
-        item.sources.iter().any(|source| match source {
-            fsp_domain::EvidenceSource::Assessment => {
-                requirement.evidence_policy.accept_assessments
-            }
-            fsp_domain::EvidenceSource::Github => requirement.evidence_policy.accept_github,
-            fsp_domain::EvidenceSource::Fsp => requirement.evidence_policy.accept_fsp,
-        })
-    });
+    // Like the mock's match(): only an assessment the policy accepts counts
+    // toward `meets`; other sources keep the requirement at needs_verification.
+    let accepted_assessment = requirement.evidence_policy.accept_assessments
+        && skill.is_some_and(|item| {
+            item.sources
+                .contains(&fsp_domain::EvidenceSource::Assessment)
+        });
     let meets = skill.is_some_and(|item| {
         item.status == EvidenceStatus::Confirmed
-            && accepted
+            && accepted_assessment
             && item
                 .evidence_grade
                 .is_some_and(|grade| grade >= requirement.minimum_grade)
@@ -1563,13 +1738,15 @@ fn match_requirement(
         status,
         evidence_status,
         reason: if meets {
-            "Навык подтверждён на требуемом уровне."
+            "Навык подтверждён проверкой нужного уровня, которую принимает работодатель."
         } else if status == "not_evidenced" {
             "Пока нет достаточных свидетельств по этому навыку."
-        } else if !accepted {
-            "Источник свидетельства не входит в политику потребности."
+        } else if !accepted_assessment
+            && skill.is_some_and(|item| item.status == EvidenceStatus::Confirmed)
+        {
+            "Имеющееся подтверждение не соответствует политике этой потребности."
         } else {
-            "Уровень навыка требует дополнительного подтверждения."
+            "Есть основания, но уровень по этому требованию ещё следует подтвердить."
         },
     }
 }

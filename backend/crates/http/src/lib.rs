@@ -73,6 +73,8 @@ pub fn router(config: HttpConfig, service: Arc<PlatformService>) -> Router {
         .route("/api/v1/needs/{need_id}/publish", post(publish_need))
         .route("/api/v1/needs/{need_id}/unpublish", post(unpublish_need))
         .route("/api/v1/needs/{need_id}/graph", get(need_graph))
+        .route("/api/v1/vacancies", get(search_vacancies))
+        .route("/api/v1/vacancies/{vacancy_id}", get(get_vacancy))
         .route("/api/v1/candidates", get(search_candidates))
         .route("/api/v1/candidates/{candidate_id}", get(get_candidate))
         .route(
@@ -395,6 +397,73 @@ async fn need_graph(
     state
         .service
         .need_graph(&session, &need_id)
+        .map(Json)
+        .map_err(api_error)
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct VacancyQuery {
+    specialization: Option<Specialization>,
+    grade: Option<Grade>,
+    work_mode: Option<String>,
+    skill: Option<String>,
+    page: Option<usize>,
+    page_size: Option<usize>,
+}
+
+async fn search_vacancies(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ContractQuery(query): ContractQuery<VacancyQuery>,
+) -> Result<Json<fsp_application::VacancyPageView>, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    let page = query.page.unwrap_or(1);
+    let page_size = query.page_size.unwrap_or(10);
+    if page == 0 || page_size == 0 || page_size > 50 {
+        return Err(ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "validation_error",
+            "Проверьте параметры страницы",
+        ));
+    }
+    if query
+        .work_mode
+        .as_deref()
+        .is_some_and(|value| !["remote", "hybrid", "office"].contains(&value))
+    {
+        return Err(ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "validation_error",
+            "Запрос не соответствует контракту",
+        ));
+    }
+    state
+        .service
+        .search_vacancies(
+            &session,
+            &fsp_application::VacancySearch {
+                specialization: query.specialization,
+                grade: query.grade,
+                work_mode: query.work_mode,
+                skill: query.skill,
+                page,
+                page_size,
+            },
+        )
+        .map(Json)
+        .map_err(api_error)
+}
+
+async fn get_vacancy(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ContractPath(vacancy_id): ContractPath<String>,
+) -> Result<Json<fsp_application::VacancyView>, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    state
+        .service
+        .get_vacancy(&session, &vacancy_id)
         .map(Json)
         .map_err(api_error)
 }
@@ -825,6 +894,9 @@ mod tests {
         }
         fn delete_need(&self, _: &str, _: &str) -> Result<(), RepositoryError> {
             Ok(())
+        }
+        fn published_needs(&self) -> Result<Vec<HiringNeedRecord>, RepositoryError> {
+            Ok(Vec::new())
         }
         fn save_oauth_state(&self, _: &str, _: &str, _: &str) -> Result<(), RepositoryError> {
             Ok(())

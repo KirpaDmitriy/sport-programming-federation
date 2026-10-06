@@ -274,6 +274,17 @@ impl PlatformRepository for SqliteRepository {
         Ok(())
     }
 
+    fn published_needs(&self) -> Result<Vec<HiringNeedRecord>, RepositoryError> {
+        let connection = self.connection()?;
+        connection
+            .prepare("SELECT id,company_id,title,specialization,grade,work_mode,salary_from,salary_to,description,requirements_json,published,published_at,created_at,updated_at,revision FROM needs WHERE published=1")
+            .map_err(storage)?
+            .query_map([], need_record)
+            .map_err(storage)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(storage)
+    }
+
     fn save_oauth_state(
         &self,
         candidate_id: &str,

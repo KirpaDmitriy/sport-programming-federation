@@ -61,6 +61,8 @@ pub trait PlatformRepository: Send + Sync {
     ) -> Result<Option<HiringNeedRecord>, RepositoryError>;
     fn save_need(&self, need: &HiringNeedRecord) -> Result<(), RepositoryError>;
     fn delete_need(&self, company_id: &str, need_id: &str) -> Result<(), RepositoryError>;
+    /// Published needs across all companies, i.e. the vacancy projection.
+    fn published_needs(&self) -> Result<Vec<HiringNeedRecord>, RepositoryError>;
     fn save_oauth_state(
         &self,
         candidate_id: &str,
