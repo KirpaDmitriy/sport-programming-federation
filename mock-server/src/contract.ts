@@ -903,7 +903,7 @@ export function buildOpenApi(): OpenApiDocument {
         : entry.idempotent
           ? 'Requires an Idempotency-Key. Repeating the same key and payload replays the stored response. A changed payload returns 409.'
           : 'Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).',
-      security: entry.auth === 'none' ? [] : [{ mockSession: [] }],
+      security: entry.auth === 'none' ? [] : [{ session: [] }],
       responses,
       ...(entry.dev ? { 'x-mock-only': true } : {}),
       ...(parameters.length ? { parameters } : {}),
@@ -945,11 +945,11 @@ export function buildOpenApi(): OpenApiDocument {
     paths,
     components: {
       securitySchemes: {
-        mockSession: {
+        session: {
           type: 'apiKey',
           in: 'cookie',
-          name: 'fsp_mock_session',
-          description: 'Development-only opaque session cookie, HttpOnly, SameSite=Lax.',
+          name: 'fsp_session',
+          description: 'Opaque session cookie: HttpOnly, SameSite=Lax, Secure behind TLS.',
         },
       },
       schemas,

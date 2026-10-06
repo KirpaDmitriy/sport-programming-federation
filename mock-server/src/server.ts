@@ -9,7 +9,7 @@ import type { components } from './generated/schema.d.ts';
 import { profilePdf } from './pdf.ts';
 import { parameterValidators, validationDetails, validators } from './validation.ts';
 
-const COOKIE = 'fsp_mock_session';
+const COOKIE = 'fsp_session';
 const MAX_PDF = 2 * 1024 * 1024;
 const MAX_JSON = 512 * 1024;
 const isLoopback = (address: string | undefined) =>
