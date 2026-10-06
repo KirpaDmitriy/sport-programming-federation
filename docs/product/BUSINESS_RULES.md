@@ -162,8 +162,8 @@ verification or «verified» badge.
   (`required_skill_missing`), at least one accepted source per requirement (`empty_evidence_policy`), known
   competitions (`unknown_competition`), an empty list with `system` (`ambiguous_competition_policy`), at least one
   competition with `selected` (`competition_required`).
-- Needs are never published (`published: false`); invitations do not need a vacancy. Deleting or editing a need
-  does not change invitations already sent.
+- A need is private until the company publishes it (section 10); invitations never need a vacancy. Deleting or
+  editing a need does not change invitations already sent or applications already received.
 
 ## 7. Search and matching
 
@@ -207,7 +207,7 @@ Every employer response about a candidate (search, profile, graph) contains only
 and grade with confirmation date, work modes, `availableForOffers`, skills (state, evidence grade, source kinds,
 summary, evidence count, confirmation date — no evidence items), source kinds, verified FSP flag and the match. It
 never contains a name, e-mail, handles, repository names, links or evidence titles. A profile that is not visible
-answers `404`.
+answers `404`, except to a company the candidate applied to (section 10) until the application is withdrawn.
 
 ### Gap plan
 
@@ -240,15 +240,51 @@ IDs.
 - **Accept:** the candidate picks at least one of name, e-mail and source links (the UI preselects name and e-mail);
   a verified candidate e-mail is required. Declining and withdrawing grant nothing.
 
-## 10. Contact disclosure
+## 10. Vacancies and applications
+
+Self-application is the additional path next to invitations: the company publishes a need as a vacancy, a candidate
+applies, and the company decides.
+
+- **Publish** (employer): `POST /needs/{id}/publish` needs a ready company (`422 company_incomplete`), a verified
+  employer e-mail (`403 email_not_verified`) and a valid need; it sets `published: true` and `publishedAt`. Repeating
+  it keeps the original time. `POST /needs/{id}/unpublish` hides the vacancy again (`publishedAt: null`). Edits to a
+  published need are visible to candidates at once.
+- **Browse** (candidate): `GET /vacancies` lists published needs of every company, newest first, filtered by
+  specialization, grade, work mode and required skill, paged like the bank. A vacancy shows the company (name,
+  business area, description, contact e-mail), title, specialization, grade, work mode, salary, description and the
+  requirements without the evidence policy. An unpublished or unknown vacancy answers `404`.
+- **Fit:** for a candidate with a verified grade and processing consent the vacancy carries the same `Match` as the
+  employer search (section 7), computed from the candidate's verified profile; otherwise `match: null`.
+- **Eligibility:** the server reports `eligibility: { canApply, reason }`. Applying needs, in this order, a verified
+  e-mail (`email`), a complete questionnaire (`questionnaire`), a passed assessment (`assessment`) and processing
+  consent (`processing_consent`); publication consent is not needed, because an application goes to one company. A
+  candidate has at most one application per vacancy that is not withdrawn (`application_exists`).
+- **Apply** (candidate): `POST /me/applications` with the vacancy, a message of 1–4000 characters, at least one field
+  to disclose (name, e-mail, source links) and an `Idempotency-Key`. Missing processing consent answers
+  `403 processing_consent_required`, an unmet condition `409 application_not_eligible`, a repeat
+  `409 application_exists`. The application freezes the company and the vacancy terms (title, specialization, grade,
+  work mode, salary, description); its `match` is computed against those frozen terms each time it is read.
+- **Lifecycle:** `sent` → `viewed` (the company opens it) → `accepted` or `declined` by the company; the candidate may
+  withdraw a `sent` or `viewed` application. `accepted`, `declined` and `withdrawn` are terminal: another action
+  answers `409 application_terminal`, repeating the same one returns the record unchanged. After a withdrawal the
+  candidate may apply again.
+- **Contacts:** applying opens the chosen fields to that company at once (the specification's «откликнулся сам»).
+  Withdrawing takes them back unless an accepted invitation from the same company still grants them. While an
+  application is not withdrawn, the company also sees the candidate's anonymous profile even if it is not in the
+  public bank.
+- Applications are scoped like invitations: a candidate sees only their own (`/me/applications`), a company only those
+  sent to it (`/applications`, optionally filtered by `needId`); anything else answers `404`.
+
+## 11. Contact disclosure
 
 Contacts are a separate resource per company (`GET /api/v1/candidates/{id}/disclosure`): `granted: false` with no
-fields, or the fields the candidate chose (name, e-mail, repository links from connected sources) with the invitation
-ID and time. Only the invitation's company gets the grant; every other company keeps seeing the anonymous profile.
-Search, profile and graph responses never include contacts, even after acceptance. There is no chat: the parties
-contact each other directly, and the company's contact was visible from the start.
+fields, or the union of the fields the candidate chose in every accepted invitation and every application that is not
+withdrawn, from that company only (name, e-mail, repository links from connected sources), with the latest invitation
+and application IDs and the time of the latest grant. Every other company keeps seeing the anonymous profile. Search,
+profile, graph and application responses never include contacts. There is no chat: the parties contact each other
+directly, and the company's contact was visible from the start.
 
-## 11. PDF profile
+## 12. PDF profile
 
 - **Export:** a real PDF of the current profile (PDFKit with an embedded Cyrillic font), file `fsp-profile.pdf`.
 - **Import:** one `application/pdf` file up to 2 MiB with a valid signature and end marker starts a `profile_import`
@@ -256,17 +292,17 @@ contact each other directly, and the company's contact was visible from the star
   `409 import_already_confirmed`). Import cannot change verified fields and needs processing consent. The mock does
   not read the file and returns a fixed preview marked `parser: fixture_preview`, with unknown experience left empty.
 
-## 12. Background jobs
+## 13. Background jobs
 
 Four kinds: `profile_import`, `source_sync`, `checks`, `assessment`. A job is `queued`, then `running` after about
 300 ms and `succeeded` or `failed` after about one second; `pollAfterMs` tells clients when to ask again. A job is
 visible only to the actor who started it, and a failure carries `{ code, message, retryable }`. Jobs live in memory,
 so a restart clears them.
 
-## 13. Capabilities and simulation
+## 14. Capabilities and simulation
 
 `GET /api/v1/meta` reports `mode: mock` and the capabilities: e-mail verification, PDF profile, GitHub and FSP
-fixtures, matching and direct invitations are on; vacancy publication, self-application, chat, recurring tasks, real
+fixtures, matching, direct invitations, vacancy publication and self-application are on; chat, recurring tasks, real
 code execution and real LLM are off. The UI shows no controls for capabilities that are off, labels simulated data,
 and offers the «Демо» dialog while the server reports `mode: mock`.
 

@@ -34,6 +34,12 @@ Generated from [`openapi.json`](openapi.json) by `codegen/generate.ts`. Do not e
 | `viewMyInvitation` | POST | `/api/v1/me/invitations/{invitationId}/view` | 200 | Application |
 | `acceptMyInvitation` | POST | `/api/v1/me/invitations/{invitationId}/accept` | 200 | Application |
 | `declineMyInvitation` | POST | `/api/v1/me/invitations/{invitationId}/decline` | 200 | Application |
+| `searchVacancies` | GET | `/api/v1/vacancies` | 200 | Application |
+| `getVacancy` | GET | `/api/v1/vacancies/{vacancyId}` | 200 | Application |
+| `listMyApplications` | GET | `/api/v1/me/applications` | 200 | Application |
+| `createApplication` | POST | `/api/v1/me/applications` | 201 | Application |
+| `getMyApplication` | GET | `/api/v1/me/applications/{applicationId}` | 200 | Application |
+| `withdrawMyApplication` | POST | `/api/v1/me/applications/{applicationId}/withdraw` | 200 | Application |
 | `getCompany` | GET | `/api/v1/company` | 200 | Application |
 | `updateCompany` | PATCH | `/api/v1/company` | 200 | Application |
 | `listNeeds` | GET | `/api/v1/needs` | 200 | Application |
@@ -41,6 +47,8 @@ Generated from [`openapi.json`](openapi.json) by `codegen/generate.ts`. Do not e
 | `getNeed` | GET | `/api/v1/needs/{needId}` | 200 | Application |
 | `updateNeed` | PATCH | `/api/v1/needs/{needId}` | 200 | Application |
 | `deleteNeed` | DELETE | `/api/v1/needs/{needId}` | 204 | Application |
+| `publishNeed` | POST | `/api/v1/needs/{needId}/publish` | 200 | Application |
+| `unpublishNeed` | POST | `/api/v1/needs/{needId}/unpublish` | 200 | Application |
 | `getNeedGraph` | GET | `/api/v1/needs/{needId}/graph` | 200 | Application |
 | `searchCandidates` | GET | `/api/v1/candidates` | 200 | Application |
 | `getCandidate` | GET | `/api/v1/candidates/{candidateId}` | 200 | Application |
@@ -58,9 +66,14 @@ Generated from [`openapi.json`](openapi.json) by `codegen/generate.ts`. Do not e
 | `createInvitation` | POST | `/api/v1/invitations` | 201 | Application |
 | `getInvitation` | GET | `/api/v1/invitations/{invitationId}` | 200 | Application |
 | `withdrawInvitation` | POST | `/api/v1/invitations/{invitationId}/withdraw` | 200 | Application |
+| `listApplications` | GET | `/api/v1/applications` | 200 | Application |
+| `getApplication` | GET | `/api/v1/applications/{applicationId}` | 200 | Application |
+| `viewApplication` | POST | `/api/v1/applications/{applicationId}/view` | 200 | Application |
+| `acceptApplication` | POST | `/api/v1/applications/{applicationId}/accept` | 200 | Application |
+| `declineApplication` | POST | `/api/v1/applications/{applicationId}/decline` | 200 | Application |
 | `mockSelectSession` | POST | `/__mock__/session` | 200 | Development only |
 | `mockReset` | POST | `/__mock__/reset` | 200 | Development only |
 | `mockEmailCodes` | GET | `/__mock__/email-codes` | 200 | Development only |
 | `mockAdvanceClock` | POST | `/__mock__/clock` | 200 | Development only |
 
-Total documented operations: 58. Development controls are not production application endpoints.
+Total documented operations: 71. Development controls are not production application endpoints.

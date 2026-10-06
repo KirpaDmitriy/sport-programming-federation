@@ -44,7 +44,11 @@ The clock starts at `2026-10-05T12:00:00.000Z` and moves only through `/__mock__
 The bank also holds №018 (verified Бэкенд · Мидл, PostgreSQL without evidence, FSP connected without history), №031
 (verified Бэкенд · Мидл, verified FSP participation) and №041 (verified Фронтенд · Мидл). Each company has a need
 «Бэкенд-разработчик» (Мидл, remote, 200 000–260 000 ₽ gross per month; required Rust and PostgreSQL, desired Docker
-and Redis), and «Север Тех» has the shortlist «Бэкенд · Мидл» with №024, №018 and №041. No invitations are seeded.
+and Redis); «Север Тех» keeps it unpublished for direct invitations, «Вторая компания» publishes it. Published
+vacancies also include «Бэкенд-разработчик сервиса уведомлений» of «Север Тех» (Джуниор, hybrid, 120 000–160 000 ₽;
+required Rust) and «Фронтенд-разработчик (React)» of «Вторая компания» (Мидл, office, 180 000–230 000 ₽; required
+React). «Север Тех» has the shortlist «Бэкенд · Мидл» with №024, №018 and №041. No invitations or applications are
+seeded.
 
 Any new e-mail registers a new account of the chosen role. The FSP IDs `FSP-DEMO-024` and `FSP-DEMO-031` connect
 with verified participation; any other ID connects without history.
@@ -115,5 +119,5 @@ bun run contract                   # rebuild ../contracts/openapi.json after edi
 
 The tests cover the contract drift, origin/host/role boundaries, e-mail verification, profile category, source
 jobs, the assessment lifecycle and its failure modes, cooldown, stale checks and revoked consent, need validation,
-the anonymous bank and its order, shortlists, invitations with disclosure and terminal states, PDF export and import,
-and scenario resets. A contract change follows [`../contracts/README.md`](../contracts/README.md).
+the anonymous bank and its order, shortlists, invitations with disclosure and terminal states, vacancy publication
+and applications with disclosure and withdrawal, the error-code catalog, PDF export and import, and scenario resets. A contract change follows [`../contracts/README.md`](../contracts/README.md).

@@ -9,8 +9,13 @@ const pages = {
     '/candidate/sources',
     '/candidate/skills',
     '/candidate/assessments',
+    '/candidate/vacancies',
+    '/candidate/vacancies/need-002',
+    '/candidate/applications',
   ],
   employer: [
+    '/employer/needs',
+    '/employer/applications',
     '/employer/needs/need-001',
     '/employer/candidates?needId=need-001&mode=recommended',
     '/employer/candidates/candidate024?needId=need-001',
@@ -57,7 +62,13 @@ test('narrow screens reflow without horizontal page scroll and keep navigation r
   await resetMock('baseline');
   await page.setViewportSize({ width: 390, height: 844 });
   await signIn(page, ALEXEY, 'candidate');
-  for (const path of ['/candidate/overview', '/candidate/sources', '/candidate/profile']) {
+  for (const path of [
+    '/candidate/overview',
+    '/candidate/sources',
+    '/candidate/profile',
+    '/candidate/vacancies',
+    '/candidate/vacancies/need-002',
+  ]) {
     await page.goto(path);
     await expect(page.getByRole('heading', { level: 1 }).first()).toBeVisible();
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);

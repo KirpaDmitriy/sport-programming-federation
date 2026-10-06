@@ -7,7 +7,8 @@ the rules behind each state are in [`../../docs/product/BUSINESS_RULES.md`](../.
 
 Both workspaces share one shell: a sidebar with the role's sections and «Настройки», a header with breadcrumbs
 («Кабинет кандидата» or «Кабинет работодателя · company», then the section), the «Демо» button while the API runs in
-mock mode, the candidate's invitation bell with the count of new invitations, and the account menu. Below 1024 px
+mock mode, a bell with the count of new invitations (candidate) or new applications (employer), and the account
+menu. Below 1024 px
 the sidebar becomes a drawer opened from the header.
 
 ## Sign-in
@@ -28,7 +29,7 @@ the sidebar becomes a drawer opened from the header.
 
 ## Candidate
 
-Navigation: Обзор, Профиль, Источники, Навыки, Проверки, Приглашения, Настройки.
+Navigation: Обзор, Профиль, Источники, Навыки, Проверки, Приглашения, Вакансии, Отклики, Настройки.
 
 ### `/candidate/onboarding` — «Анкета кандидата»
 
@@ -136,6 +137,42 @@ least one required), «Принять и открыть контакты» and �
 withdrawn invitations show the outcome and, for acceptance, exactly which fields the company received. A conflict
 from another tab shows «Статус уже изменился» and the current state.
 
+### `/candidate/vacancies` — «Вакансии»
+
+![Vacancies](screenshots/18-candidate-vacancies.png)
+
+Published vacancies of all companies, newest first, with filters for specialization, grade, work mode and required
+skill (kept in the URL) and paging. Each card shows the company, title, salary with tax basis, specialization, grade,
+work mode, required skills, the publication date, the candidate's fit computed by the server («Вы подходите по
+обязательным требованиям», «Часть требований стоит подтвердить», «Не хватает подтверждений…») and «Вы откликнулись».
+While applying is not yet possible, a note names the reason and links to the fix (questionnaire, assessments,
+settings). «Мои отклики» leads to the applications.
+
+### `/candidate/vacancies/{id}` — vacancy
+
+![Vacancy](screenshots/19-candidate-vacancy.png)
+
+The company, work mode, specialization and grade, salary, description, requirements with importance, minimum level
+and the candidate's confirmation per skill, the server's explanation, the company description and contact. The
+application card asks for a cover letter (1–4000 characters) and what the company receives (name and e-mail
+preselected, source links separately, at least one), then «Откликнуться и открыть контакты» opens the application.
+Without a verified grade, questionnaire or processing consent the card says why and links to the fix; after applying
+it shows «Вы откликнулись» with the status link. A vacancy taken down meanwhile says so instead of sending.
+
+### `/candidate/applications` — «Отклики»
+
+Tabs «Все», «На рассмотрении», «Приняты», «Отказы и отозванные» (kept in the URL), each application with company,
+vacancy, salary, work mode, date and status.
+
+### `/candidate/applications/{id}` — application
+
+![Application](screenshots/20-candidate-application.png)
+
+Status («Отправлен», «Просмотрен компанией», «Компания готова к разговору», «Компания отказала», «Отозван вами»)
+with its meaning and timeline, the vacancy terms frozen at the moment of applying, the cover letter, the fit, the
+company's contact and exactly which fields the company received. «Отозвать отклик» (with confirmation) is offered
+while the company has not decided.
+
 ### `/candidate/settings` — «Настройки»
 
 Privacy (both consents, how disclosure works, current visibility), sources with their state (disconnecting is not
@@ -143,14 +180,18 @@ supported), account e-mail and role, «Выйти».
 
 ## Employer
 
-Navigation: Потребности, Кандидаты, Подборки, Приглашения, Компания, Настройки.
+Navigation: Потребности, Кандидаты, Подборки, Приглашения, Отклики, Компания, Настройки.
 
 ### `/employer/needs` — «Потребности»
 
-Needs with specialization, grade, work mode, «Не опубликована — приглашать можно без публикации», salary with tax
-basis, required and desired skills and the update date; «Найти кандидатов» (recommended search for the need),
-«Редактировать», «Удалить» (with confirmation; sent invitations keep their terms) and «Новая потребность». A new
-company sees an empty state with «Описать потребность».
+![Needs](screenshots/17-employer-needs.png)
+
+Needs with specialization, grade, work mode, publication state («Опубликована» with the date or «Не опубликована —
+приглашать можно без публикации»), salary with tax basis, required and desired skills and the update date; «Найти
+кандидатов» (recommended search for the need), «Редактировать», «Опубликовать вакансию» or «Снять с публикации» (with
+confirmation; an incomplete company profile gets a link to it), «Отклики: N» for published needs or needs with
+applications, «Удалить» (with confirmation; sent invitations and received applications keep their terms) and «Новая
+потребность». A new company sees an empty state with «Описать потребность».
 
 ### `/employer/needs/new`, `/employer/needs/{id}` — need editor
 
@@ -160,8 +201,9 @@ Title, specialization, grade, work mode, salary «от» and «до» in whole r
 вычета налогов», description; requirements with skill, «Обязательно»/«Желательно», minimum level and accepted
 evidence (practical checks, GitHub work, FSP competitions — any from the catalog or selected ones), a default policy
 that can be applied to all rows, add and remove rows; a live summary. «Сохранить и найти кандидатов» opens
-recommended search for the need, «Сохранить» stays. A note says publication is not needed; an incomplete company
-profile gets a warning with a link, since invitations need it.
+recommended search for the need, «Сохранить» stays. A note says invitations need no publication, or, for a published
+need, that candidates see edits at once while received applications keep their terms; an incomplete company profile
+gets a warning with a link, since invitations need it.
 
 ### `/employer/candidates` — «Кандидаты»
 
@@ -202,6 +244,24 @@ marked «Профиль недоступен: скрыт или вышел из 
 
 Status tabs (kept in the URL), each invitation with candidate alias, offer and salary, status and a timeline (sent,
 viewed, decided), «Отозвать» for open ones (with confirmation; a conflict says the candidate already decided).
+
+### `/employer/applications` — «Отклики»
+
+![Applications](screenshots/21-employer-applications.png)
+
+Applications to the company's vacancies with status tabs and, when there are several vacancies, a vacancy filter
+(both kept in the URL; «Отклики: N» on a need opens it filtered). Each row shows the candidate alias with the opened
+fields, the vacancy with salary and grade, required skills met and whether the grade fits, the status and a timeline.
+
+### `/employer/applications/{id}` — application
+
+![Application review](screenshots/22-employer-application.png)
+
+Opening a new application marks it viewed. Shows the anonymous candidate (alias, verified specialization and grade,
+verified FSP), a link to the full profile and graph, the contacts the candidate opened, the cover letter, the match
+against the vacancy terms frozen at the moment of applying with a reason per requirement, and the terms. The decision
+card offers «Принять и перейти к разговору» and «Отклонить» (with confirmation); decided and withdrawn applications
+show the outcome, and a withdrawal closes the contacts.
 
 ### `/employer/company` — «Профиль компании»
 

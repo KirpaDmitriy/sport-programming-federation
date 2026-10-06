@@ -1,7 +1,7 @@
 {
   "contractVersion": "0.1.0",
-  "routeCount": 58,
-  "coveredOperationCount": 58,
+  "routeCount": 71,
+  "coveredOperationCount": 71,
   "operations": [
     {
       "operationId": "getHealth",
@@ -264,6 +264,62 @@
       ]
     },
     {
+      "operationId": "searchVacancies",
+      "method": "GET",
+      "path": "/api/v1/vacancies",
+      "observedStatuses": [
+        200,
+        403
+      ]
+    },
+    {
+      "operationId": "getVacancy",
+      "method": "GET",
+      "path": "/api/v1/vacancies/{vacancyId}",
+      "observedStatuses": [
+        200,
+        404
+      ]
+    },
+    {
+      "operationId": "listMyApplications",
+      "method": "GET",
+      "path": "/api/v1/me/applications",
+      "observedStatuses": [
+        200
+      ]
+    },
+    {
+      "operationId": "createApplication",
+      "method": "POST",
+      "path": "/api/v1/me/applications",
+      "observedStatuses": [
+        201,
+        400,
+        403,
+        404,
+        409
+      ]
+    },
+    {
+      "operationId": "getMyApplication",
+      "method": "GET",
+      "path": "/api/v1/me/applications/{applicationId}",
+      "observedStatuses": [
+        200,
+        404
+      ]
+    },
+    {
+      "operationId": "withdrawMyApplication",
+      "method": "POST",
+      "path": "/api/v1/me/applications/{applicationId}/withdraw",
+      "observedStatuses": [
+        200,
+        409
+      ]
+    },
+    {
       "operationId": "getCompany",
       "method": "GET",
       "path": "/api/v1/company",
@@ -323,6 +379,24 @@
       ]
     },
     {
+      "operationId": "publishNeed",
+      "method": "POST",
+      "path": "/api/v1/needs/{needId}/publish",
+      "observedStatuses": [
+        200,
+        404,
+        422
+      ]
+    },
+    {
+      "operationId": "unpublishNeed",
+      "method": "POST",
+      "path": "/api/v1/needs/{needId}/unpublish",
+      "observedStatuses": [
+        200
+      ]
+    },
+    {
       "operationId": "getNeedGraph",
       "method": "GET",
       "path": "/api/v1/needs/{needId}/graph",
@@ -372,7 +446,8 @@
       "method": "GET",
       "path": "/api/v1/candidates/{candidateId}/disclosure",
       "observedStatuses": [
-        200
+        200,
+        404
       ]
     },
     {
@@ -464,6 +539,48 @@
       "operationId": "withdrawInvitation",
       "method": "POST",
       "path": "/api/v1/invitations/{invitationId}/withdraw",
+      "observedStatuses": [
+        200,
+        409
+      ]
+    },
+    {
+      "operationId": "listApplications",
+      "method": "GET",
+      "path": "/api/v1/applications",
+      "observedStatuses": [
+        200
+      ]
+    },
+    {
+      "operationId": "getApplication",
+      "method": "GET",
+      "path": "/api/v1/applications/{applicationId}",
+      "observedStatuses": [
+        200,
+        404
+      ]
+    },
+    {
+      "operationId": "viewApplication",
+      "method": "POST",
+      "path": "/api/v1/applications/{applicationId}/view",
+      "observedStatuses": [
+        200
+      ]
+    },
+    {
+      "operationId": "acceptApplication",
+      "method": "POST",
+      "path": "/api/v1/applications/{applicationId}/accept",
+      "observedStatuses": [
+        200
+      ]
+    },
+    {
+      "operationId": "declineApplication",
+      "method": "POST",
+      "path": "/api/v1/applications/{applicationId}/decline",
       "observedStatuses": [
         200,
         409

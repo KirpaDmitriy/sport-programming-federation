@@ -28,6 +28,8 @@ const sourceKind = en('github', 'fsp', 'assessment');
 const workMode = en('remote', 'hybrid', 'office');
 const fields = arr(en('name', 'email', 'sourceLinks'), { minItems: 1, uniqueItems: true });
 const consent = obj({ processing: bool, publication: bool });
+const companyCard = obj({ id, displayName: str(), businessArea: str(), description: str(), contactEmail: email });
+const interactionStatus = en('sent', 'viewed', 'accepted', 'declined', 'withdrawn');
 const profileEditable = {
   name: str({ minLength: 1, maxLength: 120 }),
   industry: en('it'),
@@ -288,7 +290,8 @@ export const schemas = {
     salary: ref('Salary'),
     description: str(),
     requirements: arr(ref('Requirement')),
-    published: { const: false, type: 'boolean' },
+    published: bool,
+    publishedAt: nullable(dt),
     createdAt: dt,
     updatedAt: dt,
     revision: num({ minimum: 1 }),
@@ -360,10 +363,10 @@ export const schemas = {
     id,
     candidateId: id,
     candidateAlias: str(),
-    company: obj({ id, displayName: str(), businessArea: str(), description: str(), contactEmail: email }),
+    company: companyCard,
     need: obj({ id, title: str(), workMode, salary: ref('Salary'), description: str() }),
     message: str(),
-    status: en('sent', 'viewed', 'accepted', 'declined', 'withdrawn'),
+    status: interactionStatus,
     createdAt: dt,
     viewedAt: nullable(dt),
     respondedAt: nullable(dt),
@@ -376,9 +379,54 @@ export const schemas = {
     companyId: id,
     granted: bool,
     invitationId: nullable(id),
+    applicationId: nullable(id),
     grantedAt: nullable(dt),
     fields: obj({ name: str(), email, sourceLinks: arr(url) }, []),
   }),
+  VacancyRequirement: obj({ skillId, criticality: en('required', 'desired'), minimumGrade: grade }),
+  ApplicationEligibility: obj({
+    canApply: bool,
+    reason: nullable(en('email', 'questionnaire', 'assessment', 'processing_consent', 'application_exists')),
+  }),
+  Vacancy: obj({
+    id,
+    company: companyCard,
+    title: str(),
+    specialization,
+    grade,
+    workMode,
+    salary: ref('Salary'),
+    description: str(),
+    requirements: arr(ref('VacancyRequirement')),
+    publishedAt: dt,
+    updatedAt: dt,
+    match: nullable(ref('Match')),
+    applicationId: nullable(id),
+    eligibility: ref('ApplicationEligibility'),
+  }),
+  VacancyPage: obj({
+    items: arr(ref('Vacancy')),
+    page: num({ minimum: 1 }),
+    pageSize: num({ minimum: 1 }),
+    total: num({ minimum: 0 }),
+    hasNextPage: bool,
+  }),
+  ApplicationInput: obj({ vacancyId: id, message: str({ minLength: 1, maxLength: 4000 }), disclose: fields }),
+  Application: obj({
+    id,
+    candidateId: id,
+    candidateAlias: str(),
+    company: companyCard,
+    vacancy: obj({ id, title: str(), specialization, grade, workMode, salary: ref('Salary'), description: str() }),
+    message: str(),
+    status: interactionStatus,
+    createdAt: dt,
+    viewedAt: nullable(dt),
+    respondedAt: nullable(dt),
+    disclosureFields: arr(en('name', 'email', 'sourceLinks'), { uniqueItems: true }),
+    match: ref('Match'),
+  }),
+  Applications: obj({ items: arr(ref('Application')) }),
   AssessmentStartInput: obj({ specialization, grade }),
   AssessmentAnswer: obj({
     code: str({ maxLength: 100000 }),
@@ -587,6 +635,29 @@ export const routes = [
   route('post', '/api/v1/me/invitations/{invitationId}/decline', 'declineMyInvitation', 'Invitation', {
     auth: 'candidate',
   }),
+  route('get', '/api/v1/vacancies', 'searchVacancies', 'VacancyPage', {
+    auth: 'candidate',
+    parameters: [
+      query('specialization', specialization),
+      query('grade', grade),
+      query('workMode', workMode),
+      query('skill', skillId),
+      query('page', num({ minimum: 1, default: 1 })),
+      query('pageSize', num({ minimum: 1, maximum: 50, default: 10 })),
+    ],
+  }),
+  route('get', '/api/v1/vacancies/{vacancyId}', 'getVacancy', 'Vacancy', { auth: 'candidate' }),
+  route('get', '/api/v1/me/applications', 'listMyApplications', 'Applications', { auth: 'candidate' }),
+  route('post', '/api/v1/me/applications', 'createApplication', 'Application', {
+    auth: 'candidate',
+    body: 'ApplicationInput',
+    status: 201,
+    idempotent: true,
+  }),
+  route('get', '/api/v1/me/applications/{applicationId}', 'getMyApplication', 'Application', { auth: 'candidate' }),
+  route('post', '/api/v1/me/applications/{applicationId}/withdraw', 'withdrawMyApplication', 'Application', {
+    auth: 'candidate',
+  }),
   route('get', '/api/v1/company', 'getCompany', 'Company', { auth: 'employer' }),
   route('patch', '/api/v1/company', 'updateCompany', 'Company', { auth: 'employer', body: 'CompanyPatch' }),
   route('get', '/api/v1/needs', 'listNeeds', 'Needs', { auth: 'employer' }),
@@ -594,6 +665,8 @@ export const routes = [
   route('get', '/api/v1/needs/{needId}', 'getNeed', 'Need', { auth: 'employer' }),
   route('patch', '/api/v1/needs/{needId}', 'updateNeed', 'Need', { auth: 'employer', body: 'NeedPatch' }),
   route('delete', '/api/v1/needs/{needId}', 'deleteNeed', null, { auth: 'employer', status: 204 }),
+  route('post', '/api/v1/needs/{needId}/publish', 'publishNeed', 'Need', { auth: 'employer' }),
+  route('post', '/api/v1/needs/{needId}/unpublish', 'unpublishNeed', 'Need', { auth: 'employer' }),
   route('get', '/api/v1/needs/{needId}/graph', 'getNeedGraph', 'Graph', { auth: 'employer' }),
   route('get', '/api/v1/candidates', 'searchCandidates', 'CandidatePage', {
     auth: 'employer',
@@ -647,6 +720,18 @@ export const routes = [
   }),
   route('get', '/api/v1/invitations/{invitationId}', 'getInvitation', 'Invitation', { auth: 'employer' }),
   route('post', '/api/v1/invitations/{invitationId}/withdraw', 'withdrawInvitation', 'Invitation', {
+    auth: 'employer',
+  }),
+  route('get', '/api/v1/applications', 'listApplications', 'Applications', {
+    auth: 'employer',
+    parameters: [query('needId', id)],
+  }),
+  route('get', '/api/v1/applications/{applicationId}', 'getApplication', 'Application', { auth: 'employer' }),
+  route('post', '/api/v1/applications/{applicationId}/view', 'viewApplication', 'Application', { auth: 'employer' }),
+  route('post', '/api/v1/applications/{applicationId}/accept', 'acceptApplication', 'Application', {
+    auth: 'employer',
+  }),
+  route('post', '/api/v1/applications/{applicationId}/decline', 'declineApplication', 'Application', {
     auth: 'employer',
   }),
   route('post', '/__mock__/session', 'mockSelectSession', 'Session', {
