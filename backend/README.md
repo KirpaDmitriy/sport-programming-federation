@@ -48,6 +48,7 @@ cargo test --workspace --locked      # `just backend-check` runs all three
 | `FSP_AUTH_MODE` | `demo` | `demo` exposes the fixed verification code; other values require a delivery adapter |
 | `FSP_DEMO_EMAIL_CODE` | `123456` | Verification code used only in demo mode |
 | `FSP_PUBLIC_WEB_URL` | `http://127.0.0.1:5173` | Browser URL used after OAuth callbacks |
+| `FSP_STATIC_DIR` | unset | Serve a built SPA from this directory and use its `index.html` as the non-API fallback |
 | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `GITHUB_CALLBACK_URL` | unset | Enable GitHub OAuth when all three are non-empty |
 | `BIFROST_CHAT_URL`, `BIFROST_API_KEY`, `BIFROST_MODEL` | unset | Enable Bifrost analysis when all three are non-empty |
 

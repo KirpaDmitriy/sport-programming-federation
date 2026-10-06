@@ -95,6 +95,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             secure_cookie,
             public_web_url,
             github_callback_url,
+            static_dir: nonempty_env("FSP_STATIC_DIR").map(Into::into),
         },
         service,
     );

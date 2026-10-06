@@ -2,6 +2,7 @@
 
 mod error;
 
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use axum::extract::{Path, Query, Request, State};
@@ -9,7 +10,7 @@ use axum::http::header::{CACHE_CONTROL, COOKIE, ORIGIN, SET_COOKIE, X_CONTENT_TY
 use axum::http::{HeaderMap, HeaderName, HeaderValue, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Redirect, Response};
-use axum::routing::{delete, get, post};
+use axum::routing::{any, delete, get, post};
 use axum::{Json, Router};
 use chrono::Utc;
 use fsp_application::{
@@ -19,6 +20,7 @@ use fsp_application::{
 use fsp_domain::{Grade, Specialization};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use tower_http::services::{ServeDir, ServeFile};
 use uuid::Uuid;
 
 pub use error::{ApiError, Detail};
@@ -32,6 +34,7 @@ pub struct HttpConfig {
     pub secure_cookie: bool,
     pub public_web_url: String,
     pub github_callback_url: String,
+    pub static_dir: Option<PathBuf>,
 }
 
 #[derive(Clone)]
@@ -45,7 +48,8 @@ pub fn router(config: HttpConfig, service: Arc<PlatformService>) -> Router {
         service,
         config: Arc::new(config),
     };
-    Router::new()
+    let static_dir = state.config.static_dir.clone();
+    let router = Router::new()
         .route("/health", get(health))
         .route("/api/v1/meta", get(meta))
         .route(
@@ -81,10 +85,20 @@ pub fn router(config: HttpConfig, service: Arc<PlatformService>) -> Router {
         .route("/api/v1/shortlists", get(get_shortlists))
         .route("/api/v1/applications", get(get_company_applications))
         .route("/api/v1/me/invitations", get(get_my_invitations))
-        .fallback(not_found)
+        .route("/api/{*path}", any(not_found))
+        .route("/__mock__", any(not_found))
+        .route("/__mock__/{*path}", any(not_found))
         .method_not_allowed_fallback(not_found)
         .layer(middleware::from_fn_with_state(state.clone(), transport))
-        .with_state(state)
+        .with_state(state);
+    if let Some(static_dir) = static_dir {
+        router.fallback_service(
+            ServeDir::new(&static_dir)
+                .not_found_service(ServeFile::new(static_dir.join("index.html"))),
+        )
+    } else {
+        router.fallback(not_found)
+    }
 }
 
 #[derive(Serialize)]
@@ -682,6 +696,7 @@ mod tests {
                 public_web_url: "http://127.0.0.1:5173".into(),
                 github_callback_url: "http://127.0.0.1:8080/api/v1/integrations/github/callback"
                     .into(),
+                static_dir: None,
             },
             service,
         )
