@@ -9,6 +9,7 @@ backend, stand).
 | Path | Owner | Contents |
 | --- | --- | --- |
 | `app/`, `tests/`, `tools/`, `deploy/`, `experiments/`, `output/`, `docs/*.md`, `pyproject.toml`, `requirements*.txt` | Дима | Python MVP (FastAPI) with its tests, deployment and submission artifacts; see [`README.md`](README.md) |
+| [`app/web/client/`](app/web/client/README.md) | Дима | TypeScript source of the MVP page script; builds the committed `app/web/static/app.js` |
 | [`backend/`](backend/README.md) | Дима | Hexagonal Rust backend that implements the contract (skeleton: crate boundaries, transport rules, `/health`) |
 | [`contracts/`](contracts/README.md) | shared | OpenAPI contract, error codes, generated operation index, TypeScript generator |
 | [`mock-server/`](mock-server/README.md) | Данил | Stateful HTTP mock of the contract: frontend dev server and behavior reference for the backend |
@@ -27,15 +28,16 @@ backend, stand).
 - Never commit secrets. Stand access lives in the git-ignored `.fsp-infra/`; service secrets belong in environment
   files on the host.
 - Write code, comments, documentation and commit messages in English; user-facing text is Russian.
-- New JavaScript-ecosystem code is strict TypeScript 7 checked by `tsc`; no plain JavaScript and no older TypeScript.
+- JavaScript-ecosystem code is strict TypeScript 7 checked by `tsc`; no hand-written JavaScript and no older
+  TypeScript. The only committed JavaScript is generated output such as `app/web/static/app.js`.
 
 ## Toolchains and checks
 
 | Module | Toolchain | Check |
 | --- | --- | --- |
-| contract, mock, frontend | TypeScript 7.0.2 (strict) on Bun 1.4.2; Vitest on Node 26 (24.15 or newer works); Biome 2.5 from the root `biome.json` | `just verify`, `just e2e` |
+| contract, mock, frontend, MVP browser client | TypeScript 7.0.2 (strict) on Bun 1.4.2; Vitest on Node 26 (24.15 or newer works); Biome 2.5 from the root `biome.json` | `just verify`, `just e2e` |
 | Python MVP | Python 3.14 | `pytest`, `python tools/offline_smoke.py`, `python tools/experiments.py check` |
 | backend | Rust 1.99.0 (`backend/rust-toolchain.toml`), edition 2024 | `just backend-check` |
 
-`just` lists the tasks for the JS modules and the stand. CI: `.github/workflows/test.yml` (Python MVP) and
-`.github/workflows/platform.yml` (contract, mock, frontend) and `.github/workflows/backend.yml` (Rust).
+`just` lists the tasks for the TypeScript modules and the stand. CI: `.github/workflows/test.yml` (Python MVP) and
+`.github/workflows/platform.yml` (contract, mock, frontend, MVP browser client) and `.github/workflows/backend.yml` (Rust).
