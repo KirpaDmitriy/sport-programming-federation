@@ -10,6 +10,7 @@
       "frontend/**",
       "mock-server/**",
       "contracts/codegen/**",
+      "app/web/client/**",
       "!**/generated",
       "!**/routeTree.gen.ts",
       "!**/bun.lock",
