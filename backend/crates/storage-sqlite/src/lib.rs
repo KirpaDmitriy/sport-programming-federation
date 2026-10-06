@@ -285,6 +285,69 @@ impl PlatformRepository for SqliteRepository {
             .map_err(storage)
     }
 
+    fn shortlists(
+        &self,
+        company_id: &str,
+    ) -> Result<Vec<fsp_domain::ShortlistRecord>, RepositoryError> {
+        let connection = self.connection()?;
+        connection
+            .prepare(
+                "SELECT id,company_id,title,members_json,created_at,updated_at FROM shortlists WHERE company_id=? ORDER BY rowid",
+            )
+            .map_err(storage)?
+            .query_map([company_id], shortlist_record)
+            .map_err(storage)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(storage)
+    }
+
+    fn shortlist(
+        &self,
+        company_id: &str,
+        shortlist_id: &str,
+    ) -> Result<Option<fsp_domain::ShortlistRecord>, RepositoryError> {
+        self.connection()?
+            .query_row(
+                "SELECT id,company_id,title,members_json,created_at,updated_at FROM shortlists WHERE company_id=? AND id=?",
+                params![company_id, shortlist_id],
+                shortlist_record,
+            )
+            .optional()
+            .map_err(storage)
+    }
+
+    fn save_shortlist(&self, value: &fsp_domain::ShortlistRecord) -> Result<(), RepositoryError> {
+        let members = serde_json::to_string(&value.member_ids).map_err(json_storage)?;
+        self.connection()?
+            .execute(
+                "INSERT OR REPLACE INTO shortlists(id,company_id,title,members_json,created_at,updated_at) VALUES(?,?,?,?,?,?)",
+                params![
+                    value.id,
+                    value.company_id,
+                    value.title,
+                    members,
+                    value.created_at,
+                    value.updated_at
+                ],
+            )
+            .map_err(storage)?;
+        Ok(())
+    }
+
+    fn delete_shortlist(
+        &self,
+        company_id: &str,
+        shortlist_id: &str,
+    ) -> Result<(), RepositoryError> {
+        self.connection()?
+            .execute(
+                "DELETE FROM shortlists WHERE id=? AND company_id=?",
+                params![shortlist_id, company_id],
+            )
+            .map_err(storage)?;
+        Ok(())
+    }
+
     fn save_oauth_state(
         &self,
         candidate_id: &str,
@@ -549,6 +612,25 @@ fn seed(connection: &Connection, now: &str) -> Result<(), RepositoryError> {
                 now,
                 now,
                 1_u64
+            ],
+        )
+        .map_err(storage)?;
+    // Mirror of the mock's `shortlist-001` fixture for the demo employer.
+    connection
+        .execute(
+            "INSERT INTO shortlists(id,company_id,title,members_json,created_at,updated_at) VALUES(?,?,?,?,?,?)",
+            params![
+                "shortlist-001",
+                "company-sever",
+                "Бэкенд · Мидл",
+                serde_json::to_string(&vec![
+                    "candidate-024",
+                    "candidate018",
+                    "candidate041"
+                ])
+                .map_err(json_storage)?,
+                now,
+                now
             ],
         )
         .map_err(storage)?;
@@ -834,6 +916,24 @@ fn candidate_index(
     })
 }
 
+fn shortlist_record(row: &rusqlite::Row<'_>) -> rusqlite::Result<fsp_domain::ShortlistRecord> {
+    let members: String = row.get(3)?;
+    Ok(fsp_domain::ShortlistRecord {
+        id: row.get(0)?,
+        company_id: row.get(1)?,
+        title: row.get(2)?,
+        member_ids: serde_json::from_str(&members).map_err(|error| {
+            rusqlite::Error::FromSqlConversionFailure(
+                3,
+                rusqlite::types::Type::Text,
+                Box::new(error),
+            )
+        })?,
+        created_at: row.get(4)?,
+        updated_at: row.get(5)?,
+    })
+}
+
 fn need_record(row: &rusqlite::Row<'_>) -> rusqlite::Result<HiringNeedRecord> {
     Ok(HiringNeedRecord {
         id: row.get(0)?,
@@ -1012,6 +1112,7 @@ CREATE TABLE IF NOT EXISTS github_credentials(candidate_id TEXT PRIMARY KEY,acce
 CREATE TABLE IF NOT EXISTS sources(id TEXT PRIMARY KEY,candidate_id TEXT NOT NULL,provider TEXT NOT NULL,synthetic INTEGER NOT NULL,active_job_id TEXT,account_label TEXT,last_synced_at TEXT,analysis_json TEXT,verified_participation INTEGER NOT NULL,competition_ids_json TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS jobs(id TEXT PRIMARY KEY,owner_id TEXT NOT NULL,status TEXT NOT NULL,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,result_source_id TEXT,error_code TEXT,error_message TEXT);
 CREATE TABLE IF NOT EXISTS idempotency_keys(scope TEXT PRIMARY KEY,fingerprint TEXT NOT NULL,status INTEGER NOT NULL,body_json TEXT NOT NULL,created_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS shortlists(id TEXT PRIMARY KEY,company_id TEXT NOT NULL REFERENCES companies(id),title TEXT NOT NULL,members_json TEXT NOT NULL,created_at TEXT NOT NULL,updated_at TEXT NOT NULL);
 "#;
 
 #[cfg(test)]
@@ -1214,6 +1315,65 @@ mod tests {
         assert_eq!(stored.fingerprint, "{\"a\":1}");
         assert_eq!(stored.status, 201);
         assert_eq!(stored.body, "{\"id\":\"one\"}");
+        drop(repository);
+        std::fs::remove_file(path).expect("temporary database is removed");
+    }
+
+    #[test]
+    fn shortlists_round_trip_and_stay_scoped_to_the_company() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system clock must be after Unix epoch")
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("fsp-shortlists-{nonce}.sqlite3"));
+        let repository = SqliteRepository::open(&path).expect("database opens");
+        repository
+            .connection()
+            .expect("connection opens")
+            .execute(
+                "INSERT INTO companies(id,display_name,business_area,description,contact_email,website) VALUES('company-sever','Север Тех','Разработка','','hr@sever-tech.example',NULL)",
+                [],
+            )
+            .expect("company is stored");
+        repository
+            .save_shortlist(&fsp_domain::ShortlistRecord {
+                id: "shortlist-test".into(),
+                company_id: "company-sever".into(),
+                title: "Кандидаты".into(),
+                member_ids: vec!["candidate018".into()],
+                created_at: "2026-10-06T00:00:00Z".into(),
+                updated_at: "2026-10-06T00:00:00Z".into(),
+            })
+            .expect("shortlist is stored");
+
+        let stored = repository
+            .shortlist("company-sever", "shortlist-test")
+            .expect("lookup works")
+            .expect("shortlist exists");
+        assert_eq!(stored.member_ids, ["candidate018"]);
+        assert!(
+            repository
+                .shortlist("company-other", "shortlist-test")
+                .expect("lookup works")
+                .is_none()
+        );
+        assert_eq!(
+            repository
+                .shortlists("company-sever")
+                .expect("list works")
+                .len(),
+            1
+        );
+
+        repository
+            .delete_shortlist("company-sever", "shortlist-test")
+            .expect("shortlist is removed");
+        assert!(
+            repository
+                .shortlists("company-sever")
+                .expect("list works")
+                .is_empty()
+        );
         drop(repository);
         std::fs::remove_file(path).expect("temporary database is removed");
     }

@@ -12,7 +12,7 @@ use axum::http::header::{CACHE_CONTROL, COOKIE, ORIGIN, SET_COOKIE, X_CONTENT_TY
 use axum::http::{HeaderMap, HeaderName, HeaderValue, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Redirect, Response};
-use axum::routing::{any, delete, get, patch, post};
+use axum::routing::{any, delete, get, patch, post, put};
 use axum::{Json, Router};
 use chrono::Utc;
 use fsp_application::{
@@ -92,6 +92,19 @@ pub fn router(config: HttpConfig, service: Arc<PlatformService>) -> Router {
         .route("/api/v1/me/sources/{source_id}/sync", post(sync_source))
         .route("/api/v1/jobs/{job_id}", get(get_job))
         .route("/api/v1/shortlists", get(get_shortlists))
+        .route("/api/v1/shortlists/{shortlist_id}", get(get_shortlist))
+        .route(
+            "/api/v1/shortlists/{shortlist_id}",
+            delete(delete_shortlist),
+        )
+        .route(
+            "/api/v1/shortlists/{shortlist_id}/members/{candidate_id}",
+            put(add_shortlist_member),
+        )
+        .route(
+            "/api/v1/shortlists/{shortlist_id}/members/{candidate_id}",
+            delete(remove_shortlist_member),
+        )
         .route("/api/v1/applications", get(get_company_applications))
         .route("/api/v1/me/invitations", get(get_my_invitations))
         .route_layer(middleware::from_fn(no_body));
@@ -105,6 +118,8 @@ pub fn router(config: HttpConfig, service: Arc<PlatformService>) -> Router {
         .route("/api/v1/company", patch(update_company))
         .route("/api/v1/needs", post(create_need))
         .route("/api/v1/needs/{need_id}", patch(update_need))
+        .route("/api/v1/shortlists", post(create_shortlist))
+        .route("/api/v1/shortlists/{shortlist_id}", patch(update_shortlist))
         .route(
             "/api/v1/me/sources/{provider}/connect",
             post(connect_source),
@@ -679,10 +694,93 @@ async fn get_job(
 async fn get_shortlists(
     State(state): State<AppState>,
     headers: HeaderMap,
-) -> Result<Json<Value>, ApiError> {
+) -> Result<Json<fsp_application::ShortlistsView>, ApiError> {
     let session = authenticated(&state, &headers)?;
     require_role(&session, "employer")?;
-    Ok(Json(json!({ "items": [] })))
+    state
+        .service
+        .shortlists(&session)
+        .map(Json)
+        .map_err(api_error)
+}
+
+async fn create_shortlist(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ContractJson(input): ContractJson<fsp_application::ShortlistInput>,
+) -> Result<(StatusCode, Json<fsp_application::ShortlistView>), ApiError> {
+    let session = authenticated(&state, &headers)?;
+    state
+        .service
+        .create_shortlist(&session, input)
+        .map(|shortlist| (StatusCode::CREATED, Json(shortlist)))
+        .map_err(api_error)
+}
+
+async fn get_shortlist(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ContractPath(shortlist_id): ContractPath<String>,
+) -> Result<Json<fsp_application::ShortlistView>, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    state
+        .service
+        .get_shortlist(&session, &shortlist_id)
+        .map(Json)
+        .map_err(api_error)
+}
+
+async fn update_shortlist(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ContractPath(shortlist_id): ContractPath<String>,
+    ContractJson(input): ContractJson<fsp_application::ShortlistInput>,
+) -> Result<Json<fsp_application::ShortlistView>, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    state
+        .service
+        .update_shortlist(&session, &shortlist_id, input)
+        .map(Json)
+        .map_err(api_error)
+}
+
+async fn delete_shortlist(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ContractPath(shortlist_id): ContractPath<String>,
+) -> Result<StatusCode, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    state
+        .service
+        .delete_shortlist(&session, &shortlist_id)
+        .map(|()| StatusCode::NO_CONTENT)
+        .map_err(api_error)
+}
+
+async fn add_shortlist_member(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ContractPath((shortlist_id, candidate_id)): ContractPath<(String, String)>,
+) -> Result<Json<fsp_application::ShortlistView>, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    state
+        .service
+        .add_shortlist_member(&session, &shortlist_id, &candidate_id)
+        .map(Json)
+        .map_err(api_error)
+}
+
+async fn remove_shortlist_member(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ContractPath((shortlist_id, candidate_id)): ContractPath<(String, String)>,
+) -> Result<Json<fsp_application::ShortlistView>, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    state
+        .service
+        .remove_shortlist_member(&session, &shortlist_id, &candidate_id)
+        .map(Json)
+        .map_err(api_error)
 }
 
 async fn get_company_applications(
@@ -897,6 +995,22 @@ mod tests {
         }
         fn published_needs(&self) -> Result<Vec<HiringNeedRecord>, RepositoryError> {
             Ok(Vec::new())
+        }
+        fn shortlists(&self, _: &str) -> Result<Vec<fsp_domain::ShortlistRecord>, RepositoryError> {
+            Ok(Vec::new())
+        }
+        fn shortlist(
+            &self,
+            _: &str,
+            _: &str,
+        ) -> Result<Option<fsp_domain::ShortlistRecord>, RepositoryError> {
+            Ok(None)
+        }
+        fn save_shortlist(&self, _: &fsp_domain::ShortlistRecord) -> Result<(), RepositoryError> {
+            Ok(())
+        }
+        fn delete_shortlist(&self, _: &str, _: &str) -> Result<(), RepositoryError> {
+            Ok(())
         }
         fn save_oauth_state(&self, _: &str, _: &str, _: &str) -> Result<(), RepositoryError> {
             Ok(())

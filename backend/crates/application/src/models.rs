@@ -193,6 +193,47 @@ pub struct NeedView {
     pub revision: u64,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ShortlistInput {
+    pub title: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ShortlistsView {
+    pub items: Vec<ShortlistSummaryView>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ShortlistSummaryView {
+    pub id: String,
+    pub title: String,
+    pub count: usize,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ShortlistMemberView {
+    pub candidate_id: String,
+    pub alias: String,
+    pub available: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ShortlistView {
+    pub id: String,
+    pub title: String,
+    pub count: usize,
+    pub created_at: String,
+    pub updated_at: String,
+    pub members: Vec<ShortlistMemberView>,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SalaryView {

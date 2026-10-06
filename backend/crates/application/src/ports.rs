@@ -63,6 +63,21 @@ pub trait PlatformRepository: Send + Sync {
     fn delete_need(&self, company_id: &str, need_id: &str) -> Result<(), RepositoryError>;
     /// Published needs across all companies, i.e. the vacancy projection.
     fn published_needs(&self) -> Result<Vec<HiringNeedRecord>, RepositoryError>;
+    fn shortlists(
+        &self,
+        company_id: &str,
+    ) -> Result<Vec<fsp_domain::ShortlistRecord>, RepositoryError>;
+    fn shortlist(
+        &self,
+        company_id: &str,
+        shortlist_id: &str,
+    ) -> Result<Option<fsp_domain::ShortlistRecord>, RepositoryError>;
+    fn save_shortlist(
+        &self,
+        shortlist: &fsp_domain::ShortlistRecord,
+    ) -> Result<(), RepositoryError>;
+    fn delete_shortlist(&self, company_id: &str, shortlist_id: &str)
+    -> Result<(), RepositoryError>;
     fn save_oauth_state(
         &self,
         candidate_id: &str,

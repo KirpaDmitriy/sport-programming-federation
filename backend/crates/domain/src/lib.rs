@@ -148,6 +148,17 @@ pub struct Company {
     pub website: Option<String>,
 }
 
+/// An employer's shortlist of candidate ids, in insertion order.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ShortlistRecord {
+    pub id: String,
+    pub company_id: String,
+    pub title: String,
+    pub member_ids: Vec<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
 impl Company {
     #[must_use]
     pub fn ready_to_invite(&self) -> bool {

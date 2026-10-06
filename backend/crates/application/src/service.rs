@@ -16,6 +16,7 @@ use crate::{
     GraphView, IntegrationError, JobView, LlmGateway, MatchRequirementView, NeedInput, NeedPatch,
     NeedView, NeedsView, OnboardingView, PendingChallenge, PlatformRepository, ProfilePatch,
     ProfileView, RepositoryError, RequirementView, SalaryView, SelfSkillView, SessionView,
+    ShortlistInput, ShortlistMemberView, ShortlistSummaryView, ShortlistView, ShortlistsView,
     SkillView, SkillsView, SourceConnectInput, SourceView, SourcesView, VacancyPageView,
     VacancyRequirementView, VacancySearch, VacancyView, VerificationDelivery, job_view,
     match_status, source_view,
@@ -777,6 +778,192 @@ impl PlatformService {
                 )
             })?;
         self.vacancy_view(need, &candidate)
+    }
+
+    /// The mock's `shortlistFor`: shortlists are scoped to the caller's
+    /// company, an out-of-scope id is indistinguishable from missing.
+    fn own_shortlist(
+        &self,
+        session: &SessionView,
+        shortlist_id: &str,
+    ) -> Result<fsp_domain::ShortlistRecord, ApplicationError> {
+        let company_id = employer_company_id(session)?;
+        self.repository
+            .shortlist(company_id, shortlist_id)
+            .map_err(ApplicationError::storage)?
+            .ok_or_else(|| ApplicationError::new(404, "not_found", "Ресурс не найден"))
+    }
+
+    /// Candidate visibility for shortlist membership: alias falls back to the
+    /// mock's placeholder and `available` reflects the public-bank rules.
+    fn shortlist_members(
+        &self,
+        record: &fsp_domain::ShortlistRecord,
+    ) -> Result<Vec<ShortlistMemberView>, ApplicationError> {
+        let candidates = self
+            .repository
+            .candidates()
+            .map_err(ApplicationError::storage)?;
+        Ok(record
+            .member_ids
+            .iter()
+            .map(|member_id| {
+                let candidate = candidates.iter().find(|item| item.profile.id == *member_id);
+                ShortlistMemberView {
+                    candidate_id: member_id.clone(),
+                    alias: candidate
+                        .map(|item| item.profile.alias.clone())
+                        .unwrap_or_else(|| "Недоступный профиль".to_owned()),
+                    available: candidate
+                        .is_some_and(|item| item.profile.visible_to_employers(item.email_verified)),
+                }
+            })
+            .collect())
+    }
+
+    fn shortlist_detail(
+        &self,
+        record: fsp_domain::ShortlistRecord,
+    ) -> Result<ShortlistView, ApplicationError> {
+        let members = self.shortlist_members(&record)?;
+        Ok(ShortlistView {
+            id: record.id,
+            title: record.title,
+            count: members.len(),
+            created_at: record.created_at,
+            updated_at: record.updated_at,
+            members,
+        })
+    }
+
+    fn validate_shortlist_title(title: &str) -> Result<(), ApplicationError> {
+        if (1..=120).contains(&title.chars().count()) {
+            Ok(())
+        } else {
+            Err(validation("Запрос не соответствует контракту"))
+        }
+    }
+
+    pub fn shortlists(&self, session: &SessionView) -> Result<ShortlistsView, ApplicationError> {
+        let company_id = employer_company_id(session)?;
+        let items = self
+            .repository
+            .shortlists(company_id)
+            .map_err(ApplicationError::storage)?
+            .into_iter()
+            .map(|record| ShortlistSummaryView {
+                id: record.id,
+                title: record.title,
+                count: record.member_ids.len(),
+                created_at: record.created_at,
+                updated_at: record.updated_at,
+            })
+            .collect();
+        Ok(ShortlistsView { items })
+    }
+
+    pub fn create_shortlist(
+        &self,
+        session: &SessionView,
+        input: ShortlistInput,
+    ) -> Result<ShortlistView, ApplicationError> {
+        Self::validate_shortlist_title(&input.title)?;
+        let company_id = employer_company_id(session)?.to_owned();
+        let timestamp = now();
+        let record = fsp_domain::ShortlistRecord {
+            id: format!("shortlist-{}", Uuid::new_v4().simple()),
+            company_id,
+            title: input.title,
+            member_ids: Vec::new(),
+            created_at: timestamp.clone(),
+            updated_at: timestamp,
+        };
+        self.repository
+            .save_shortlist(&record)
+            .map_err(ApplicationError::storage)?;
+        self.shortlist_detail(record)
+    }
+
+    pub fn get_shortlist(
+        &self,
+        session: &SessionView,
+        shortlist_id: &str,
+    ) -> Result<ShortlistView, ApplicationError> {
+        let record = self.own_shortlist(session, shortlist_id)?;
+        self.shortlist_detail(record)
+    }
+
+    pub fn update_shortlist(
+        &self,
+        session: &SessionView,
+        shortlist_id: &str,
+        input: ShortlistInput,
+    ) -> Result<ShortlistView, ApplicationError> {
+        Self::validate_shortlist_title(&input.title)?;
+        let mut record = self.own_shortlist(session, shortlist_id)?;
+        record.title = input.title;
+        record.updated_at = now();
+        self.repository
+            .save_shortlist(&record)
+            .map_err(ApplicationError::storage)?;
+        self.shortlist_detail(record)
+    }
+
+    pub fn delete_shortlist(
+        &self,
+        session: &SessionView,
+        shortlist_id: &str,
+    ) -> Result<(), ApplicationError> {
+        let record = self.own_shortlist(session, shortlist_id)?;
+        self.repository
+            .delete_shortlist(&record.company_id, &record.id)
+            .map_err(ApplicationError::storage)
+    }
+
+    pub fn add_shortlist_member(
+        &self,
+        session: &SessionView,
+        shortlist_id: &str,
+        candidate_id: &str,
+    ) -> Result<ShortlistView, ApplicationError> {
+        let mut record = self.own_shortlist(session, shortlist_id)?;
+        // The mock's `visibleCandidate`: only candidates visible to employers
+        // can be shortlisted.
+        let visible = self
+            .repository
+            .candidates()
+            .map_err(ApplicationError::storage)?
+            .into_iter()
+            .any(|item| {
+                item.profile.id == candidate_id
+                    && item.profile.visible_to_employers(item.email_verified)
+            });
+        if !visible {
+            return Err(ApplicationError::new(404, "not_found", "Ресурс не найден"));
+        }
+        if !record.member_ids.iter().any(|id| id == candidate_id) {
+            record.member_ids.push(candidate_id.to_owned());
+        }
+        record.updated_at = now();
+        self.repository
+            .save_shortlist(&record)
+            .map_err(ApplicationError::storage)?;
+        self.shortlist_detail(record)
+    }
+
+    pub fn remove_shortlist_member(
+        &self,
+        session: &SessionView,
+        shortlist_id: &str,
+        candidate_id: &str,
+    ) -> Result<ShortlistView, ApplicationError> {
+        let mut record = self.own_shortlist(session, shortlist_id)?;
+        record.member_ids.retain(|id| id != candidate_id);
+        record.updated_at = now();
+        self.repository
+            .save_shortlist(&record)
+            .map_err(ApplicationError::storage)?;
+        self.shortlist_detail(record)
     }
 
     pub fn candidate_search(
