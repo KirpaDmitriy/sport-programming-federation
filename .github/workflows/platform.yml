@@ -6,8 +6,6 @@ on:
       - contracts/**
       - mock-server/**
       - frontend/**
-      - app/web/client/**
-      - app/web/static/app.js
       - biome.json
       - .github/workflows/platform.yml
   pull_request:
@@ -15,8 +13,6 @@ on:
       - contracts/**
       - mock-server/**
       - frontend/**
-      - app/web/client/**
-      - app/web/static/app.js
       - biome.json
       - .github/workflows/platform.yml
 
@@ -55,17 +51,3 @@ jobs:
         with:
           name: playwright-results
           path: frontend/test-results/
-
-  mvp-web:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.4.2
-      - run: bun install --cwd app/web/client --frozen-lockfile
-      - name: Python MVP browser client types, lint and bundle drift
-        run: |
-          bun run --cwd app/web/client typecheck
-          bun run --cwd app/web/client lint
-          bun run --cwd app/web/client check
