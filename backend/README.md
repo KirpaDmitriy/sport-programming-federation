@@ -26,8 +26,9 @@ direction.
 
 Rust 1.99.0 (pinned in `rust-toolchain.toml`, with rustfmt and clippy), edition 2024, resolver 3. Dependencies are
 the latest releases as of 2026-10-06 — axum 0.8.9, tokio 1.53.2, serde 1.0.229, serde_json 1.0.151, uuid 1.27.0,
-tracing 0.1.44, tracing-subscriber 0.3.23 — declared once in the workspace `Cargo.toml` and locked in `Cargo.lock`.
-`unsafe` code is forbidden and clippy warnings fail the build.
+tracing 0.1.44, tracing-subscriber 0.3.23, async-trait 0.1.92, chrono 0.4.45, rusqlite 0.37.0 (bundled SQLite),
+reqwest 0.12.28 (rustls), sha2 0.10.9, tower-http 0.6.11 — declared once in the workspace `Cargo.toml` and locked in
+`Cargo.lock`. `unsafe` code is forbidden and clippy warnings fail the build.
 
 ## Run and check
 
@@ -44,13 +45,14 @@ cargo test --workspace --locked      # `just backend-check` runs all three
 | `HOST` | `127.0.0.1` | Bind address |
 | `PORT` | `8080` | Bind port |
 | `FSP_ALLOWED_ORIGINS` | `http://127.0.0.1:5173,http://localhost:5173` | Comma-separated browser origins accepted on requests with `Origin`; others get `403 origin_not_allowed` |
-| `FSP_DATABASE` | `fsp.sqlite3` | SQLite database path |
-| `FSP_AUTH_MODE` | `demo` | `demo` exposes the fixed verification code; other values require a delivery adapter |
+| `FSP_DATABASE` | `data/fsp.sqlite3` | SQLite database path (the directory is created automatically) |
+| `FSP_AUTH_MODE` | `demo` | `demo` exposes the fixed verification code; e-mail delivery is not implemented, so other values cannot issue challenges |
 | `FSP_DEMO_EMAIL_CODE` | `123456` | Verification code used only in demo mode |
+| `FSP_SECURE_COOKIE` | unset | `1` adds `Secure` to the session cookie (set it behind HTTPS) |
 | `FSP_PUBLIC_WEB_URL` | `http://127.0.0.1:5173` | Browser URL used after OAuth callbacks |
 | `FSP_STATIC_DIR` | unset | Serve a built SPA from this directory and use its `index.html` as the non-API fallback |
-| `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `GITHUB_CALLBACK_URL` | unset | Enable GitHub OAuth when all three are non-empty |
-| `BIFROST_CHAT_URL`, `BIFROST_API_KEY`, `BIFROST_MODEL` | unset | Enable Bifrost analysis when all three are non-empty |
+| `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` | unset | Enable GitHub OAuth when both are non-empty; `GITHUB_CALLBACK_URL` defaults to `http://127.0.0.1:8080/api/v1/integrations/github/callback` |
+| `BIFROST_CHAT_URL` | unset | Enables Bifrost analysis when non-empty; `BIFROST_API_KEY` is optional and `BIFROST_MODEL` defaults to `openai/gpt-5-mini` |
 
 CI runs the same checks in `.github/workflows/backend.yml` on changes to `backend/`.
 
@@ -61,7 +63,7 @@ CI runs the same checks in `.github/workflows/backend.yml` on changes to `backen
 | [`../contracts/openapi.json`](../contracts/openapi.json) | Every operation except the `x-mock-only` `/__mock__` controls, which must not exist in production; index in [`API_OPERATIONS.md`](../contracts/API_OPERATIONS.md) |
 | [`../docs/product/BUSINESS_RULES.md`](../docs/product/BUSINESS_RULES.md) | Accounts and access, profile visibility, consents, sources and skill states, assessment eligibility and outcomes, needs, matching and order, anonymous projection, shortlists, invitations, vacancies and applications, short tasks and freshness, disclosure, PDF, jobs |
 | [`../contracts/API_INTEGRATION.md`](../contracts/API_INTEGRATION.md) | Session cookie, origin checks, validation, error envelope, idempotency, jobs, pagination, PDF, time, metadata, the cutover checklist |
-| [`../mock-server`](../mock-server/README.md) | The rules as running code (`src/domain.ts`) and as 17 HTTP tests (`test/mock-api.test.ts`) ready to port |
+| [`../mock-server`](../mock-server/README.md) | The rules as running code (`src/domain.ts`) and as 22 HTTP tests (`test/mock-api.test.ts`) ready to port |
 
 The mock simulates what the backend has to make real: e-mail delivery, GitHub and FSP data, PDF parsing, assessment
 checks and evaluation, the assistant, and production-grade sessions and security. `GET /api/v1/meta` must then report

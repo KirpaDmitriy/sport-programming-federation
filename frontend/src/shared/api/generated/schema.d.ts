@@ -10,7 +10,7 @@ export interface paths {
         };
         /**
          * getHealth
-         * @description Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.
+         * @description Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).
          */
         get: operations["getHealth"];
         put?: never;
@@ -30,7 +30,7 @@ export interface paths {
         };
         /**
          * getMeta
-         * @description Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.
+         * @description Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).
          */
         get: operations["getMeta"];
         put?: never;
@@ -52,7 +52,7 @@ export interface paths {
         put?: never;
         /**
          * createEmailChallenge
-         * @description Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.
+         * @description Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).
          */
         post: operations["createEmailChallenge"];
         delete?: never;
@@ -72,7 +72,7 @@ export interface paths {
         put?: never;
         /**
          * verifyEmail
-         * @description Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.
+         * @description Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).
          */
         post: operations["verifyEmail"];
         delete?: never;
@@ -93,7 +93,7 @@ export interface paths {
         post?: never;
         /**
          * logout
-         * @description Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.
+         * @description Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).
          */
         delete: operations["logout"];
         options?: never;
@@ -110,7 +110,7 @@ export interface paths {
         };
         /**
          * getSession
-         * @description Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.
+         * @description Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).
          */
         get: operations["getSession"];
         put?: never;
@@ -130,7 +130,7 @@ export interface paths {
         };
         /**
          * getMyProfile
-         * @description Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.
+         * @description Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).
          */
         get: operations["getMyProfile"];
         put?: never;
@@ -140,7 +140,7 @@ export interface paths {
         head?: never;
         /**
          * updateMyProfile
-         * @description Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.
+         * @description Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).
          */
         patch: operations["updateMyProfile"];
         trace?: never;
@@ -156,7 +156,7 @@ export interface paths {
         put?: never;
         /**
          * importMyProfile
-         * @description Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.
+         * @description Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).
          */
         post: operations["importMyProfile"];
         delete?: never;
@@ -176,7 +176,7 @@ export interface paths {
         put?: never;
         /**
          * confirmProfileImport
-         * @description Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.
+         * @description Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).
          */
         post: operations["confirmProfileImport"];
         delete?: never;
@@ -194,7 +194,7 @@ export interface paths {
         };
         /**
          * exportMyProfile
-         * @description Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.
+         * @description Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).
          */
         get: operations["exportMyProfile"];
         put?: never;
@@ -214,7 +214,7 @@ export interface paths {
         };
         /**
          * authorizeGitHub
-         * @description Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.
+         * @description Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).
          */
         get: operations["authorizeGitHub"];
         put?: never;
@@ -234,7 +234,7 @@ export interface paths {
         };
         /**
          * getMySources
-         * @description Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.
+         * @description Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).
          */
         get: operations["getMySources"];
         put?: never;
@@ -256,7 +256,7 @@ export interface paths {
         put?: never;
         /**
          * connectMySource
-         * @description Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.
+         * @description Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).
          */
         post: operations["connectMySource"];
         delete?: never;
@@ -276,7 +276,7 @@ export interface paths {
         put?: never;
         /**
          * syncMySource
-         * @description Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.
+         * @description Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).
          */
         post: operations["syncMySource"];
         delete?: never;
@@ -294,7 +294,7 @@ export interface paths {
         };
         /**
          * getMySkills
-         * @description Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.
+         * @description Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).
          */
         get: operations["getMySkills"];
         put?: never;
@@ -314,7 +314,7 @@ export interface paths {
         };
         /**
          * getMyGraph
-         * @description Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.
+         * @description Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).
          */
         get: operations["getMyGraph"];
         put?: never;
@@ -334,7 +334,7 @@ export interface paths {
         };
         /**
          * getMyGapPlan
-         * @description Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.
+         * @description Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).
          */
         get: operations["getMyGapPlan"];
         put?: never;
@@ -354,7 +354,7 @@ export interface paths {
         };
         /**
          * listMyAssessments
-         * @description Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.
+         * @description Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).
          */
         get: operations["listMyAssessments"];
         put?: never;
@@ -378,7 +378,7 @@ export interface paths {
         };
         /**
          * getAssessment
-         * @description Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.
+         * @description Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).
          */
         get: operations["getAssessment"];
         put?: never;
@@ -399,7 +399,7 @@ export interface paths {
         get?: never;
         /**
          * saveAssessmentAnswer
-         * @description Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.
+         * @description Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).
          */
         put: operations["saveAssessmentAnswer"];
         post?: never;
@@ -420,7 +420,7 @@ export interface paths {
         put?: never;
         /**
          * runAssessmentChecks
-         * @description Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.
+         * @description Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).
          */
         post: operations["runAssessmentChecks"];
         delete?: never;
@@ -440,7 +440,7 @@ export interface paths {
         put?: never;
         /**
          * askAssessmentAssistant
-         * @description Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.
+         * @description Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).
          */
         post: operations["askAssessmentAssistant"];
         delete?: never;
@@ -478,7 +478,7 @@ export interface paths {
         };
         /**
          * getJob
-         * @description Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.
+         * @description Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).
          */
         get: operations["getJob"];
         put?: never;
@@ -498,7 +498,7 @@ export interface paths {
         };
         /**
          * getMyTasks
-         * @description Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.
+         * @description Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).
          */
         get: operations["getMyTasks"];
         put?: never;
@@ -538,7 +538,7 @@ export interface paths {
         };
         /**
          * listMyInvitations
-         * @description Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.
+         * @description Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).
          */
         get: operations["listMyInvitations"];
         put?: never;
@@ -558,7 +558,7 @@ export interface paths {
         };
         /**
          * getMyInvitation
-         * @description Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.
+         * @description Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).
          */
         get: operations["getMyInvitation"];
         put?: never;
@@ -580,7 +580,7 @@ export interface paths {
         put?: never;
         /**
          * viewMyInvitation
-         * @description Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.
+         * @description Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).
          */
         post: operations["viewMyInvitation"];
         delete?: never;
@@ -600,7 +600,7 @@ export interface paths {
         put?: never;
         /**
          * acceptMyInvitation
-         * @description Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.
+         * @description Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).
          */
         post: operations["acceptMyInvitation"];
         delete?: never;
@@ -620,7 +620,7 @@ export interface paths {
         put?: never;
         /**
          * declineMyInvitation
-         * @description Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.
+         * @description Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).
          */
         post: operations["declineMyInvitation"];
         delete?: never;
@@ -638,7 +638,7 @@ export interface paths {
         };
         /**
          * searchVacancies
-         * @description Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.
+         * @description Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).
          */
         get: operations["searchVacancies"];
         put?: never;
@@ -658,7 +658,7 @@ export interface paths {
         };
         /**
          * getVacancy
-         * @description Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.
+         * @description Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).
          */
         get: operations["getVacancy"];
         put?: never;
@@ -678,7 +678,7 @@ export interface paths {
         };
         /**
          * listMyApplications
-         * @description Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.
+         * @description Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).
          */
         get: operations["listMyApplications"];
         put?: never;
@@ -702,7 +702,7 @@ export interface paths {
         };
         /**
          * getMyApplication
-         * @description Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.
+         * @description Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).
          */
         get: operations["getMyApplication"];
         put?: never;
@@ -724,7 +724,7 @@ export interface paths {
         put?: never;
         /**
          * withdrawMyApplication
-         * @description Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.
+         * @description Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).
          */
         post: operations["withdrawMyApplication"];
         delete?: never;
@@ -742,7 +742,7 @@ export interface paths {
         };
         /**
          * getCompany
-         * @description Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.
+         * @description Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).
          */
         get: operations["getCompany"];
         put?: never;
@@ -752,7 +752,7 @@ export interface paths {
         head?: never;
         /**
          * updateCompany
-         * @description Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.
+         * @description Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).
          */
         patch: operations["updateCompany"];
         trace?: never;
@@ -766,13 +766,13 @@ export interface paths {
         };
         /**
          * listNeeds
-         * @description Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.
+         * @description Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).
          */
         get: operations["listNeeds"];
         put?: never;
         /**
          * createNeed
-         * @description Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.
+         * @description Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).
          */
         post: operations["createNeed"];
         delete?: never;
@@ -790,21 +790,21 @@ export interface paths {
         };
         /**
          * getNeed
-         * @description Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.
+         * @description Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).
          */
         get: operations["getNeed"];
         put?: never;
         post?: never;
         /**
          * deleteNeed
-         * @description Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.
+         * @description Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).
          */
         delete: operations["deleteNeed"];
         options?: never;
         head?: never;
         /**
          * updateNeed
-         * @description Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.
+         * @description Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).
          */
         patch: operations["updateNeed"];
         trace?: never;
@@ -820,7 +820,7 @@ export interface paths {
         put?: never;
         /**
          * publishNeed
-         * @description Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.
+         * @description Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).
          */
         post: operations["publishNeed"];
         delete?: never;
@@ -840,7 +840,7 @@ export interface paths {
         put?: never;
         /**
          * unpublishNeed
-         * @description Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.
+         * @description Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).
          */
         post: operations["unpublishNeed"];
         delete?: never;
@@ -858,7 +858,7 @@ export interface paths {
         };
         /**
          * getNeedGraph
-         * @description Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.
+         * @description Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).
          */
         get: operations["getNeedGraph"];
         put?: never;
@@ -878,7 +878,7 @@ export interface paths {
         };
         /**
          * searchCandidates
-         * @description Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.
+         * @description Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).
          */
         get: operations["searchCandidates"];
         put?: never;
@@ -898,7 +898,7 @@ export interface paths {
         };
         /**
          * getCandidate
-         * @description Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.
+         * @description Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).
          */
         get: operations["getCandidate"];
         put?: never;
@@ -918,7 +918,7 @@ export interface paths {
         };
         /**
          * getCandidateGraph
-         * @description Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.
+         * @description Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).
          */
         get: operations["getCandidateGraph"];
         put?: never;
@@ -938,7 +938,7 @@ export interface paths {
         };
         /**
          * getCandidateGapPlan
-         * @description Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.
+         * @description Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).
          */
         get: operations["getCandidateGapPlan"];
         put?: never;
@@ -958,7 +958,7 @@ export interface paths {
         };
         /**
          * getCandidateDisclosure
-         * @description Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.
+         * @description Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).
          */
         get: operations["getCandidateDisclosure"];
         put?: never;
@@ -978,13 +978,13 @@ export interface paths {
         };
         /**
          * listShortlists
-         * @description Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.
+         * @description Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).
          */
         get: operations["listShortlists"];
         put?: never;
         /**
          * createShortlist
-         * @description Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.
+         * @description Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).
          */
         post: operations["createShortlist"];
         delete?: never;
@@ -1002,21 +1002,21 @@ export interface paths {
         };
         /**
          * getShortlist
-         * @description Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.
+         * @description Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).
          */
         get: operations["getShortlist"];
         put?: never;
         post?: never;
         /**
          * deleteShortlist
-         * @description Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.
+         * @description Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).
          */
         delete: operations["deleteShortlist"];
         options?: never;
         head?: never;
         /**
          * updateShortlist
-         * @description Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.
+         * @description Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).
          */
         patch: operations["updateShortlist"];
         trace?: never;
@@ -1031,13 +1031,13 @@ export interface paths {
         get?: never;
         /**
          * addShortlistMember
-         * @description Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.
+         * @description Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).
          */
         put: operations["addShortlistMember"];
         post?: never;
         /**
          * removeShortlistMember
-         * @description Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.
+         * @description Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).
          */
         delete: operations["removeShortlistMember"];
         options?: never;
@@ -1054,7 +1054,7 @@ export interface paths {
         };
         /**
          * listInvitations
-         * @description Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.
+         * @description Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).
          */
         get: operations["listInvitations"];
         put?: never;
@@ -1078,7 +1078,7 @@ export interface paths {
         };
         /**
          * getInvitation
-         * @description Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.
+         * @description Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).
          */
         get: operations["getInvitation"];
         put?: never;
@@ -1100,7 +1100,7 @@ export interface paths {
         put?: never;
         /**
          * withdrawInvitation
-         * @description Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.
+         * @description Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).
          */
         post: operations["withdrawInvitation"];
         delete?: never;
@@ -1118,13 +1118,13 @@ export interface paths {
         };
         /**
          * listTasks
-         * @description Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.
+         * @description Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).
          */
         get: operations["listTasks"];
         put?: never;
         /**
          * createTask
-         * @description Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.
+         * @description Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).
          */
         post: operations["createTask"];
         delete?: never;
@@ -1144,7 +1144,7 @@ export interface paths {
         put?: never;
         /**
          * archiveTask
-         * @description Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.
+         * @description Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).
          */
         post: operations["archiveTask"];
         delete?: never;
@@ -1162,7 +1162,7 @@ export interface paths {
         };
         /**
          * listTaskResponses
-         * @description Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.
+         * @description Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).
          */
         get: operations["listTaskResponses"];
         put?: never;
@@ -1184,7 +1184,7 @@ export interface paths {
         put?: never;
         /**
          * reviewTaskResponse
-         * @description Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.
+         * @description Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).
          */
         post: operations["reviewTaskResponse"];
         delete?: never;
@@ -1202,7 +1202,7 @@ export interface paths {
         };
         /**
          * listApplications
-         * @description Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.
+         * @description Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).
          */
         get: operations["listApplications"];
         put?: never;
@@ -1222,7 +1222,7 @@ export interface paths {
         };
         /**
          * getApplication
-         * @description Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.
+         * @description Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).
          */
         get: operations["getApplication"];
         put?: never;
@@ -1244,7 +1244,7 @@ export interface paths {
         put?: never;
         /**
          * viewApplication
-         * @description Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.
+         * @description Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).
          */
         post: operations["viewApplication"];
         delete?: never;
@@ -1264,7 +1264,7 @@ export interface paths {
         put?: never;
         /**
          * acceptApplication
-         * @description Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.
+         * @description Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).
          */
         post: operations["acceptApplication"];
         delete?: never;
@@ -1284,7 +1284,7 @@ export interface paths {
         put?: never;
         /**
          * declineApplication
-         * @description Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.
+         * @description Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).
          */
         post: operations["declineApplication"];
         delete?: never;

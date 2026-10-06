@@ -4,7 +4,7 @@
   "info": {
     "title": "FSP Career API",
     "version": "0.1.0",
-    "description": "PROPOSED CONTRACT. Local stateful mock with synthetic data. The Rust backend in backend/ serves only GET /health so far; every other operation is implemented by this mock. JSON responses use camelCase. Salary is integer RUB/month before tax. No production authentication, code execution, external provider, or real LLM is implemented."
+    "description": "Platform contract. Implemented by the local stateful mock with synthetic data (the frontend development and behavior reference) and by the Rust backend in backend/ (operation coverage tracked in docs/backend-implementation-checklist.md). JSON responses use camelCase. Salary is integer RUB/month before tax. No production authentication, code execution, external provider, or real LLM is implemented."
   },
   "servers": [
     {
@@ -20,7 +20,7 @@
         "tags": [
           "Shared"
         ],
-        "description": "Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.",
+        "description": "Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).",
         "security": [],
         "responses": {
           "200": {
@@ -153,7 +153,7 @@
         "tags": [
           "Shared"
         ],
-        "description": "Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.",
+        "description": "Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).",
         "security": [],
         "responses": {
           "200": {
@@ -286,7 +286,7 @@
         "tags": [
           "Shared"
         ],
-        "description": "Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.",
+        "description": "Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).",
         "security": [],
         "responses": {
           "201": {
@@ -429,7 +429,7 @@
         "tags": [
           "Shared"
         ],
-        "description": "Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.",
+        "description": "Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).",
         "security": [],
         "responses": {
           "200": {
@@ -572,7 +572,7 @@
         "tags": [
           "Shared"
         ],
-        "description": "Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.",
+        "description": "Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).",
         "security": [],
         "responses": {
           "204": {
@@ -698,7 +698,7 @@
         "tags": [
           "Shared"
         ],
-        "description": "Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.",
+        "description": "Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).",
         "security": [
           {
             "mockSession": []
@@ -835,7 +835,7 @@
         "tags": [
           "Candidate"
         ],
-        "description": "Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.",
+        "description": "Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).",
         "security": [
           {
             "mockSession": []
@@ -970,7 +970,7 @@
         "tags": [
           "Candidate"
         ],
-        "description": "Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.",
+        "description": "Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).",
         "security": [
           {
             "mockSession": []
@@ -1117,7 +1117,7 @@
         "tags": [
           "Candidate"
         ],
-        "description": "Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.",
+        "description": "Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).",
         "security": [
           {
             "mockSession": []
@@ -1275,7 +1275,7 @@
         "tags": [
           "Candidate"
         ],
-        "description": "Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.",
+        "description": "Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).",
         "security": [
           {
             "mockSession": []
@@ -1435,7 +1435,7 @@
         "tags": [
           "Candidate"
         ],
-        "description": "Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.",
+        "description": "Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).",
         "security": [
           {
             "mockSession": []
@@ -1573,7 +1573,7 @@
         "tags": [
           "Candidate"
         ],
-        "description": "Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.",
+        "description": "Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).",
         "security": [
           {
             "mockSession": []
@@ -1710,7 +1710,7 @@
         "tags": [
           "Candidate"
         ],
-        "description": "Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.",
+        "description": "Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).",
         "security": [
           {
             "mockSession": []
@@ -1847,7 +1847,7 @@
         "tags": [
           "Candidate"
         ],
-        "description": "Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.",
+        "description": "Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).",
         "security": [
           {
             "mockSession": []
@@ -2007,7 +2007,7 @@
         "tags": [
           "Candidate"
         ],
-        "description": "Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.",
+        "description": "Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).",
         "security": [
           {
             "mockSession": []
@@ -2157,7 +2157,7 @@
         "tags": [
           "Candidate"
         ],
-        "description": "Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.",
+        "description": "Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).",
         "security": [
           {
             "mockSession": []
@@ -2294,7 +2294,7 @@
         "tags": [
           "Candidate"
         ],
-        "description": "Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.",
+        "description": "Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).",
         "security": [
           {
             "mockSession": []
@@ -2431,7 +2431,7 @@
         "tags": [
           "Candidate"
         ],
-        "description": "Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.",
+        "description": "Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).",
         "security": [
           {
             "mockSession": []
@@ -2581,7 +2581,7 @@
         "tags": [
           "Candidate"
         ],
-        "description": "Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.",
+        "description": "Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).",
         "security": [
           {
             "mockSession": []
@@ -2875,7 +2875,7 @@
         "tags": [
           "Candidate"
         ],
-        "description": "Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.",
+        "description": "Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).",
         "security": [
           {
             "mockSession": []
@@ -3025,7 +3025,7 @@
         "tags": [
           "Candidate"
         ],
-        "description": "Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.",
+        "description": "Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).",
         "security": [
           {
             "mockSession": []
@@ -3185,7 +3185,7 @@
         "tags": [
           "Candidate"
         ],
-        "description": "Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.",
+        "description": "Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).",
         "security": [
           {
             "mockSession": []
@@ -3335,7 +3335,7 @@
         "tags": [
           "Candidate"
         ],
-        "description": "Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.",
+        "description": "Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).",
         "security": [
           {
             "mockSession": []
@@ -3655,7 +3655,7 @@
         "tags": [
           "Shared"
         ],
-        "description": "Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.",
+        "description": "Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).",
         "security": [
           {
             "mockSession": []
@@ -3805,7 +3805,7 @@
         "tags": [
           "Candidate"
         ],
-        "description": "Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.",
+        "description": "Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).",
         "security": [
           {
             "mockSession": []
@@ -4112,7 +4112,7 @@
         "tags": [
           "Candidate"
         ],
-        "description": "Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.",
+        "description": "Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).",
         "security": [
           {
             "mockSession": []
@@ -4249,7 +4249,7 @@
         "tags": [
           "Candidate"
         ],
-        "description": "Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.",
+        "description": "Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).",
         "security": [
           {
             "mockSession": []
@@ -4399,7 +4399,7 @@
         "tags": [
           "Candidate"
         ],
-        "description": "Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.",
+        "description": "Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).",
         "security": [
           {
             "mockSession": []
@@ -4549,7 +4549,7 @@
         "tags": [
           "Candidate"
         ],
-        "description": "Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.",
+        "description": "Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).",
         "security": [
           {
             "mockSession": []
@@ -4709,7 +4709,7 @@
         "tags": [
           "Candidate"
         ],
-        "description": "Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.",
+        "description": "Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).",
         "security": [
           {
             "mockSession": []
@@ -4859,7 +4859,7 @@
         "tags": [
           "Candidate"
         ],
-        "description": "Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.",
+        "description": "Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).",
         "security": [
           {
             "mockSession": []
@@ -5073,7 +5073,7 @@
         "tags": [
           "Candidate"
         ],
-        "description": "Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.",
+        "description": "Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).",
         "security": [
           {
             "mockSession": []
@@ -5223,7 +5223,7 @@
         "tags": [
           "Candidate"
         ],
-        "description": "Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.",
+        "description": "Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).",
         "security": [
           {
             "mockSession": []
@@ -5517,7 +5517,7 @@
         "tags": [
           "Candidate"
         ],
-        "description": "Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.",
+        "description": "Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).",
         "security": [
           {
             "mockSession": []
@@ -5667,7 +5667,7 @@
         "tags": [
           "Candidate"
         ],
-        "description": "Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.",
+        "description": "Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).",
         "security": [
           {
             "mockSession": []
@@ -5817,7 +5817,7 @@
         "tags": [
           "Employer"
         ],
-        "description": "Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.",
+        "description": "Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).",
         "security": [
           {
             "mockSession": []
@@ -5952,7 +5952,7 @@
         "tags": [
           "Employer"
         ],
-        "description": "Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.",
+        "description": "Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).",
         "security": [
           {
             "mockSession": []
@@ -6099,7 +6099,7 @@
         "tags": [
           "Employer"
         ],
-        "description": "Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.",
+        "description": "Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).",
         "security": [
           {
             "mockSession": []
@@ -6234,7 +6234,7 @@
         "tags": [
           "Employer"
         ],
-        "description": "Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.",
+        "description": "Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).",
         "security": [
           {
             "mockSession": []
@@ -6381,7 +6381,7 @@
         "tags": [
           "Employer"
         ],
-        "description": "Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.",
+        "description": "Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).",
         "security": [
           {
             "mockSession": []
@@ -6529,7 +6529,7 @@
         "tags": [
           "Employer"
         ],
-        "description": "Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.",
+        "description": "Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).",
         "security": [
           {
             "mockSession": []
@@ -6687,7 +6687,7 @@
         "tags": [
           "Employer"
         ],
-        "description": "Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.",
+        "description": "Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).",
         "security": [
           {
             "mockSession": []
@@ -6830,7 +6830,7 @@
         "tags": [
           "Employer"
         ],
-        "description": "Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.",
+        "description": "Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).",
         "security": [
           {
             "mockSession": []
@@ -6980,7 +6980,7 @@
         "tags": [
           "Employer"
         ],
-        "description": "Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.",
+        "description": "Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).",
         "security": [
           {
             "mockSession": []
@@ -7130,7 +7130,7 @@
         "tags": [
           "Employer"
         ],
-        "description": "Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.",
+        "description": "Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).",
         "security": [
           {
             "mockSession": []
@@ -7280,7 +7280,7 @@
         "tags": [
           "Employer"
         ],
-        "description": "Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.",
+        "description": "Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).",
         "security": [
           {
             "mockSession": []
@@ -7516,7 +7516,7 @@
         "tags": [
           "Employer"
         ],
-        "description": "Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.",
+        "description": "Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).",
         "security": [
           {
             "mockSession": []
@@ -7677,7 +7677,7 @@
         "tags": [
           "Employer"
         ],
-        "description": "Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.",
+        "description": "Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).",
         "security": [
           {
             "mockSession": []
@@ -7827,7 +7827,7 @@
         "tags": [
           "Employer"
         ],
-        "description": "Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.",
+        "description": "Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).",
         "security": [
           {
             "mockSession": []
@@ -7988,7 +7988,7 @@
         "tags": [
           "Employer"
         ],
-        "description": "Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.",
+        "description": "Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).",
         "security": [
           {
             "mockSession": []
@@ -8138,7 +8138,7 @@
         "tags": [
           "Employer"
         ],
-        "description": "Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.",
+        "description": "Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).",
         "security": [
           {
             "mockSession": []
@@ -8273,7 +8273,7 @@
         "tags": [
           "Employer"
         ],
-        "description": "Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.",
+        "description": "Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).",
         "security": [
           {
             "mockSession": []
@@ -8420,7 +8420,7 @@
         "tags": [
           "Employer"
         ],
-        "description": "Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.",
+        "description": "Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).",
         "security": [
           {
             "mockSession": []
@@ -8568,7 +8568,7 @@
         "tags": [
           "Employer"
         ],
-        "description": "Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.",
+        "description": "Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).",
         "security": [
           {
             "mockSession": []
@@ -8726,7 +8726,7 @@
         "tags": [
           "Employer"
         ],
-        "description": "Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.",
+        "description": "Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).",
         "security": [
           {
             "mockSession": []
@@ -8869,7 +8869,7 @@
         "tags": [
           "Employer"
         ],
-        "description": "Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.",
+        "description": "Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).",
         "security": [
           {
             "mockSession": []
@@ -9028,7 +9028,7 @@
         "tags": [
           "Employer"
         ],
-        "description": "Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.",
+        "description": "Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).",
         "security": [
           {
             "mockSession": []
@@ -9189,7 +9189,7 @@
         "tags": [
           "Employer"
         ],
-        "description": "Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.",
+        "description": "Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).",
         "security": [
           {
             "mockSession": []
@@ -9483,7 +9483,7 @@
         "tags": [
           "Employer"
         ],
-        "description": "Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.",
+        "description": "Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).",
         "security": [
           {
             "mockSession": []
@@ -9633,7 +9633,7 @@
         "tags": [
           "Employer"
         ],
-        "description": "Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.",
+        "description": "Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).",
         "security": [
           {
             "mockSession": []
@@ -9783,7 +9783,7 @@
         "tags": [
           "Employer"
         ],
-        "description": "Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.",
+        "description": "Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).",
         "security": [
           {
             "mockSession": []
@@ -9918,7 +9918,7 @@
         "tags": [
           "Employer"
         ],
-        "description": "Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.",
+        "description": "Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).",
         "security": [
           {
             "mockSession": []
@@ -10065,7 +10065,7 @@
         "tags": [
           "Employer"
         ],
-        "description": "Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.",
+        "description": "Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).",
         "security": [
           {
             "mockSession": []
@@ -10215,7 +10215,7 @@
         "tags": [
           "Employer"
         ],
-        "description": "Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.",
+        "description": "Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).",
         "security": [
           {
             "mockSession": []
@@ -10365,7 +10365,7 @@
         "tags": [
           "Employer"
         ],
-        "description": "Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.",
+        "description": "Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).",
         "security": [
           {
             "mockSession": []
@@ -10525,7 +10525,7 @@
         "tags": [
           "Employer"
         ],
-        "description": "Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.",
+        "description": "Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).",
         "security": [
           {
             "mockSession": []
@@ -10675,7 +10675,7 @@
         "tags": [
           "Employer"
         ],
-        "description": "Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.",
+        "description": "Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).",
         "security": [
           {
             "mockSession": []
@@ -10825,7 +10825,7 @@
         "tags": [
           "Employer"
         ],
-        "description": "Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.",
+        "description": "Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).",
         "security": [
           {
             "mockSession": []
@@ -10975,7 +10975,7 @@
         "tags": [
           "Employer"
         ],
-        "description": "Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.",
+        "description": "Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).",
         "security": [
           {
             "mockSession": []
@@ -11125,7 +11125,7 @@
         "tags": [
           "Employer"
         ],
-        "description": "Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.",
+        "description": "Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).",
         "security": [
           {
             "mockSession": []

@@ -115,7 +115,7 @@ curl -b jar http://127.0.0.1:4010/api/v1/me/profile
 ```sh
 bun run typecheck                  # tsc 7 over src, scripts and test
 bun run lint                       # Biome with the repository configuration
-bun run test                       # 17 HTTP tests against an in-process server
+bun run test                       # 22 HTTP tests against an in-process server
 UPDATE_FIXTURES=1 bun run test     # also rewrites fixtures/profile-export.pdf
 bun run contract                   # rebuild ../contracts/openapi.json after editing src/contract.ts
 ```
