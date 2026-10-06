@@ -154,6 +154,10 @@ pub fn router(config: HttpConfig, service: Arc<PlatformService>) -> Router {
             "/api/v1/me/applications/{application_id}/withdraw",
             post(withdraw_my_application),
         )
+        .route("/api/v1/me/tasks", get(get_my_tasks))
+        .route("/api/v1/tasks", get(list_tasks))
+        .route("/api/v1/tasks/{task_id}/archive", post(archive_task))
+        .route("/api/v1/task-responses", get(list_task_responses))
         .route_layer(middleware::from_fn(no_body));
     let bodied = Router::new()
         .route(
@@ -173,6 +177,15 @@ pub fn router(config: HttpConfig, service: Arc<PlatformService>) -> Router {
             post(accept_my_invitation),
         )
         .route("/api/v1/me/applications", post(create_application))
+        .route("/api/v1/tasks", post(create_task))
+        .route(
+            "/api/v1/me/tasks/{task_id}/responses",
+            post(respond_to_task),
+        )
+        .route(
+            "/api/v1/task-responses/{response_id}/review",
+            post(review_task_response),
+        )
         .route(
             "/api/v1/me/sources/{provider}/connect",
             post(connect_source),
@@ -245,9 +258,9 @@ async fn meta(State(state): State<AppState>) -> Json<Value> {
         "scenario": "live",
         "capabilities": {
             "emailVerification": true, "profilePdf": false, "githubFixture": false,
-            "fspFixture": true, "matching": true, "directInvitations": false,
-            "vacancyPublication": false, "selfApplication": false, "chat": false,
-            "recurringTasks": false, "realCodeExecution": false, "realLlm": state.service.llm_configured(),
+            "fspFixture": true, "matching": true, "directInvitations": true,
+            "vacancyPublication": true, "selfApplication": true, "chat": false,
+            "recurringTasks": true, "realCodeExecution": false, "realLlm": state.service.llm_configured(),
             "githubOAuth": state.service.github_configured()
         },
         "assessmentPolicy": {
@@ -985,6 +998,125 @@ async fn withdraw_my_application(
         .map_err(api_error)
 }
 
+async fn get_my_tasks(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<fsp_application::MyTasksView>, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    require_role(&session, "candidate")?;
+    state
+        .service
+        .my_tasks(&session)
+        .map(Json)
+        .map_err(api_error)
+}
+
+async fn respond_to_task(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    IdempotencyKey(key): IdempotencyKey,
+    ContractPath(task_id): ContractPath<String>,
+    ContractJson(input): ContractJson<fsp_application::TaskResponseInput>,
+) -> Result<Response, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    require_role(&session, "candidate")?;
+    let body = serde_json::to_value(&input).map_err(|_| {
+        ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "validation_error",
+            "Запрос не соответствует контракту",
+        )
+    })?;
+    let path = format!("/api/v1/me/tasks/{task_id}/responses");
+    let outcome = state
+        .service
+        .idempotent(
+            &session,
+            fsp_application::IdempotencyContext {
+                operation: "respondToTask",
+                path: &path,
+                key: &key,
+                body: &body,
+                status: StatusCode::CREATED.as_u16(),
+            },
+            || state.service.respond_to_task(&session, &task_id, input),
+        )
+        .map_err(api_error)?;
+    Ok(idempotent_response(StatusCode::CREATED, outcome))
+}
+
+async fn list_tasks(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<fsp_application::TasksView>, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    require_role(&session, "employer")?;
+    state.service.tasks(&session).map(Json).map_err(api_error)
+}
+
+async fn create_task(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ContractJson(input): ContractJson<fsp_application::TaskInput>,
+) -> Result<(StatusCode, Json<fsp_application::TaskView>), ApiError> {
+    let session = authenticated(&state, &headers)?;
+    require_role(&session, "employer")?;
+    state
+        .service
+        .create_task(&session, input)
+        .map(|task| (StatusCode::CREATED, Json(task)))
+        .map_err(api_error)
+}
+
+async fn archive_task(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ContractPath(task_id): ContractPath<String>,
+) -> Result<Json<fsp_application::TaskView>, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    require_role(&session, "employer")?;
+    state
+        .service
+        .archive_task(&session, &task_id)
+        .map(Json)
+        .map_err(api_error)
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TaskResponsesQuery {
+    task_id: Option<String>,
+}
+
+async fn list_task_responses(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ContractQuery(query): ContractQuery<TaskResponsesQuery>,
+) -> Result<Json<fsp_application::TaskResponsesView>, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    require_role(&session, "employer")?;
+    state
+        .service
+        .task_responses(&session, query.task_id.as_deref())
+        .map(Json)
+        .map_err(api_error)
+}
+
+async fn review_task_response(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ContractPath(response_id): ContractPath<String>,
+    ContractJson(input): ContractJson<fsp_application::TaskReviewInput>,
+) -> Result<Json<fsp_application::TaskResponseView>, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    require_role(&session, "employer")?;
+    state
+        .service
+        .review_task_response(&session, &response_id, input)
+        .map(Json)
+        .map_err(api_error)
+}
+
 async fn get_invitations(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -1408,6 +1540,42 @@ mod tests {
         fn save_application(
             &self,
             _: &fsp_domain::ApplicationRecord,
+        ) -> Result<(), RepositoryError> {
+            Ok(())
+        }
+        fn tasks(&self, _: &str) -> Result<Vec<fsp_domain::TaskRecord>, RepositoryError> {
+            Ok(Vec::new())
+        }
+        fn active_tasks(&self) -> Result<Vec<fsp_domain::TaskRecord>, RepositoryError> {
+            Ok(Vec::new())
+        }
+        fn task(&self, _: &str) -> Result<Option<fsp_domain::TaskRecord>, RepositoryError> {
+            Ok(None)
+        }
+        fn save_task(&self, _: &fsp_domain::TaskRecord) -> Result<(), RepositoryError> {
+            Ok(())
+        }
+        fn candidate_task_responses(
+            &self,
+            _: &str,
+        ) -> Result<Vec<fsp_domain::TaskResponseRecord>, RepositoryError> {
+            Ok(Vec::new())
+        }
+        fn company_task_responses(
+            &self,
+            _: &str,
+        ) -> Result<Vec<fsp_domain::TaskResponseRecord>, RepositoryError> {
+            Ok(Vec::new())
+        }
+        fn task_response(
+            &self,
+            _: &str,
+        ) -> Result<Option<fsp_domain::TaskResponseRecord>, RepositoryError> {
+            Ok(None)
+        }
+        fn save_task_response(
+            &self,
+            _: &fsp_domain::TaskResponseRecord,
         ) -> Result<(), RepositoryError> {
             Ok(())
         }

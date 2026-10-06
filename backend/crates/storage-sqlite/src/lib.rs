@@ -531,6 +531,126 @@ impl PlatformRepository for SqliteRepository {
         Ok(())
     }
 
+    fn tasks(&self, company_id: &str) -> Result<Vec<fsp_domain::TaskRecord>, RepositoryError> {
+        let connection = self.connection()?;
+        connection
+            .prepare("SELECT * FROM tasks WHERE company_id=?")
+            .map_err(storage)?
+            .query_map([company_id], task_record)
+            .map_err(storage)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(storage)
+    }
+
+    fn active_tasks(&self) -> Result<Vec<fsp_domain::TaskRecord>, RepositoryError> {
+        let connection = self.connection()?;
+        connection
+            .prepare("SELECT * FROM tasks WHERE status='active'")
+            .map_err(storage)?
+            .query_map([], task_record)
+            .map_err(storage)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(storage)
+    }
+
+    fn task(&self, task_id: &str) -> Result<Option<fsp_domain::TaskRecord>, RepositoryError> {
+        self.connection()?
+            .query_row(
+                "SELECT * FROM tasks WHERE id=?",
+                params![task_id],
+                task_record,
+            )
+            .optional()
+            .map_err(storage)
+    }
+
+    fn save_task(&self, value: &fsp_domain::TaskRecord) -> Result<(), RepositoryError> {
+        self.connection()?
+            .execute(
+                "INSERT OR REPLACE INTO tasks(id,company_id,title,prompt,skill_id,grade,estimate_minutes,status,created_at) VALUES(?,?,?,?,?,?,?,?,?)",
+                params![
+                    value.id,
+                    value.company_id,
+                    value.title,
+                    value.prompt,
+                    value.skill_id,
+                    grade(value.grade),
+                    value.estimate_minutes,
+                    value.status.as_str(),
+                    value.created_at,
+                ],
+            )
+            .map_err(storage)?;
+        Ok(())
+    }
+
+    fn candidate_task_responses(
+        &self,
+        candidate_id: &str,
+    ) -> Result<Vec<fsp_domain::TaskResponseRecord>, RepositoryError> {
+        let connection = self.connection()?;
+        connection
+            .prepare("SELECT * FROM task_responses WHERE candidate_id=?")
+            .map_err(storage)?
+            .query_map([candidate_id], task_response_record)
+            .map_err(storage)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(storage)
+    }
+
+    fn company_task_responses(
+        &self,
+        company_id: &str,
+    ) -> Result<Vec<fsp_domain::TaskResponseRecord>, RepositoryError> {
+        let connection = self.connection()?;
+        connection
+            .prepare("SELECT * FROM task_responses WHERE company_id=?")
+            .map_err(storage)?
+            .query_map([company_id], task_response_record)
+            .map_err(storage)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(storage)
+    }
+
+    fn task_response(
+        &self,
+        response_id: &str,
+    ) -> Result<Option<fsp_domain::TaskResponseRecord>, RepositoryError> {
+        self.connection()?
+            .query_row(
+                "SELECT * FROM task_responses WHERE id=?",
+                params![response_id],
+                task_response_record,
+            )
+            .optional()
+            .map_err(storage)
+    }
+
+    fn save_task_response(
+        &self,
+        value: &fsp_domain::TaskResponseRecord,
+    ) -> Result<(), RepositoryError> {
+        self.connection()?
+            .execute(
+                "INSERT OR REPLACE INTO task_responses(id,candidate_id,company_id,candidate_alias,task_json,mode,answer,status,feedback,submitted_at,reviewed_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                params![
+                    value.id,
+                    value.candidate_id,
+                    value.task.company_id,
+                    value.candidate_alias,
+                    serde_json::to_string(&value.task).map_err(json_storage)?,
+                    value.mode.as_str(),
+                    value.answer,
+                    value.status.as_str(),
+                    value.feedback,
+                    value.submitted_at,
+                    value.reviewed_at,
+                ],
+            )
+            .map_err(storage)?;
+        Ok(())
+    }
+
     fn save_oauth_state(
         &self,
         candidate_id: &str,
@@ -817,6 +937,111 @@ fn seed(connection: &Connection, now: &str) -> Result<(), RepositoryError> {
             ],
         )
         .map_err(storage)?;
+    // Mirror of the mock's task fixtures, on the demo employer.
+    for (id, title, prompt, skill_id, task_grade, minutes) in [
+        (
+            "task-001",
+            "Повтор платежа без двойного списания",
+            "Платёжный сервис получает повторный запрос после таймаута клиента. Как сделать, чтобы деньги не списались дважды? Решите или опишите подход: таблицы и ограничения PostgreSQL, порядок операций, что вернуть повторному запросу.",
+            "postgresql",
+            Grade::Junior,
+            30_u32,
+        ),
+        (
+            "task-002",
+            "Повторные попытки отправки уведомлений",
+            "Сервис уведомлений на Rust вызывает внешний API, который иногда отвечает ошибкой или не отвечает. Предложите, как организовать повторные попытки: где хранить состояние, как не перегрузить внешний сервис и когда прекращать попытки.",
+            "rust",
+            Grade::Junior,
+            45_u32,
+        ),
+        (
+            "task-003",
+            "Форма регистрации с проверкой полей",
+            "Нужна форма регистрации на React: почта, пароль и согласие с условиями. Опишите, как проверять поля и показывать ошибки так, чтобы форма была доступна с клавиатуры и для экранного диктора.",
+            "react",
+            Grade::Middle,
+            40_u32,
+        ),
+    ] {
+        connection
+            .execute(
+                "INSERT INTO tasks(id,company_id,title,prompt,skill_id,grade,estimate_minutes,status,created_at) VALUES(?,?,?,?,?,?,?,?,?)",
+                params![
+                    id,
+                    "company-sever",
+                    title,
+                    prompt,
+                    skill_id,
+                    grade(task_grade),
+                    minutes,
+                    "active",
+                    now
+                ],
+            )
+            .map_err(storage)?;
+    }
+    // Mirror of the mock's accepted task responses, so history and freshness
+    // start with real task signals.
+    for (id, candidate_id, alias, task_id, answer, feedback, submitted, reviewed) in [
+        (
+            "task-response-seed-031",
+            "candidate031",
+            "Кандидат №031",
+            "task-002",
+            "Очередь задач в PostgreSQL со статусом и временем следующей попытки, экспоненциальная задержка с ограничением, ключ идемпотентности на стороне получателя, после пяти неудач — в очередь разбора.",
+            "Хороший разбор задержек и идемпотентности.",
+            "2026-09-20T12:00:00Z",
+            "2026-09-21T12:00:00Z",
+        ),
+        (
+            "task-response-seed-041",
+            "candidate041",
+            "Кандидат №041",
+            "task-003",
+            "Проверка при потере фокуса и при отправке, ошибки связаны с полями через aria-describedby, фокус переходит к первому ошибочному полю, состояние кнопки не блокирует отправку без объяснения.",
+            "Учтены доступность и порядок фокуса.",
+            "2026-09-13T12:00:00Z",
+            "2026-09-14T12:00:00Z",
+        ),
+    ] {
+        let task_json = connection
+            .query_row(
+                "SELECT title,prompt,skill_id,grade,estimate_minutes FROM tasks WHERE id=?",
+                [task_id],
+                |row| {
+                    Ok(serde_json::json!({
+                        "id": task_id,
+                        "companyId": "company-sever",
+                        "companyDisplayName": "Север Тех",
+                        "title": row.get::<_, String>(0)?,
+                        "prompt": row.get::<_, String>(1)?,
+                        "skillId": row.get::<_, String>(2)?,
+                        "grade": row.get::<_, String>(3)?,
+                        "estimateMinutes": row.get::<_, i64>(4)?,
+                    }))
+                },
+            )
+            .map_err(storage)?;
+        connection
+            .execute(
+                "INSERT INTO task_responses(id,candidate_id,company_id,candidate_alias,task_json,mode,answer,status,feedback,submitted_at,reviewed_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                params![
+                    id,
+                    candidate_id,
+                    "company-sever",
+                    alias,
+                    task_json.to_string(),
+                    "approach",
+                    answer,
+                    "accepted",
+                    feedback,
+                    submitted,
+                    reviewed
+                ],
+            )
+            .map_err(storage)?;
+    }
     Ok(())
 }
 
@@ -1149,6 +1374,58 @@ fn application_record(row: &rusqlite::Row<'_>) -> rusqlite::Result<fsp_domain::A
     })
 }
 
+fn task_record(row: &rusqlite::Row<'_>) -> rusqlite::Result<fsp_domain::TaskRecord> {
+    let status: String = row.get(7)?;
+    Ok(fsp_domain::TaskRecord {
+        id: row.get(0)?,
+        company_id: row.get(1)?,
+        title: row.get(2)?,
+        prompt: row.get(3)?,
+        skill_id: row.get(4)?,
+        grade: parse_grade(&row.get::<_, String>(5)?),
+        estimate_minutes: row.get(6)?,
+        status: fsp_domain::TaskStatus::parse(&status).ok_or_else(|| {
+            rusqlite::Error::FromSqlConversionFailure(
+                7,
+                rusqlite::types::Type::Text,
+                format!("unknown task status {status}").into(),
+            )
+        })?,
+        created_at: row.get(8)?,
+    })
+}
+
+fn task_response_record(
+    row: &rusqlite::Row<'_>,
+) -> rusqlite::Result<fsp_domain::TaskResponseRecord> {
+    let mode: String = row.get(5)?;
+    let status: String = row.get(7)?;
+    Ok(fsp_domain::TaskResponseRecord {
+        id: row.get(0)?,
+        candidate_id: row.get(1)?,
+        candidate_alias: row.get(3)?,
+        task: parse_json(row.get::<_, String>(4)?)?,
+        mode: fsp_domain::TaskMode::parse(&mode).ok_or_else(|| {
+            rusqlite::Error::FromSqlConversionFailure(
+                5,
+                rusqlite::types::Type::Text,
+                format!("unknown task mode {mode}").into(),
+            )
+        })?,
+        answer: row.get(6)?,
+        status: fsp_domain::TaskResponseStatus::parse(&status).ok_or_else(|| {
+            rusqlite::Error::FromSqlConversionFailure(
+                7,
+                rusqlite::types::Type::Text,
+                format!("unknown task response status {status}").into(),
+            )
+        })?,
+        feedback: row.get(8)?,
+        submitted_at: row.get(9)?,
+        reviewed_at: row.get(10)?,
+    })
+}
+
 fn disclosure_record(row: &rusqlite::Row<'_>) -> rusqlite::Result<fsp_domain::DisclosureRecord> {
     Ok(fsp_domain::DisclosureRecord {
         candidate_id: row.get(0)?,
@@ -1362,6 +1639,8 @@ CREATE TABLE IF NOT EXISTS shortlists(id TEXT PRIMARY KEY,company_id TEXT NOT NU
 CREATE TABLE IF NOT EXISTS invitations(id TEXT PRIMARY KEY,company_id TEXT NOT NULL,candidate_id TEXT NOT NULL,candidate_alias TEXT NOT NULL,company_json TEXT NOT NULL,need_json TEXT NOT NULL,need_definition_json TEXT NOT NULL,message TEXT NOT NULL,status TEXT NOT NULL,created_at TEXT NOT NULL,viewed_at TEXT,responded_at TEXT,disclosure_json TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS disclosures(company_id TEXT NOT NULL,candidate_id TEXT NOT NULL,invitation_id TEXT,application_id TEXT,granted_at TEXT,name TEXT,email TEXT,source_links_json TEXT NOT NULL,PRIMARY KEY(company_id,candidate_id));
 CREATE TABLE IF NOT EXISTS applications(id TEXT PRIMARY KEY,company_id TEXT NOT NULL,candidate_id TEXT NOT NULL,candidate_alias TEXT NOT NULL,company_json TEXT NOT NULL,vacancy_json TEXT NOT NULL,need_definition_json TEXT NOT NULL,message TEXT NOT NULL,status TEXT NOT NULL,created_at TEXT NOT NULL,viewed_at TEXT,responded_at TEXT,disclosure_json TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS tasks(id TEXT PRIMARY KEY,company_id TEXT NOT NULL REFERENCES companies(id),title TEXT NOT NULL,prompt TEXT NOT NULL,skill_id TEXT NOT NULL,grade TEXT NOT NULL,estimate_minutes INTEGER NOT NULL,status TEXT NOT NULL,created_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS task_responses(id TEXT PRIMARY KEY,candidate_id TEXT NOT NULL,company_id TEXT NOT NULL,candidate_alias TEXT NOT NULL,task_json TEXT NOT NULL,mode TEXT NOT NULL,answer TEXT NOT NULL,status TEXT NOT NULL,feedback TEXT,submitted_at TEXT NOT NULL,reviewed_at TEXT);
 "#;
 
 #[cfg(test)]
@@ -1732,6 +2011,100 @@ mod tests {
                 .disclosure("company-sever", "candidate018")
                 .expect("lookup works")
                 .is_none()
+        );
+        drop(repository);
+        std::fs::remove_file(path).expect("temporary database is removed");
+    }
+
+    #[test]
+    fn tasks_and_responses_round_trip_and_stay_scoped() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system clock must be after Unix epoch")
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("fsp-tasks-{nonce}.sqlite3"));
+        let repository = SqliteRepository::open(&path).expect("database opens");
+        repository
+            .connection()
+            .expect("connection opens")
+            .execute(
+                "INSERT INTO companies(id,display_name,business_area,description,contact_email,website) VALUES('company-sever','Север Тех','Разработка','','hr@sever-tech.example',NULL)",
+                [],
+            )
+            .expect("company is stored");
+
+        repository
+            .save_task(&fsp_domain::TaskRecord {
+                id: "task-test".into(),
+                company_id: "company-sever".into(),
+                title: "Задание".into(),
+                prompt: "Опишите подход".into(),
+                skill_id: "rust".into(),
+                grade: Grade::Middle,
+                estimate_minutes: 45,
+                status: fsp_domain::TaskStatus::Active,
+                created_at: "2026-10-06T00:00:00Z".into(),
+            })
+            .expect("task is stored");
+        let stored = repository
+            .task("task-test")
+            .expect("lookup works")
+            .expect("task exists");
+        assert_eq!(stored.status, fsp_domain::TaskStatus::Active);
+        assert_eq!(stored.grade, Grade::Middle);
+        assert_eq!(
+            repository.active_tasks().expect("active list works").len(),
+            1
+        );
+
+        repository
+            .save_task_response(&fsp_domain::TaskResponseRecord {
+                id: "task-response-test".into(),
+                candidate_id: "candidate018".into(),
+                candidate_alias: "Кандидат №018".into(),
+                task: fsp_domain::OfferedTaskSnapshot {
+                    id: "task-test".into(),
+                    company_id: "company-sever".into(),
+                    company_display_name: "Север Тех".into(),
+                    title: "Задание".into(),
+                    prompt: "Опишите подход".into(),
+                    skill_id: "rust".into(),
+                    grade: Grade::Middle,
+                    estimate_minutes: 45,
+                },
+                mode: fsp_domain::TaskMode::Approach,
+                answer: "Ответ".into(),
+                status: fsp_domain::TaskResponseStatus::Submitted,
+                feedback: None,
+                submitted_at: "2026-10-06T12:00:00Z".into(),
+                reviewed_at: None,
+            })
+            .expect("response is stored");
+        let response = repository
+            .task_response("task-response-test")
+            .expect("lookup works")
+            .expect("response exists");
+        assert_eq!(response.task.id, "task-test");
+        assert_eq!(response.task.company_display_name, "Север Тех");
+        assert_eq!(
+            repository
+                .candidate_task_responses("candidate018")
+                .expect("candidate list works")
+                .len(),
+            1
+        );
+        assert_eq!(
+            repository
+                .company_task_responses("company-sever")
+                .expect("company list works")
+                .len(),
+            1
+        );
+        assert!(
+            repository
+                .company_task_responses("company-other")
+                .expect("other company list works")
+                .is_empty()
         );
         drop(repository);
         std::fs::remove_file(path).expect("temporary database is removed");

@@ -277,6 +277,134 @@ pub struct ApplicationRecord {
     pub disclosure_fields: Vec<String>,
 }
 
+/// Lifecycle of an employer's weekly task.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TaskStatus {
+    Active,
+    Archived,
+}
+
+impl TaskStatus {
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Active => "active",
+            Self::Archived => "archived",
+        }
+    }
+
+    #[must_use]
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "active" => Some(Self::Active),
+            "archived" => Some(Self::Archived),
+            _ => None,
+        }
+    }
+}
+
+/// The response format a candidate picks for a weekly task.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TaskMode {
+    Solution,
+    Approach,
+}
+
+impl TaskMode {
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Solution => "solution",
+            Self::Approach => "approach",
+        }
+    }
+
+    #[must_use]
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "solution" => Some(Self::Solution),
+            "approach" => Some(Self::Approach),
+            _ => None,
+        }
+    }
+}
+
+/// Review lifecycle of a candidate's task response.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TaskResponseStatus {
+    Submitted,
+    Accepted,
+    NeedsWork,
+}
+
+impl TaskResponseStatus {
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Submitted => "submitted",
+            Self::Accepted => "accepted",
+            Self::NeedsWork => "needs_work",
+        }
+    }
+
+    #[must_use]
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "submitted" => Some(Self::Submitted),
+            "accepted" => Some(Self::Accepted),
+            "needs_work" => Some(Self::NeedsWork),
+            _ => None,
+        }
+    }
+}
+
+/// A weekly task an employer publishes for candidates.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TaskRecord {
+    pub id: String,
+    pub company_id: String,
+    pub title: String,
+    pub prompt: String,
+    pub skill_id: String,
+    pub grade: Grade,
+    pub estimate_minutes: u32,
+    pub status: TaskStatus,
+    pub created_at: String,
+}
+
+/// The offered-task card frozen into a task response.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OfferedTaskSnapshot {
+    pub id: String,
+    pub company_id: String,
+    pub company_display_name: String,
+    pub title: String,
+    pub prompt: String,
+    pub skill_id: String,
+    pub grade: Grade,
+    pub estimate_minutes: u32,
+}
+
+/// A candidate's answer to a weekly task, with the offered task frozen at
+/// submission time.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TaskResponseRecord {
+    pub id: String,
+    pub candidate_id: String,
+    pub candidate_alias: String,
+    pub task: OfferedTaskSnapshot,
+    pub mode: TaskMode,
+    pub answer: String,
+    pub status: TaskResponseStatus,
+    pub feedback: Option<String>,
+    pub submitted_at: String,
+    pub reviewed_at: Option<String>,
+}
+
 /// The aggregated disclosure grant a company holds over a candidate.
 /// Row existence means `granted: true`; an absent row renders the
 /// not-granted disclosure shell.

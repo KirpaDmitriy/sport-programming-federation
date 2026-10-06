@@ -130,6 +130,32 @@ pub trait PlatformRepository: Send + Sync {
         &self,
         application: &fsp_domain::ApplicationRecord,
     ) -> Result<(), RepositoryError>;
+    /// Tasks owned by a company.
+    fn tasks(&self, company_id: &str) -> Result<Vec<fsp_domain::TaskRecord>, RepositoryError>;
+    /// All active tasks across companies, for the weekly offer pool.
+    fn active_tasks(&self) -> Result<Vec<fsp_domain::TaskRecord>, RepositoryError>;
+    /// Unscoped lookup; the service applies the caller's tenancy rule.
+    fn task(&self, task_id: &str) -> Result<Option<fsp_domain::TaskRecord>, RepositoryError>;
+    fn save_task(&self, task: &fsp_domain::TaskRecord) -> Result<(), RepositoryError>;
+    /// Responses sent by a candidate, for offers, history and freshness.
+    fn candidate_task_responses(
+        &self,
+        candidate_id: &str,
+    ) -> Result<Vec<fsp_domain::TaskResponseRecord>, RepositoryError>;
+    /// Responses addressed to a company's tasks.
+    fn company_task_responses(
+        &self,
+        company_id: &str,
+    ) -> Result<Vec<fsp_domain::TaskResponseRecord>, RepositoryError>;
+    /// Unscoped lookup; the service applies the caller's tenancy rule.
+    fn task_response(
+        &self,
+        response_id: &str,
+    ) -> Result<Option<fsp_domain::TaskResponseRecord>, RepositoryError>;
+    fn save_task_response(
+        &self,
+        response: &fsp_domain::TaskResponseRecord,
+    ) -> Result<(), RepositoryError>;
     fn save_oauth_state(
         &self,
         candidate_id: &str,

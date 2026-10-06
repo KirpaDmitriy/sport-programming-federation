@@ -348,6 +348,116 @@ pub struct ApplicationsView {
     pub items: Vec<ApplicationView>,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TaskInput {
+    pub title: String,
+    pub prompt: String,
+    pub skill_id: String,
+    pub grade: Grade,
+    pub estimate_minutes: u32,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskView {
+    pub id: String,
+    pub title: String,
+    pub prompt: String,
+    pub skill_id: String,
+    pub grade: Grade,
+    pub estimate_minutes: u32,
+    pub status: fsp_domain::TaskStatus,
+    pub created_at: String,
+    pub response_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TasksView {
+    pub items: Vec<TaskView>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OfferedCompanyView {
+    pub id: String,
+    pub display_name: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OfferedTaskView {
+    pub id: String,
+    pub company: OfferedCompanyView,
+    pub title: String,
+    pub prompt: String,
+    pub skill_id: String,
+    pub grade: Grade,
+    pub estimate_minutes: u32,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TaskResponseInput {
+    pub mode: fsp_domain::TaskMode,
+    pub answer: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskResponseView {
+    pub id: String,
+    pub candidate_id: String,
+    pub candidate_alias: String,
+    pub task: OfferedTaskView,
+    pub mode: fsp_domain::TaskMode,
+    pub answer: String,
+    pub status: fsp_domain::TaskResponseStatus,
+    pub feedback: Option<String>,
+    pub submitted_at: String,
+    pub reviewed_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskResponsesView {
+    pub items: Vec<TaskResponseView>,
+}
+
+/// Review outcomes the contract allows; `submitted` is not a valid outcome.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
+pub enum TaskReviewOutcome {
+    Accepted,
+    NeedsWork,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TaskReviewInput {
+    pub outcome: TaskReviewOutcome,
+    pub feedback: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskPeriodView {
+    pub from: String,
+    pub to: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MyTasksView {
+    pub period: TaskPeriodView,
+    pub current: Option<OfferedTaskView>,
+    pub current_response: Option<TaskResponseView>,
+    pub reason: Option<&'static str>,
+    pub history: Vec<TaskResponseView>,
+    pub freshness: FreshnessView,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SalaryView {

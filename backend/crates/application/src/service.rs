@@ -16,11 +16,13 @@ use crate::{
     EmailChallengeView, EmailVerifyInput, EvidencePolicyView, EvidenceView, FreshnessView,
     FspGateway, GitHubGateway, GradeEligibilityView, GraphEdgeView, GraphNodeView, GraphView,
     IntegrationError, InvitationInput, InvitationNeedView, InvitationView, InvitationsView,
-    JobView, LlmGateway, MatchRequirementView, NeedInput, NeedPatch, NeedView, NeedsView,
-    OnboardingView, PendingChallenge, PlatformRepository, ProfilePatch, ProfileView,
-    RepositoryError, RequirementView, SalaryView, SelfSkillView, SessionView, ShortlistInput,
-    ShortlistMemberView, ShortlistSummaryView, ShortlistView, ShortlistsView, SkillView,
-    SkillsView, SourceConnectInput, SourceView, SourcesView, VacancyPageView,
+    JobView, LlmGateway, MatchRequirementView, MyTasksView, NeedInput, NeedPatch, NeedView,
+    NeedsView, OfferedCompanyView, OfferedTaskView, OnboardingView, PendingChallenge,
+    PlatformRepository, ProfilePatch, ProfileView, RepositoryError, RequirementView, SalaryView,
+    SelfSkillView, SessionView, ShortlistInput, ShortlistMemberView, ShortlistSummaryView,
+    ShortlistView, ShortlistsView, SkillView, SkillsView, SourceConnectInput, SourceView,
+    SourcesView, TaskInput, TaskPeriodView, TaskResponseInput, TaskResponseView, TaskResponsesView,
+    TaskReviewInput, TaskReviewOutcome, TaskView, TasksView, VacancyPageView,
     VacancyRequirementView, VacancySearch, VacancyView, VerificationDelivery, job_view,
     match_status, source_view,
 };
@@ -255,7 +257,8 @@ impl PlatformService {
             .candidate(id)
             .map_err(ApplicationError::storage)?
             .ok_or_else(|| ApplicationError::new(404, "not_found", "Профиль не найден"))?;
-        Ok(profile_view(profile, session.email_verified))
+        let signals = self.freshness_signals(&profile.id, profile.grade_confirmed_at.as_deref())?;
+        Ok(profile_view(profile, session.email_verified, &signals))
     }
 
     pub fn update_profile(
@@ -311,7 +314,8 @@ impl PlatformService {
         self.repository
             .save_candidate(&profile)
             .map_err(ApplicationError::storage)?;
-        Ok(profile_view(profile, session.email_verified))
+        let signals = self.freshness_signals(&profile.id, profile.grade_confirmed_at.as_deref())?;
+        Ok(profile_view(profile, session.email_verified, &signals))
     }
 
     pub fn company(&self, session: &SessionView) -> Result<CompanyView, ApplicationError> {
@@ -1751,6 +1755,352 @@ impl PlatformService {
         self.application_view(record)
     }
 
+    /// The mock's `getMyTasks`: current weekly offer, its response if the
+    /// week is already answered, full history and freshness signals.
+    pub fn my_tasks(&self, session: &SessionView) -> Result<MyTasksView, ApplicationError> {
+        let candidate_id = candidate_id(session)?;
+        let candidate = self.candidate_index(candidate_id)?;
+        let responses = self.sorted_task_responses(candidate_id)?;
+        let offer = self.task_offer(&candidate, &responses)?;
+        let (_, from, to) = task_period(Utc::now());
+        let signals = self.freshness_signals(
+            candidate_id,
+            candidate.profile.grade_confirmed_at.as_deref(),
+        )?;
+        Ok(MyTasksView {
+            period: TaskPeriodView {
+                from: from.to_rfc3339(),
+                to: to.to_rfc3339(),
+            },
+            current: offer.current.as_ref().map(offered_task_view),
+            current_response: offer.current_response.as_ref().map(task_response_view),
+            reason: offer.reason,
+            history: responses.iter().map(task_response_view).collect(),
+            freshness: freshness_view(&signals),
+        })
+    }
+
+    /// The mock's `respondToTask`, run inside `idempotent` by the caller.
+    pub fn respond_to_task(
+        &self,
+        session: &SessionView,
+        task_id: &str,
+        input: TaskResponseInput,
+    ) -> Result<TaskResponseView, ApplicationError> {
+        if !(1..=10000).contains(&input.answer.chars().count()) {
+            return Err(validation("Запрос не соответствует контракту"));
+        }
+        let candidate_id = candidate_id(session)?;
+        let candidate = self.candidate_index(candidate_id)?;
+        self.require_processing_consent(candidate_id)?;
+        let responses = self.sorted_task_responses(candidate_id)?;
+        let offer = self.task_offer(&candidate, &responses)?;
+        if offer.current_response.is_some() {
+            return Err(ApplicationError::new(
+                409,
+                "task_response_exists",
+                "Ответ на задание этой недели уже отправлен",
+            ));
+        }
+        let current = offer
+            .current
+            .filter(|task| task.id == task_id)
+            .ok_or_else(|| {
+                ApplicationError::new(409, "task_not_offered", "Это задание сейчас не предложено")
+            })?;
+        let record = fsp_domain::TaskResponseRecord {
+            id: format!("task-response-{}", Uuid::new_v4().simple()),
+            candidate_id: candidate.profile.id.clone(),
+            candidate_alias: candidate.profile.alias.clone(),
+            task: current,
+            mode: input.mode,
+            answer: input.answer,
+            status: fsp_domain::TaskResponseStatus::Submitted,
+            feedback: None,
+            submitted_at: now(),
+            reviewed_at: None,
+        };
+        self.repository
+            .save_task_response(&record)
+            .map_err(ApplicationError::storage)?;
+        Ok(task_response_view(&record))
+    }
+
+    /// The mock's `taskOffer`: this week's answered response wins; otherwise
+    /// the rotating pool of active tasks on evidenced skills at or below the
+    /// verified grade, minus tasks already answered.
+    fn task_offer(
+        &self,
+        candidate: &CandidateIndexRecord,
+        responses: &[fsp_domain::TaskResponseRecord],
+    ) -> Result<TaskOffer, ApplicationError> {
+        let (index, from, _) = task_period(Utc::now());
+        if let Some(answered) = responses
+            .iter()
+            .find(|item| timestamp_at(&item.submitted_at).is_some_and(|at| at >= from))
+        {
+            return Ok(TaskOffer {
+                current: Some(answered.task.clone()),
+                current_response: Some(answered.clone()),
+                reason: None,
+            });
+        }
+        if candidate.profile.verified_grade.is_none()
+            || candidate.profile.verified_specialization.is_none()
+        {
+            return Ok(TaskOffer {
+                current: None,
+                current_response: None,
+                reason: Some("assessment"),
+            });
+        }
+        if !candidate.profile.consents.processing {
+            return Ok(TaskOffer {
+                current: None,
+                current_response: None,
+                reason: Some("processing_consent"),
+            });
+        }
+        let evidenced = candidate
+            .skills
+            .iter()
+            .filter(|skill| skill.status != EvidenceStatus::Insufficient)
+            .map(|skill| skill.skill_id.as_str())
+            .collect::<std::collections::BTreeSet<_>>();
+        let answered = responses
+            .iter()
+            .map(|item| item.task.id.as_str())
+            .collect::<std::collections::BTreeSet<_>>();
+        let verified = candidate.profile.verified_grade.unwrap_or(Grade::Junior);
+        let mut pool = self
+            .repository
+            .active_tasks()
+            .map_err(ApplicationError::storage)?
+            .into_iter()
+            .filter(|task| {
+                evidenced.contains(task.skill_id.as_str())
+                    && task.grade <= verified
+                    && !answered.contains(task.id.as_str())
+            })
+            .collect::<Vec<_>>();
+        pool.sort_by(|a, b| a.id.cmp(&b.id));
+        let Some(task) = pool.get(index as usize % pool.len().max(1)).cloned() else {
+            return Ok(TaskOffer {
+                current: None,
+                current_response: None,
+                reason: Some("no_tasks"),
+            });
+        };
+        Ok(TaskOffer {
+            current: Some(self.offered_task(&task)?),
+            current_response: None,
+            reason: None,
+        })
+    }
+
+    /// The mock's `offeredTask`: the task card plus the owning company's card.
+    fn offered_task(
+        &self,
+        task: &fsp_domain::TaskRecord,
+    ) -> Result<fsp_domain::OfferedTaskSnapshot, ApplicationError> {
+        let company = self
+            .repository
+            .company(&task.company_id)
+            .map_err(ApplicationError::storage)?
+            .ok_or_else(|| {
+                ApplicationError::new(500, "internal_error", "Сервис временно недоступен")
+            })?;
+        Ok(fsp_domain::OfferedTaskSnapshot {
+            id: task.id.clone(),
+            company_id: company.id,
+            company_display_name: company.display_name,
+            title: task.title.clone(),
+            prompt: task.prompt.clone(),
+            skill_id: task.skill_id.clone(),
+            grade: task.grade,
+            estimate_minutes: task.estimate_minutes,
+        })
+    }
+
+    /// The mock's `responsesOf`: newest first, id as the tie-breaker.
+    fn sorted_task_responses(
+        &self,
+        candidate_id: &str,
+    ) -> Result<Vec<fsp_domain::TaskResponseRecord>, ApplicationError> {
+        let mut items = self
+            .repository
+            .candidate_task_responses(candidate_id)
+            .map_err(ApplicationError::storage)?;
+        items.sort_by(|a, b| {
+            timestamp_at(&b.submitted_at)
+                .cmp(&timestamp_at(&a.submitted_at))
+                .then(b.id.cmp(&a.id))
+        });
+        Ok(items)
+    }
+
+    /// The mock's `listTasks`: the employer's tasks, newest first, with the
+    /// number of responses each received.
+    pub fn tasks(&self, session: &SessionView) -> Result<TasksView, ApplicationError> {
+        let company_id = employer_company_id(session)?;
+        let mut records = self
+            .repository
+            .tasks(company_id)
+            .map_err(ApplicationError::storage)?;
+        records.sort_by(|a, b| b.created_at.cmp(&a.created_at).then(b.id.cmp(&a.id)));
+        let responses = self
+            .repository
+            .company_task_responses(company_id)
+            .map_err(ApplicationError::storage)?;
+        let items = records
+            .iter()
+            .map(|task| {
+                task_view(
+                    task,
+                    responses
+                        .iter()
+                        .filter(|item| item.task.id == task.id)
+                        .count(),
+                )
+            })
+            .collect();
+        Ok(TasksView { items })
+    }
+
+    /// The mock's `createTask`: field validation first, then the company
+    /// completeness and email gates.
+    pub fn create_task(
+        &self,
+        session: &SessionView,
+        input: TaskInput,
+    ) -> Result<TaskView, ApplicationError> {
+        if !(1..=160).contains(&input.title.chars().count())
+            || !(1..=4000).contains(&input.prompt.chars().count())
+            || !(5..=120).contains(&input.estimate_minutes)
+            || !CATALOG_SKILLS.contains(&input.skill_id.as_str())
+        {
+            return Err(validation("Запрос не соответствует контракту"));
+        }
+        let company = self.require_invitable_employer(session)?;
+        let record = fsp_domain::TaskRecord {
+            id: format!("task-{}", Uuid::new_v4().simple()),
+            company_id: company.id,
+            title: input.title,
+            prompt: input.prompt,
+            skill_id: input.skill_id,
+            grade: input.grade,
+            estimate_minutes: input.estimate_minutes,
+            status: fsp_domain::TaskStatus::Active,
+            created_at: now(),
+        };
+        self.repository
+            .save_task(&record)
+            .map_err(ApplicationError::storage)?;
+        Ok(task_view(&record, 0))
+    }
+
+    /// The mock's `archiveTask`: unconditional, so a repeat is a no-op.
+    pub fn archive_task(
+        &self,
+        session: &SessionView,
+        task_id: &str,
+    ) -> Result<TaskView, ApplicationError> {
+        let company_id = employer_company_id(session)?;
+        let mut record = self.task_for(company_id, task_id)?;
+        record.status = fsp_domain::TaskStatus::Archived;
+        self.repository
+            .save_task(&record)
+            .map_err(ApplicationError::storage)?;
+        let count = self
+            .repository
+            .company_task_responses(company_id)
+            .map_err(ApplicationError::storage)?
+            .iter()
+            .filter(|item| item.task.id == record.id)
+            .count();
+        Ok(task_view(&record, count))
+    }
+
+    fn task_for(
+        &self,
+        company_id: &str,
+        task_id: &str,
+    ) -> Result<fsp_domain::TaskRecord, ApplicationError> {
+        self.repository
+            .task(task_id)
+            .map_err(ApplicationError::storage)?
+            .filter(|task| task.company_id == company_id)
+            .ok_or_else(|| ApplicationError::new(404, "not_found", "Ресурс не найден"))
+    }
+
+    /// The mock's `listTaskResponses`: the company's responses, newest first,
+    /// optionally narrowed to one task.
+    pub fn task_responses(
+        &self,
+        session: &SessionView,
+        task_id: Option<&str>,
+    ) -> Result<TaskResponsesView, ApplicationError> {
+        let company_id = employer_company_id(session)?;
+        let mut items = self
+            .repository
+            .company_task_responses(company_id)
+            .map_err(ApplicationError::storage)?
+            .into_iter()
+            .filter(|item| task_id.is_none_or(|id| item.task.id == id))
+            .collect::<Vec<_>>();
+        items.sort_by(|a, b| {
+            timestamp_at(&b.submitted_at)
+                .cmp(&timestamp_at(&a.submitted_at))
+                .then(b.id.cmp(&a.id))
+        });
+        Ok(TaskResponsesView {
+            items: items.iter().map(task_response_view).collect(),
+        })
+    }
+
+    /// The mock's `reviewTaskResponse`: repeating the same outcome replays,
+    /// a different outcome on a reviewed response conflicts.
+    pub fn review_task_response(
+        &self,
+        session: &SessionView,
+        response_id: &str,
+        input: TaskReviewInput,
+    ) -> Result<TaskResponseView, ApplicationError> {
+        if input.feedback.chars().count() > 2000 {
+            return Err(validation("Запрос не соответствует контракту"));
+        }
+        let company_id = employer_company_id(session)?;
+        let mut record = self
+            .repository
+            .task_response(response_id)
+            .map_err(ApplicationError::storage)?
+            .filter(|item| item.task.company_id == company_id)
+            .ok_or_else(|| ApplicationError::new(404, "not_found", "Ресурс не найден"))?;
+        let trimmed = input.feedback.trim();
+        let feedback = (!trimmed.is_empty()).then(|| trimmed.to_string());
+        let outcome = match input.outcome {
+            TaskReviewOutcome::Accepted => fsp_domain::TaskResponseStatus::Accepted,
+            TaskReviewOutcome::NeedsWork => fsp_domain::TaskResponseStatus::NeedsWork,
+        };
+        if record.status != fsp_domain::TaskResponseStatus::Submitted {
+            if record.status == outcome && record.feedback == feedback {
+                return Ok(task_response_view(&record));
+            }
+            return Err(ApplicationError::new(
+                409,
+                "task_response_reviewed",
+                "Ответ уже оценён",
+            ));
+        }
+        record.status = outcome;
+        record.feedback = feedback;
+        record.reviewed_at = Some(now());
+        self.repository
+            .save_task_response(&record)
+            .map_err(ApplicationError::storage)?;
+        Ok(task_response_view(&record))
+    }
+
     pub fn candidate_search(
         &self,
         session: &SessionView,
@@ -1839,8 +2189,14 @@ impl PlatformService {
             .into_iter()
             .skip(start)
             .take(search.page_size)
-            .map(|candidate| anonymous_candidate(candidate, need.as_ref()))
-            .collect();
+            .map(|candidate| {
+                let signals = self.freshness_signals(
+                    &candidate.profile.id,
+                    candidate.profile.grade_confirmed_at.as_deref(),
+                )?;
+                Ok(anonymous_candidate(candidate, need.as_ref(), &signals))
+            })
+            .collect::<Result<Vec<_>, ApplicationError>>()?;
         Ok(CandidatePageView {
             items,
             page: search.page,
@@ -1872,7 +2228,11 @@ impl PlatformService {
                     && item.profile.visible_to_employers(item.email_verified)
             })
             .ok_or_else(|| ApplicationError::new(404, "not_found", "Кандидат не найден"))?;
-        Ok(anonymous_candidate(candidate, need.as_ref()))
+        let signals = self.freshness_signals(
+            &candidate.profile.id,
+            candidate.profile.grade_confirmed_at.as_deref(),
+        )?;
+        Ok(anonymous_candidate(candidate, need.as_ref(), &signals))
     }
 
     pub fn github_authorization_url(
@@ -2113,6 +2473,29 @@ impl PlatformService {
             .into_iter()
             .find(|record| record.profile.id == id)
             .ok_or_else(|| ApplicationError::new(404, "not_found", "Кандидат не найден"))
+    }
+
+    /// The mock's `freshness()` inputs: the verified-grade signal plus every
+    /// counted task response (not marked `needs_work`), assessment first.
+    fn freshness_signals(
+        &self,
+        candidate_id: &str,
+        grade_confirmed_at: Option<&str>,
+    ) -> Result<Vec<(String, &'static str)>, ApplicationError> {
+        let mut signals: Vec<(String, &'static str)> = Vec::new();
+        if let Some(at) = grade_confirmed_at {
+            signals.push((at.to_string(), "assessment"));
+        }
+        for item in self
+            .repository
+            .candidate_task_responses(candidate_id)
+            .map_err(ApplicationError::storage)?
+        {
+            if item.status != fsp_domain::TaskResponseStatus::NeedsWork {
+                signals.push((item.submitted_at, "task"));
+            }
+        }
+        Ok(signals)
     }
 
     /// Mock-compatible `Idempotency-Key` handling for contract commands that
@@ -2656,6 +3039,7 @@ fn validate_disclose(disclose: &[String]) -> Result<(), ApplicationError> {
 fn anonymous_candidate(
     record: CandidateIndexRecord,
     need: Option<&HiringNeedRecord>,
+    signals: &[(String, &'static str)],
 ) -> AnonymousCandidateView {
     let rankable = record.rankable().expect("visible candidate is rankable");
     let candidate_match = need.map(|selected| match_view(&rankable, selected));
@@ -2684,7 +3068,7 @@ fn anonymous_candidate(
             .collect(),
         source_kinds: record.source_kinds,
         fsp_verified: record.fsp_verified,
-        freshness: freshness_view(record.last_signal_at.clone()),
+        freshness: freshness_view(signals),
         r#match: candidate_match,
         simulation: true,
     }
@@ -2798,20 +3182,100 @@ const FRESHNESS_DAYS: i64 = 90;
 /// `successfulGradeChangeCooldownDays` from `meta.assessmentPolicy`.
 const GRADE_COOLDOWN_DAYS: i64 = 90;
 
-fn freshness_view(last_signal_at: Option<String>) -> FreshnessView {
-    let fresh = last_signal_at
-        .as_deref()
-        .and_then(|at| chrono::DateTime::parse_from_rfc3339(at).ok())
+/// The mock's `taskPeriod`: ISO weeks anchored to Monday 1970-01-05 UTC.
+const EPOCH_MONDAY_MS: i64 = 345_600_000;
+const WEEK_MS: i64 = 7 * 86_400_000;
+
+fn task_period(now: chrono::DateTime<Utc>) -> (i64, chrono::DateTime<Utc>, chrono::DateTime<Utc>) {
+    let index = (now.timestamp_millis() - EPOCH_MONDAY_MS).div_euclid(WEEK_MS);
+    let from = chrono::DateTime::from_timestamp_millis(EPOCH_MONDAY_MS + index * WEEK_MS)
+        .unwrap_or_default();
+    (index, from, from + Duration::milliseconds(WEEK_MS))
+}
+
+/// RFC3339 parsing tolerant of both `Z` and `+00:00` suffixes (seeds use
+/// `Z`, runtime stamps use `to_rfc3339`).
+fn timestamp_at(value: &str) -> Option<chrono::DateTime<Utc>> {
+    chrono::DateTime::parse_from_rfc3339(value)
+        .ok()
+        .map(|at| at.with_timezone(&Utc))
+}
+
+/// Internal result of `task_offer`: the task card, this week's response if
+/// the week is already answered, or the reason nothing is offered.
+struct TaskOffer {
+    current: Option<fsp_domain::OfferedTaskSnapshot>,
+    current_response: Option<fsp_domain::TaskResponseRecord>,
+    reason: Option<&'static str>,
+}
+
+fn offered_task_view(snapshot: &fsp_domain::OfferedTaskSnapshot) -> OfferedTaskView {
+    OfferedTaskView {
+        id: snapshot.id.clone(),
+        company: OfferedCompanyView {
+            id: snapshot.company_id.clone(),
+            display_name: snapshot.company_display_name.clone(),
+        },
+        title: snapshot.title.clone(),
+        prompt: snapshot.prompt.clone(),
+        skill_id: snapshot.skill_id.clone(),
+        grade: snapshot.grade,
+        estimate_minutes: snapshot.estimate_minutes,
+    }
+}
+
+fn task_response_view(record: &fsp_domain::TaskResponseRecord) -> TaskResponseView {
+    TaskResponseView {
+        id: record.id.clone(),
+        candidate_id: record.candidate_id.clone(),
+        candidate_alias: record.candidate_alias.clone(),
+        task: offered_task_view(&record.task),
+        mode: record.mode,
+        answer: record.answer.clone(),
+        status: record.status,
+        feedback: record.feedback.clone(),
+        submitted_at: record.submitted_at.clone(),
+        reviewed_at: record.reviewed_at.clone(),
+    }
+}
+
+fn task_view(record: &fsp_domain::TaskRecord, response_count: usize) -> TaskView {
+    TaskView {
+        id: record.id.clone(),
+        title: record.title.clone(),
+        prompt: record.prompt.clone(),
+        skill_id: record.skill_id.clone(),
+        grade: record.grade,
+        estimate_minutes: record.estimate_minutes,
+        status: record.status,
+        created_at: record.created_at.clone(),
+        response_count,
+    }
+}
+
+/// The mock's `freshness()`: the latest verified-grade or counted task
+/// signal decides `lastSignal`; `assessment` sorts first on ties because the
+/// mock pushes it before task signals and uses a stable sort.
+fn freshness_view(signals: &[(String, &'static str)]) -> FreshnessView {
+    let mut ordered = signals.to_vec();
+    ordered.sort_by(|a, b| b.0.cmp(&a.0));
+    let latest = ordered.first();
+    let fresh = latest
+        .and_then(|(at, _)| chrono::DateTime::parse_from_rfc3339(at).ok())
         .is_some_and(|at| Utc::now() - at.with_timezone(&Utc) <= Duration::days(FRESHNESS_DAYS));
     FreshnessView {
-        last_signal: last_signal_at.as_ref().map(|_| "assessment"),
-        last_signal_at,
+        last_signal: latest.map(|(_, kind)| *kind),
+        last_signal_at: latest.map(|(at, _)| at.clone()),
         fresh,
         window_days: FRESHNESS_DAYS as u16,
     }
 }
 
-fn profile_view(profile: CandidateProfile, email_verified: bool) -> ProfileView {
+fn profile_view(
+    profile: CandidateProfile,
+    email_verified: bool,
+    signals: &[(String, &'static str)],
+) -> ProfileView {
     let questionnaire_complete = profile.questionnaire_complete();
     let assessment_passed =
         profile.verified_grade.is_some() && profile.verified_specialization.is_some();
@@ -2893,7 +3357,7 @@ fn profile_view(profile: CandidateProfile, email_verified: bool) -> ProfileView 
             grade: profile.verified_grade,
             eligible: visible,
         },
-        freshness: freshness_view(profile.grade_confirmed_at.clone()),
+        freshness: freshness_view(signals),
         onboarding: OnboardingView {
             email_verified,
             questionnaire_complete,
