@@ -4,7 +4,7 @@ This isolated package generates TypeScript declarations and the [operation index
 
 ## Toolchain
 
-Use Bun 1.4.2 or newer. The application uses TypeScript 7.0.2; this tool deliberately uses TypeScript 5.9.3 to satisfy `openapi-typescript@7.13.0`'s declared `^5.x` peer. Keep this package isolated from the application compiler; its dependencies are pinned in `bun.lock`.
+Use Bun 1.4.2 or newer. The application uses TypeScript 7.0.2; this tool deliberately uses TypeScript 5.9.3, because `openapi-typescript@7.13.0` (the latest release) declares a `^5.x` peer and fails on TypeScript 7, whose package no longer exposes the `ts.factory` compiler API. Keep this package isolated from the application compiler; its dependencies are pinned in `bun.lock`.
 
 From the repository root:
 

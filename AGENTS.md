@@ -32,8 +32,8 @@ backend, stand).
 
 | Module | Toolchain | Check |
 | --- | --- | --- |
-| contract, mock, frontend | Bun 1.4.2 (Vitest runs on Node ≥ 24.15) | `just verify`, `just e2e` |
-| Python MVP | Python 3.12 | `pytest`, `python tools/offline_smoke.py`, `python tools/experiments.py check` |
+| contract, mock, frontend | Bun 1.4.2; Vitest on Node 26 (24.15 or newer works) | `just verify`, `just e2e` |
+| Python MVP | Python 3.14 | `pytest`, `python tools/offline_smoke.py`, `python tools/experiments.py check` |
 | backend | Rust, pinned by the backend owner | defined with the backend |
 
 `just` lists the tasks for the JS modules and the stand. CI: `.github/workflows/test.yml` (Python MVP) and
