@@ -57,6 +57,7 @@ type Method = (typeof methods)[number];
 
 const contractUrl = new URL('../openapi.json', import.meta.url);
 const typesUrl = new URL('../../frontend/src/shared/api/generated/', import.meta.url);
+const mockTypesUrl = new URL('../../mock-server/src/generated/', import.meta.url);
 const indexUrl = new URL('../API_OPERATIONS.md', import.meta.url);
 
 const source = await readFile(contractUrl, 'utf8');
@@ -160,7 +161,8 @@ function docFor(value: Documented): string[] {
   if (value.deprecated) lines.push('@deprecated');
   if (value.description) lines.push(`@description ${clean(value.description)}`);
   if (value.default !== undefined) {
-    const serialized = typeof value.default === 'object' ? JSON.stringify(value.default, null, 2) : String(value.default);
+    const serialized =
+      typeof value.default === 'object' ? JSON.stringify(value.default, null, 2) : String(value.default);
     lines.push(`@default ${clean(serialized)}`);
   }
   if ('const' in value) lines.push('@constant');
@@ -301,7 +303,9 @@ for (const [path, item] of Object.entries(contract.paths)) {
       members.push(member(method, NEVER, true));
       continue;
     }
-    members.push(member(method, text(`operations[${JSON.stringify(operation.operationId)}]`), false, docFor(operation)));
+    members.push(
+      member(method, text(`operations[${JSON.stringify(operation.operationId)}]`), false, docFor(operation)),
+    );
     operationMembers.push(member(operation.operationId, operationType(operation)));
   }
   pathMembers.push(member(path, { kind: 'object', members }));
@@ -360,6 +364,7 @@ const manifest = `${JSON.stringify(
 const outputs: Array<[URL, string]> = [
   [new URL('schema.d.ts', typesUrl), generated],
   [new URL('manifest.json', typesUrl), manifest],
+  [new URL('schema.d.ts', mockTypesUrl), generated],
   [indexUrl, operationIndex()],
 ];
 const check = process.argv.includes('--check');
@@ -372,4 +377,6 @@ for (const [destination, expected] of outputs) {
     await writeFile(destination, expected);
   }
 }
-console.log(check ? 'Generated files match the source contract.' : 'Generated types, manifest and operation index written.');
+console.log(
+  check ? 'Generated files match the source contract.' : 'Generated types, manifest and operation index written.',
+);

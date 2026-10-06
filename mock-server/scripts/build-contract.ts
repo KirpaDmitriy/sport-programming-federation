@@ -1,6 +1,6 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
-import { buildOpenApi } from '../src/contract.mjs';
+import { buildOpenApi } from '../src/contract.ts';
 
 const target = new URL('../../contracts/', import.meta.url);
 await mkdir(target, { recursive: true });

@@ -9,9 +9,11 @@
   "scripts": {
     "generate": "bun generate.ts",
     "check": "bun generate.ts --check",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check ."
   },
   "devDependencies": {
+    "@biomejs/biome": "2.5.15",
     "@types/node": "26.6.4",
     "typescript": "7.0.2"
   }
