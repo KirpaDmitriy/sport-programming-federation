@@ -915,6 +915,154 @@ test('applications disclose the chosen fields, keep vacancy terms and follow emp
   );
 });
 
+test('weekly tasks come from evidenced skills, are answered once a week and keep the profile fresh', async (t) => {
+  const { request, login } = await setup(t);
+  const a = await login('employer-a');
+  const b = await login('employer-b');
+  const candidate = await login('candidate024');
+  const fresh = await login('candidate-new');
+  let mine = (await request('GET', '/api/v1/me/tasks', { actor: candidate })).body;
+  assert.deepEqual(mine.period, { from: '2026-10-05T00:00:00.000Z', to: '2026-10-12T00:00:00.000Z' });
+  assert.equal(mine.current.id, 'task-002');
+  assert.equal(mine.current.company.displayName, 'Север Тех');
+  assert.equal(mine.currentResponse, null);
+  assert.deepEqual(mine.freshness, {
+    lastSignalAt: '2026-06-01T12:00:00.000Z',
+    lastSignal: 'assessment',
+    fresh: false,
+    windowDays: 90,
+  });
+  assert.equal((await request('GET', '/api/v1/me/tasks', { actor: fresh })).body.reason, 'assessment');
+  const answer = { mode: 'approach', answer: 'Очередь попыток с экспоненциальной задержкой и пределом попыток.' };
+  await request('POST', '/api/v1/me/tasks/task-001/responses', { actor: candidate, body: answer, status: 409 });
+  const response = (
+    await request('POST', '/api/v1/me/tasks/task-002/responses', {
+      actor: candidate,
+      body: answer,
+      key: 'task-response-key-001',
+      status: 201,
+    })
+  ).body;
+  assert.equal(response.status, 'submitted');
+  assert.equal(
+    (
+      await request('POST', '/api/v1/me/tasks/task-002/responses', {
+        actor: candidate,
+        body: answer,
+        key: 'task-response-key-001',
+        status: 201,
+      })
+    ).body.id,
+    response.id,
+  );
+  await request('POST', '/api/v1/me/tasks/task-002/responses', { actor: candidate, body: answer, status: 409 });
+  mine = (await request('GET', '/api/v1/me/tasks', { actor: candidate })).body;
+  assert.equal(mine.currentResponse.id, response.id);
+  assert.equal(mine.freshness.lastSignal, 'task');
+  assert.equal(mine.freshness.fresh, true);
+  const seen = (await request('GET', '/api/v1/candidates/candidate024', { actor: b })).body;
+  assert.equal(seen.freshness.fresh, true);
+  assertAnonymous(seen);
+
+  assert.deepEqual(
+    (await request('GET', '/api/v1/task-responses', { actor: b })).body.items.map((item: Body) => item.id),
+    ['task-response-seed-041'],
+  );
+  await request('POST', `/api/v1/task-responses/${response.id}/review`, {
+    actor: b,
+    body: { outcome: 'accepted', feedback: '' },
+    status: 404,
+  });
+  const listed = (await request('GET', '/api/v1/task-responses?taskId=task-002', { actor: a })).body.items;
+  assert.deepEqual(
+    listed.map((item: Body) => item.id),
+    [response.id, 'task-response-seed-031'],
+  );
+  assertAnonymous(listed[0]);
+  const reviewed = (
+    await request('POST', `/api/v1/task-responses/${response.id}/review`, {
+      actor: a,
+      body: { outcome: 'needs_work', feedback: 'Не хватает условия прекращения попыток.' },
+    })
+  ).body;
+  assert.equal(reviewed.status, 'needs_work');
+  await request('POST', `/api/v1/task-responses/${response.id}/review`, {
+    actor: a,
+    body: { outcome: 'needs_work', feedback: 'Не хватает условия прекращения попыток.' },
+  });
+  await request('POST', `/api/v1/task-responses/${response.id}/review`, {
+    actor: a,
+    body: { outcome: 'accepted', feedback: '' },
+    status: 409,
+  });
+  assert.equal((await request('GET', '/api/v1/me/profile', { actor: candidate })).body.freshness.fresh, false);
+
+  await request('POST', '/__mock__/clock', { body: { advanceSeconds: 7 * 86400 } });
+  mine = (await request('GET', '/api/v1/me/tasks', { actor: candidate })).body;
+  assert.equal(mine.current.id, 'task-001');
+  assert.equal(mine.history.length, 1);
+  const next = (
+    await request('POST', '/api/v1/me/tasks/task-001/responses', { actor: candidate, body: answer, status: 201 })
+  ).body;
+  await request('POST', `/api/v1/task-responses/${next.id}/review`, {
+    actor: a,
+    body: { outcome: 'accepted', feedback: 'Спасибо, разбор подходит.' },
+  });
+  mine = (await request('GET', '/api/v1/me/tasks', { actor: candidate })).body;
+  assert.equal(mine.currentResponse.status, 'accepted');
+  assert.equal(mine.freshness.fresh, true);
+  await request('PATCH', '/api/v1/me/profile', {
+    actor: candidate,
+    body: { consents: { processing: false, publication: false } },
+  });
+  await request('POST', '/__mock__/clock', { body: { advanceSeconds: 7 * 86400 } });
+  assert.equal((await request('GET', '/api/v1/me/tasks', { actor: candidate })).body.reason, 'processing_consent');
+  await request('POST', '/api/v1/me/tasks/task-001/responses', { actor: candidate, body: answer, status: 403 });
+});
+
+test('companies author and archive short tasks; archived tasks are no longer offered', async (t) => {
+  const { request, login, client } = await setup(t);
+  const a = await login('employer-a');
+  const b = await login('employer-b');
+  const candidate = await login('candidate024');
+  const input = {
+    title: 'Индекс для поиска заказов',
+    prompt: 'Какой индекс ускорит выборку заказов клиента за последний месяц и почему?',
+    skillId: 'postgresql',
+    grade: 'junior',
+    estimateMinutes: 20,
+  };
+  const created = (await request('POST', '/api/v1/tasks', { actor: a, body: input, status: 201 })).body;
+  assert.equal(created.status, 'active');
+  assert.equal(created.responseCount, 0);
+  await request('POST', '/api/v1/tasks', { actor: a, body: { ...input, estimateMinutes: 500 }, status: 400 });
+  const tasks = (await request('GET', '/api/v1/tasks', { actor: a })).body.items;
+  assert.deepEqual(
+    tasks.map((item: Body) => item.id),
+    [created.id, 'task-002', 'task-001'],
+  );
+  assert.equal(tasks[1].responseCount, 1);
+  await request('POST', '/api/v1/tasks/task-002/archive', { actor: b, status: 404 });
+  assert.equal((await request('POST', '/api/v1/tasks/task-002/archive', { actor: a })).body.status, 'archived');
+  assert.equal((await request('POST', '/api/v1/tasks/task-002/archive', { actor: a })).body.status, 'archived');
+  const offer = (await request('GET', '/api/v1/me/tasks', { actor: candidate })).body.current;
+  assert.notEqual(offer.id, 'task-002');
+  assert.ok([created.id, 'task-001'].includes(offer.id));
+
+  const challenge = (
+    await request('POST', '/api/v1/auth/email/challenges', {
+      body: { email: 'tasks-hr@example.com', role: 'employer' },
+      status: 201,
+    })
+  ).body;
+  const employer = client();
+  await request('POST', '/api/v1/auth/email/verify', {
+    actor: employer,
+    body: { challengeId: challenge.challengeId, code: '123456' },
+  });
+  await request('POST', '/api/v1/tasks', { actor: employer, body: input, status: 422 });
+});
+
 test('PDF export is a real current-profile PDF; fixture import is asynchronous and explicitly confirmed', async (t) => {
   const { request, login, job } = await setup(t);
   const candidate = await login('candidate024');

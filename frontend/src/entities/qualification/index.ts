@@ -1,1 +1,1 @@
-export { qualificationText, TargetGradeBadge, VerifiedGradeBadge } from './ui';
+export { FreshnessChip, qualificationText, TargetGradeBadge, VerifiedGradeBadge } from './ui';

@@ -62,7 +62,7 @@ branches on `code`; `message` is user-facing Russian text. Implemented codes are
 | `401` | No or expired session | Clear the cache, go to sign-in |
 | `403` | Wrong role, missing verification or consent, foreign origin | «Действие недоступно» with the message |
 | `404` | Missing or someone else's record | «Не найдено»: the record is unavailable to this account |
-| `409` | Conflict: cooldown, active attempt, terminal invitation or application, existing invitation or application, application not allowed yet, idempotency conflict, stale import | Refetch and show the current state |
+| `409` | Conflict: cooldown, active attempt, terminal invitation or application, existing invitation or application, application not allowed yet, task not offered or already answered or reviewed, idempotency conflict, stale import | Refetch and show the current state |
 | `413`, `415` | File too large or wrong media type | Explain the limit |
 | `422` | Business validation (salary range, evidence policy, incomplete company, unsupported scope, downgrade) | Show the message next to the form |
 | `429` | Too many wrong codes | Ask for a new code |
@@ -74,8 +74,8 @@ request never falls back to fixture data.
 
 ## Idempotency
 
-`Idempotency-Key` is required for starting an assessment, submitting it, creating an invitation and applying to a
-vacancy. The server
+`Idempotency-Key` is required for starting an assessment, submitting it, creating an invitation, applying to a
+vacancy and answering a task. The server
 scopes a key to actor, operation and path: the same key with the same body replays the stored response with
 `X-Idempotent-Replay: true`; the same key with a different body is `409 idempotency_conflict`. The frontend makes one
 key per intended command, reuses it when the same command is retried after a transport failure, and drops it once
@@ -136,6 +136,7 @@ on sign-in, logout, a `401` or an actor change.
 | `/candidate/assessments` | `getMyProfile`, `listMyAssessments`, `startAssessment` |
 | `/candidate/assessments/{id}/workspace` | `getAssessment`, `saveAssessmentAnswer`, `runAssessmentChecks`, `getJob`, `askAssessmentAssistant`, `submitAssessment` |
 | `/candidate/assessments/{id}/result` | `getAssessment` (polled while evaluating), `getMyProfile`, `getMySkills`, `startAssessment`, `exportMyProfile` |
+| `/candidate/tasks` | `getMyTasks`, `respondToTask`, `getMyProfile` |
 | `/candidate/invitations`, `/{id}` | `listMyInvitations`, `getMyInvitation`, `viewMyInvitation`, `getMyGapPlan`, `acceptMyInvitation`, `declineMyInvitation` |
 | `/candidate/vacancies`, `/{id}` | `searchVacancies`, `getVacancy`, `getMyProfile`, `createApplication` |
 | `/candidate/applications`, `/{id}` | `listMyApplications`, `getMyApplication`, `withdrawMyApplication` |
@@ -146,6 +147,7 @@ on sign-in, logout, a `401` or an actor change.
 | `/employer/shortlists`, `/{id}` | `listShortlists`, `createShortlist`, `getShortlist`, `updateShortlist`, `deleteShortlist`, `removeShortlistMember` |
 | `/employer/invitations` | `listInvitations`, `withdrawInvitation` |
 | `/employer/applications`, `/{id}` | `listApplications`, `getApplication`, `viewApplication`, `acceptApplication`, `declineApplication`, `getCandidate`, `getCandidateDisclosure` |
+| `/employer/tasks` | `listTasks`, `createTask`, `archiveTask`, `listTaskResponses`, `reviewTaskResponse`, `getCompany` |
 | `/employer/company`, `/settings` | `getCompany`, `updateCompany`, `logout` |
 
 The candidate shell also reads `listMyInvitations` for the new-invitation badge, the employer shell

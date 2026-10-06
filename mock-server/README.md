@@ -47,8 +47,11 @@ The bank also holds №018 (verified Бэкенд · Мидл, PostgreSQL withou
 and Redis); «Север Тех» keeps it unpublished for direct invitations, «Вторая компания» publishes it. Published
 vacancies also include «Бэкенд-разработчик сервиса уведомлений» of «Север Тех» (Джуниор, hybrid, 120 000–160 000 ₽;
 required Rust) and «Фронтенд-разработчик (React)» of «Вторая компания» (Мидл, office, 180 000–230 000 ₽; required
-React). «Север Тех» has the shortlist «Бэкенд · Мидл» with №024, №018 and №041. No invitations or applications are
-seeded.
+React). «Север Тех» has the shortlist «Бэкенд · Мидл» with №024, №018 and №041. Short tasks: «Север Тех» offers
+«Повтор платежа без двойного списания» (PostgreSQL, Джуниор) and «Повторные попытки отправки уведомлений» (Rust,
+Джуниор), «Вторая компания» «Форма регистрации с проверкой полей» (React, Мидл); №031 and №041 have accepted answers,
+so their profiles are fresh, while the others' grade confirmations are older than 90 days. No invitations or
+applications are seeded.
 
 Any new e-mail registers a new account of the chosen role. The FSP IDs `FSP-DEMO-024` and `FSP-DEMO-031` connect
 with verified participation; any other ID connects without history.
@@ -120,4 +123,4 @@ bun run contract                   # rebuild ../contracts/openapi.json after edi
 The tests cover the contract drift, origin/host/role boundaries, e-mail verification, profile category, source
 jobs, the assessment lifecycle and its failure modes, cooldown, stale checks and revoked consent, need validation,
 the anonymous bank and its order, shortlists, invitations with disclosure and terminal states, vacancy publication
-and applications with disclosure and withdrawal, the error-code catalog, PDF export and import, and scenario resets. A contract change follows [`../contracts/README.md`](../contracts/README.md).
+and applications with disclosure and withdrawal, weekly tasks with reviews and freshness, the error-code catalog, PDF export and import, and scenario resets. A contract change follows [`../contracts/README.md`](../contracts/README.md).

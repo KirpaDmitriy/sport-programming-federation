@@ -205,7 +205,8 @@ FSP participation only breaks ties; its absence never disqualifies.
 
 Every employer response about a candidate (search, profile, graph) contains only: ID, alias, verified specialization
 and grade with confirmation date, work modes, `availableForOffers`, skills (state, evidence grade, source kinds,
-summary, evidence count, confirmation date — no evidence items), source kinds, verified FSP flag and the match. It
+summary, evidence count, confirmation date — no evidence items), source kinds, verified FSP flag, profile freshness
+(section 11) and the match. It
 never contains a name, e-mail, handles, repository names, links or evidence titles. A profile that is not visible
 answers `404`, except to a company the candidate applied to (section 10) until the application is withdrawn.
 
@@ -275,7 +276,31 @@ applies, and the company decides.
 - Applications are scoped like invitations: a candidate sees only their own (`/me/applications`), a company only those
   sent to it (`/applications`, optionally filtered by `needId`); anything else answers `404`.
 
-## 11. Contact disclosure
+## 11. Short tasks and profile freshness
+
+The specification's recurring short tasks keep a profile current and give employers a fresh signal.
+
+- **Authoring** (employer): `POST /tasks` with a title (1–160), a prompt (1–4000), a skill, a minimum grade and an
+  estimate of 5–120 minutes; it needs a ready company (`422 company_incomplete`) and a verified employer e-mail
+  (`403 email_not_verified`). `POST /tasks/{id}/archive` stops offering it; answers stay. A company sees only its own
+  tasks with their answer counts.
+- **Weekly offer** (candidate): `GET /me/tasks` returns the current period — the ISO week of the server clock, Monday
+  00:00 UTC to the next Monday — and at most one task for it: an active task of any company on a skill the candidate
+  has evidence for (any state but «Недостаточно данных»), at or below the verified grade, not answered in an earlier
+  week, chosen by rotating the eligible tasks by the week number. An answer given this week keeps that task as the
+  week's task. Without a verified grade the reason is `assessment`, without processing consent `processing_consent`,
+  without a matching task `no_tasks`.
+- **Answer:** `POST /me/tasks/{id}/responses` with `mode` (`solution` or `approach`), an answer of 1–10000 characters
+  and an `Idempotency-Key`; one answer per week (`409 task_response_exists`) and only to the offered task
+  (`409 task_not_offered`); processing consent is required. The answer freezes the task as offered. Only the
+  candidate and the authoring company see it; it changes neither the grade nor skill states.
+- **Review** (the authoring company): `POST /task-responses/{id}/review` with `accepted` or `needs_work` and optional
+  feedback, once (`409 task_response_reviewed` for a different verdict; repeating the same one returns the record).
+- **Freshness:** the profile's and the anonymous projection's `freshness` names the latest signal — the grade
+  confirmation (`assessment`) or a task answer the company did not mark `needs_work` (`task`) — and is `fresh` while
+  that signal is at most 90 days old («Профиль актуален» / «Давно не обновлялся»). It does not change search order.
+
+## 12. Contact disclosure
 
 Contacts are a separate resource per company (`GET /api/v1/candidates/{id}/disclosure`): `granted: false` with no
 fields, or the union of the fields the candidate chose in every accepted invitation and every application that is not
@@ -284,7 +309,7 @@ and application IDs and the time of the latest grant. Every other company keeps 
 profile, graph and application responses never include contacts. There is no chat: the parties contact each other
 directly, and the company's contact was visible from the start.
 
-## 12. PDF profile
+## 13. PDF profile
 
 - **Export:** a real PDF of the current profile (PDFKit with an embedded Cyrillic font), file `fsp-profile.pdf`.
 - **Import:** one `application/pdf` file up to 2 MiB with a valid signature and end marker starts a `profile_import`
@@ -292,17 +317,17 @@ directly, and the company's contact was visible from the start.
   `409 import_already_confirmed`). Import cannot change verified fields and needs processing consent. The mock does
   not read the file and returns a fixed preview marked `parser: fixture_preview`, with unknown experience left empty.
 
-## 13. Background jobs
+## 14. Background jobs
 
 Four kinds: `profile_import`, `source_sync`, `checks`, `assessment`. A job is `queued`, then `running` after about
 300 ms and `succeeded` or `failed` after about one second; `pollAfterMs` tells clients when to ask again. A job is
 visible only to the actor who started it, and a failure carries `{ code, message, retryable }`. Jobs live in memory,
 so a restart clears them.
 
-## 14. Capabilities and simulation
+## 15. Capabilities and simulation
 
 `GET /api/v1/meta` reports `mode: mock` and the capabilities: e-mail verification, PDF profile, GitHub and FSP
-fixtures, matching, direct invitations, vacancy publication and self-application are on; chat, recurring tasks, real
+fixtures, matching, direct invitations, vacancy publication, self-application and recurring tasks are on; chat, real
 code execution and real LLM are off. The UI shows no controls for capabilities that are off, labels simulated data,
 and offers the «Демо» dialog while the server reports `mode: mock`.
 

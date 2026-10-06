@@ -12,6 +12,7 @@ import { companyQuery } from '@/entities/company';
 import { companyInvitationsQuery, InvitationStatusChip, isOpenInvitation } from '@/entities/invitation';
 import { skillLabel, useMeta } from '@/entities/meta';
 import { needsQuery } from '@/entities/need';
+import { FreshnessChip } from '@/entities/qualification';
 import { useScope } from '@/entities/session';
 import { shortlistsQuery } from '@/entities/shortlist';
 import { SkillStatusChip, skillStatusView } from '@/entities/skill';
@@ -339,6 +340,7 @@ export function EmployerCandidatePage({ candidateId, needId, tab, shortlistId, o
               </span>
               <div className="row">
                 <StatusChip tone="success">Грейд подтверждён {formatDate(candidate.gradeConfirmedAt)}</StatusChip>
+                <FreshnessChip freshness={candidate.freshness} />
                 {candidate.availableForOffers && (
                   <StatusChip tone="neutral" icon="chart">
                     Рассматривает предложения

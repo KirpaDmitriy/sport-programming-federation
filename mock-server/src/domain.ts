@@ -24,6 +24,8 @@ import {
   type State,
   sources,
   TASK,
+  type TaskRecord,
+  type TaskResponse,
 } from './data.ts';
 import type { components } from './generated/schema.d.ts';
 
@@ -59,6 +61,16 @@ const terminalStatus = new Set<InvitationRecord['status']>(['accepted', 'decline
 const pick = <T, K extends keyof T>(value: T, keys: readonly K[]): Pick<T, K> =>
   Object.fromEntries(keys.map((key) => [key, value[key]])) as Pick<T, K>;
 const plusDays = (date: string, days: number) => new Date(Date.parse(date) + days * 86400000).toISOString();
+/** A verified grade or a counted task answer keeps a profile fresh for this many days. */
+const FRESHNESS_DAYS = 90;
+const WEEK_MS = 7 * 86400000;
+const EPOCH_MONDAY = Date.parse('1970-01-05T00:00:00.000Z');
+/** Tasks are offered per ISO week (Monday 00:00 UTC) of the server clock. */
+function taskPeriod(clock: string) {
+  const index = Math.floor((Date.parse(clock) - EPOCH_MONDAY) / WEEK_MS);
+  const from = EPOCH_MONDAY + index * WEEK_MS;
+  return { index, from: new Date(from).toISOString(), to: new Date(from + WEEK_MS).toISOString() };
+}
 
 type Query = Readonly<Record<string, string | number | undefined>>;
 interface Context<Body = unknown, CurrentActor = Actor | null> {
@@ -198,6 +210,21 @@ const profileKeys = [
   'revision',
   'updatedAt',
 ] as const;
+/** The latest verified grade or task answer the company did not mark as needing work. */
+function freshness(s: State, candidate: Candidate): Schemas['Freshness'] {
+  const signals: { at: string; kind: 'assessment' | 'task' }[] = [];
+  if (candidate.gradeConfirmedAt) signals.push({ at: candidate.gradeConfirmedAt, kind: 'assessment' });
+  for (const item of s.taskResponses.values())
+    if (item.candidateId === candidate.id && item.status !== 'needs_work')
+      signals.push({ at: item.submittedAt, kind: 'task' });
+  const latest = signals.sort((a, b) => b.at.localeCompare(a.at))[0];
+  return {
+    lastSignalAt: latest?.at ?? null,
+    lastSignal: latest?.kind ?? null,
+    fresh: Boolean(latest && Date.parse(s.clock) - Date.parse(latest.at) <= FRESHNESS_DAYS * 86400000),
+    windowDays: FRESHNESS_DAYS,
+  };
+}
 function profileDto(s: State, candidate: Candidate): Schemas['Profile'] {
   const form = onboarding(candidate);
   return {
@@ -207,6 +234,7 @@ function profileDto(s: State, candidate: Candidate): Schemas['Profile'] {
       grade: candidate.verifiedGrade,
       eligible: form.visibleToEmployers,
     },
+    freshness: freshness(s, candidate),
     onboarding: form,
     assessmentEligibility: eligibility(s, candidate),
   };
@@ -298,7 +326,7 @@ function match(candidate: Candidate, need: Need): Schemas['Match'] {
 }
 const fspVerified = (candidate: Candidate) =>
   candidate.sources.some((source) => source.provider === 'fsp' && source.verifiedParticipation);
-function anonymous(candidate: Candidate, need: Need | null = null): Schemas['AnonymousCandidate'] {
+function anonymous(s: State, candidate: Candidate, need: Need | null = null): Schemas['AnonymousCandidate'] {
   return {
     id: candidate.id,
     alias: candidate.alias,
@@ -315,6 +343,7 @@ function anonymous(candidate: Candidate, need: Need | null = null): Schemas['Ano
       ]),
     ],
     fspVerified: fspVerified(candidate),
+    freshness: freshness(s, candidate),
     match: need ? match(candidate, need) : null,
     simulation: true,
   };
@@ -496,6 +525,62 @@ function vacancyDto(s: State, need: Need, candidate: Candidate): Schemas['Vacanc
     eligibility: applicationEligibility(s, candidate, need),
   };
 }
+function offeredTask(s: State, task: TaskRecord): Schemas['OfferedTask'] {
+  const company = must(s.companies.get(task.companyId), 'task company');
+  return {
+    id: task.id,
+    company: { id: company.id, displayName: company.displayName },
+    ...pick(task, ['title', 'prompt', 'skillId', 'grade', 'estimateMinutes']),
+  };
+}
+const responsesOf = (s: State, candidateId: string) =>
+  [...s.taskResponses.values()]
+    .filter((item) => item.candidateId === candidateId)
+    .sort((a, b) => b.submittedAt.localeCompare(a.submittedAt) || b.id.localeCompare(a.id));
+type TaskOffer = {
+  current: Schemas['OfferedTask'] | null;
+  currentResponse: TaskResponse | null;
+  reason: Schemas['MyTasks']['reason'];
+};
+/**
+ * One task per week: active tasks of any company on a skill the candidate has evidence for, at or below the verified
+ * grade, not answered in an earlier week, rotated by the week number. An answer given this week stays the week's task.
+ */
+function taskOffer(s: State, candidate: Candidate): TaskOffer {
+  const { index, from } = taskPeriod(s.clock);
+  const responses = responsesOf(s, candidate.id);
+  const answeredNow = responses.find((item) => item.submittedAt >= from);
+  if (answeredNow) return { current: answeredNow.task, currentResponse: answeredNow, reason: null };
+  if (!onboarding(candidate).assessmentPassed) return { current: null, currentResponse: null, reason: 'assessment' };
+  if (!candidate.consents.processing) return { current: null, currentResponse: null, reason: 'processing_consent' };
+  const evidenced = new Set(
+    candidate.skills.filter((skill) => skill.status !== 'insufficient').map((skill) => skill.skillId),
+  );
+  const answered = new Set(responses.map((item) => item.task.id));
+  const pool = [...s.tasks.values()]
+    .filter(
+      (task) =>
+        task.status === 'active' &&
+        evidenced.has(task.skillId) &&
+        rankOf(task.grade) <= rankOf(candidate.verifiedGrade) &&
+        !answered.has(task.id),
+    )
+    .sort((a, b) => a.id.localeCompare(b.id));
+  const task = pool[index % Math.max(pool.length, 1)];
+  return task
+    ? { current: offeredTask(s, task), currentResponse: null, reason: null }
+    : { current: null, currentResponse: null, reason: 'no_tasks' };
+}
+const taskKeys = ['id', 'title', 'prompt', 'skillId', 'grade', 'estimateMinutes', 'status', 'createdAt'] as const;
+const taskDto = (s: State, task: TaskRecord): Schemas['Task'] => ({
+  ...pick(task, taskKeys),
+  responseCount: [...s.taskResponses.values()].filter((item) => item.task.id === task.id).length,
+});
+const taskFor = ({ s, actor }: Ctx, id: string) => own(s.tasks.get(id), actor, 'companyId');
+const taskResponseFor = ({ s, actor }: Ctx, id: string): TaskResponse => {
+  const item = s.taskResponses.get(id);
+  return item?.task.company.id === actor.companyId ? item : fail(404, 'not_found', 'Ресурс не найден');
+};
 const latestBy = <T>(items: T[], time: (item: T) => string): T | undefined =>
   [...items].sort((a, b) => time(b).localeCompare(time(a)))[0];
 /**
@@ -821,7 +906,7 @@ const handlers: Handlers = {
       vacancyPublication: true,
       selfApplication: true,
       chat: false,
-      recurringTasks: false,
+      recurringTasks: true,
       realCodeExecution: false,
       realLlm: false,
     },
@@ -1083,6 +1168,37 @@ const handlers: Handlers = {
     });
   },
   getJob: (ctx) => jobDto(jobFor(ctx, param(ctx, 'jobId'))),
+  getMyTasks: (ctx) => {
+    const candidate = me(ctx);
+    const { from, to } = taskPeriod(ctx.s.clock);
+    return {
+      period: { from, to },
+      ...taskOffer(ctx.s, candidate),
+      history: responsesOf(ctx.s, candidate.id),
+      freshness: freshness(ctx.s, candidate),
+    };
+  },
+  respondToTask: (ctx) => {
+    const candidate = me(ctx);
+    processing(candidate);
+    const offer = taskOffer(ctx.s, candidate);
+    if (offer.currentResponse) fail(409, 'task_response_exists', 'Ответ на задание этой недели уже отправлен');
+    if (offer.current?.id !== param(ctx, 'taskId')) fail(409, 'task_not_offered', 'Это задание сейчас не предложено');
+    const item: TaskResponse = {
+      id: nextId(ctx.s, 'task-response'),
+      candidateId: candidate.id,
+      candidateAlias: candidate.alias,
+      task: must(offer.current, 'offered task'),
+      mode: ctx.body.mode,
+      answer: ctx.body.answer,
+      status: 'submitted',
+      feedback: null,
+      submittedAt: ctx.s.clock,
+      reviewedAt: null,
+    };
+    ctx.s.taskResponses.set(item.id, item);
+    return item;
+  },
   listMyInvitations: (ctx) => ({
     items: [...ctx.s.invitations.values()]
       .filter((item) => item.candidateId === ctx.actor.candidateId)
@@ -1217,7 +1333,7 @@ const handlers: Handlers = {
         candidate.skills.some((entry) => entry.skillId === skill && entry.status !== 'insufficient'),
       );
     if (queryText(ctx.query, 'fsp') === 'verified') items = items.filter(fspVerified);
-    let result = items.map((candidate) => anonymous(candidate, need));
+    let result = items.map((candidate) => anonymous(ctx.s, candidate, need));
     result.sort((a, b) =>
       a.match && b.match
         ? Number(b.match.gradeMatches) - Number(a.match.gradeMatches) ||
@@ -1239,6 +1355,7 @@ const handlers: Handlers = {
   getCandidate: (ctx) => {
     const needId = queryText(ctx.query, 'needId');
     return anonymous(
+      ctx.s,
       candidateForCompany(ctx.s, ctx.actor, param(ctx, 'candidateId')),
       needId ? needFor(ctx, needId) : null,
     );
@@ -1348,6 +1465,52 @@ const handlers: Handlers = {
     return invitationDto(item);
   },
   getInvitation: (ctx) => invitationDto(invitationFor(ctx, param(ctx, 'invitationId'))),
+  listTasks: (ctx) => ({
+    items: [...ctx.s.tasks.values()]
+      .filter((task) => task.companyId === ctx.actor.companyId)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id))
+      .map((task) => taskDto(ctx.s, task)),
+  }),
+  createTask: (ctx) => {
+    const company = companyDto(found(ctx.actor.companyId ? ctx.s.companies.get(ctx.actor.companyId) : undefined));
+    if (!company.readyToInvite)
+      fail(422, 'company_incomplete', 'Заполните описание компании со сферой деятельности и контактную почту');
+    if (!ctx.actor.emailVerified) fail(403, 'email_not_verified', 'Подтвердите почту работодателя');
+    const task: TaskRecord = {
+      ...structuredClone(ctx.body),
+      id: nextId(ctx.s, 'task'),
+      companyId: company.id,
+      status: 'active',
+      createdAt: ctx.s.clock,
+    };
+    ctx.s.tasks.set(task.id, task);
+    return taskDto(ctx.s, task);
+  },
+  archiveTask: (ctx) => {
+    const task = taskFor(ctx, param(ctx, 'taskId'));
+    task.status = 'archived';
+    return taskDto(ctx.s, task);
+  },
+  listTaskResponses: (ctx) => {
+    const taskId = queryText(ctx.query, 'taskId');
+    return {
+      items: [...ctx.s.taskResponses.values()]
+        .filter((item) => item.task.company.id === ctx.actor.companyId && (!taskId || item.task.id === taskId))
+        .sort((a, b) => b.submittedAt.localeCompare(a.submittedAt) || b.id.localeCompare(a.id)),
+    };
+  },
+  reviewTaskResponse: (ctx) => {
+    const item = taskResponseFor(ctx, param(ctx, 'responseId'));
+    const feedback = ctx.body.feedback.trim() || null;
+    if (item.status !== 'submitted') {
+      if (item.status === ctx.body.outcome && item.feedback === feedback) return item;
+      fail(409, 'task_response_reviewed', 'Ответ уже оценён');
+    }
+    item.status = ctx.body.outcome;
+    item.feedback = feedback;
+    item.reviewedAt = ctx.s.clock;
+    return item;
+  },
   searchVacancies: (ctx) => {
     const candidate = me(ctx);
     const specialization = queryText(ctx.query, 'specialization');
