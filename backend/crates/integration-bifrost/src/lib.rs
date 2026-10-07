@@ -25,6 +25,8 @@ impl BifrostGateway {
     ) -> Result<Self, IntegrationError> {
         let client = Client::builder()
             .timeout(Duration::from_secs(45))
+            .connect_timeout(Duration::from_secs(5))
+            .redirect(reqwest::redirect::Policy::none())
             .build()
             .map_err(integration)?;
         Ok(Self {
@@ -47,20 +49,29 @@ impl BifrostGateway {
                 {"role": "user", "content": serde_json::to_string(input).map_err(integration)?}
             ],
             "response_format": {"type": "json_object"},
+            "max_tokens": 4096,
             "temperature": 0
         }));
         if let Some(api_key) = &self.api_key {
             request = request.bearer_auth(api_key);
         }
-        let response = request
+        let mut response = request
             .send()
             .await
             .map_err(integration)?
             .error_for_status()
-            .map_err(integration)?
-            .json::<ChatResponse>()
-            .await
             .map_err(integration)?;
+        let mut bytes = Vec::new();
+        while let Some(chunk) = response.chunk().await.map_err(integration)? {
+            if bytes.len() + chunk.len() > 1024 * 1024 {
+                return Err(IntegrationError {
+                    code: "bifrost_invalid_response",
+                    message: "Ответ сервиса анализа превышает допустимый размер".into(),
+                });
+            }
+            bytes.extend_from_slice(&chunk);
+        }
+        let response: ChatResponse = serde_json::from_slice(&bytes).map_err(integration)?;
         let content = response
             .choices
             .into_iter()
@@ -122,9 +133,9 @@ struct Message {
     content: Option<String>,
 }
 
-fn integration(error: impl std::fmt::Display) -> IntegrationError {
+fn integration(_error: impl std::fmt::Display) -> IntegrationError {
     IntegrationError {
         code: "bifrost_unavailable",
-        message: error.to_string(),
+        message: "Сервис анализа временно недоступен".into(),
     }
 }

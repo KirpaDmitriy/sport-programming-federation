@@ -1,52 +1,53 @@
-# ФСП / Карьера
+# FSP / Career
 
-«ФСП / Карьера» — отраслевая платформа обратного подбора для ИТ. Работодатель сам выходит на кандидата, чей уровень
-подтверждён практической проверкой, а не самоописанием, и отправляет приглашение с вилкой зарплаты в рублях.
-Контакты кандидата открываются только той компании, приглашение которой он принял. Дополнительно компания может
-опубликовать вакансию, а кандидат — откликнуться на неё и сам выбрать, какие контакты получит компания. Раз в неделю
-кандидат получает короткое задание от компании: ответ поддерживает профиль актуальным.
+A reverse-hiring platform for the FSP 2026 special track. Candidates complete a questionnaire and a
+simulated practical assessment; employers search anonymous profiles and send offers with a salary range.
+Candidates disclose selected contacts to a company by accepting its invitation or applying to its vacancy.
+Recurring company tasks provide a separate freshness signal.
 
-Демо-стенд: <https://188.166.88.183>. В демо-режиме код подтверждения почты — `123456`; стартовые профили и данные ФСП
-синтетические и хранятся в Rust API.
+Demo stand: <https://188.166.88.183>. Email verification uses the disclosed demo code `123456`.
+Rust and PostgreSQL persist platform data. Seed candidates, FSP participation, assessment evaluation and PDF
+import are simulations; GitHub OAuth and Bifrost are optional real integrations. Capability flags describe
+which integrations are configured. This demo does not measure professional qualification.
 
-## Структура репозитория
+## Repository
 
-| Каталог | Что внутри |
+| Path | Contents |
 | --- | --- |
-| [`frontend/`](frontend/README.md) | React-приложение «ФСП / Карьера» |
-| [`contracts/`](contracts/README.md) | единый OpenAPI-контракт между фронтендом и бэкендом, коды ошибок, генератор типов |
-| [`mock-server/`](mock-server/README.md) | HTTP-мок контракта: среда разработки фронтенда и эталон бизнес-логики для бэкенда |
-| [`backend/`](backend/README.md) | гексагональный API на Rust, PostgreSQL-хранилище и адаптеры GitHub, ФСП и Bifrost |
-| [`infra/`](infra/README.md) | демо-стенд: подготовка сервера, деплой, nginx; конфигурация nginx для Docker |
-| [`docs/product/`](docs/product/BUSINESS_RULES.md) | бизнес-правила платформы, матрица требований и ТЗ организаторов |
+| [frontend/](frontend/README.md) | React / TypeScript application, Russian interface |
+| [contracts/](contracts/README.md) | Shared OpenAPI contract, error catalog and type generator |
+| [mock-server/](mock-server/README.md) | Stateful development mock and executable behavior reference |
+| [backend/](backend/README.md) | Hexagonal Rust API, PostgreSQL and integration adapters |
+| [infra/](infra/README.md) | Stand provisioning, immutable releases, recovery, backups and nginx |
+| [docs/product/](docs/product/BUSINESS_RULES.md) | Implemented rules, requirements and organizer specification |
+| [Stability audit](docs/stability-audit.md) | Session reconciliation, findings, plan and verification evidence |
 
-Владельцы модулей и правила работы — в [AGENTS.md](AGENTS.md).
+Ownership and contribution rules: [AGENTS.md](AGENTS.md). Feature PRs target `danil` or `dima`;
+checked cascades merge into `dev`, then `main`. Deployment ships the exact checked main commit.
 
-## Запуск в Docker
-
-Нужны только Docker и Docker Compose:
-
-```sh
-docker compose up --build        # затем http://localhost:8080, код из письма — 123456
-docker compose down -v           # сбросить демонстрационные данные (volume pg-data) и собрать заново
-docker compose down
-```
-
-Контейнер `web` (nginx) отдаёт собранный фронтенд и проксирует `/api/v1` в Rust-контейнер `api`. API слушает
-только loopback своего сетевого пространства, которое делит с `web`, поэтому снаружи доступен лишь порт 8080. Другой
-порт задаётся `FSP_PORT=9090 docker compose up --build`. Данные PostgreSQL сохраняются в Docker volume `pg-data`.
-
-## Разработка
+## Run
 
 ```sh
-just install   # зависимости мока, генератора типов и фронтенда (Bun)
-just mock      # мок API на 127.0.0.1:4010
-just dev       # фронтенд на http://127.0.0.1:5173
-just verify    # тесты мока, типы, линтер, unit-тесты, сборка
-just e2e       # браузерные сценарии против мока
+docker compose up --build       # http://localhost:8080; demo verification code 123456
+docker compose down            # keeps PostgreSQL data in pg-data
 ```
 
-## Первая версия на Python
+Only nginx's application port is public; the API shares its loopback namespace. PostgreSQL's development
+port is bound to `127.0.0.1:5434`. Use `FSP_PORT=9090` for a different application port.
+`docker compose down --volumes` deliberately destroys local data; it is not an update or deployment step.
 
-Первая версия платформы на FastAPI, которую сделал Дима, хранится в ветке `dima/mvp` (`git switch dima/mvp`) вместе с
-её документацией, презентацией и инструкцией по запуску. В `main` её заменяют модули выше.
+## Develop and verify
+
+```sh
+just install                   # pinned TypeScript dependencies via Bun
+just mock                      # development mock on 127.0.0.1:4010
+just dev                       # frontend on http://127.0.0.1:5173
+just db-up                     # local PostgreSQL for Rust and integration tests
+just backend                   # Rust API on 127.0.0.1:8080
+just verify                    # contract, mock, frontend types/lint/tests/build
+just backend-check             # rustfmt, clippy, unit and PostgreSQL HTTP/storage tests
+just e2e                       # browser acceptance against the mock
+```
+
+The historical Python/FastAPI MVP and its documentation are preserved at tag `archive/dima-mvp`.
+Inspect it with `git show archive/dima-mvp:README.md` or a separate detached worktree; it is not part of main.

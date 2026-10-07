@@ -170,32 +170,239 @@ async fn seeded_recommendations_use_the_recorded_deterministic_order() {
 async fn idempotency_keys_round_trip_and_keep_the_first_response() {
     let (repository, _database) = repository().await;
 
-    // First claim wins the right to execute.
-    let claim = repository
+    let tx = repository.transaction().await.unwrap();
+    let claim = tx
         .idempotency_claim("actor:op:/path:key-0001", "{\"a\":1}")
         .await
-        .expect("claim works");
+        .unwrap();
     assert!(matches!(claim, IdempotencyClaim::Execute));
-    // A racing same-key request observes InFlight until the winner finishes.
-    let racing = repository
-        .idempotency_claim("actor:op:/path:key-0001", "{\"a\":1}")
+    let second = repository.transaction().await.unwrap();
+    // The competing transaction waits until both the effect and response commit.
+    let pending = second.idempotency_claim("actor:op:/path:key-0001", "{\"a\":1}");
+    tokio::pin!(pending);
+    assert!(
+        tokio::time::timeout(std::time::Duration::from_millis(100), &mut pending)
+            .await
+            .is_err()
+    );
+    tx.idempotency_finish("actor:op:/path:key-0001", 201, "{\"id\":\"one\"}")
         .await
-        .expect("claim works");
-    assert!(matches!(racing, IdempotencyClaim::InFlight));
-    repository
-        .idempotency_finish("actor:op:/path:key-0001", 201, "{\"id\":\"one\"}")
-        .await
-        .expect("response is stored");
-    let stored = repository
-        .idempotency_claim("actor:op:/path:key-0001", "{\"a\":1}")
-        .await
-        .expect("claim works");
-    let IdempotencyClaim::Stored(stored) = stored else {
+        .unwrap();
+    tx.commit().await.unwrap();
+    let IdempotencyClaim::Stored(stored) = pending.await.unwrap() else {
         panic!("finished scope replays the stored response");
     };
     assert_eq!(stored.fingerprint, "{\"a\":1}");
     assert_eq!(stored.status, 201);
     assert_eq!(stored.body, "{\"id\":\"one\"}");
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn idempotent_command_and_claim_roll_back_if_response_cannot_be_stored() {
+    struct Unserializable;
+    impl serde::Serialize for Unserializable {
+        fn serialize<S: serde::Serializer>(&self, _: S) -> Result<S::Ok, S::Error> {
+            Err(serde::ser::Error::custom(
+                "injected response serialization failure",
+            ))
+        }
+    }
+    let (repository, _database) = repository().await;
+    let repository = Arc::new(repository);
+    let service = PlatformService::new(repository.clone(), Arc::new(FixedDelivery));
+    service.initialize().await.unwrap();
+    let challenge = service
+        .request_challenge(EmailChallengeInput {
+            email: "hr@sever-tech.example".into(),
+            role: Role::Employer,
+        })
+        .await
+        .unwrap();
+    let (session, _) = service
+        .verify_email(EmailVerifyInput {
+            challenge_id: challenge.challenge_id,
+            code: "123456".into(),
+        })
+        .await
+        .unwrap();
+    let body = serde_json::json!({"candidateId":"candidate018", "needId":"need-001", "message":"Предложение"});
+    let context = || fsp_application::IdempotencyContext {
+        operation: "createInvitation",
+        path: "/api/v1/invitations",
+        key: "rollback-test",
+        body: &body,
+        status: 201,
+    };
+    let before = repository
+        .invitations(session.company_id.as_deref().unwrap())
+        .await
+        .unwrap()
+        .len();
+    let command_session = &session;
+    let input = serde_json::from_value(body.clone()).unwrap();
+    let result = service
+        .idempotent(&session, context(), |commands| async move {
+            commands.create_invitation(command_session, input).await?;
+            Ok(Unserializable)
+        })
+        .await;
+    assert!(matches!(result, Err(error) if error.code == "internal_error"));
+    assert_eq!(
+        repository
+            .invitations(session.company_id.as_deref().unwrap())
+            .await
+            .unwrap()
+            .len(),
+        before
+    );
+    let claims: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM idempotency_keys")
+        .fetch_one(repository.pool())
+        .await
+        .unwrap();
+    assert_eq!(claims, 0);
+    let input = serde_json::from_value(body.clone()).unwrap();
+    let result = service
+        .idempotent(&session, context(), |commands| async move {
+            commands.create_invitation(command_session, input).await
+        })
+        .await
+        .unwrap();
+    assert!(matches!(result, fsp_application::Idempotent::Fresh(_)));
+    assert_eq!(
+        repository
+            .invitations(session.company_id.as_deref().unwrap())
+            .await
+            .unwrap()
+            .len(),
+        before + 1
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn source_ingestion_updates_evidence_without_inventing_or_overwriting_grades() {
+    struct GitHub;
+    #[async_trait::async_trait]
+    impl fsp_application::GitHubGateway for GitHub {
+        fn authorization_url(
+            &self,
+            _: &str,
+            _: &str,
+        ) -> Result<String, fsp_application::IntegrationError> {
+            unreachable!()
+        }
+        async fn exchange_code(
+            &self,
+            _: &str,
+        ) -> Result<String, fsp_application::IntegrationError> {
+            unreachable!()
+        }
+        async fn analyze(
+            &self,
+            username: &str,
+            _: &str,
+        ) -> Result<fsp_domain::GitHubAnalysis, fsp_application::IntegrationError> {
+            Ok(fsp_domain::GitHubAnalysis {
+                username: username.into(),
+                active_days: 2,
+                observed_from: None,
+                observed_to: None,
+                repositories: vec![fsp_domain::AnalyzedRepository {
+                    id: "repo-1".into(),
+                    name: "project".into(),
+                    url: "https://github.com/owner/project".into(),
+                    technologies: vec!["rust".into(), "react".into()],
+                    metrics: fsp_domain::RepositoryMetrics {
+                        stars: 1,
+                        forks: 0,
+                        open_issues: 0,
+                        size_kib: 5,
+                        pushed_at: None,
+                    },
+                }],
+            })
+        }
+    }
+    let (repository, _database) = repository().await;
+    let repository = Arc::new(repository);
+    let service = PlatformService::new(repository.clone(), Arc::new(FixedDelivery))
+        .with_github(Arc::new(GitHub));
+    service.initialize().await.unwrap();
+    let challenge = service
+        .request_challenge(EmailChallengeInput {
+            email: "alexey@example.com".into(),
+            role: Role::Candidate,
+        })
+        .await
+        .unwrap();
+    let (session, _) = service
+        .verify_email(EmailVerifyInput {
+            challenge_id: challenge.challenge_id,
+            code: "123456".into(),
+        })
+        .await
+        .unwrap();
+    let id = session.candidate_id.as_deref().unwrap();
+    repository.save_github_token(id, "fixture").await.unwrap();
+    let before = repository.candidate_index(id).await.unwrap().unwrap();
+    let source = service
+        .connect_source(
+            &session,
+            "github",
+            fsp_application::SourceConnectInput {
+                account: "owner".into(),
+            },
+        )
+        .await
+        .unwrap();
+    let connected = repository.candidate_index(id).await.unwrap().unwrap();
+    assert_eq!(
+        connected.profile.verified_grade,
+        before.profile.verified_grade
+    );
+    assert!(
+        connected
+            .source_kinds
+            .contains(&fsp_domain::EvidenceSource::Github)
+    );
+    let rust = connected
+        .skills
+        .iter()
+        .find(|skill| skill.skill_id == "rust")
+        .unwrap();
+    assert!(rust.sources.contains(&fsp_domain::EvidenceSource::Github));
+    assert_eq!(
+        rust.evidence_grade,
+        before
+            .skills
+            .iter()
+            .find(|skill| skill.skill_id == "rust")
+            .unwrap()
+            .evidence_grade
+    );
+    let react = connected
+        .skills
+        .iter()
+        .find(|skill| skill.skill_id == "react")
+        .unwrap();
+    assert_eq!(react.status, fsp_domain::EvidenceStatus::Evidence);
+    assert_eq!(react.evidence_grade, None);
+    let job = service.sync_source(&session, &source.id).await.unwrap();
+    assert_eq!(job.status, "succeeded");
+    let synced = repository.candidate_index(id).await.unwrap().unwrap();
+    assert_eq!(synced.skills, connected.skills);
+    assert_eq!(synced.profile.verified_grade, before.profile.verified_grade);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn corrupt_profile_json_is_reported_instead_of_silently_erased() {
+    let (repository, _database) = repository().await;
+    repository.seed_demo("2026-10-05T00:00:00Z").await.unwrap();
+    sqlx::query("UPDATE candidates SET soft_skills_json='not-json' WHERE id='candidate024'")
+        .execute(repository.pool())
+        .await
+        .unwrap();
+    assert!(repository.candidate("candidate024").await.is_err());
+    assert!(repository.candidate_index("candidate024").await.is_err());
 }
 
 #[tokio::test(flavor = "current_thread")]

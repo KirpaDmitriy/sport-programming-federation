@@ -65,34 +65,48 @@ done
 systemctl restart postgresql
 if [ ! -f /etc/fsp/db.env ]; then
   db_password="$(openssl rand -hex 24)"
-  install -m 640 -o root -g fsp /dev/null /etc/fsp/db.env
-  printf 'DATABASE_URL=postgres://fsp:%s@127.0.0.1:5432/fsp\n' "$db_password" > /etc/fsp/db.env
-  init_sql="$(mktemp)"
-  chmod 600 "$init_sql"
-  cat > "$init_sql" <<'SQL'
+  # Read SQL from stdin; postgres cannot open root-owned mode-600 temporary files.
+  {
+    cat <<'SQL'
 DO $$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname='fsp') THEN CREATE ROLE fsp LOGIN; END IF; END $$;
 SQL
-  printf "ALTER ROLE fsp WITH LOGIN PASSWORD '%s';\n" "$db_password" >> "$init_sql"
-  su - postgres -c "psql -v ON_ERROR_STOP=1 -f $init_sql"
-  rm -f "$init_sql"
+    printf "ALTER ROLE fsp WITH LOGIN PASSWORD '%s';\n" "$db_password"
+  } | su - postgres -c 'psql -v ON_ERROR_STOP=1'
   su - postgres -c "psql -tAc \"SELECT 1 FROM pg_database WHERE datname='fsp'\"" | grep -q 1 \
     || su - postgres -c "createdb -O fsp fsp"
+  # Publish only after bootstrap succeeds, so interruption leaves setup retryable.
+  db_env="$(mktemp /etc/fsp/db.env.XXXXXXXX)"
+  printf 'DATABASE_URL=postgres://fsp:%s@127.0.0.1:5432/fsp\n' "$db_password" > "$db_env"
+  chown root:fsp "$db_env"
+  chmod 640 "$db_env"
+  mv "$db_env" /etc/fsp/db.env
 fi
+
+install -d -m 700 -o postgres -g postgres /var/backups/fsp
+install -D -m 755 "$HERE/backup-db.sh" /usr/local/libexec/fsp-backup-db
+install -m 644 "$HERE/fsp-backup.service" "$HERE/fsp-backup.timer" /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable --now fsp-backup.timer
 
 ufw allow OpenSSH >/dev/null
 ufw allow 'Nginx Full' >/dev/null
 ufw --force enable >/dev/null
 
+if [ ! -f /etc/fsp/mock-api.env ]; then
 cat > /etc/fsp/mock-api.env <<EOF
 FSP_MOCK_ALLOWED_ORIGINS=https://$PUBLIC_IP
 EOF
-# The public stand runs on the synthetic mock: the UI explains that and shows its fixed demo code.
+fi
+# Both implementations expose the explicit demo code in the public stand.
+if [ ! -f /etc/fsp/frontend-build.env ]; then
 cat > /etc/fsp/frontend-build.env <<EOF
 VITE_DEMO_STAND=1
 VITE_DEMO_EMAIL_CODE=123456
 EOF
+fi
 # The Rust backend takes over once /etc/fsp/api-backend says "rust" (release.sh switches the
 # services); until then it builds alongside without serving.
+if [ ! -f /etc/fsp/rust-api.env ]; then
 cat > /etc/fsp/rust-api.env <<EOF
 FSP_AUTH_MODE=demo
 FSP_DEMO_EMAIL_CODE=123456
@@ -101,6 +115,9 @@ FSP_ALLOWED_ORIGINS=https://$PUBLIC_IP
 FSP_PUBLIC_WEB_URL=https://$PUBLIC_IP
 GITHUB_CALLBACK_URL=https://$PUBLIC_IP/api/v1/integrations/github/callback
 EOF
+fi
+chown root:fsp /etc/fsp/{mock-api,rust-api,frontend-build}.env
+chmod 640 /etc/fsp/{mock-api,rust-api,frontend-build}.env
 [ -f /etc/fsp/api-backend ] || echo mock > /etc/fsp/api-backend
 install -m 644 "$HERE/fsp-api.service" /etc/systemd/system/fsp-api.service
 install -m 644 "$HERE/fsp-mock-api.service" /etc/systemd/system/fsp-mock-api.service
@@ -111,7 +128,11 @@ install -m 644 "$HERE/fsp-cliproxy.service" /etc/systemd/system/fsp-cliproxy.ser
 install -m 644 "$HERE/fsp-bifrost.service" /etc/systemd/system/fsp-bifrost.service
 install -d -m 700 -o fsp -g fsp /var/lib/fsp/cliproxy-auth /var/lib/fsp/bifrost
 systemctl daemon-reload
-systemctl enable fsp-mock-api.service >/dev/null
+case "$(cat /etc/fsp/api-backend)" in
+  rust) systemctl disable fsp-mock-api.service; systemctl enable fsp-api.service ;;
+  mock) systemctl disable fsp-api.service; systemctl enable fsp-mock-api.service ;;
+  *) echo 'Invalid /etc/fsp/api-backend' >&2; exit 1 ;;
+esac
 if [ -f /etc/fsp/llm.env ]; then
   systemctl enable fsp-cliproxy.service fsp-bifrost.service >/dev/null
 fi

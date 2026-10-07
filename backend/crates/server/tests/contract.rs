@@ -374,6 +374,111 @@ async fn email_challenge_lifecycle() {
 }
 
 #[tokio::test]
+async fn email_attempt_budget_survives_errors_and_reissued_codes() {
+    let app = test_app().await;
+    let email = json!({"email": "locked@example.com", "role": "candidate"});
+    let (_, first) = send(
+        &app,
+        "POST",
+        "/api/v1/auth/email/challenges",
+        None,
+        email.clone(),
+    )
+    .await;
+    for _ in 0..3 {
+        let (status, body) = send(
+            &app,
+            "POST",
+            "/api/v1/auth/email/verify",
+            None,
+            json!({"challengeId": first["challengeId"], "code": "000000"}),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(code(&body), "invalid_code");
+    }
+    let (status, second) = send(
+        &app,
+        "POST",
+        "/api/v1/auth/email/challenges",
+        None,
+        email.clone(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    for _ in 0..2 {
+        let (status, _) = send(
+            &app,
+            "POST",
+            "/api/v1/auth/email/verify",
+            None,
+            json!({"challengeId": second["challengeId"], "code": "000000"}),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+    }
+    for challenge in [first, second] {
+        let (status, body) = send(
+            &app,
+            "POST",
+            "/api/v1/auth/email/verify",
+            None,
+            json!({"challengeId": challenge["challengeId"], "code": "123456"}),
+        )
+        .await;
+        assert_eq!(status, StatusCode::TOO_MANY_REQUESTS, "{body}");
+        assert_eq!(code(&body), "challenge_locked");
+    }
+    let (status, body) = send(&app, "POST", "/api/v1/auth/email/challenges", None, email).await;
+    assert_eq!(status, StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(code(&body), "challenge_locked");
+}
+
+#[tokio::test]
+async fn simultaneous_email_verification_reuses_one_account() {
+    let app = test_app().await;
+    let email = json!({"email": "parallel@example.com", "role": "candidate"});
+    let (_, first) = send(
+        &app,
+        "POST",
+        "/api/v1/auth/email/challenges",
+        None,
+        email.clone(),
+    )
+    .await;
+    let (_, second) = send(&app, "POST", "/api/v1/auth/email/challenges", None, email).await;
+    let (a, b) = tokio::join!(
+        send(
+            &app,
+            "POST",
+            "/api/v1/auth/email/verify",
+            None,
+            json!({"challengeId": first["challengeId"], "code": "123456"})
+        ),
+        send(
+            &app,
+            "POST",
+            "/api/v1/auth/email/verify",
+            None,
+            json!({"challengeId": second["challengeId"], "code": "123456"})
+        ),
+    );
+    assert_eq!(a.0, StatusCode::OK, "{}", a.1);
+    assert_eq!(b.0, StatusCode::OK, "{}", b.1);
+    assert_eq!(a.1, b.1);
+    let (status, body) = send(
+        &app,
+        "POST",
+        "/api/v1/auth/email/verify",
+        None,
+        json!({"challengeId": first["challengeId"], "code": "123456"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(code(&body), "challenge_used");
+}
+
+#[tokio::test]
 async fn consent_gates_sensitive_operations() {
     let app = test_app().await;
     // A fresh candidate has no processing consent: profile import refuses.
@@ -488,6 +593,131 @@ async fn needs_write_side_and_vacancy_projection() {
 }
 
 #[tokio::test]
+async fn source_connection_sync_and_jobs_remain_private() {
+    let app = test_app().await;
+    let candidate = login(&app, CANDIDATE_JUNIOR, "candidate").await;
+    let (status, source) = send(
+        &app,
+        "POST",
+        "/api/v1/me/sources/fsp/connect",
+        Some(&candidate),
+        json!({"account":"FSP-DEMO-024"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{source}");
+    let (status, job) = post(
+        &app,
+        &format!("/api/v1/me/sources/{}/sync", source["id"].as_str().unwrap()),
+        Some(&candidate),
+    )
+    .await;
+    assert_eq!(status, StatusCode::ACCEPTED, "{job}");
+    assert_eq!(job["status"], "succeeded");
+    assert_eq!(job["result"]["kind"], "source_sync");
+    let job_path = format!("/api/v1/jobs/{}", job["id"].as_str().unwrap());
+    assert_eq!(
+        get(&app, &job_path, Some(&candidate)).await.0,
+        StatusCode::OK
+    );
+    let outsider = login(&app, "outsider@example.com", "candidate").await;
+    assert_eq!(
+        get(&app, &job_path, Some(&outsider)).await.0,
+        StatusCode::NOT_FOUND
+    );
+}
+
+#[tokio::test]
+async fn concurrent_shortlist_edits_preserve_members_and_company_scope() {
+    let app = test_app().await;
+    let employer = login(&app, EMPLOYER, "employer").await;
+    let (status, shortlist) = send(
+        &app,
+        "POST",
+        "/api/v1/shortlists",
+        Some(&employer),
+        json!({"title":"Кандидаты"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let path = format!("/api/v1/shortlists/{}", shortlist["id"].as_str().unwrap());
+    let first = format!("{path}/members/candidate018");
+    let second = format!("{path}/members/candidate031");
+    let (a, b, c) = tokio::join!(
+        call(&app, request("PUT", &first, Some(&employer), None)),
+        call(&app, request("PUT", &second, Some(&employer), None)),
+        send(
+            &app,
+            "PATCH",
+            &path,
+            Some(&employer),
+            json!({"title":"Основной список"})
+        ),
+    );
+    assert_eq!(a.0, StatusCode::OK, "{}", a.2);
+    assert_eq!(b.0, StatusCode::OK, "{}", b.2);
+    assert_eq!(c.0, StatusCode::OK, "{}", c.1);
+    let (_, current) = get(&app, &path, Some(&employer)).await;
+    assert_eq!(current["title"], "Основной список");
+    assert_eq!(current["members"].as_array().unwrap().len(), 2);
+    let outsider = login(&app, "other-company@example.com", "employer").await;
+    assert_eq!(
+        get(&app, &path, Some(&outsider)).await.0,
+        StatusCode::NOT_FOUND
+    );
+    let (deleted, added) = tokio::join!(
+        call(&app, request("DELETE", &path, Some(&employer), None)),
+        call(&app, request("PUT", &first, Some(&employer), None)),
+    );
+    assert_eq!(deleted.0, StatusCode::NO_CONTENT);
+    assert!([StatusCode::OK, StatusCode::NOT_FOUND].contains(&added.0));
+    assert_eq!(
+        get(&app, &path, Some(&employer)).await.0,
+        StatusCode::NOT_FOUND
+    );
+}
+
+#[tokio::test]
+async fn parallel_withdrawals_revoke_the_last_disclosure_grants() {
+    let app = test_app().await;
+    let employer = login(&app, EMPLOYER, "employer").await;
+    let candidate = login(&app, CANDIDATE_JUNIOR, "candidate").await;
+    let (status, published) = post(&app, "/api/v1/needs/need-001/publish", Some(&employer)).await;
+    assert_eq!(status, StatusCode::OK, "{published}");
+    let (_, session) = get(&app, "/api/v1/session", Some(&candidate)).await;
+    let disclosure_path = format!(
+        "/api/v1/candidates/{}/disclosure",
+        session["candidateId"].as_str().unwrap()
+    );
+    let mut paths = Vec::new();
+    for (need, field) in [("need-001", "name"), ("need-002", "email")] {
+        let (status, body) = send_keyed(
+            &app,
+            "POST",
+            "/api/v1/me/applications",
+            Some(&candidate),
+            &format!("withdraw-{need}"),
+            json!({"vacancyId":need,"message":"Отклик","disclose":[field]}),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED, "{body}");
+        paths.push(format!(
+            "/api/v1/me/applications/{}/withdraw",
+            body["id"].as_str().unwrap()
+        ));
+    }
+    let (_, disclosure) = get(&app, &disclosure_path, Some(&employer)).await;
+    assert_eq!(disclosure["granted"], true);
+    let (a, b) = tokio::join!(
+        post(&app, &paths[0], Some(&candidate)),
+        post(&app, &paths[1], Some(&candidate))
+    );
+    assert_eq!(a.0, StatusCode::OK, "{}", a.1);
+    assert_eq!(b.0, StatusCode::OK, "{}", b.1);
+    let (_, disclosure) = get(&app, &disclosure_path, Some(&employer)).await;
+    assert_eq!(disclosure["granted"], false, "{disclosure}");
+}
+
+#[tokio::test]
 async fn invitations_freeze_terms_and_disclose_on_accept() {
     let app = test_app().await;
     let employer = login(&app, EMPLOYER, "employer").await;
@@ -527,15 +757,27 @@ async fn invitations_freeze_terms_and_disclose_on_accept() {
             .iter()
             .any(|item| item["id"] == invitation_id || item["need"]["id"] == "need-001")
     );
-    let (status, body) = send(
+    let view_path = format!("/api/v1/me/invitations/{invitation_id}/view");
+    let accept_path = format!("/api/v1/me/invitations/{invitation_id}/accept");
+    let ((view_status, _), (status, body)) = tokio::join!(
+        post(&app, &view_path, Some(&candidate)),
+        send(
+            &app,
+            "POST",
+            &accept_path,
+            Some(&candidate),
+            json!({"disclose": ["name", "email", "sourceLinks"]}),
+        )
+    );
+    assert_eq!(view_status, StatusCode::OK);
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let (_, current) = get(
         &app,
-        "POST",
-        &format!("/api/v1/me/invitations/{invitation_id}/accept"),
+        &format!("/api/v1/me/invitations/{invitation_id}"),
         Some(&candidate),
-        json!({"disclose": ["name", "email", "sourceLinks"]}),
     )
     .await;
-    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(current["status"], "accepted");
     // The company now sees the candidate's disclosure.
     let (status, disclosure) = get(
         &app,
@@ -671,17 +913,27 @@ async fn assessments_full_flow_and_grade_change() {
     .await;
     assert_eq!(status, StatusCode::OK, "{answer}");
     // Submit is bodyless but keyed; it resolves synchronously in the demo.
-    let (status, _, submit) = call(
-        &app,
-        keyed_request(
-            "POST",
-            &format!("/api/v1/me/assessments/{assessment_id}/submit"),
-            Some(&candidate),
-            "submit-key-00001",
-            None,
+    let submit_path = format!("/api/v1/me/assessments/{assessment_id}/submit");
+    let ((status, _, submit), (patch_status, patch_result)) = tokio::join!(
+        call(
+            &app,
+            keyed_request(
+                "POST",
+                &submit_path,
+                Some(&candidate),
+                "submit-key-00001",
+                None,
+            ),
         ),
-    )
-    .await;
+        send(
+            &app,
+            "PATCH",
+            "/api/v1/me/profile",
+            Some(&candidate),
+            json!({"name":"Обновлённое имя"})
+        )
+    );
+    assert_eq!(patch_status, StatusCode::OK, "{patch_result}");
     assert_eq!(status, StatusCode::ACCEPTED, "{submit}");
     let (status, job) = get(
         &app,
@@ -695,6 +947,7 @@ async fn assessments_full_flow_and_grade_change() {
     assert_eq!(job["result"]["assessment"]["status"], "passed");
     let (_, profile) = get(&app, "/api/v1/me/profile", Some(&candidate)).await;
     assert_eq!(profile["verifiedGrade"], "middle");
+    assert_eq!(profile["name"], "Обновлённое имя");
 }
 
 #[tokio::test]
@@ -746,8 +999,20 @@ async fn idempotency_replays_and_conflicts() {
             Some(body),
         )
     };
-    let (status, _, first) = call(&app, invite("idem-key-00001", body.clone())).await;
+    let (first_call, second_call) = tokio::join!(
+        call(&app, invite("idem-key-00001", body.clone())),
+        call(&app, invite("idem-key-00001", body.clone())),
+    );
+    let ((status, _, first), (second_status, headers, second)) =
+        if first_call.1.contains_key("x-idempotent-replay") {
+            (second_call, first_call)
+        } else {
+            (first_call, second_call)
+        };
     assert_eq!(status, StatusCode::CREATED, "{first}");
+    assert_eq!(second_status, StatusCode::CREATED, "{second}");
+    assert_eq!(first, second);
+    assert_eq!(headers.get("x-idempotent-replay").unwrap(), "true");
     let (status, headers, replay) = call(&app, invite("idem-key-00001", body.clone())).await;
     assert_eq!(status, StatusCode::CREATED);
     assert_eq!(replay["id"], first["id"]);
@@ -984,4 +1249,133 @@ async fn candidate_bank_anonymous_and_sorted() {
             .iter()
             .all(|item| item["fspVerified"] == true)
     );
+}
+
+#[tokio::test]
+async fn company_patch_rejects_invalid_fields_without_changing_stored_data() {
+    let app = test_app().await;
+    let employer = login(&app, EMPLOYER, "employer").await;
+    let (_, before) = get(&app, "/api/v1/company", Some(&employer)).await;
+    for email in [
+        "x@",
+        "a..b@example.com",
+        "a@-example.com",
+        "name with space@example.com",
+    ] {
+        let (status, _) = send(
+            &app,
+            "POST",
+            "/api/v1/auth/email/challenges",
+            None,
+            json!({"email": email, "role": "candidate"}),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+    }
+    for patch in [
+        json!({"displayName": "x".repeat(121)}),
+        json!({"businessArea": "x".repeat(201)}),
+        json!({"description": "x".repeat(4001)}),
+        json!({"contactEmail": "not-an-address"}),
+        json!({"contactEmail": "x@"}),
+        json!({"website": "javascript:alert(1)"}),
+        json!({"website": "https://"}),
+        json!({"website": "https://example.com/".to_owned() + &"x".repeat(2048)}),
+        json!({"displayName": null, "description": "must not be stored"}),
+    ] {
+        let (status, body) = send(&app, "PATCH", "/api/v1/company", Some(&employer), patch).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+        assert_eq!(code(&body), "validation_error");
+    }
+    let (_, after) = get(&app, "/api/v1/company", Some(&employer)).await;
+    assert_eq!(after, before);
+    let (status, body) = send(&app, "PATCH", "/api/v1/company", Some(&employer), json!({
+        "displayName": "я".repeat(120), "businessArea": "x".repeat(200),
+        "description": "x".repeat(4000), "contactEmail": "hr+jobs@example.com", "website": "https://example.com/jobs"
+    })).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+}
+
+#[tokio::test]
+async fn nullable_patch_fields_clear_values_while_omission_preserves_them() {
+    let app = test_app().await;
+    let employer = login(&app, EMPLOYER, "employer").await;
+    let (status, _) = send(
+        &app,
+        "PATCH",
+        "/api/v1/company",
+        Some(&employer),
+        json!({"website": "https://example.com"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let (_, company) = send(
+        &app,
+        "PATCH",
+        "/api/v1/company",
+        Some(&employer),
+        json!({"description": "Updated"}),
+    )
+    .await;
+    assert_eq!(company["website"], "https://example.com");
+    let (status, body) = send(
+        &app,
+        "PATCH",
+        "/api/v1/company",
+        Some(&employer),
+        json!({"website": null}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let (_, company) = get(&app, "/api/v1/company", Some(&employer)).await;
+    assert!(company["website"].is_null());
+
+    let candidate = login(&app, CANDIDATE, "candidate").await;
+    let (status, _) = send(
+        &app,
+        "PATCH",
+        "/api/v1/me/profile",
+        Some(&candidate),
+        json!({"experienceMonths": 24}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let (_, profile) = send(
+        &app,
+        "PATCH",
+        "/api/v1/me/profile",
+        Some(&candidate),
+        json!({"teamRole": "Developer"}),
+    )
+    .await;
+    assert_eq!(profile["experienceMonths"], 24);
+    let (status, body) = send(
+        &app,
+        "PATCH",
+        "/api/v1/me/profile",
+        Some(&candidate),
+        json!({"experienceMonths": null}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let (_, profile) = get(&app, "/api/v1/me/profile", Some(&candidate)).await;
+    assert!(profile["experienceMonths"].is_null());
+    let (status, _) = send(
+        &app,
+        "PATCH",
+        "/api/v1/me/profile",
+        Some(&candidate),
+        json!({"name": null, "teamRole": "Ignored"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    let (status, _) = send(
+        &app,
+        "PATCH",
+        "/api/v1/needs/need-001",
+        Some(&employer),
+        json!({"title": "Ignored", "salary": null}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
 }

@@ -275,6 +275,27 @@ test('deployment configuration admits only the configured origin and removes dev
   });
 });
 
+test('verification attempt budget spans reissued live challenges', async (t) => {
+  const { request } = await setup(t);
+  const body = { email: 'locked@example.com', role: 'candidate' };
+  const first = (await request('POST', '/api/v1/auth/email/challenges', { body, status: 201 })).body;
+  const second = (await request('POST', '/api/v1/auth/email/challenges', { body, status: 201 })).body;
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    await request('POST', '/api/v1/auth/email/verify', {
+      body: { challengeId: (attempt < 3 ? first : second).challengeId, code: '000000' },
+      status: 400,
+    });
+  }
+  for (const challenge of [first, second]) {
+    const result = await request('POST', '/api/v1/auth/email/verify', {
+      body: { challengeId: challenge.challengeId, code: '123456' },
+      status: 429,
+    });
+    assert.equal(result.body.code, 'challenge_locked');
+  }
+  await request('POST', '/api/v1/auth/email/challenges', { body, status: 429 });
+});
+
 test('email verification creates role-bound candidate and employer accounts; expiry is authoritative', async (t) => {
   const { request, client } = await setup(t);
   let challenge = (
@@ -592,6 +613,55 @@ test('stale check jobs and revoked processing consent cannot write grades or out
   });
   assert.equal((await job(submitted.id, candidate)).error.code, 'processing_consent_revoked');
   assert.equal((await request('GET', '/api/v1/me/profile', { actor: candidate })).body.verifiedGrade, 'junior');
+});
+
+test('company validation and nullable profile patches match the persisted API', async (t) => {
+  const { request, login } = await setup(t);
+  const employer = await login('employer-a');
+  const before = (await request('GET', '/api/v1/company', { actor: employer })).body;
+  for (const body of [
+    { displayName: 'x'.repeat(121) },
+    { businessArea: 'x'.repeat(201) },
+    { description: 'x'.repeat(4001) },
+    { contactEmail: 'x@' },
+    { website: 'javascript:alert(1)' },
+    { website: 'https://' },
+    { website: `https://example.com/${'x'.repeat(2048)}` },
+    { displayName: null, description: 'must not be stored' },
+  ])
+    await request('PATCH', '/api/v1/company', { actor: employer, body, status: 400 });
+  assert.deepEqual((await request('GET', '/api/v1/company', { actor: employer })).body, before);
+  await request('PATCH', '/api/v1/company', { actor: employer, body: { website: 'https://example.com' } });
+  assert.equal(
+    (await request('PATCH', '/api/v1/company', { actor: employer, body: { description: 'Updated' } })).body.website,
+    'https://example.com',
+  );
+  assert.equal(
+    (await request('PATCH', '/api/v1/company', { actor: employer, body: { website: null } })).body.website,
+    null,
+  );
+  const candidate = await login('candidate024');
+  await request('PATCH', '/api/v1/me/profile', { actor: candidate, body: { experienceMonths: 24 } });
+  assert.equal(
+    (await request('PATCH', '/api/v1/me/profile', { actor: candidate, body: { teamRole: 'Developer' } })).body
+      .experienceMonths,
+    24,
+  );
+  assert.equal(
+    (await request('PATCH', '/api/v1/me/profile', { actor: candidate, body: { experienceMonths: null } })).body
+      .experienceMonths,
+    null,
+  );
+  await request('PATCH', '/api/v1/me/profile', {
+    actor: candidate,
+    body: { name: null, teamRole: 'Ignored' },
+    status: 400,
+  });
+  await request('PATCH', '/api/v1/needs/need-001', {
+    actor: employer,
+    body: { title: 'Ignored', salary: null },
+    status: 400,
+  });
 });
 
 test('need CRUD validates salary and evidence policies without tenant crossover or ID collisions', async (t) => {
