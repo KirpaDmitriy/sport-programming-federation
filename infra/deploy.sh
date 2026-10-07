@@ -12,7 +12,7 @@ SHA="$(git rev-parse --verify "$REF^{commit}")"
 ARCHIVE="$(mktemp --suffix=.tar.gz)"
 trap 'rm -f "$ARCHIVE"' EXIT
 
-git archive --format=tar.gz -o "$ARCHIVE" "$SHA" frontend mock-server infra
+git archive --format=tar.gz -o "$ARCHIVE" "$SHA" frontend mock-server backend infra
 scp -q -F "$SSH_CONFIG" "$ARCHIVE" "$HOST:/tmp/fsp-$SHA.tar.gz"
 ssh -F "$SSH_CONFIG" "$HOST" "set -euo pipefail
   dir=/opt/fsp/releases/$SHA

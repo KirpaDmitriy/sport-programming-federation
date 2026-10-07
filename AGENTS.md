@@ -7,12 +7,12 @@ stand. Dima's first version, a Python (FastAPI) MVP, lives in branch `dima/mvp` 
 
 | Path | Owner | Contents |
 | --- | --- | --- |
-| [`backend/`](backend/README.md) | Дима | Hexagonal Rust backend that implements the contract (skeleton: crate boundaries, transport rules, `/health`) |
+| [`backend/`](backend/README.md) | Дима | Hexagonal Rust backend that implements the contract (SQLite storage, GitHub/ФСП/Bifrost adapters; coverage tracked in [`docs/backend-implementation-checklist.md`](docs/backend-implementation-checklist.md)) |
 | [`contracts/`](contracts/README.md) | shared | OpenAPI contract, error codes, generated operation index, TypeScript generator |
 | [`mock-server/`](mock-server/README.md) | Данил | Stateful HTTP mock of the contract: frontend dev server and behavior reference for the backend |
 | [`frontend/`](frontend/README.md) | Данил | React/TypeScript/TanStack application (FSD); its own rules are in [`frontend/AGENTS.md`](frontend/AGENTS.md) |
 | [`infra/`](infra/README.md) | Данил | Demo stand on one DigitalOcean droplet: provisioning, deployment, nginx |
-| [`docker-compose.yml`](docker-compose.yml), `*/Dockerfile` | shared | The platform in containers: API, web and the optional backend ([`infra/README.md`](infra/README.md#docker)) |
+| [`docker-compose.yml`](docker-compose.yml), `*/Dockerfile` | shared | The platform in containers: the Rust API and web ([`infra/README.md`](infra/README.md#docker)) |
 | [`docs/product/`](docs/product/BUSINESS_RULES.md) | shared | Business rules as implemented, requirements traceability, the organizer's specification |
 
 ## Rules
@@ -36,5 +36,6 @@ stand. Dima's first version, a Python (FastAPI) MVP, lives in branch `dima/mvp` 
 | backend | Rust 1.99.0 (`backend/rust-toolchain.toml`), edition 2024 | `just backend-check` |
 
 `just` lists the tasks for the TypeScript modules, the backend, Docker and the stand. CI:
-`.github/workflows/platform.yml` (contract, mock, frontend), `.github/workflows/backend.yml` (Rust) and
-`.github/workflows/docker.yml` (images and a smoke run of `docker-compose.yml`).
+`.github/workflows/platform.yml` (contract, mock, frontend), `.github/workflows/backend.yml` (Rust),
+`.github/workflows/docker.yml` (images and a smoke run of `docker-compose.yml`) and
+`.github/workflows/deploy.yml` (ships `main` to the stand).

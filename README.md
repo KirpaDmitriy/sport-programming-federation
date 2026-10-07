@@ -28,7 +28,7 @@
 
 ```sh
 docker compose up --build        # затем http://localhost:8080, код из письма — 123456
-docker compose restart api       # вернуть демонстрационные данные к исходному состоянию
+docker compose down -v           # сбросить демонстрационные данные (volume fsp-data) и собрать заново
 docker compose down
 ```
 

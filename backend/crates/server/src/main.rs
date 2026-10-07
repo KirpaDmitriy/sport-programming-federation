@@ -25,9 +25,10 @@ impl VerificationDelivery for ConfiguredDelivery {
         self.code.clone()
     }
 
-    fn deliver(&self, email: &str, code: &str) -> Result<(), String> {
+    fn deliver(&self, _email: &str, _code: &str) -> Result<(), String> {
         if self.mock {
-            tracing::info!(email, code, "verification code issued");
+            // Demo mode "delivers" the fixed code; never log addresses or codes.
+            tracing::info!("verification code issued (demo mailbox)");
             Ok(())
         } else {
             Err("Отправка почты не настроена".into())

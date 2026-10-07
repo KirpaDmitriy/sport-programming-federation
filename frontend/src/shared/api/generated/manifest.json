@@ -1,8 +1,8 @@
 {
   "contract": "contracts/openapi.json",
   "contractVersion": "0.1.0",
-  "contractSha256": "5d9a5ebfdf0db8025909ae28ff7f5c8d8da849fe779e6ea59f3f267f89594c85",
+  "contractSha256": "47a4716230ae314fe7fe203302efc7b0cdb58be039087b7ac7cc0bb169be3b9b",
   "generator": "contracts/codegen",
   "binaryRepresentation": "Blob",
-  "outputSha256": "4f2ad3bd83216fbc9ffd085ae997366797698a5759eed2d3ab5d16bb9accb934"
+  "outputSha256": "e6e50c372317791c23a80c75d996c8809d081bf2de9c6f8d5b3d62707cd754b2"
 }

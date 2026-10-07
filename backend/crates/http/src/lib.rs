@@ -1,16 +1,22 @@
 //! Inbound HTTP adapter for the application use cases.
 
 mod error;
+mod extract;
+mod pdf;
 
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use axum::extract::{Path, Query, Request, State};
-use axum::http::header::{CACHE_CONTROL, COOKIE, ORIGIN, SET_COOKIE, X_CONTENT_TYPE_OPTIONS};
+use axum::body::Body;
+use axum::extract::{DefaultBodyLimit, FromRequest, Request, State};
+use axum::http::header::{
+    CACHE_CONTROL, CONTENT_DISPOSITION, CONTENT_TYPE, COOKIE, ORIGIN, SET_COOKIE,
+    X_CONTENT_TYPE_OPTIONS,
+};
 use axum::http::{HeaderMap, HeaderName, HeaderValue, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Redirect, Response};
-use axum::routing::{any, delete, get, post};
+use axum::routing::{any, delete, get, patch, post, put};
 use axum::{Json, Router};
 use chrono::Utc;
 use fsp_application::{
@@ -24,9 +30,19 @@ use tower_http::services::{ServeDir, ServeFile};
 use uuid::Uuid;
 
 pub use error::{ApiError, Detail};
+pub use extract::IdempotencyKey;
+use extract::{ContractJson, ContractPath, ContractQuery, reject_duplicate_query};
 
 const REQUEST_ID: HeaderName = HeaderName::from_static("x-request-id");
+const IDEMPOTENT_REPLAY: HeaderName = HeaderName::from_static("x-idempotent-replay");
 const SESSION_COOKIE: &str = "fsp_session";
+/// JSON body ceiling, shared with the mock's `MAX_JSON`.
+const MAX_JSON_BODY: usize = 512 * 1024;
+/// Profile-import envelope ceiling: the mock accepts a 2 MiB `file` part,
+/// the extra room covers the multipart framing.
+const MAX_IMPORT_BODY: usize = 3 * 1024 * 1024;
+/// The mock's `MAX_PDF`.
+const MAX_PDF_FILE: usize = 2 * 1024 * 1024;
 
 #[derive(Debug, Clone)]
 pub struct HttpConfig {
@@ -49,19 +65,25 @@ pub fn router(config: HttpConfig, service: Arc<PlatformService>) -> Router {
         config: Arc::new(config),
     };
     let static_dir = state.config.static_dir.clone();
-    let router = Router::new()
+    // Routes without a request body reject one with `400 body_not_allowed`, and
+    // every routed request rejects repeated query keys with
+    // `duplicate_query_parameter`; both guards sit on routes so unmatched paths
+    // still answer `404 not_found` exactly like the mock.
+    let bodyless = Router::new()
         .route("/health", get(health))
         .route("/api/v1/meta", get(meta))
-        .route(
-            "/api/v1/auth/email/challenges",
-            post(create_email_challenge),
-        )
-        .route("/api/v1/auth/email/verify", post(verify_email))
         .route("/api/v1/auth/session", delete(logout))
         .route("/api/v1/session", get(session))
-        .route("/api/v1/me/profile", get(get_profile).patch(update_profile))
-        .route("/api/v1/company", get(get_company).patch(update_company))
+        .route("/api/v1/me/profile", get(get_profile))
+        .route("/api/v1/company", get(get_company))
         .route("/api/v1/needs", get(get_needs))
+        .route("/api/v1/needs/{need_id}", get(get_need))
+        .route("/api/v1/needs/{need_id}", delete(delete_need))
+        .route("/api/v1/needs/{need_id}/publish", post(publish_need))
+        .route("/api/v1/needs/{need_id}/unpublish", post(unpublish_need))
+        .route("/api/v1/needs/{need_id}/graph", get(need_graph))
+        .route("/api/v1/vacancies", get(search_vacancies))
+        .route("/api/v1/vacancies/{vacancy_id}", get(get_vacancy))
         .route("/api/v1/candidates", get(search_candidates))
         .route("/api/v1/candidates/{candidate_id}", get(get_candidate))
         .route(
@@ -76,28 +98,163 @@ pub fn router(config: HttpConfig, service: Arc<PlatformService>) -> Router {
             "/api/v1/candidates/{candidate_id}/graph",
             get(get_candidate_graph),
         )
+        .route("/api/v1/me/sources/{source_id}/sync", post(sync_source))
+        .route("/api/v1/jobs/{job_id}", get(get_job))
+        .route("/api/v1/shortlists", get(get_shortlists))
+        .route("/api/v1/shortlists/{shortlist_id}", get(get_shortlist))
+        .route(
+            "/api/v1/shortlists/{shortlist_id}",
+            delete(delete_shortlist),
+        )
+        .route(
+            "/api/v1/shortlists/{shortlist_id}/members/{candidate_id}",
+            put(add_shortlist_member),
+        )
+        .route(
+            "/api/v1/shortlists/{shortlist_id}/members/{candidate_id}",
+            delete(remove_shortlist_member),
+        )
+        .route("/api/v1/invitations", get(get_invitations))
+        .route("/api/v1/invitations/{invitation_id}", get(get_invitation))
+        .route(
+            "/api/v1/invitations/{invitation_id}/withdraw",
+            post(withdraw_invitation),
+        )
+        .route("/api/v1/me/invitations", get(get_my_invitations))
+        .route(
+            "/api/v1/me/invitations/{invitation_id}",
+            get(get_my_invitation),
+        )
+        .route(
+            "/api/v1/me/invitations/{invitation_id}/view",
+            post(view_my_invitation),
+        )
+        .route(
+            "/api/v1/me/invitations/{invitation_id}/decline",
+            post(decline_my_invitation),
+        )
+        .route(
+            "/api/v1/candidates/{candidate_id}/disclosure",
+            get(get_candidate_disclosure),
+        )
+        .route("/api/v1/applications", get(list_applications))
+        .route(
+            "/api/v1/applications/{application_id}",
+            get(get_application),
+        )
+        .route(
+            "/api/v1/applications/{application_id}/view",
+            post(view_application),
+        )
+        .route(
+            "/api/v1/applications/{application_id}/accept",
+            post(accept_application),
+        )
+        .route(
+            "/api/v1/applications/{application_id}/decline",
+            post(decline_application),
+        )
+        .route("/api/v1/me/applications", get(get_my_applications))
+        .route(
+            "/api/v1/me/applications/{application_id}",
+            get(get_my_application),
+        )
+        .route(
+            "/api/v1/me/applications/{application_id}/withdraw",
+            post(withdraw_my_application),
+        )
+        .route("/api/v1/me/tasks", get(get_my_tasks))
+        .route("/api/v1/tasks", get(list_tasks))
+        .route("/api/v1/tasks/{task_id}/archive", post(archive_task))
+        .route("/api/v1/task-responses", get(list_task_responses))
+        .route("/api/v1/me/gap-plan", get(get_my_gap_plan))
+        .route(
+            "/api/v1/candidates/{candidate_id}/gap-plan",
+            get(get_candidate_gap_plan),
+        )
+        .route("/api/v1/me/profile/export", get(export_profile))
+        .route("/api/v1/me/assessments", get(get_my_assessments))
+        .route(
+            "/api/v1/me/assessments/{assessment_id}",
+            get(get_assessment),
+        )
+        .route(
+            "/api/v1/me/assessments/{assessment_id}/checks",
+            post(run_assessment_checks),
+        )
+        .route(
+            "/api/v1/me/assessments/{assessment_id}/submit",
+            post(submit_assessment),
+        )
+        .route_layer(middleware::from_fn(no_body));
+    let bodied = Router::new()
+        .route(
+            "/api/v1/auth/email/challenges",
+            post(create_email_challenge),
+        )
+        .route("/api/v1/auth/email/verify", post(verify_email))
+        .route("/api/v1/me/profile", patch(update_profile))
+        .route("/api/v1/company", patch(update_company))
+        .route("/api/v1/needs", post(create_need))
+        .route("/api/v1/needs/{need_id}", patch(update_need))
+        .route("/api/v1/shortlists", post(create_shortlist))
+        .route("/api/v1/shortlists/{shortlist_id}", patch(update_shortlist))
+        .route("/api/v1/invitations", post(create_invitation))
+        .route(
+            "/api/v1/me/invitations/{invitation_id}/accept",
+            post(accept_my_invitation),
+        )
+        .route("/api/v1/me/applications", post(create_application))
+        .route("/api/v1/tasks", post(create_task))
+        .route(
+            "/api/v1/me/tasks/{task_id}/responses",
+            post(respond_to_task),
+        )
+        .route(
+            "/api/v1/task-responses/{response_id}/review",
+            post(review_task_response),
+        )
         .route(
             "/api/v1/me/sources/{provider}/connect",
             post(connect_source),
         )
-        .route("/api/v1/me/sources/{source_id}/sync", post(sync_source))
-        .route("/api/v1/jobs/{job_id}", get(get_job))
-        .route("/api/v1/shortlists", get(get_shortlists))
-        .route("/api/v1/applications", get(get_company_applications))
-        .route("/api/v1/me/invitations", get(get_my_invitations))
+        .route("/api/v1/me/assessments", post(start_assessment))
+        .route(
+            "/api/v1/me/assessments/{assessment_id}/answer",
+            put(save_assessment_answer),
+        )
+        .route(
+            "/api/v1/me/assessments/{assessment_id}/assistant",
+            post(ask_assessment_assistant),
+        )
+        .route(
+            "/api/v1/me/profile/imports",
+            post(import_profile).layer(DefaultBodyLimit::max(MAX_IMPORT_BODY)),
+        )
+        .route(
+            "/api/v1/me/profile/imports/{job_id}/confirm",
+            post(confirm_profile_import),
+        );
+    let router: Router = bodyless
+        .merge(bodied)
+        .route_layer(middleware::from_fn(query_guard))
         .route("/api/{*path}", any(not_found))
         .route("/__mock__", any(not_found))
         .route("/__mock__/{*path}", any(not_found))
         .method_not_allowed_fallback(not_found)
-        .layer(middleware::from_fn_with_state(state.clone(), transport))
-        .with_state(state);
-    if let Some(static_dir) = static_dir {
+        .fallback(not_found)
+        .layer(DefaultBodyLimit::max(MAX_JSON_BODY))
+        .with_state(state.clone());
+    // The static fallback and the transport envelope wrap every path, so apply
+    // them last, to the whole router.
+    let router = if let Some(static_dir) = static_dir {
         router.fallback_service(
             ServeDir::new(&static_dir).fallback(ServeFile::new(static_dir.join("index.html"))),
         )
     } else {
-        router.fallback(not_found)
-    }
+        router
+    };
+    router.layer(middleware::from_fn_with_state(state, transport))
 }
 
 #[derive(Serialize)]
@@ -115,6 +272,29 @@ async fn health() -> Json<Health> {
     })
 }
 
+/// Emits an idempotent command's outcome: stored bodies replay verbatim with
+/// `X-Idempotent-Replay: true`, fresh results serialize normally.
+pub fn idempotent_response<T: Serialize>(
+    status: StatusCode,
+    outcome: fsp_application::Idempotent<T>,
+) -> Response {
+    match outcome {
+        fsp_application::Idempotent::Replayed { status, body } => {
+            let mut response = Response::new(Body::from(body));
+            *response.status_mut() = StatusCode::from_u16(status).unwrap_or(StatusCode::OK);
+            response.headers_mut().insert(
+                axum::http::header::CONTENT_TYPE,
+                HeaderValue::from_static("application/json"),
+            );
+            response
+                .headers_mut()
+                .insert(IDEMPOTENT_REPLAY, HeaderValue::from_static("true"));
+            response
+        }
+        fsp_application::Idempotent::Fresh(value) => (status, Json(value)).into_response(),
+    }
+}
+
 async fn meta(State(state): State<AppState>) -> Json<Value> {
     Json(json!({
         "contractVersion": "0.1.0",
@@ -122,10 +302,10 @@ async fn meta(State(state): State<AppState>) -> Json<Value> {
         "serverTime": Utc::now().to_rfc3339(),
         "scenario": "live",
         "capabilities": {
-            "emailVerification": true, "profilePdf": false, "githubFixture": false,
-            "fspFixture": true, "matching": true, "directInvitations": false,
-            "vacancyPublication": false, "selfApplication": false, "chat": false,
-            "recurringTasks": false, "realCodeExecution": false, "realLlm": state.service.llm_configured(),
+            "emailVerification": true, "profilePdf": true, "githubFixture": false,
+            "fspFixture": true, "matching": true, "directInvitations": true,
+            "vacancyPublication": true, "selfApplication": true, "chat": false,
+            "recurringTasks": true, "realCodeExecution": false, "realLlm": state.service.llm_configured(),
             "githubOAuth": state.service.github_configured()
         },
         "assessmentPolicy": {
@@ -133,9 +313,7 @@ async fn meta(State(state): State<AppState>) -> Json<Value> {
             "serviceFailureCooldownDays": 0, "sameGradeRetryCooldownDays": 0,
             "aiAllowed": true, "externalAiAllowed": true,
             "supportedScopes": [
-                {"specialization":"backend","grades":["junior","middle","senior"]},
-                {"specialization":"frontend","grades":["junior","middle","senior"]},
-                {"specialization":"fullstack","grades":["junior","middle","senior"]}
+                {"specialization":"backend","grades":["junior","middle","senior"]}
             ]
         },
         "competitions": [
@@ -151,7 +329,7 @@ async fn meta(State(state): State<AppState>) -> Json<Value> {
 
 async fn create_email_challenge(
     State(state): State<AppState>,
-    Json(input): Json<EmailChallengeInput>,
+    ContractJson(input): ContractJson<EmailChallengeInput>,
 ) -> Result<(StatusCode, Json<fsp_application::EmailChallengeView>), ApiError> {
     state
         .service
@@ -162,7 +340,7 @@ async fn create_email_challenge(
 
 async fn verify_email(
     State(state): State<AppState>,
-    Json(input): Json<EmailVerifyInput>,
+    ContractJson(input): ContractJson<EmailVerifyInput>,
 ) -> Result<Response, ApiError> {
     let (session, token) = state.service.verify_email(input).map_err(api_error)?;
     let mut response = Json(session).into_response();
@@ -179,8 +357,8 @@ async fn verify_email(
         .map_err(|_| {
             ApiError::new(
                 StatusCode::INTERNAL_SERVER_ERROR,
-                "session_error",
-                "Не удалось создать сессию",
+                "internal_error",
+                "Сервис временно недоступен",
             )
         })?,
     );
@@ -218,7 +396,7 @@ async fn get_profile(
 async fn update_profile(
     State(state): State<AppState>,
     headers: HeaderMap,
-    Json(patch): Json<ProfilePatch>,
+    ContractJson(patch): ContractJson<ProfilePatch>,
 ) -> Result<Json<fsp_application::ProfileView>, ApiError> {
     let session = authenticated(&state, &headers)?;
     state
@@ -239,7 +417,7 @@ async fn get_company(
 async fn update_company(
     State(state): State<AppState>,
     headers: HeaderMap,
-    Json(patch): Json<CompanyPatch>,
+    ContractJson(patch): ContractJson<CompanyPatch>,
 ) -> Result<Json<fsp_application::CompanyView>, ApiError> {
     let session = authenticated(&state, &headers)?;
     state
@@ -255,6 +433,165 @@ async fn get_needs(
 ) -> Result<Json<fsp_application::NeedsView>, ApiError> {
     let session = authenticated(&state, &headers)?;
     state.service.needs(&session).map(Json).map_err(api_error)
+}
+
+async fn create_need(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ContractJson(input): ContractJson<fsp_application::NeedInput>,
+) -> Result<(StatusCode, Json<fsp_application::NeedView>), ApiError> {
+    let session = authenticated(&state, &headers)?;
+    state
+        .service
+        .create_need(&session, input)
+        .map(|need| (StatusCode::CREATED, Json(need)))
+        .map_err(api_error)
+}
+
+async fn get_need(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ContractPath(need_id): ContractPath<String>,
+) -> Result<Json<fsp_application::NeedView>, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    state
+        .service
+        .get_need(&session, &need_id)
+        .map(Json)
+        .map_err(api_error)
+}
+
+async fn update_need(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ContractPath(need_id): ContractPath<String>,
+    ContractJson(patch): ContractJson<fsp_application::NeedPatch>,
+) -> Result<Json<fsp_application::NeedView>, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    state
+        .service
+        .update_need(&session, &need_id, patch)
+        .map(Json)
+        .map_err(api_error)
+}
+
+async fn delete_need(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ContractPath(need_id): ContractPath<String>,
+) -> Result<StatusCode, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    state
+        .service
+        .delete_need(&session, &need_id)
+        .map(|()| StatusCode::NO_CONTENT)
+        .map_err(api_error)
+}
+
+async fn publish_need(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ContractPath(need_id): ContractPath<String>,
+) -> Result<Json<fsp_application::NeedView>, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    state
+        .service
+        .publish_need(&session, &need_id)
+        .map(Json)
+        .map_err(api_error)
+}
+
+async fn unpublish_need(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ContractPath(need_id): ContractPath<String>,
+) -> Result<Json<fsp_application::NeedView>, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    state
+        .service
+        .unpublish_need(&session, &need_id)
+        .map(Json)
+        .map_err(api_error)
+}
+
+async fn need_graph(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ContractPath(need_id): ContractPath<String>,
+) -> Result<Json<fsp_application::GraphView>, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    state
+        .service
+        .need_graph(&session, &need_id)
+        .map(Json)
+        .map_err(api_error)
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct VacancyQuery {
+    specialization: Option<Specialization>,
+    grade: Option<Grade>,
+    work_mode: Option<String>,
+    skill: Option<String>,
+    page: Option<usize>,
+    page_size: Option<usize>,
+}
+
+async fn search_vacancies(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ContractQuery(query): ContractQuery<VacancyQuery>,
+) -> Result<Json<fsp_application::VacancyPageView>, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    let page = query.page.unwrap_or(1);
+    let page_size = query.page_size.unwrap_or(10);
+    if page == 0 || page_size == 0 || page_size > 50 {
+        return Err(ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "validation_error",
+            "Проверьте параметры страницы",
+        ));
+    }
+    if query
+        .work_mode
+        .as_deref()
+        .is_some_and(|value| !["remote", "hybrid", "office"].contains(&value))
+    {
+        return Err(ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "validation_error",
+            "Запрос не соответствует контракту",
+        ));
+    }
+    state
+        .service
+        .search_vacancies(
+            &session,
+            &fsp_application::VacancySearch {
+                specialization: query.specialization,
+                grade: query.grade,
+                work_mode: query.work_mode,
+                skill: query.skill,
+                page,
+                page_size,
+            },
+        )
+        .map(Json)
+        .map_err(api_error)
+}
+
+async fn get_vacancy(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ContractPath(vacancy_id): ContractPath<String>,
+) -> Result<Json<fsp_application::VacancyView>, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    state
+        .service
+        .get_vacancy(&session, &vacancy_id)
+        .map(Json)
+        .map_err(api_error)
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -273,7 +610,7 @@ struct CandidateQuery {
 async fn search_candidates(
     State(state): State<AppState>,
     headers: HeaderMap,
-    Query(query): Query<CandidateQuery>,
+    ContractQuery(query): ContractQuery<CandidateQuery>,
 ) -> Result<Json<fsp_application::CandidatePageView>, ApiError> {
     let session = authenticated(&state, &headers)?;
     let page = query.page.unwrap_or(1);
@@ -319,11 +656,17 @@ async fn search_candidates(
         .map_err(api_error)
 }
 
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct CandidateDetailQuery {
+    need_id: Option<String>,
+}
+
 async fn get_candidate(
     State(state): State<AppState>,
     headers: HeaderMap,
-    Path(candidate_id): Path<String>,
-    Query(query): Query<CandidateQuery>,
+    ContractPath(candidate_id): ContractPath<String>,
+    ContractQuery(query): ContractQuery<CandidateDetailQuery>,
 ) -> Result<Json<fsp_application::AnonymousCandidateView>, ApiError> {
     let session = authenticated(&state, &headers)?;
     state
@@ -360,7 +703,7 @@ struct OAuthCallbackQuery {
 async fn github_callback(
     State(state): State<AppState>,
     headers: HeaderMap,
-    Query(query): Query<OAuthCallbackQuery>,
+    ContractQuery(query): ContractQuery<OAuthCallbackQuery>,
 ) -> Result<Redirect, ApiError> {
     let session = authenticated(&state, &headers)?;
     state
@@ -406,7 +749,7 @@ async fn get_my_graph(
 async fn get_candidate_graph(
     State(state): State<AppState>,
     headers: HeaderMap,
-    Path(candidate_id): Path<String>,
+    ContractPath(candidate_id): ContractPath<String>,
 ) -> Result<Json<fsp_application::GraphView>, ApiError> {
     let session = authenticated(&state, &headers)?;
     state
@@ -420,8 +763,8 @@ async fn get_candidate_graph(
 async fn connect_source(
     State(state): State<AppState>,
     headers: HeaderMap,
-    Path(provider): Path<String>,
-    Json(input): Json<fsp_application::SourceConnectInput>,
+    ContractPath(provider): ContractPath<String>,
+    ContractJson(input): ContractJson<fsp_application::SourceConnectInput>,
 ) -> Result<Json<fsp_application::SourceView>, ApiError> {
     let session = authenticated(&state, &headers)?;
     state
@@ -435,7 +778,7 @@ async fn connect_source(
 async fn sync_source(
     State(state): State<AppState>,
     headers: HeaderMap,
-    Path(source_id): Path<String>,
+    ContractPath(source_id): ContractPath<String>,
 ) -> Result<(StatusCode, Json<fsp_application::JobView>), ApiError> {
     let session = authenticated(&state, &headers)?;
     state
@@ -449,7 +792,7 @@ async fn sync_source(
 async fn get_job(
     State(state): State<AppState>,
     headers: HeaderMap,
-    Path(job_id): Path<String>,
+    ContractPath(job_id): ContractPath<String>,
 ) -> Result<Json<fsp_application::JobView>, ApiError> {
     let session = authenticated(&state, &headers)?;
     state
@@ -462,28 +805,811 @@ async fn get_job(
 async fn get_shortlists(
     State(state): State<AppState>,
     headers: HeaderMap,
-) -> Result<Json<Value>, ApiError> {
+) -> Result<Json<fsp_application::ShortlistsView>, ApiError> {
     let session = authenticated(&state, &headers)?;
     require_role(&session, "employer")?;
-    Ok(Json(json!({ "items": [] })))
+    state
+        .service
+        .shortlists(&session)
+        .map(Json)
+        .map_err(api_error)
 }
 
-async fn get_company_applications(
+async fn create_shortlist(
     State(state): State<AppState>,
     headers: HeaderMap,
-) -> Result<Json<Value>, ApiError> {
+    ContractJson(input): ContractJson<fsp_application::ShortlistInput>,
+) -> Result<(StatusCode, Json<fsp_application::ShortlistView>), ApiError> {
+    let session = authenticated(&state, &headers)?;
+    state
+        .service
+        .create_shortlist(&session, input)
+        .map(|shortlist| (StatusCode::CREATED, Json(shortlist)))
+        .map_err(api_error)
+}
+
+async fn get_shortlist(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ContractPath(shortlist_id): ContractPath<String>,
+) -> Result<Json<fsp_application::ShortlistView>, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    state
+        .service
+        .get_shortlist(&session, &shortlist_id)
+        .map(Json)
+        .map_err(api_error)
+}
+
+async fn update_shortlist(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ContractPath(shortlist_id): ContractPath<String>,
+    ContractJson(input): ContractJson<fsp_application::ShortlistInput>,
+) -> Result<Json<fsp_application::ShortlistView>, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    state
+        .service
+        .update_shortlist(&session, &shortlist_id, input)
+        .map(Json)
+        .map_err(api_error)
+}
+
+async fn delete_shortlist(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ContractPath(shortlist_id): ContractPath<String>,
+) -> Result<StatusCode, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    state
+        .service
+        .delete_shortlist(&session, &shortlist_id)
+        .map(|()| StatusCode::NO_CONTENT)
+        .map_err(api_error)
+}
+
+async fn add_shortlist_member(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ContractPath((shortlist_id, candidate_id)): ContractPath<(String, String)>,
+) -> Result<Json<fsp_application::ShortlistView>, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    state
+        .service
+        .add_shortlist_member(&session, &shortlist_id, &candidate_id)
+        .map(Json)
+        .map_err(api_error)
+}
+
+async fn remove_shortlist_member(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ContractPath((shortlist_id, candidate_id)): ContractPath<(String, String)>,
+) -> Result<Json<fsp_application::ShortlistView>, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    state
+        .service
+        .remove_shortlist_member(&session, &shortlist_id, &candidate_id)
+        .map(Json)
+        .map_err(api_error)
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ApplicationsQuery {
+    need_id: Option<String>,
+}
+
+async fn list_applications(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ContractQuery(query): ContractQuery<ApplicationsQuery>,
+) -> Result<Json<fsp_application::ApplicationsView>, ApiError> {
     let session = authenticated(&state, &headers)?;
     require_role(&session, "employer")?;
-    Ok(Json(json!({ "items": [] })))
+    state
+        .service
+        .company_applications(&session, query.need_id.as_deref())
+        .map(Json)
+        .map_err(api_error)
+}
+
+async fn get_application(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ContractPath(application_id): ContractPath<String>,
+) -> Result<Json<fsp_application::ApplicationView>, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    require_role(&session, "employer")?;
+    state
+        .service
+        .get_application(&session, &application_id)
+        .map(Json)
+        .map_err(api_error)
+}
+
+async fn view_application(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ContractPath(application_id): ContractPath<String>,
+) -> Result<Json<fsp_application::ApplicationView>, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    require_role(&session, "employer")?;
+    state
+        .service
+        .view_application(&session, &application_id)
+        .map(Json)
+        .map_err(api_error)
+}
+
+async fn accept_application(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ContractPath(application_id): ContractPath<String>,
+) -> Result<Json<fsp_application::ApplicationView>, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    require_role(&session, "employer")?;
+    state
+        .service
+        .accept_application(&session, &application_id)
+        .map(Json)
+        .map_err(api_error)
+}
+
+async fn decline_application(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ContractPath(application_id): ContractPath<String>,
+) -> Result<Json<fsp_application::ApplicationView>, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    require_role(&session, "employer")?;
+    state
+        .service
+        .decline_application(&session, &application_id)
+        .map(Json)
+        .map_err(api_error)
+}
+
+async fn get_my_applications(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<fsp_application::ApplicationsView>, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    require_role(&session, "candidate")?;
+    state
+        .service
+        .my_applications(&session)
+        .map(Json)
+        .map_err(api_error)
+}
+
+async fn create_application(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    IdempotencyKey(key): IdempotencyKey,
+    ContractJson(input): ContractJson<fsp_application::ApplicationInput>,
+) -> Result<Response, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    require_role(&session, "candidate")?;
+    let body = serde_json::to_value(&input).map_err(|_| {
+        ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "validation_error",
+            "Запрос не соответствует контракту",
+        )
+    })?;
+    let outcome = state
+        .service
+        .idempotent(
+            &session,
+            fsp_application::IdempotencyContext {
+                operation: "createApplication",
+                path: "/api/v1/me/applications",
+                key: &key,
+                body: &body,
+                status: StatusCode::CREATED.as_u16(),
+            },
+            || state.service.create_application(&session, input),
+        )
+        .map_err(api_error)?;
+    Ok(idempotent_response(StatusCode::CREATED, outcome))
+}
+
+async fn get_my_application(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ContractPath(application_id): ContractPath<String>,
+) -> Result<Json<fsp_application::ApplicationView>, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    require_role(&session, "candidate")?;
+    state
+        .service
+        .get_my_application(&session, &application_id)
+        .map(Json)
+        .map_err(api_error)
+}
+
+async fn withdraw_my_application(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ContractPath(application_id): ContractPath<String>,
+) -> Result<Json<fsp_application::ApplicationView>, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    require_role(&session, "candidate")?;
+    state
+        .service
+        .withdraw_my_application(&session, &application_id)
+        .map(Json)
+        .map_err(api_error)
+}
+
+async fn get_my_tasks(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<fsp_application::MyTasksView>, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    require_role(&session, "candidate")?;
+    state
+        .service
+        .my_tasks(&session)
+        .map(Json)
+        .map_err(api_error)
+}
+
+async fn respond_to_task(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    IdempotencyKey(key): IdempotencyKey,
+    ContractPath(task_id): ContractPath<String>,
+    ContractJson(input): ContractJson<fsp_application::TaskResponseInput>,
+) -> Result<Response, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    require_role(&session, "candidate")?;
+    let body = serde_json::to_value(&input).map_err(|_| {
+        ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "validation_error",
+            "Запрос не соответствует контракту",
+        )
+    })?;
+    let path = format!("/api/v1/me/tasks/{task_id}/responses");
+    let outcome = state
+        .service
+        .idempotent(
+            &session,
+            fsp_application::IdempotencyContext {
+                operation: "respondToTask",
+                path: &path,
+                key: &key,
+                body: &body,
+                status: StatusCode::CREATED.as_u16(),
+            },
+            || state.service.respond_to_task(&session, &task_id, input),
+        )
+        .map_err(api_error)?;
+    Ok(idempotent_response(StatusCode::CREATED, outcome))
+}
+
+async fn get_my_assessments(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<fsp_application::AssessmentsView>, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    require_role(&session, "candidate")?;
+    state
+        .service
+        .my_assessments(&session)
+        .map(Json)
+        .map_err(api_error)
+}
+
+async fn start_assessment(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    IdempotencyKey(key): IdempotencyKey,
+    ContractJson(input): ContractJson<fsp_application::AssessmentStartInput>,
+) -> Result<Response, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    require_role(&session, "candidate")?;
+    let body = serde_json::to_value(&input).map_err(|_| {
+        ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "validation_error",
+            "Запрос не соответствует контракту",
+        )
+    })?;
+    let outcome = state
+        .service
+        .idempotent(
+            &session,
+            fsp_application::IdempotencyContext {
+                operation: "startAssessment",
+                path: "/api/v1/me/assessments",
+                key: &key,
+                body: &body,
+                status: StatusCode::CREATED.as_u16(),
+            },
+            || state.service.start_assessment(&session, input),
+        )
+        .map_err(api_error)?;
+    Ok(idempotent_response(StatusCode::CREATED, outcome))
+}
+
+async fn get_assessment(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ContractPath(assessment_id): ContractPath<String>,
+) -> Result<Json<fsp_application::AssessmentView>, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    require_role(&session, "candidate")?;
+    state
+        .service
+        .get_assessment(&session, &assessment_id)
+        .map(Json)
+        .map_err(api_error)
+}
+
+async fn save_assessment_answer(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ContractPath(assessment_id): ContractPath<String>,
+    ContractJson(input): ContractJson<fsp_domain::AssessmentAnswer>,
+) -> Result<Json<fsp_application::AssessmentView>, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    require_role(&session, "candidate")?;
+    state
+        .service
+        .save_assessment_answer(&session, &assessment_id, input)
+        .map(Json)
+        .map_err(api_error)
+}
+
+async fn run_assessment_checks(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ContractPath(assessment_id): ContractPath<String>,
+) -> Result<Response, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    require_role(&session, "candidate")?;
+    state
+        .service
+        .run_assessment_checks(&session, &assessment_id)
+        .map(|view| (StatusCode::ACCEPTED, Json(view)).into_response())
+        .map_err(api_error)
+}
+
+async fn ask_assessment_assistant(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ContractPath(assessment_id): ContractPath<String>,
+    ContractJson(input): ContractJson<fsp_application::AssistantInput>,
+) -> Result<Json<fsp_application::AssistantReplyView>, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    require_role(&session, "candidate")?;
+    state
+        .service
+        .ask_assessment_assistant(&session, &assessment_id, input)
+        .map(Json)
+        .map_err(api_error)
+}
+
+async fn submit_assessment(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    IdempotencyKey(key): IdempotencyKey,
+    ContractPath(assessment_id): ContractPath<String>,
+) -> Result<Response, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    require_role(&session, "candidate")?;
+    let path = format!("/api/v1/me/assessments/{assessment_id}/submit");
+    let outcome = state
+        .service
+        .idempotent(
+            &session,
+            fsp_application::IdempotencyContext {
+                operation: "submitAssessment",
+                path: &path,
+                key: &key,
+                body: &serde_json::Value::Null,
+                status: StatusCode::ACCEPTED.as_u16(),
+            },
+            || state.service.submit_assessment(&session, &assessment_id),
+        )
+        .map_err(api_error)?;
+    Ok(idempotent_response(StatusCode::ACCEPTED, outcome))
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct GapPlanQuery {
+    need_id: Option<String>,
+}
+
+async fn get_my_gap_plan(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ContractQuery(query): ContractQuery<GapPlanQuery>,
+) -> Result<Json<fsp_application::GapPlanView>, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    require_role(&session, "candidate")?;
+    state
+        .service
+        .my_gap_plan(&session, query.need_id.as_deref())
+        .map(Json)
+        .map_err(api_error)
+}
+
+async fn get_candidate_gap_plan(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ContractPath(candidate_id): ContractPath<String>,
+    ContractQuery(query): ContractQuery<GapPlanQuery>,
+) -> Result<Json<fsp_application::GapPlanView>, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    require_role(&session, "employer")?;
+    state
+        .service
+        .candidate_gap_plan(&session, &candidate_id, query.need_id.as_deref())
+        .map(Json)
+        .map_err(api_error)
+}
+
+/// The mock's `parseMultipart`: a single `file` part whose declared type is
+/// `application/pdf`, 1 byte to 2 MiB, with a `%PDF-` header and `%%EOF`
+/// marker inside the trailing 2048 bytes.
+async fn import_profile(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    request: Request,
+) -> Result<Response, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    require_role(&session, "candidate")?;
+    let content_type = headers
+        .get(CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or_default();
+    if !content_type.starts_with("multipart/form-data;") {
+        return Err(ApiError::new(
+            StatusCode::UNSUPPORTED_MEDIA_TYPE,
+            "multipart_required",
+            "Ожидается multipart/form-data",
+        ));
+    }
+    let invalid_multipart = || {
+        ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "invalid_multipart",
+            "Не удалось прочитать форму загрузки",
+        )
+    };
+    let mut multipart = axum::extract::Multipart::from_request(request, &state)
+        .await
+        .map_err(|_| invalid_multipart())?;
+    let mut parts = Vec::new();
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|_| invalid_multipart())?
+    {
+        let name = field.name().unwrap_or_default().to_owned();
+        let declared_type = field.content_type().map(str::to_owned);
+        let bytes = field.bytes().await.map_err(|_| invalid_multipart())?;
+        parts.push((name, declared_type, bytes));
+    }
+    let [(name, declared_type, bytes)] = <[_; 1]>::try_from(parts).map_err(|_| {
+        ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "file_required",
+            "Передайте один PDF в поле file",
+        )
+    })?;
+    if name != "file" {
+        return Err(ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "file_required",
+            "Передайте один PDF в поле file",
+        ));
+    }
+    if declared_type.as_deref() != Some("application/pdf") {
+        return Err(ApiError::new(
+            StatusCode::UNSUPPORTED_MEDIA_TYPE,
+            "pdf_required",
+            "Поддерживаются только PDF",
+        ));
+    }
+    if bytes.is_empty() || bytes.len() > MAX_PDF_FILE {
+        return Err(ApiError::new(
+            StatusCode::PAYLOAD_TOO_LARGE,
+            "file_too_large",
+            "Размер PDF должен быть от 1 байта до 2 МиБ",
+        ));
+    }
+    let tail = &bytes[bytes.len().saturating_sub(2048)..];
+    if !bytes.starts_with(b"%PDF-") || !tail.windows(5).any(|window| window == b"%%EOF") {
+        return Err(ApiError::new(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "invalid_pdf",
+            "Файл не содержит ожидаемую сигнатуру PDF",
+        ));
+    }
+    state
+        .service
+        .import_profile(&session)
+        .map(|view| (StatusCode::ACCEPTED, Json(view)).into_response())
+        .map_err(api_error)
+}
+
+async fn confirm_profile_import(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ContractPath(job_id): ContractPath<String>,
+    ContractJson(input): ContractJson<fsp_application::ImportConfirmInput>,
+) -> Result<Json<fsp_application::ProfileView>, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    require_role(&session, "candidate")?;
+    state
+        .service
+        .confirm_profile_import(&session, &job_id, input)
+        .map(Json)
+        .map_err(api_error)
+}
+
+/// The mock's `exportMyProfile`: a generated PDF download, not JSON.
+async fn export_profile(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    require_role(&session, "candidate")?;
+    let profile = state.service.export_profile(&session).map_err(api_error)?;
+    let bytes = pdf::profile_pdf(&profile).map_err(|error| {
+        tracing::error!(error = %error, "profile PDF render failed");
+        ApiError::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "internal_error",
+            "Сервис временно недоступен",
+        )
+    })?;
+    Ok((
+        [
+            (CONTENT_TYPE, "application/pdf"),
+            (
+                CONTENT_DISPOSITION,
+                "attachment; filename=\"fsp-profile.pdf\"",
+            ),
+        ],
+        bytes,
+    )
+        .into_response())
+}
+
+async fn list_tasks(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<fsp_application::TasksView>, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    require_role(&session, "employer")?;
+    state.service.tasks(&session).map(Json).map_err(api_error)
+}
+
+async fn create_task(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ContractJson(input): ContractJson<fsp_application::TaskInput>,
+) -> Result<(StatusCode, Json<fsp_application::TaskView>), ApiError> {
+    let session = authenticated(&state, &headers)?;
+    require_role(&session, "employer")?;
+    state
+        .service
+        .create_task(&session, input)
+        .map(|task| (StatusCode::CREATED, Json(task)))
+        .map_err(api_error)
+}
+
+async fn archive_task(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ContractPath(task_id): ContractPath<String>,
+) -> Result<Json<fsp_application::TaskView>, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    require_role(&session, "employer")?;
+    state
+        .service
+        .archive_task(&session, &task_id)
+        .map(Json)
+        .map_err(api_error)
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TaskResponsesQuery {
+    task_id: Option<String>,
+}
+
+async fn list_task_responses(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ContractQuery(query): ContractQuery<TaskResponsesQuery>,
+) -> Result<Json<fsp_application::TaskResponsesView>, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    require_role(&session, "employer")?;
+    state
+        .service
+        .task_responses(&session, query.task_id.as_deref())
+        .map(Json)
+        .map_err(api_error)
+}
+
+async fn review_task_response(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ContractPath(response_id): ContractPath<String>,
+    ContractJson(input): ContractJson<fsp_application::TaskReviewInput>,
+) -> Result<Json<fsp_application::TaskResponseView>, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    require_role(&session, "employer")?;
+    state
+        .service
+        .review_task_response(&session, &response_id, input)
+        .map(Json)
+        .map_err(api_error)
+}
+
+async fn get_invitations(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<fsp_application::InvitationsView>, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    require_role(&session, "employer")?;
+    state
+        .service
+        .invitations(&session)
+        .map(Json)
+        .map_err(api_error)
+}
+
+async fn create_invitation(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    IdempotencyKey(key): IdempotencyKey,
+    ContractJson(input): ContractJson<fsp_application::InvitationInput>,
+) -> Result<Response, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    require_role(&session, "employer")?;
+    let body = serde_json::to_value(&input).map_err(|_| {
+        ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "validation_error",
+            "Запрос не соответствует контракту",
+        )
+    })?;
+    let outcome = state
+        .service
+        .idempotent(
+            &session,
+            fsp_application::IdempotencyContext {
+                operation: "createInvitation",
+                path: "/api/v1/invitations",
+                key: &key,
+                body: &body,
+                status: StatusCode::CREATED.as_u16(),
+            },
+            || state.service.create_invitation(&session, input),
+        )
+        .map_err(api_error)?;
+    Ok(idempotent_response(StatusCode::CREATED, outcome))
+}
+
+async fn get_invitation(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ContractPath(invitation_id): ContractPath<String>,
+) -> Result<Json<fsp_application::InvitationView>, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    require_role(&session, "employer")?;
+    state
+        .service
+        .get_invitation(&session, &invitation_id)
+        .map(Json)
+        .map_err(api_error)
+}
+
+async fn withdraw_invitation(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ContractPath(invitation_id): ContractPath<String>,
+) -> Result<Json<fsp_application::InvitationView>, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    require_role(&session, "employer")?;
+    state
+        .service
+        .withdraw_invitation(&session, &invitation_id)
+        .map(Json)
+        .map_err(api_error)
 }
 
 async fn get_my_invitations(
     State(state): State<AppState>,
     headers: HeaderMap,
-) -> Result<Json<Value>, ApiError> {
+) -> Result<Json<fsp_application::InvitationsView>, ApiError> {
     let session = authenticated(&state, &headers)?;
     require_role(&session, "candidate")?;
-    Ok(Json(json!({ "items": [] })))
+    state
+        .service
+        .my_invitations(&session)
+        .map(Json)
+        .map_err(api_error)
+}
+
+async fn get_my_invitation(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ContractPath(invitation_id): ContractPath<String>,
+) -> Result<Json<fsp_application::InvitationView>, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    require_role(&session, "candidate")?;
+    state
+        .service
+        .get_invitation(&session, &invitation_id)
+        .map(Json)
+        .map_err(api_error)
+}
+
+async fn view_my_invitation(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ContractPath(invitation_id): ContractPath<String>,
+) -> Result<Json<fsp_application::InvitationView>, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    require_role(&session, "candidate")?;
+    state
+        .service
+        .view_my_invitation(&session, &invitation_id)
+        .map(Json)
+        .map_err(api_error)
+}
+
+async fn accept_my_invitation(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ContractPath(invitation_id): ContractPath<String>,
+    ContractJson(input): ContractJson<fsp_application::AcceptInvitationInput>,
+) -> Result<Json<fsp_application::InvitationView>, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    require_role(&session, "candidate")?;
+    state
+        .service
+        .accept_my_invitation(&session, &invitation_id, input)
+        .map(Json)
+        .map_err(api_error)
+}
+
+async fn decline_my_invitation(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ContractPath(invitation_id): ContractPath<String>,
+) -> Result<Json<fsp_application::InvitationView>, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    require_role(&session, "candidate")?;
+    state
+        .service
+        .decline_my_invitation(&session, &invitation_id)
+        .map(Json)
+        .map_err(api_error)
+}
+
+async fn get_candidate_disclosure(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ContractPath(candidate_id): ContractPath<String>,
+) -> Result<Json<fsp_application::DisclosureView>, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    require_role(&session, "employer")?;
+    state
+        .service
+        .candidate_disclosure(&session, &candidate_id)
+        .map(Json)
+        .map_err(api_error)
 }
 
 fn require_role(session: &SessionView, role: &str) -> Result<(), ApiError> {
@@ -504,6 +1630,36 @@ fn require_role(session: &SessionView, role: &str) -> Result<(), ApiError> {
 
 async fn not_found() -> ApiError {
     ApiError::not_found("Маршрут не найден")
+}
+
+/// Rejects a body on a route that takes none (`400 body_not_allowed`), or
+/// `413 body_too_large` past the JSON ceiling — the mock's order.
+async fn no_body(request: Request, next: Next) -> Response {
+    let (parts, body) = request.into_parts();
+    match axum::body::to_bytes(body, MAX_JSON_BODY).await {
+        Ok(bytes) if bytes.is_empty() => next.run(Request::from_parts(parts, Body::empty())).await,
+        Ok(_) => ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "body_not_allowed",
+            "Этот маршрут не принимает тело запроса",
+        )
+        .into_response(),
+        Err(_) => ApiError::new(
+            StatusCode::PAYLOAD_TOO_LARGE,
+            "body_too_large",
+            "Файл или запрос превышает допустимый размер",
+        )
+        .into_response(),
+    }
+}
+
+/// Rejects repeated query keys (`400 duplicate_query_parameter`) on every routed
+/// request, like the mock does for all of them.
+async fn query_guard(request: Request, next: Next) -> Response {
+    match reject_duplicate_query(request.uri().query().unwrap_or_default()) {
+        Ok(()) => next.run(request).await,
+        Err(error) => error.into_response(),
+    }
 }
 
 fn authenticated(state: &AppState, headers: &HeaderMap) -> Result<SessionView, ApiError> {
@@ -642,6 +1798,143 @@ mod tests {
         fn need(&self, _: &str, _: &str) -> Result<Option<HiringNeedRecord>, RepositoryError> {
             Ok(None)
         }
+        fn save_need(&self, _: &HiringNeedRecord) -> Result<(), RepositoryError> {
+            Ok(())
+        }
+        fn delete_need(&self, _: &str, _: &str) -> Result<(), RepositoryError> {
+            Ok(())
+        }
+        fn published_needs(&self) -> Result<Vec<HiringNeedRecord>, RepositoryError> {
+            Ok(Vec::new())
+        }
+        fn shortlists(&self, _: &str) -> Result<Vec<fsp_domain::ShortlistRecord>, RepositoryError> {
+            Ok(Vec::new())
+        }
+        fn shortlist(
+            &self,
+            _: &str,
+            _: &str,
+        ) -> Result<Option<fsp_domain::ShortlistRecord>, RepositoryError> {
+            Ok(None)
+        }
+        fn save_shortlist(&self, _: &fsp_domain::ShortlistRecord) -> Result<(), RepositoryError> {
+            Ok(())
+        }
+        fn delete_shortlist(&self, _: &str, _: &str) -> Result<(), RepositoryError> {
+            Ok(())
+        }
+        fn invitations(
+            &self,
+            _: &str,
+        ) -> Result<Vec<fsp_domain::InvitationRecord>, RepositoryError> {
+            Ok(Vec::new())
+        }
+        fn candidate_invitations(
+            &self,
+            _: &str,
+        ) -> Result<Vec<fsp_domain::InvitationRecord>, RepositoryError> {
+            Ok(Vec::new())
+        }
+        fn invitation(
+            &self,
+            _: &str,
+        ) -> Result<Option<fsp_domain::InvitationRecord>, RepositoryError> {
+            Ok(None)
+        }
+        fn save_invitation(&self, _: &fsp_domain::InvitationRecord) -> Result<(), RepositoryError> {
+            Ok(())
+        }
+        fn disclosure(
+            &self,
+            _: &str,
+            _: &str,
+        ) -> Result<Option<fsp_domain::DisclosureRecord>, RepositoryError> {
+            Ok(None)
+        }
+        fn save_disclosure(&self, _: &fsp_domain::DisclosureRecord) -> Result<(), RepositoryError> {
+            Ok(())
+        }
+        fn delete_disclosure(&self, _: &str, _: &str) -> Result<(), RepositoryError> {
+            Ok(())
+        }
+        fn company_applications(
+            &self,
+            _: &str,
+        ) -> Result<Vec<fsp_domain::ApplicationRecord>, RepositoryError> {
+            Ok(Vec::new())
+        }
+        fn candidate_applications(
+            &self,
+            _: &str,
+        ) -> Result<Vec<fsp_domain::ApplicationRecord>, RepositoryError> {
+            Ok(Vec::new())
+        }
+        fn application(
+            &self,
+            _: &str,
+        ) -> Result<Option<fsp_domain::ApplicationRecord>, RepositoryError> {
+            Ok(None)
+        }
+        fn save_application(
+            &self,
+            _: &fsp_domain::ApplicationRecord,
+        ) -> Result<(), RepositoryError> {
+            Ok(())
+        }
+        fn tasks(&self, _: &str) -> Result<Vec<fsp_domain::TaskRecord>, RepositoryError> {
+            Ok(Vec::new())
+        }
+        fn active_tasks(&self) -> Result<Vec<fsp_domain::TaskRecord>, RepositoryError> {
+            Ok(Vec::new())
+        }
+        fn task(&self, _: &str) -> Result<Option<fsp_domain::TaskRecord>, RepositoryError> {
+            Ok(None)
+        }
+        fn save_task(&self, _: &fsp_domain::TaskRecord) -> Result<(), RepositoryError> {
+            Ok(())
+        }
+        fn candidate_task_responses(
+            &self,
+            _: &str,
+        ) -> Result<Vec<fsp_domain::TaskResponseRecord>, RepositoryError> {
+            Ok(Vec::new())
+        }
+        fn company_task_responses(
+            &self,
+            _: &str,
+        ) -> Result<Vec<fsp_domain::TaskResponseRecord>, RepositoryError> {
+            Ok(Vec::new())
+        }
+        fn task_response(
+            &self,
+            _: &str,
+        ) -> Result<Option<fsp_domain::TaskResponseRecord>, RepositoryError> {
+            Ok(None)
+        }
+        fn save_task_response(
+            &self,
+            _: &fsp_domain::TaskResponseRecord,
+        ) -> Result<(), RepositoryError> {
+            Ok(())
+        }
+        fn candidate_assessments(
+            &self,
+            _: &str,
+        ) -> Result<Vec<fsp_domain::AssessmentRecord>, RepositoryError> {
+            Ok(Vec::new())
+        }
+        fn assessment(
+            &self,
+            _: &str,
+        ) -> Result<Option<fsp_domain::AssessmentRecord>, RepositoryError> {
+            Ok(None)
+        }
+        fn save_assessment(&self, _: &fsp_domain::AssessmentRecord) -> Result<(), RepositoryError> {
+            Ok(())
+        }
+        fn save_candidate_index(&self, _: &CandidateIndexRecord) -> Result<(), RepositoryError> {
+            Ok(())
+        }
         fn save_oauth_state(&self, _: &str, _: &str, _: &str) -> Result<(), RepositoryError> {
             Ok(())
         }
@@ -665,6 +1958,22 @@ mod tests {
         }
         fn job(&self, _: &str, _: &str) -> Result<Option<JobRecord>, RepositoryError> {
             Ok(None)
+        }
+        fn idempotency_get(
+            &self,
+            _: &str,
+        ) -> Result<Option<fsp_application::StoredIdempotentResponse>, RepositoryError> {
+            Ok(None)
+        }
+        fn idempotency_put(
+            &self,
+            _: &str,
+            _: &str,
+            _: u16,
+            _: &str,
+            _: &str,
+        ) -> Result<(), RepositoryError> {
+            Ok(())
         }
         fn seed_demo(&self, _: &str) -> Result<(), RepositoryError> {
             Ok(())
@@ -775,5 +2084,109 @@ mod tests {
             .unwrap();
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
         std::fs::remove_dir_all(static_dir).unwrap();
+    }
+
+    #[tokio::test]
+    async fn transport_rejections_use_the_contract_envelope() {
+        use axum::body::Body;
+        use axum::http::Method;
+        use http_body_util::BodyExt;
+        use tower::ServiceExt;
+
+        async fn code_of(app: Router, request: Request<Body>) -> (StatusCode, Value) {
+            let response = app.oneshot(request).await.unwrap();
+            let status = response.status();
+            assert!(response.headers().contains_key(REQUEST_ID));
+            let body = response.into_body().collect().await.unwrap().to_bytes();
+            let envelope: Value = serde_json::from_slice(&body).expect("envelope JSON");
+            assert!(envelope["requestId"].is_string());
+            (status, envelope)
+        }
+        let json = |body: &str| {
+            Request::builder()
+                .method(Method::POST)
+                .uri("/api/v1/auth/email/challenges")
+                .header("content-type", "application/json")
+                .body(Body::from(body.to_owned()))
+                .unwrap()
+        };
+
+        let (status, envelope) = code_of(app(), json("{")).await;
+        assert_eq!(
+            (status, envelope["code"].as_str()),
+            (StatusCode::BAD_REQUEST, Some("invalid_json"))
+        );
+
+        let (status, envelope) = code_of(app(), json("{\"email\": 5}")).await;
+        assert_eq!(
+            (status, envelope["code"].as_str()),
+            (StatusCode::BAD_REQUEST, Some("validation_error"))
+        );
+        assert!(
+            envelope["details"]
+                .as_array()
+                .is_some_and(|d| !d.is_empty())
+        );
+
+        let (status, envelope) = code_of(
+            app(),
+            Request::builder()
+                .method(Method::POST)
+                .uri("/api/v1/auth/email/challenges")
+                .header("content-type", "text/plain")
+                .body(Body::from("{}"))
+                .unwrap(),
+        )
+        .await;
+        assert_eq!(
+            (status, envelope["code"].as_str()),
+            (StatusCode::UNSUPPORTED_MEDIA_TYPE, Some("json_required"))
+        );
+
+        let (status, envelope) = code_of(
+            app(),
+            Request::builder()
+                .uri("/api/v1/candidates?page=1&page=2")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await;
+        assert_eq!(
+            (status, envelope["code"].as_str()),
+            (StatusCode::BAD_REQUEST, Some("duplicate_query_parameter"))
+        );
+
+        let (status, envelope) = code_of(
+            app(),
+            Request::builder()
+                .uri("/health")
+                .header("content-type", "application/json")
+                .body(Body::from("{}"))
+                .unwrap(),
+        )
+        .await;
+        assert_eq!(
+            (status, envelope["code"].as_str()),
+            (StatusCode::BAD_REQUEST, Some("body_not_allowed"))
+        );
+
+        let (status, envelope) = code_of(
+            app(),
+            Request::builder()
+                .uri("/api/v1/no-such-route?page=1&page=2")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await;
+        assert_eq!(
+            (status, envelope["code"].as_str()),
+            (StatusCode::NOT_FOUND, Some("not_found"))
+        );
+
+        let (status, envelope) = code_of(app(), json(&" ".repeat(MAX_JSON_BODY + 1))).await;
+        assert_eq!(
+            (status, envelope["code"].as_str()),
+            (StatusCode::PAYLOAD_TOO_LARGE, Some("body_too_large"))
+        );
     }
 }

@@ -193,6 +193,345 @@ pub struct NeedView {
     pub revision: u64,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ShortlistInput {
+    pub title: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ShortlistsView {
+    pub items: Vec<ShortlistSummaryView>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ShortlistSummaryView {
+    pub id: String,
+    pub title: String,
+    pub count: usize,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ShortlistMemberView {
+    pub candidate_id: String,
+    pub alias: String,
+    pub available: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ShortlistView {
+    pub id: String,
+    pub title: String,
+    pub count: usize,
+    pub created_at: String,
+    pub updated_at: String,
+    pub members: Vec<ShortlistMemberView>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct InvitationInput {
+    pub candidate_id: String,
+    pub need_id: String,
+    pub message: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AcceptInvitationInput {
+    pub disclose: Vec<String>,
+}
+
+/// The need fields frozen into an invitation, as the contract exposes them.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InvitationNeedView {
+    pub id: String,
+    pub title: String,
+    pub work_mode: String,
+    pub salary: SalaryView,
+    pub description: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InvitationView {
+    pub id: String,
+    pub candidate_id: String,
+    pub candidate_alias: String,
+    pub company: CompanyCardView,
+    pub need: InvitationNeedView,
+    pub message: String,
+    pub status: fsp_domain::InteractionStatus,
+    pub created_at: String,
+    pub viewed_at: Option<String>,
+    pub responded_at: Option<String>,
+    pub disclosure_fields: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InvitationsView {
+    pub items: Vec<InvitationView>,
+}
+
+#[derive(Debug, Clone, Serialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct DisclosureFieldsView {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub email: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_links: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DisclosureView {
+    pub candidate_id: String,
+    pub company_id: String,
+    pub granted: bool,
+    pub invitation_id: Option<String>,
+    pub application_id: Option<String>,
+    pub granted_at: Option<String>,
+    pub fields: DisclosureFieldsView,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ApplicationInput {
+    pub vacancy_id: String,
+    pub message: String,
+    pub disclose: Vec<String>,
+}
+
+/// The vacancy card frozen into an application, as the contract exposes it.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApplicationVacancyView {
+    pub id: String,
+    pub title: String,
+    pub specialization: Specialization,
+    pub grade: Grade,
+    pub work_mode: String,
+    pub salary: SalaryView,
+    pub description: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApplicationView {
+    pub id: String,
+    pub candidate_id: String,
+    pub candidate_alias: String,
+    pub company: CompanyCardView,
+    pub vacancy: ApplicationVacancyView,
+    pub message: String,
+    pub status: fsp_domain::InteractionStatus,
+    pub created_at: String,
+    pub viewed_at: Option<String>,
+    pub responded_at: Option<String>,
+    pub disclosure_fields: Vec<String>,
+    pub r#match: CandidateMatchView,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApplicationsView {
+    pub items: Vec<ApplicationView>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TaskInput {
+    pub title: String,
+    pub prompt: String,
+    pub skill_id: String,
+    pub grade: Grade,
+    pub estimate_minutes: u32,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskView {
+    pub id: String,
+    pub title: String,
+    pub prompt: String,
+    pub skill_id: String,
+    pub grade: Grade,
+    pub estimate_minutes: u32,
+    pub status: fsp_domain::TaskStatus,
+    pub created_at: String,
+    pub response_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TasksView {
+    pub items: Vec<TaskView>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OfferedCompanyView {
+    pub id: String,
+    pub display_name: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OfferedTaskView {
+    pub id: String,
+    pub company: OfferedCompanyView,
+    pub title: String,
+    pub prompt: String,
+    pub skill_id: String,
+    pub grade: Grade,
+    pub estimate_minutes: u32,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TaskResponseInput {
+    pub mode: fsp_domain::TaskMode,
+    pub answer: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskResponseView {
+    pub id: String,
+    pub candidate_id: String,
+    pub candidate_alias: String,
+    pub task: OfferedTaskView,
+    pub mode: fsp_domain::TaskMode,
+    pub answer: String,
+    pub status: fsp_domain::TaskResponseStatus,
+    pub feedback: Option<String>,
+    pub submitted_at: String,
+    pub reviewed_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskResponsesView {
+    pub items: Vec<TaskResponseView>,
+}
+
+/// Review outcomes the contract allows; `submitted` is not a valid outcome.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
+pub enum TaskReviewOutcome {
+    Accepted,
+    NeedsWork,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TaskReviewInput {
+    pub outcome: TaskReviewOutcome,
+    pub feedback: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskPeriodView {
+    pub from: String,
+    pub to: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MyTasksView {
+    pub period: TaskPeriodView,
+    pub current: Option<OfferedTaskView>,
+    pub current_response: Option<TaskResponseView>,
+    pub reason: Option<&'static str>,
+    pub history: Vec<TaskResponseView>,
+    pub freshness: FreshnessView,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AssessmentStartInput {
+    pub specialization: Specialization,
+    pub grade: Grade,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AssistantInput {
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AssistantReplyView {
+    pub message: String,
+    pub simulation: bool,
+    pub ai_allowed: bool,
+    pub external_ai_allowed: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AssessmentView {
+    pub id: String,
+    pub specialization: Specialization,
+    pub grade: Grade,
+    pub status: fsp_domain::AssessmentStatus,
+    pub task: fsp_domain::AssessmentTask,
+    pub answer: fsp_domain::AssessmentAnswer,
+    pub checks: Vec<fsp_domain::AssessmentCheck>,
+    pub result: Option<fsp_domain::AssessmentResultData>,
+    pub created_at: String,
+    pub updated_at: String,
+    pub revision: u64,
+    pub simulation: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AssessmentsView {
+    pub items: Vec<AssessmentView>,
+}
+
+/// The contract's `GapPlan`: requirements of a need the candidate does not
+/// yet meet, with the accepted path to close each gap.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GapPlanView {
+    pub candidate_id: String,
+    pub need_id: String,
+    pub items: Vec<GapItemView>,
+    pub simulation: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GapItemView {
+    pub skill_id: String,
+    /// `needs_verification` or `not_evidenced` — `meets` never appears.
+    pub status: &'static str,
+    pub reason: &'static str,
+    pub action: &'static str,
+    pub accepted_competition_ids: Vec<String>,
+    pub assessment_available: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ImportConfirmInput {
+    pub profile: ProfilePatch,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SalaryView {
@@ -232,6 +571,163 @@ impl From<&EvidencePolicy> for EvidencePolicyView {
             competition_ids: value.competition_ids.clone(),
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, Deserialize)]
+pub enum SalaryCurrency {
+    #[serde(rename = "RUB")]
+    Rub,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize)]
+pub enum SalaryPeriod {
+    #[serde(rename = "month")]
+    Month,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize)]
+pub enum SalaryTaxBasis {
+    #[serde(rename = "gross")]
+    Gross,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SalaryInput {
+    pub from: u64,
+    pub to: u64,
+    pub currency: SalaryCurrency,
+    pub period: SalaryPeriod,
+    pub tax_basis: SalaryTaxBasis,
+}
+
+/// The contract's `Requirement`/`EvidencePolicy` arrive camelCased; the
+/// domain types stay snake_case for stored JSON.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct EvidencePolicyInput {
+    pub accept_assessments: bool,
+    pub accept_github: bool,
+    pub accept_fsp: bool,
+    pub competition_selection: String,
+    pub competition_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RequirementInput {
+    pub skill_id: String,
+    pub criticality: fsp_domain::Criticality,
+    pub minimum_grade: Grade,
+    pub evidence_policy: EvidencePolicyInput,
+}
+
+impl RequirementInput {
+    pub fn into_domain(self) -> fsp_domain::Requirement {
+        fsp_domain::Requirement {
+            skill_id: self.skill_id,
+            criticality: self.criticality,
+            minimum_grade: self.minimum_grade,
+            evidence_policy: fsp_domain::EvidencePolicy {
+                accept_assessments: self.evidence_policy.accept_assessments,
+                accept_github: self.evidence_policy.accept_github,
+                accept_fsp: self.evidence_policy.accept_fsp,
+                competition_selection: self.evidence_policy.competition_selection,
+                competition_ids: self.evidence_policy.competition_ids,
+            },
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NeedInput {
+    pub title: String,
+    pub specialization: Specialization,
+    pub grade: Grade,
+    pub work_mode: String,
+    pub salary: SalaryInput,
+    pub description: String,
+    pub requirements: Vec<RequirementInput>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NeedPatch {
+    pub title: Option<String>,
+    pub specialization: Option<Specialization>,
+    pub grade: Option<Grade>,
+    pub work_mode: Option<String>,
+    pub salary: Option<SalaryInput>,
+    pub description: Option<String>,
+    pub requirements: Option<Vec<RequirementInput>>,
+}
+
+impl NeedPatch {
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.title.is_none()
+            && self.specialization.is_none()
+            && self.grade.is_none()
+            && self.work_mode.is_none()
+            && self.salary.is_none()
+            && self.description.is_none()
+            && self.requirements.is_none()
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CompanyCardView {
+    pub id: String,
+    pub display_name: String,
+    pub business_area: String,
+    pub description: String,
+    pub contact_email: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VacancyRequirementView {
+    pub skill_id: String,
+    pub criticality: Criticality,
+    pub minimum_grade: Grade,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApplicationEligibilityView {
+    pub can_apply: bool,
+    pub reason: Option<&'static str>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VacancyView {
+    pub id: String,
+    pub company: CompanyCardView,
+    pub title: String,
+    pub specialization: Specialization,
+    pub grade: Grade,
+    pub work_mode: String,
+    pub salary: SalaryView,
+    pub description: String,
+    pub requirements: Vec<VacancyRequirementView>,
+    pub published_at: String,
+    pub updated_at: String,
+    pub r#match: Option<CandidateMatchView>,
+    pub application_id: Option<String>,
+    pub eligibility: ApplicationEligibilityView,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VacancyPageView {
+    pub items: Vec<VacancyView>,
+    pub page: usize,
+    pub page_size: usize,
+    pub total: usize,
+    pub has_next_page: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -312,6 +808,16 @@ pub struct CandidateSearch {
     pub page_size: usize,
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct VacancySearch {
+    pub specialization: Option<Specialization>,
+    pub grade: Option<Grade>,
+    pub work_mode: Option<String>,
+    pub skill: Option<String>,
+    pub page: usize,
+    pub page_size: usize,
+}
+
 pub fn match_status(score: &MatchScore, requirements: &[MatchRequirementView]) -> &'static str {
     if requirements
         .iter()
@@ -388,20 +894,42 @@ pub struct ObservationPeriodView {
 #[serde(rename_all = "camelCase")]
 pub struct JobView {
     pub id: String,
-    pub kind: &'static str,
+    pub kind: String,
     pub status: String,
     pub created_at: String,
     pub updated_at: String,
-    pub result: Option<JobResultView>,
+    /// Contract-shaped result payload; `kind` discriminates the variant.
+    pub result: Option<serde_json::Value>,
     pub error: Option<JobErrorView>,
     pub poll_after_ms: u32,
     pub simulation: bool,
 }
 
+/// Typed constructors for `Job.result`; serialized values persist on the job
+/// record so polling replays them without recomputation. Serialize-only DTO,
+/// so variant size does not matter.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum JobResultView {
-    SourceSync { source: SourceView },
+    SourceSync {
+        source: SourceView,
+    },
+    Checks {
+        assessment_id: String,
+        checks: Vec<fsp_domain::AssessmentCheck>,
+        simulation: bool,
+    },
+    Assessment {
+        assessment: AssessmentView,
+    },
+    /// The mock's fixed `fixture_preview` parse result: the upload is
+    /// validated, the preview does not depend on its contents.
+    ProfileImport {
+        preview: serde_json::Value,
+        parser: &'static str,
+        simulation: bool,
+    },
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -471,20 +999,32 @@ pub fn source_view(record: SourceRecord) -> SourceView {
 }
 
 pub fn job_view(record: JobRecord, source: Option<SourceView>) -> JobView {
+    // The mock asks clients to poll in-flight jobs every 250 ms and stops
+    // polling once a job is terminal.
+    let terminal = record.status == "succeeded" || record.status == "failed";
+    let result = record
+        .result_json
+        .as_deref()
+        .and_then(|json| serde_json::from_str::<serde_json::Value>(json).ok())
+        .or_else(|| {
+            source.map(|source| {
+                serde_json::to_value(JobResultView::SourceSync { source }).unwrap_or_default()
+            })
+        });
     JobView {
         id: record.id,
-        kind: "source_sync",
+        kind: record.kind,
         status: record.status,
         created_at: record.created_at,
         updated_at: record.updated_at,
-        result: source.map(|source| JobResultView::SourceSync { source }),
+        result,
         error: record.error_code.map(|code| JobErrorView {
             code,
             message: record.error_message.unwrap_or_default(),
             retryable: true,
         }),
-        poll_after_ms: 0,
-        simulation: false,
+        poll_after_ms: if terminal { 0 } else { 250 },
+        simulation: true,
     }
 }
 

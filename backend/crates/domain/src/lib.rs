@@ -20,6 +20,17 @@ pub enum Grade {
     Senior,
 }
 
+impl Grade {
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Junior => "junior",
+            Self::Middle => "middle",
+            Self::Senior => "senior",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Specialization {
@@ -76,6 +87,7 @@ pub struct CandidateProfile {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CandidateIndexRecord {
     pub profile: CandidateProfile,
+    pub email_verified: bool,
     pub work_modes: Vec<String>,
     pub available_for_offers: bool,
     pub skills: Vec<SkillEvidence>,
@@ -97,7 +109,7 @@ impl CandidateIndexRecord {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HiringNeedRecord {
     pub id: String,
     pub company_id: String,
@@ -117,13 +129,21 @@ pub struct HiringNeedRecord {
 impl CandidateProfile {
     #[must_use]
     pub fn questionnaire_complete(&self) -> bool {
-        !self.name.trim().is_empty() && !self.stack.is_empty() && !self.team_role.trim().is_empty()
+        !self.name.trim().is_empty()
+            && !self.stack.is_empty()
+            && !self.team_role.trim().is_empty()
+            && !self.experience.trim().is_empty()
     }
 
+    /// Mirrors the mock's `onboarding.visibleToEmployers`: verified e-mail,
+    /// complete questionnaire, a passed assessment (grade and specialization)
+    /// and both consents.
     #[must_use]
-    pub fn visible_to_employers(&self) -> bool {
-        self.questionnaire_complete()
+    pub fn visible_to_employers(&self, email_verified: bool) -> bool {
+        email_verified
+            && self.questionnaire_complete()
             && self.verified_grade.is_some()
+            && self.verified_specialization.is_some()
             && self.consents.processing
             && self.consents.publication
     }
@@ -137,6 +157,420 @@ pub struct Company {
     pub description: String,
     pub contact_email: String,
     pub website: Option<String>,
+}
+
+/// An employer's shortlist of candidate ids, in insertion order.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ShortlistRecord {
+    pub id: String,
+    pub company_id: String,
+    pub title: String,
+    pub member_ids: Vec<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+/// Lifecycle shared by employer invitations and candidate applications.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum InteractionStatus {
+    Sent,
+    Viewed,
+    Accepted,
+    Declined,
+    Withdrawn,
+}
+
+impl InteractionStatus {
+    /// Terminal states cannot transition further; re-issuing the same
+    /// terminal outcome is the caller's idempotent replay.
+    #[must_use]
+    pub fn terminal(self) -> bool {
+        matches!(self, Self::Accepted | Self::Declined | Self::Withdrawn)
+    }
+
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Sent => "sent",
+            Self::Viewed => "viewed",
+            Self::Accepted => "accepted",
+            Self::Declined => "declined",
+            Self::Withdrawn => "withdrawn",
+        }
+    }
+
+    #[must_use]
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "sent" => Some(Self::Sent),
+            "viewed" => Some(Self::Viewed),
+            "accepted" => Some(Self::Accepted),
+            "declined" => Some(Self::Declined),
+            "withdrawn" => Some(Self::Withdrawn),
+            _ => None,
+        }
+    }
+}
+
+/// The company card frozen into an invitation or application snapshot.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CompanyCard {
+    pub id: String,
+    pub display_name: String,
+    pub business_area: String,
+    pub description: String,
+    pub contact_email: String,
+}
+
+/// The need fields frozen into an invitation snapshot.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NeedSnapshot {
+    pub id: String,
+    pub title: String,
+    pub work_mode: String,
+    pub salary_from: u64,
+    pub salary_to: u64,
+    pub description: String,
+}
+
+/// An employer's invitation to a candidate, with the company card and the
+/// need frozen at creation so later edits do not rewrite sent terms.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InvitationRecord {
+    pub id: String,
+    pub company_id: String,
+    pub candidate_id: String,
+    pub candidate_alias: String,
+    pub company: CompanyCard,
+    pub need: NeedSnapshot,
+    pub need_definition: HiringNeedRecord,
+    pub message: String,
+    pub status: InteractionStatus,
+    pub created_at: String,
+    pub viewed_at: Option<String>,
+    pub responded_at: Option<String>,
+    pub disclosure_fields: Vec<String>,
+}
+
+/// The vacancy fields frozen into an application snapshot.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VacancySnapshot {
+    pub id: String,
+    pub title: String,
+    pub specialization: Specialization,
+    pub grade: Grade,
+    pub work_mode: String,
+    pub salary_from: u64,
+    pub salary_to: u64,
+    pub description: String,
+}
+
+/// A candidate's application to a published need, with the company card,
+/// the vacancy card and the full need frozen at submission time.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ApplicationRecord {
+    pub id: String,
+    pub company_id: String,
+    pub candidate_id: String,
+    pub candidate_alias: String,
+    pub company: CompanyCard,
+    pub vacancy: VacancySnapshot,
+    pub need_definition: HiringNeedRecord,
+    pub message: String,
+    pub status: InteractionStatus,
+    pub created_at: String,
+    pub viewed_at: Option<String>,
+    pub responded_at: Option<String>,
+    pub disclosure_fields: Vec<String>,
+}
+
+/// Lifecycle of an employer's weekly task.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TaskStatus {
+    Active,
+    Archived,
+}
+
+impl TaskStatus {
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Active => "active",
+            Self::Archived => "archived",
+        }
+    }
+
+    #[must_use]
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "active" => Some(Self::Active),
+            "archived" => Some(Self::Archived),
+            _ => None,
+        }
+    }
+}
+
+/// The response format a candidate picks for a weekly task.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TaskMode {
+    Solution,
+    Approach,
+}
+
+impl TaskMode {
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Solution => "solution",
+            Self::Approach => "approach",
+        }
+    }
+
+    #[must_use]
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "solution" => Some(Self::Solution),
+            "approach" => Some(Self::Approach),
+            _ => None,
+        }
+    }
+}
+
+/// Review lifecycle of a candidate's task response.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TaskResponseStatus {
+    Submitted,
+    Accepted,
+    NeedsWork,
+}
+
+impl TaskResponseStatus {
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Submitted => "submitted",
+            Self::Accepted => "accepted",
+            Self::NeedsWork => "needs_work",
+        }
+    }
+
+    #[must_use]
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "submitted" => Some(Self::Submitted),
+            "accepted" => Some(Self::Accepted),
+            "needs_work" => Some(Self::NeedsWork),
+            _ => None,
+        }
+    }
+}
+
+/// A weekly task an employer publishes for candidates.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TaskRecord {
+    pub id: String,
+    pub company_id: String,
+    pub title: String,
+    pub prompt: String,
+    pub skill_id: String,
+    pub grade: Grade,
+    pub estimate_minutes: u32,
+    pub status: TaskStatus,
+    pub created_at: String,
+}
+
+/// The offered-task card frozen into a task response.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OfferedTaskSnapshot {
+    pub id: String,
+    pub company_id: String,
+    pub company_display_name: String,
+    pub title: String,
+    pub prompt: String,
+    pub skill_id: String,
+    pub grade: Grade,
+    pub estimate_minutes: u32,
+}
+
+/// A candidate's answer to a weekly task, with the offered task frozen at
+/// submission time.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TaskResponseRecord {
+    pub id: String,
+    pub candidate_id: String,
+    pub candidate_alias: String,
+    pub task: OfferedTaskSnapshot,
+    pub mode: TaskMode,
+    pub answer: String,
+    pub status: TaskResponseStatus,
+    pub feedback: Option<String>,
+    pub submitted_at: String,
+    pub reviewed_at: Option<String>,
+}
+
+/// Lifecycle of a grade assessment.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AssessmentStatus {
+    Draft,
+    InProgress,
+    Submitted,
+    Evaluating,
+    Passed,
+    Failed,
+    ServiceError,
+}
+
+impl AssessmentStatus {
+    /// The mock's `activeAssessment` set.
+    #[must_use]
+    pub fn active(self) -> bool {
+        matches!(
+            self,
+            Self::Draft | Self::InProgress | Self::Submitted | Self::Evaluating
+        )
+    }
+
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Draft => "draft",
+            Self::InProgress => "in_progress",
+            Self::Submitted => "submitted",
+            Self::Evaluating => "evaluating",
+            Self::Passed => "passed",
+            Self::Failed => "failed",
+            Self::ServiceError => "service_error",
+        }
+    }
+
+    #[must_use]
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "draft" => Some(Self::Draft),
+            "in_progress" => Some(Self::InProgress),
+            "submitted" => Some(Self::Submitted),
+            "evaluating" => Some(Self::Evaluating),
+            "passed" => Some(Self::Passed),
+            "failed" => Some(Self::Failed),
+            "service_error" => Some(Self::ServiceError),
+            _ => None,
+        }
+    }
+}
+
+/// The assessment task card issued to a candidate — the mock's `TASK`
+/// fixture with a per-grade variant id.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AssessmentTask {
+    pub id: String,
+    pub family: String,
+    pub version: String,
+    pub variant_id: String,
+    pub title: String,
+    pub prompt: String,
+    pub language: String,
+    pub starter_code: String,
+    pub acceptance_criteria: Vec<String>,
+    pub rubric: Vec<RubricCriterion>,
+    pub ai_allowed: bool,
+    pub external_ai_allowed: bool,
+    pub execution: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RubricCriterion {
+    pub id: String,
+    pub label: String,
+    pub weight: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AssessmentAnswer {
+    pub code: String,
+    pub explanation: String,
+    pub external_ai_used: bool,
+}
+
+/// One automated check over the submitted answer.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AssessmentCheck {
+    pub id: String,
+    pub label: String,
+    /// `passed`, `failed` or `not_run`.
+    pub status: String,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RubricOutcome {
+    pub criterion_id: String,
+    pub label: String,
+    /// `met`, `partial` or `not_met`.
+    pub outcome: String,
+    pub feedback: String,
+}
+
+/// The contract's `AssessmentResult` blob.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AssessmentResultData {
+    pub assessment_id: String,
+    /// `passed`, `failed` or `service_error`.
+    pub outcome: String,
+    pub confirmed_grade: Option<Grade>,
+    pub previous_grade: Option<Grade>,
+    pub grade_changed: bool,
+    pub rubric: Vec<RubricOutcome>,
+    pub checks: Vec<AssessmentCheck>,
+    pub feedback: String,
+    pub next_eligible_at: Option<String>,
+    pub simulation: bool,
+}
+
+/// A grade assessment attempt owned by a candidate.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AssessmentRecord {
+    pub id: String,
+    pub candidate_id: String,
+    pub specialization: Specialization,
+    pub grade: Grade,
+    pub status: AssessmentStatus,
+    pub task: AssessmentTask,
+    pub answer: AssessmentAnswer,
+    pub checks: Vec<AssessmentCheck>,
+    pub result: Option<AssessmentResultData>,
+    pub created_at: String,
+    pub updated_at: String,
+    pub revision: u64,
+}
+
+/// The aggregated disclosure grant a company holds over a candidate.
+/// Row existence means `granted: true`; an absent row renders the
+/// not-granted disclosure shell.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DisclosureRecord {
+    pub candidate_id: String,
+    pub company_id: String,
+    pub invitation_id: Option<String>,
+    pub application_id: Option<String>,
+    pub granted_at: Option<String>,
+    pub name: Option<String>,
+    pub email: Option<String>,
+    pub source_links: Vec<String>,
 }
 
 impl Company {
@@ -182,7 +616,7 @@ mod tests {
             stack: vec!["rust".into()],
             team_role: "Разработчик".into(),
             experience_months: Some(12),
-            experience: String::new(),
+            experience: "Два года в продуктовой разработке".into(),
             soft_skills: Vec::new(),
             consents: Consents {
                 processing: true,
@@ -194,8 +628,9 @@ mod tests {
             revision: 1,
             updated_at: "2026-10-06T00:00:00Z".into(),
         };
-        assert!(profile.visible_to_employers());
+        assert!(profile.visible_to_employers(true));
+        assert!(!profile.visible_to_employers(false));
         profile.consents.publication = false;
-        assert!(!profile.visible_to_employers());
+        assert!(!profile.visible_to_employers(true));
     }
 }

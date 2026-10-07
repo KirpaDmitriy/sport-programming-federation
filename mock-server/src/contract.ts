@@ -902,8 +902,8 @@ export function buildOpenApi(): OpenApiDocument {
         ? 'Loopback-only development control. Exclude from the production backend and production frontend build.'
         : entry.idempotent
           ? 'Requires an Idempotency-Key. Repeating the same key and payload replays the stored response. A changed payload returns 409.'
-          : 'Proposed contract implemented by the local fixture server; no Rust backend implementation is claimed.',
-      security: entry.auth === 'none' ? [] : [{ mockSession: [] }],
+          : 'Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).',
+      security: entry.auth === 'none' ? [] : [{ session: [] }],
       responses,
       ...(entry.dev ? { 'x-mock-only': true } : {}),
       ...(parameters.length ? { parameters } : {}),
@@ -939,17 +939,17 @@ export function buildOpenApi(): OpenApiDocument {
       title: 'FSP Career API',
       version: '0.1.0',
       description:
-        'PROPOSED CONTRACT. Local stateful mock with synthetic data. The Rust backend in backend/ serves only GET /health so far; every other operation is implemented by this mock. JSON responses use camelCase. Salary is integer RUB/month before tax. No production authentication, code execution, external provider, or real LLM is implemented.',
+        'Platform contract. Implemented by the local stateful mock with synthetic data (the frontend development and behavior reference) and by the Rust backend in backend/ (operation coverage tracked in docs/backend-implementation-checklist.md). JSON responses use camelCase. Salary is integer RUB/month before tax. No production authentication, code execution, external provider, or real LLM is implemented.',
     },
     servers: [{ url: '/', description: 'Same origin; development Vite proxy forwards /api to 127.0.0.1:4010.' }],
     paths,
     components: {
       securitySchemes: {
-        mockSession: {
+        session: {
           type: 'apiKey',
           in: 'cookie',
-          name: 'fsp_mock_session',
-          description: 'Development-only opaque session cookie, HttpOnly, SameSite=Lax.',
+          name: 'fsp_session',
+          description: 'Opaque session cookie: HttpOnly, SameSite=Lax, Secure behind TLS.',
         },
       },
       schemas,

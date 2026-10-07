@@ -1,7 +1,10 @@
 use std::path::Path;
 use std::sync::Mutex;
 
-use fsp_application::{ConsumeChallenge, PendingChallenge, PlatformRepository, RepositoryError};
+use fsp_application::{
+    ConsumeChallenge, PendingChallenge, PlatformRepository, RepositoryError,
+    StoredIdempotentResponse,
+};
 use fsp_domain::{
     Account, CandidateIndexRecord, CandidateProfile, Company, Consents, Criticality,
     EvidencePolicy, EvidenceSource, EvidenceStatus, Grade, HiringNeed, HiringNeedRecord, JobRecord,
@@ -18,6 +21,7 @@ impl SqliteRepository {
     pub fn open(path: impl AsRef<Path>) -> Result<Self, RepositoryError> {
         let connection = Connection::open(path).map_err(storage)?;
         connection.execute_batch(SCHEMA).map_err(storage)?;
+        migrate(&connection)?;
         Ok(Self {
             connection: Mutex::new(connection),
         })
@@ -28,6 +32,33 @@ impl SqliteRepository {
             .lock()
             .map_err(|_| RepositoryError::Storage("database lock poisoned".into()))
     }
+}
+
+/// The jobs table gained kind/candidate/assessment/result columns after it
+/// first shipped; add them to databases created by older binaries.
+fn migrate(connection: &Connection) -> Result<(), RepositoryError> {
+    let existing = connection
+        .prepare("SELECT name FROM pragma_table_info('jobs')")
+        .map_err(storage)?
+        .query_map([], |row| row.get::<_, String>(0))
+        .map_err(storage)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(storage)?;
+    for (column, ddl) in [
+        ("kind", "TEXT NOT NULL DEFAULT 'source_sync'"),
+        ("candidate_id", "TEXT"),
+        ("assessment_id", "TEXT"),
+        ("input_revision", "INTEGER"),
+        ("result_json", "TEXT"),
+        ("confirmed", "INTEGER NOT NULL DEFAULT 0"),
+    ] {
+        if !existing.iter().any(|name| name == column) {
+            connection
+                .execute(&format!("ALTER TABLE jobs ADD COLUMN {column} {ddl}"), [])
+                .map_err(storage)?;
+        }
+    }
+    Ok(())
 }
 
 impl PlatformRepository for SqliteRepository {
@@ -101,11 +132,12 @@ impl PlatformRepository for SqliteRepository {
         let Some((account_id, expected, expires_at, attempts, used)) = challenge else {
             return Ok((ConsumeChallenge::Missing, None));
         };
-        if used {
-            return Ok((ConsumeChallenge::Used, None));
-        }
+        // The mock checks expiry before consumption so a stale code reports expired.
         if expires_at.as_str() <= now {
             return Ok((ConsumeChallenge::Expired, None));
+        }
+        if used {
+            return Ok((ConsumeChallenge::Used, None));
         }
         if attempts >= 5 {
             return Ok((ConsumeChallenge::Locked, None));
@@ -233,6 +265,494 @@ impl PlatformRepository for SqliteRepository {
             .map_err(storage)
     }
 
+    fn save_need(&self, value: &HiringNeedRecord) -> Result<(), RepositoryError> {
+        let requirements = serde_json::to_string(&value.need.requirements).map_err(json_storage)?;
+        self.connection()?
+            .execute(
+                "INSERT OR REPLACE INTO needs(id,company_id,title,specialization,grade,work_mode,salary_from,salary_to,description,requirements_json,published,published_at,created_at,updated_at,revision) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                params![
+                    value.id,
+                    value.company_id,
+                    value.title,
+                    specialization(value.need.specialization),
+                    grade(value.need.grade),
+                    value.work_mode,
+                    value.salary_from,
+                    value.salary_to,
+                    value.description,
+                    requirements,
+                    value.published,
+                    value.published_at,
+                    value.created_at,
+                    value.updated_at,
+                    value.revision
+                ],
+            )
+            .map_err(storage)?;
+        Ok(())
+    }
+
+    fn delete_need(&self, company_id: &str, need_id: &str) -> Result<(), RepositoryError> {
+        self.connection()?
+            .execute(
+                "DELETE FROM needs WHERE id=? AND company_id=?",
+                params![need_id, company_id],
+            )
+            .map_err(storage)?;
+        Ok(())
+    }
+
+    fn published_needs(&self) -> Result<Vec<HiringNeedRecord>, RepositoryError> {
+        let connection = self.connection()?;
+        connection
+            .prepare("SELECT id,company_id,title,specialization,grade,work_mode,salary_from,salary_to,description,requirements_json,published,published_at,created_at,updated_at,revision FROM needs WHERE published=1")
+            .map_err(storage)?
+            .query_map([], need_record)
+            .map_err(storage)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(storage)
+    }
+
+    fn shortlists(
+        &self,
+        company_id: &str,
+    ) -> Result<Vec<fsp_domain::ShortlistRecord>, RepositoryError> {
+        let connection = self.connection()?;
+        connection
+            .prepare(
+                "SELECT id,company_id,title,members_json,created_at,updated_at FROM shortlists WHERE company_id=? ORDER BY rowid",
+            )
+            .map_err(storage)?
+            .query_map([company_id], shortlist_record)
+            .map_err(storage)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(storage)
+    }
+
+    fn shortlist(
+        &self,
+        company_id: &str,
+        shortlist_id: &str,
+    ) -> Result<Option<fsp_domain::ShortlistRecord>, RepositoryError> {
+        self.connection()?
+            .query_row(
+                "SELECT id,company_id,title,members_json,created_at,updated_at FROM shortlists WHERE company_id=? AND id=?",
+                params![company_id, shortlist_id],
+                shortlist_record,
+            )
+            .optional()
+            .map_err(storage)
+    }
+
+    fn save_shortlist(&self, value: &fsp_domain::ShortlistRecord) -> Result<(), RepositoryError> {
+        let members = serde_json::to_string(&value.member_ids).map_err(json_storage)?;
+        self.connection()?
+            .execute(
+                "INSERT OR REPLACE INTO shortlists(id,company_id,title,members_json,created_at,updated_at) VALUES(?,?,?,?,?,?)",
+                params![
+                    value.id,
+                    value.company_id,
+                    value.title,
+                    members,
+                    value.created_at,
+                    value.updated_at
+                ],
+            )
+            .map_err(storage)?;
+        Ok(())
+    }
+
+    fn delete_shortlist(
+        &self,
+        company_id: &str,
+        shortlist_id: &str,
+    ) -> Result<(), RepositoryError> {
+        self.connection()?
+            .execute(
+                "DELETE FROM shortlists WHERE id=? AND company_id=?",
+                params![shortlist_id, company_id],
+            )
+            .map_err(storage)?;
+        Ok(())
+    }
+
+    fn invitations(
+        &self,
+        company_id: &str,
+    ) -> Result<Vec<fsp_domain::InvitationRecord>, RepositoryError> {
+        let connection = self.connection()?;
+        connection
+            .prepare("SELECT * FROM invitations WHERE company_id=? ORDER BY rowid")
+            .map_err(storage)?
+            .query_map([company_id], invitation_record)
+            .map_err(storage)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(storage)
+    }
+
+    fn candidate_invitations(
+        &self,
+        candidate_id: &str,
+    ) -> Result<Vec<fsp_domain::InvitationRecord>, RepositoryError> {
+        let connection = self.connection()?;
+        connection
+            .prepare("SELECT * FROM invitations WHERE candidate_id=? ORDER BY rowid")
+            .map_err(storage)?
+            .query_map([candidate_id], invitation_record)
+            .map_err(storage)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(storage)
+    }
+
+    fn invitation(
+        &self,
+        invitation_id: &str,
+    ) -> Result<Option<fsp_domain::InvitationRecord>, RepositoryError> {
+        self.connection()?
+            .query_row(
+                "SELECT * FROM invitations WHERE id=?",
+                params![invitation_id],
+                invitation_record,
+            )
+            .optional()
+            .map_err(storage)
+    }
+
+    fn save_invitation(&self, value: &fsp_domain::InvitationRecord) -> Result<(), RepositoryError> {
+        self.connection()?
+            .execute(
+                "INSERT OR REPLACE INTO invitations(id,company_id,candidate_id,candidate_alias,company_json,need_json,need_definition_json,message,status,created_at,viewed_at,responded_at,disclosure_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                params![
+                    value.id,
+                    value.company_id,
+                    value.candidate_id,
+                    value.candidate_alias,
+                    serde_json::to_string(&value.company).map_err(json_storage)?,
+                    serde_json::to_string(&value.need).map_err(json_storage)?,
+                    serde_json::to_string(&value.need_definition).map_err(json_storage)?,
+                    value.message,
+                    value.status.as_str(),
+                    value.created_at,
+                    value.viewed_at,
+                    value.responded_at,
+                    serde_json::to_string(&value.disclosure_fields).map_err(json_storage)?,
+                ],
+            )
+            .map_err(storage)?;
+        Ok(())
+    }
+
+    fn disclosure(
+        &self,
+        company_id: &str,
+        candidate_id: &str,
+    ) -> Result<Option<fsp_domain::DisclosureRecord>, RepositoryError> {
+        self.connection()?
+            .query_row(
+                "SELECT candidate_id,company_id,invitation_id,application_id,granted_at,name,email,source_links_json FROM disclosures WHERE company_id=? AND candidate_id=?",
+                params![company_id, candidate_id],
+                disclosure_record,
+            )
+            .optional()
+            .map_err(storage)
+    }
+
+    fn save_disclosure(&self, value: &fsp_domain::DisclosureRecord) -> Result<(), RepositoryError> {
+        self.connection()?
+            .execute(
+                "INSERT OR REPLACE INTO disclosures(company_id,candidate_id,invitation_id,application_id,granted_at,name,email,source_links_json) VALUES(?,?,?,?,?,?,?,?)",
+                params![
+                    value.company_id,
+                    value.candidate_id,
+                    value.invitation_id,
+                    value.application_id,
+                    value.granted_at,
+                    value.name,
+                    value.email,
+                    serde_json::to_string(&value.source_links).map_err(json_storage)?,
+                ],
+            )
+            .map_err(storage)?;
+        Ok(())
+    }
+
+    fn delete_disclosure(
+        &self,
+        company_id: &str,
+        candidate_id: &str,
+    ) -> Result<(), RepositoryError> {
+        self.connection()?
+            .execute(
+                "DELETE FROM disclosures WHERE company_id=? AND candidate_id=?",
+                params![company_id, candidate_id],
+            )
+            .map_err(storage)?;
+        Ok(())
+    }
+
+    fn company_applications(
+        &self,
+        company_id: &str,
+    ) -> Result<Vec<fsp_domain::ApplicationRecord>, RepositoryError> {
+        let connection = self.connection()?;
+        connection
+            .prepare("SELECT * FROM applications WHERE company_id=?")
+            .map_err(storage)?
+            .query_map([company_id], application_record)
+            .map_err(storage)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(storage)
+    }
+
+    fn candidate_applications(
+        &self,
+        candidate_id: &str,
+    ) -> Result<Vec<fsp_domain::ApplicationRecord>, RepositoryError> {
+        let connection = self.connection()?;
+        connection
+            .prepare("SELECT * FROM applications WHERE candidate_id=?")
+            .map_err(storage)?
+            .query_map([candidate_id], application_record)
+            .map_err(storage)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(storage)
+    }
+
+    fn application(
+        &self,
+        application_id: &str,
+    ) -> Result<Option<fsp_domain::ApplicationRecord>, RepositoryError> {
+        self.connection()?
+            .query_row(
+                "SELECT * FROM applications WHERE id=?",
+                params![application_id],
+                application_record,
+            )
+            .optional()
+            .map_err(storage)
+    }
+
+    fn save_application(
+        &self,
+        value: &fsp_domain::ApplicationRecord,
+    ) -> Result<(), RepositoryError> {
+        self.connection()?
+            .execute(
+                "INSERT OR REPLACE INTO applications(id,company_id,candidate_id,candidate_alias,company_json,vacancy_json,need_definition_json,message,status,created_at,viewed_at,responded_at,disclosure_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                params![
+                    value.id,
+                    value.company_id,
+                    value.candidate_id,
+                    value.candidate_alias,
+                    serde_json::to_string(&value.company).map_err(json_storage)?,
+                    serde_json::to_string(&value.vacancy).map_err(json_storage)?,
+                    serde_json::to_string(&value.need_definition).map_err(json_storage)?,
+                    value.message,
+                    value.status.as_str(),
+                    value.created_at,
+                    value.viewed_at,
+                    value.responded_at,
+                    serde_json::to_string(&value.disclosure_fields).map_err(json_storage)?,
+                ],
+            )
+            .map_err(storage)?;
+        Ok(())
+    }
+
+    fn tasks(&self, company_id: &str) -> Result<Vec<fsp_domain::TaskRecord>, RepositoryError> {
+        let connection = self.connection()?;
+        connection
+            .prepare("SELECT * FROM tasks WHERE company_id=?")
+            .map_err(storage)?
+            .query_map([company_id], task_record)
+            .map_err(storage)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(storage)
+    }
+
+    fn active_tasks(&self) -> Result<Vec<fsp_domain::TaskRecord>, RepositoryError> {
+        let connection = self.connection()?;
+        connection
+            .prepare("SELECT * FROM tasks WHERE status='active'")
+            .map_err(storage)?
+            .query_map([], task_record)
+            .map_err(storage)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(storage)
+    }
+
+    fn task(&self, task_id: &str) -> Result<Option<fsp_domain::TaskRecord>, RepositoryError> {
+        self.connection()?
+            .query_row(
+                "SELECT * FROM tasks WHERE id=?",
+                params![task_id],
+                task_record,
+            )
+            .optional()
+            .map_err(storage)
+    }
+
+    fn save_task(&self, value: &fsp_domain::TaskRecord) -> Result<(), RepositoryError> {
+        self.connection()?
+            .execute(
+                "INSERT OR REPLACE INTO tasks(id,company_id,title,prompt,skill_id,grade,estimate_minutes,status,created_at) VALUES(?,?,?,?,?,?,?,?,?)",
+                params![
+                    value.id,
+                    value.company_id,
+                    value.title,
+                    value.prompt,
+                    value.skill_id,
+                    grade(value.grade),
+                    value.estimate_minutes,
+                    value.status.as_str(),
+                    value.created_at,
+                ],
+            )
+            .map_err(storage)?;
+        Ok(())
+    }
+
+    fn candidate_task_responses(
+        &self,
+        candidate_id: &str,
+    ) -> Result<Vec<fsp_domain::TaskResponseRecord>, RepositoryError> {
+        let connection = self.connection()?;
+        connection
+            .prepare("SELECT * FROM task_responses WHERE candidate_id=?")
+            .map_err(storage)?
+            .query_map([candidate_id], task_response_record)
+            .map_err(storage)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(storage)
+    }
+
+    fn company_task_responses(
+        &self,
+        company_id: &str,
+    ) -> Result<Vec<fsp_domain::TaskResponseRecord>, RepositoryError> {
+        let connection = self.connection()?;
+        connection
+            .prepare("SELECT * FROM task_responses WHERE company_id=?")
+            .map_err(storage)?
+            .query_map([company_id], task_response_record)
+            .map_err(storage)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(storage)
+    }
+
+    fn task_response(
+        &self,
+        response_id: &str,
+    ) -> Result<Option<fsp_domain::TaskResponseRecord>, RepositoryError> {
+        self.connection()?
+            .query_row(
+                "SELECT * FROM task_responses WHERE id=?",
+                params![response_id],
+                task_response_record,
+            )
+            .optional()
+            .map_err(storage)
+    }
+
+    fn save_task_response(
+        &self,
+        value: &fsp_domain::TaskResponseRecord,
+    ) -> Result<(), RepositoryError> {
+        self.connection()?
+            .execute(
+                "INSERT OR REPLACE INTO task_responses(id,candidate_id,company_id,candidate_alias,task_json,mode,answer,status,feedback,submitted_at,reviewed_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                params![
+                    value.id,
+                    value.candidate_id,
+                    value.task.company_id,
+                    value.candidate_alias,
+                    serde_json::to_string(&value.task).map_err(json_storage)?,
+                    value.mode.as_str(),
+                    value.answer,
+                    value.status.as_str(),
+                    value.feedback,
+                    value.submitted_at,
+                    value.reviewed_at,
+                ],
+            )
+            .map_err(storage)?;
+        Ok(())
+    }
+
+    fn save_candidate_index(&self, record: &CandidateIndexRecord) -> Result<(), RepositoryError> {
+        self.connection()?
+            .execute(
+                "INSERT INTO candidate_index(candidate_id,work_modes_json,available_for_offers,skills_json,source_kinds_json,fsp_verified,last_signal_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(candidate_id) DO UPDATE SET work_modes_json=excluded.work_modes_json,available_for_offers=excluded.available_for_offers,skills_json=excluded.skills_json,source_kinds_json=excluded.source_kinds_json,fsp_verified=excluded.fsp_verified,last_signal_at=excluded.last_signal_at",
+                params![
+                    record.profile.id,
+                    serde_json::to_string(&record.work_modes).map_err(json_storage)?,
+                    record.available_for_offers,
+                    serde_json::to_string(&record.skills).map_err(json_storage)?,
+                    serde_json::to_string(&record.source_kinds).map_err(json_storage)?,
+                    record.fsp_verified,
+                    record.last_signal_at,
+                ],
+            )
+            .map_err(storage)?;
+        Ok(())
+    }
+
+    fn candidate_assessments(
+        &self,
+        candidate_id: &str,
+    ) -> Result<Vec<fsp_domain::AssessmentRecord>, RepositoryError> {
+        let connection = self.connection()?;
+        connection
+            .prepare("SELECT * FROM assessments WHERE candidate_id=?")
+            .map_err(storage)?
+            .query_map([candidate_id], assessment_record)
+            .map_err(storage)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(storage)
+    }
+
+    fn assessment(
+        &self,
+        assessment_id: &str,
+    ) -> Result<Option<fsp_domain::AssessmentRecord>, RepositoryError> {
+        self.connection()?
+            .query_row(
+                "SELECT * FROM assessments WHERE id=?",
+                params![assessment_id],
+                assessment_record,
+            )
+            .optional()
+            .map_err(storage)
+    }
+
+    fn save_assessment(&self, value: &fsp_domain::AssessmentRecord) -> Result<(), RepositoryError> {
+        self.connection()?
+            .execute(
+                "INSERT OR REPLACE INTO assessments(id,candidate_id,specialization,grade,status,task_json,answer_json,checks_json,result_json,created_at,updated_at,revision) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+                params![
+                    value.id,
+                    value.candidate_id,
+                    specialization(value.specialization),
+                    grade(value.grade),
+                    value.status.as_str(),
+                    serde_json::to_string(&value.task).map_err(json_storage)?,
+                    serde_json::to_string(&value.answer).map_err(json_storage)?,
+                    serde_json::to_string(&value.checks).map_err(json_storage)?,
+                    value
+                        .result
+                        .as_ref()
+                        .map(serde_json::to_string)
+                        .transpose()
+                        .map_err(json_storage)?,
+                    value.created_at,
+                    value.updated_at,
+                    value.revision,
+                ],
+            )
+            .map_err(storage)?;
+        Ok(())
+    }
+
     fn save_oauth_state(
         &self,
         candidate_id: &str,
@@ -321,8 +841,8 @@ impl PlatformRepository for SqliteRepository {
     fn save_job(&self, job: &JobRecord) -> Result<(), RepositoryError> {
         self.connection()?
             .execute(
-                "INSERT INTO jobs(id,owner_id,status,created_at,updated_at,result_source_id,error_code,error_message) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET status=excluded.status,updated_at=excluded.updated_at,result_source_id=excluded.result_source_id,error_code=excluded.error_code,error_message=excluded.error_message",
-                params![job.id,job.owner_id,job.status,job.created_at,job.updated_at,job.result_source_id,job.error_code,job.error_message],
+                "INSERT INTO jobs(id,owner_id,kind,status,created_at,updated_at,candidate_id,assessment_id,input_revision,result_json,confirmed,result_source_id,error_code,error_message) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET kind=excluded.kind,status=excluded.status,updated_at=excluded.updated_at,candidate_id=excluded.candidate_id,assessment_id=excluded.assessment_id,input_revision=excluded.input_revision,result_json=excluded.result_json,confirmed=excluded.confirmed,result_source_id=excluded.result_source_id,error_code=excluded.error_code,error_message=excluded.error_message",
+                params![job.id,job.owner_id,job.kind,job.status,job.created_at,job.updated_at,job.candidate_id,job.assessment_id,job.input_revision,job.result_json,job.confirmed,job.result_source_id,job.error_code,job.error_message],
             )
             .map_err(storage)?;
         Ok(())
@@ -331,12 +851,67 @@ impl PlatformRepository for SqliteRepository {
     fn job(&self, owner_id: &str, job_id: &str) -> Result<Option<JobRecord>, RepositoryError> {
         self.connection()?
             .query_row(
-                "SELECT id,owner_id,status,created_at,updated_at,result_source_id,error_code,error_message FROM jobs WHERE owner_id=? AND id=?",
+                "SELECT id,owner_id,kind,status,created_at,updated_at,candidate_id,assessment_id,input_revision,result_json,confirmed,result_source_id,error_code,error_message FROM jobs WHERE owner_id=? AND id=?",
                 params![owner_id, job_id],
-                |row| Ok(JobRecord { id: row.get(0)?, owner_id: row.get(1)?, status: row.get(2)?, created_at: row.get(3)?, updated_at: row.get(4)?, result_source_id: row.get(5)?, error_code: row.get(6)?, error_message: row.get(7)? }),
+                |row| {
+                    Ok(JobRecord {
+                        id: row.get(0)?,
+                        owner_id: row.get(1)?,
+                        kind: row.get(2)?,
+                        status: row.get(3)?,
+                        created_at: row.get(4)?,
+                        updated_at: row.get(5)?,
+                        candidate_id: row.get(6)?,
+                        assessment_id: row.get(7)?,
+                        input_revision: row.get::<_, Option<i64>>(8)?.map(|value| value as u64),
+                        result_json: row.get(9)?,
+                        confirmed: row.get(10)?,
+                        result_source_id: row.get(11)?,
+                        error_code: row.get(12)?,
+                        error_message: row.get(13)?,
+                    })
+                },
             )
             .optional()
             .map_err(storage)
+    }
+
+    fn idempotency_get(
+        &self,
+        scope: &str,
+    ) -> Result<Option<StoredIdempotentResponse>, RepositoryError> {
+        self.connection()?
+            .query_row(
+                "SELECT fingerprint,status,body_json FROM idempotency_keys WHERE scope=?",
+                [scope],
+                |row| {
+                    Ok(StoredIdempotentResponse {
+                        fingerprint: row.get(0)?,
+                        status: row.get(1)?,
+                        body: row.get(2)?,
+                    })
+                },
+            )
+            .optional()
+            .map_err(storage)
+    }
+
+    fn idempotency_put(
+        &self,
+        scope: &str,
+        fingerprint: &str,
+        status: u16,
+        body: &str,
+        now: &str,
+    ) -> Result<(), RepositoryError> {
+        // INSERT OR IGNORE keeps the first response when retries race.
+        self.connection()?
+            .execute(
+                "INSERT OR IGNORE INTO idempotency_keys(scope,fingerprint,status,body_json,created_at) VALUES(?,?,?,?,?)",
+                params![scope, fingerprint, i64::from(status), body, now],
+            )
+            .map_err(storage)?;
+        Ok(())
     }
 
     fn seed_demo(&self, now: &str) -> Result<(), RepositoryError> {
@@ -400,6 +975,9 @@ fn seed(connection: &Connection, now: &str) -> Result<(), RepositoryError> {
         true,
     )?;
     for profile in demo_candidates(now) {
+        // Demo candidates are pre-verified fixtures: give each one a verified
+        // account so employer visibility checks see the same state as the mock.
+        connection.execute("INSERT INTO accounts(id,email,role,candidate_id,company_id,email_verified,created_at) VALUES(?,?,?,?,?,?,?)", params![format!("account-{}", profile.id),profile.email,role(Role::Candidate),profile.id,Option::<String>::None,true,now]).map_err(storage)?;
         save_candidate(connection, &profile, true)?;
     }
     for (id, skills, sources, fsp_verified) in demo_candidate_indexes() {
@@ -459,6 +1037,130 @@ fn seed(connection: &Connection, now: &str) -> Result<(), RepositoryError> {
             ],
         )
         .map_err(storage)?;
+    // Mirror of the mock's `shortlist-001` fixture for the demo employer.
+    connection
+        .execute(
+            "INSERT INTO shortlists(id,company_id,title,members_json,created_at,updated_at) VALUES(?,?,?,?,?,?)",
+            params![
+                "shortlist-001",
+                "company-sever",
+                "Бэкенд · Мидл",
+                serde_json::to_string(&vec![
+                    "candidate-024",
+                    "candidate018",
+                    "candidate041"
+                ])
+                .map_err(json_storage)?,
+                now,
+                now
+            ],
+        )
+        .map_err(storage)?;
+    // Mirror of the mock's task fixtures, on the demo employer.
+    for (id, title, prompt, skill_id, task_grade, minutes) in [
+        (
+            "task-001",
+            "Повтор платежа без двойного списания",
+            "Платёжный сервис получает повторный запрос после таймаута клиента. Как сделать, чтобы деньги не списались дважды? Решите или опишите подход: таблицы и ограничения PostgreSQL, порядок операций, что вернуть повторному запросу.",
+            "postgresql",
+            Grade::Junior,
+            30_u32,
+        ),
+        (
+            "task-002",
+            "Повторные попытки отправки уведомлений",
+            "Сервис уведомлений на Rust вызывает внешний API, который иногда отвечает ошибкой или не отвечает. Предложите, как организовать повторные попытки: где хранить состояние, как не перегрузить внешний сервис и когда прекращать попытки.",
+            "rust",
+            Grade::Junior,
+            45_u32,
+        ),
+        (
+            "task-003",
+            "Форма регистрации с проверкой полей",
+            "Нужна форма регистрации на React: почта, пароль и согласие с условиями. Опишите, как проверять поля и показывать ошибки так, чтобы форма была доступна с клавиатуры и для экранного диктора.",
+            "react",
+            Grade::Middle,
+            40_u32,
+        ),
+    ] {
+        connection
+            .execute(
+                "INSERT INTO tasks(id,company_id,title,prompt,skill_id,grade,estimate_minutes,status,created_at) VALUES(?,?,?,?,?,?,?,?,?)",
+                params![
+                    id,
+                    "company-sever",
+                    title,
+                    prompt,
+                    skill_id,
+                    grade(task_grade),
+                    minutes,
+                    "active",
+                    now
+                ],
+            )
+            .map_err(storage)?;
+    }
+    // Mirror of the mock's accepted task responses, so history and freshness
+    // start with real task signals.
+    for (id, candidate_id, alias, task_id, answer, feedback, submitted, reviewed) in [
+        (
+            "task-response-seed-031",
+            "candidate031",
+            "Кандидат №031",
+            "task-002",
+            "Очередь задач в PostgreSQL со статусом и временем следующей попытки, экспоненциальная задержка с ограничением, ключ идемпотентности на стороне получателя, после пяти неудач — в очередь разбора.",
+            "Хороший разбор задержек и идемпотентности.",
+            "2026-09-20T12:00:00Z",
+            "2026-09-21T12:00:00Z",
+        ),
+        (
+            "task-response-seed-041",
+            "candidate041",
+            "Кандидат №041",
+            "task-003",
+            "Проверка при потере фокуса и при отправке, ошибки связаны с полями через aria-describedby, фокус переходит к первому ошибочному полю, состояние кнопки не блокирует отправку без объяснения.",
+            "Учтены доступность и порядок фокуса.",
+            "2026-09-13T12:00:00Z",
+            "2026-09-14T12:00:00Z",
+        ),
+    ] {
+        let task_json = connection
+            .query_row(
+                "SELECT title,prompt,skill_id,grade,estimate_minutes FROM tasks WHERE id=?",
+                [task_id],
+                |row| {
+                    Ok(serde_json::json!({
+                        "id": task_id,
+                        "companyId": "company-sever",
+                        "companyDisplayName": "Север Тех",
+                        "title": row.get::<_, String>(0)?,
+                        "prompt": row.get::<_, String>(1)?,
+                        "skillId": row.get::<_, String>(2)?,
+                        "grade": row.get::<_, String>(3)?,
+                        "estimateMinutes": row.get::<_, i64>(4)?,
+                    }))
+                },
+            )
+            .map_err(storage)?;
+        connection
+            .execute(
+                "INSERT INTO task_responses(id,candidate_id,company_id,candidate_alias,task_json,mode,answer,status,feedback,submitted_at,reviewed_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                params![
+                    id,
+                    candidate_id,
+                    "company-sever",
+                    alias,
+                    task_json.to_string(),
+                    "approach",
+                    answer,
+                    "accepted",
+                    feedback,
+                    submitted,
+                    reviewed
+                ],
+            )
+            .map_err(storage)?;
+    }
     Ok(())
 }
 
@@ -720,14 +1422,184 @@ fn candidate_index(
                 None,
             )
         });
+    let email_verified = connection
+        .query_row(
+            "SELECT email_verified FROM accounts WHERE candidate_id=?",
+            [&profile.id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(storage)?
+        .unwrap_or(false);
     Ok(CandidateIndexRecord {
         profile,
+        email_verified,
         work_modes,
         available_for_offers,
         skills,
         source_kinds,
         fsp_verified,
         last_signal_at,
+    })
+}
+
+fn invitation_record(row: &rusqlite::Row<'_>) -> rusqlite::Result<fsp_domain::InvitationRecord> {
+    let status: String = row.get(8)?;
+    Ok(fsp_domain::InvitationRecord {
+        id: row.get(0)?,
+        company_id: row.get(1)?,
+        candidate_id: row.get(2)?,
+        candidate_alias: row.get(3)?,
+        company: parse_json(row.get::<_, String>(4)?)?,
+        need: parse_json(row.get::<_, String>(5)?)?,
+        need_definition: parse_json(row.get::<_, String>(6)?)?,
+        message: row.get(7)?,
+        status: fsp_domain::InteractionStatus::parse(&status).ok_or_else(|| {
+            rusqlite::Error::FromSqlConversionFailure(
+                8,
+                rusqlite::types::Type::Text,
+                format!("unknown invitation status {status}").into(),
+            )
+        })?,
+        created_at: row.get(9)?,
+        viewed_at: row.get(10)?,
+        responded_at: row.get(11)?,
+        disclosure_fields: parse_json(row.get::<_, String>(12)?)?,
+    })
+}
+
+fn application_record(row: &rusqlite::Row<'_>) -> rusqlite::Result<fsp_domain::ApplicationRecord> {
+    let status: String = row.get(8)?;
+    Ok(fsp_domain::ApplicationRecord {
+        id: row.get(0)?,
+        company_id: row.get(1)?,
+        candidate_id: row.get(2)?,
+        candidate_alias: row.get(3)?,
+        company: parse_json(row.get::<_, String>(4)?)?,
+        vacancy: parse_json(row.get::<_, String>(5)?)?,
+        need_definition: parse_json(row.get::<_, String>(6)?)?,
+        message: row.get(7)?,
+        status: fsp_domain::InteractionStatus::parse(&status).ok_or_else(|| {
+            rusqlite::Error::FromSqlConversionFailure(
+                8,
+                rusqlite::types::Type::Text,
+                format!("unknown application status {status}").into(),
+            )
+        })?,
+        created_at: row.get(9)?,
+        viewed_at: row.get(10)?,
+        responded_at: row.get(11)?,
+        disclosure_fields: parse_json(row.get::<_, String>(12)?)?,
+    })
+}
+
+fn assessment_record(row: &rusqlite::Row<'_>) -> rusqlite::Result<fsp_domain::AssessmentRecord> {
+    let status: String = row.get(4)?;
+    Ok(fsp_domain::AssessmentRecord {
+        id: row.get(0)?,
+        candidate_id: row.get(1)?,
+        specialization: parse_specialization(&row.get::<_, String>(2)?),
+        grade: parse_grade(&row.get::<_, String>(3)?),
+        status: fsp_domain::AssessmentStatus::parse(&status).ok_or_else(|| {
+            rusqlite::Error::FromSqlConversionFailure(
+                4,
+                rusqlite::types::Type::Text,
+                format!("unknown assessment status {status}").into(),
+            )
+        })?,
+        task: parse_json(row.get::<_, String>(5)?)?,
+        answer: parse_json(row.get::<_, String>(6)?)?,
+        checks: parse_json(row.get::<_, String>(7)?)?,
+        result: row
+            .get::<_, Option<String>>(8)?
+            .map(parse_json)
+            .transpose()?,
+        created_at: row.get(9)?,
+        updated_at: row.get(10)?,
+        revision: row.get(11)?,
+    })
+}
+
+fn task_record(row: &rusqlite::Row<'_>) -> rusqlite::Result<fsp_domain::TaskRecord> {
+    let status: String = row.get(7)?;
+    Ok(fsp_domain::TaskRecord {
+        id: row.get(0)?,
+        company_id: row.get(1)?,
+        title: row.get(2)?,
+        prompt: row.get(3)?,
+        skill_id: row.get(4)?,
+        grade: parse_grade(&row.get::<_, String>(5)?),
+        estimate_minutes: row.get(6)?,
+        status: fsp_domain::TaskStatus::parse(&status).ok_or_else(|| {
+            rusqlite::Error::FromSqlConversionFailure(
+                7,
+                rusqlite::types::Type::Text,
+                format!("unknown task status {status}").into(),
+            )
+        })?,
+        created_at: row.get(8)?,
+    })
+}
+
+fn task_response_record(
+    row: &rusqlite::Row<'_>,
+) -> rusqlite::Result<fsp_domain::TaskResponseRecord> {
+    let mode: String = row.get(5)?;
+    let status: String = row.get(7)?;
+    Ok(fsp_domain::TaskResponseRecord {
+        id: row.get(0)?,
+        candidate_id: row.get(1)?,
+        candidate_alias: row.get(3)?,
+        task: parse_json(row.get::<_, String>(4)?)?,
+        mode: fsp_domain::TaskMode::parse(&mode).ok_or_else(|| {
+            rusqlite::Error::FromSqlConversionFailure(
+                5,
+                rusqlite::types::Type::Text,
+                format!("unknown task mode {mode}").into(),
+            )
+        })?,
+        answer: row.get(6)?,
+        status: fsp_domain::TaskResponseStatus::parse(&status).ok_or_else(|| {
+            rusqlite::Error::FromSqlConversionFailure(
+                7,
+                rusqlite::types::Type::Text,
+                format!("unknown task response status {status}").into(),
+            )
+        })?,
+        feedback: row.get(8)?,
+        submitted_at: row.get(9)?,
+        reviewed_at: row.get(10)?,
+    })
+}
+
+fn disclosure_record(row: &rusqlite::Row<'_>) -> rusqlite::Result<fsp_domain::DisclosureRecord> {
+    Ok(fsp_domain::DisclosureRecord {
+        candidate_id: row.get(0)?,
+        company_id: row.get(1)?,
+        invitation_id: row.get(2)?,
+        application_id: row.get(3)?,
+        granted_at: row.get(4)?,
+        name: row.get(5)?,
+        email: row.get(6)?,
+        source_links: parse_json(row.get::<_, String>(7)?)?,
+    })
+}
+
+fn shortlist_record(row: &rusqlite::Row<'_>) -> rusqlite::Result<fsp_domain::ShortlistRecord> {
+    let members: String = row.get(3)?;
+    Ok(fsp_domain::ShortlistRecord {
+        id: row.get(0)?,
+        company_id: row.get(1)?,
+        title: row.get(2)?,
+        member_ids: serde_json::from_str(&members).map_err(|error| {
+            rusqlite::Error::FromSqlConversionFailure(
+                3,
+                rusqlite::types::Type::Text,
+                Box::new(error),
+            )
+        })?,
+        created_at: row.get(4)?,
+        updated_at: row.get(5)?,
     })
 }
 
@@ -907,7 +1779,15 @@ CREATE TABLE IF NOT EXISTS needs(id TEXT PRIMARY KEY,company_id TEXT NOT NULL RE
 CREATE TABLE IF NOT EXISTS oauth_states(state TEXT PRIMARY KEY,candidate_id TEXT NOT NULL,expires_at TEXT NOT NULL,used INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS github_credentials(candidate_id TEXT PRIMARY KEY,access_token TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS sources(id TEXT PRIMARY KEY,candidate_id TEXT NOT NULL,provider TEXT NOT NULL,synthetic INTEGER NOT NULL,active_job_id TEXT,account_label TEXT,last_synced_at TEXT,analysis_json TEXT,verified_participation INTEGER NOT NULL,competition_ids_json TEXT NOT NULL);
-CREATE TABLE IF NOT EXISTS jobs(id TEXT PRIMARY KEY,owner_id TEXT NOT NULL,status TEXT NOT NULL,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,result_source_id TEXT,error_code TEXT,error_message TEXT);
+CREATE TABLE IF NOT EXISTS jobs(id TEXT PRIMARY KEY,owner_id TEXT NOT NULL,kind TEXT NOT NULL DEFAULT 'source_sync',status TEXT NOT NULL,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,candidate_id TEXT,assessment_id TEXT,input_revision INTEGER,result_json TEXT,confirmed INTEGER NOT NULL DEFAULT 0,result_source_id TEXT,error_code TEXT,error_message TEXT);
+CREATE TABLE IF NOT EXISTS idempotency_keys(scope TEXT PRIMARY KEY,fingerprint TEXT NOT NULL,status INTEGER NOT NULL,body_json TEXT NOT NULL,created_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS shortlists(id TEXT PRIMARY KEY,company_id TEXT NOT NULL REFERENCES companies(id),title TEXT NOT NULL,members_json TEXT NOT NULL,created_at TEXT NOT NULL,updated_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS invitations(id TEXT PRIMARY KEY,company_id TEXT NOT NULL,candidate_id TEXT NOT NULL,candidate_alias TEXT NOT NULL,company_json TEXT NOT NULL,need_json TEXT NOT NULL,need_definition_json TEXT NOT NULL,message TEXT NOT NULL,status TEXT NOT NULL,created_at TEXT NOT NULL,viewed_at TEXT,responded_at TEXT,disclosure_json TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS disclosures(company_id TEXT NOT NULL,candidate_id TEXT NOT NULL,invitation_id TEXT,application_id TEXT,granted_at TEXT,name TEXT,email TEXT,source_links_json TEXT NOT NULL,PRIMARY KEY(company_id,candidate_id));
+CREATE TABLE IF NOT EXISTS applications(id TEXT PRIMARY KEY,company_id TEXT NOT NULL,candidate_id TEXT NOT NULL,candidate_alias TEXT NOT NULL,company_json TEXT NOT NULL,vacancy_json TEXT NOT NULL,need_definition_json TEXT NOT NULL,message TEXT NOT NULL,status TEXT NOT NULL,created_at TEXT NOT NULL,viewed_at TEXT,responded_at TEXT,disclosure_json TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS tasks(id TEXT PRIMARY KEY,company_id TEXT NOT NULL REFERENCES companies(id),title TEXT NOT NULL,prompt TEXT NOT NULL,skill_id TEXT NOT NULL,grade TEXT NOT NULL,estimate_minutes INTEGER NOT NULL,status TEXT NOT NULL,created_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS task_responses(id TEXT PRIMARY KEY,candidate_id TEXT NOT NULL,company_id TEXT NOT NULL,candidate_alias TEXT NOT NULL,task_json TEXT NOT NULL,mode TEXT NOT NULL,answer TEXT NOT NULL,status TEXT NOT NULL,feedback TEXT,submitted_at TEXT NOT NULL,reviewed_at TEXT);
+CREATE TABLE IF NOT EXISTS assessments(id TEXT PRIMARY KEY,candidate_id TEXT NOT NULL,specialization TEXT NOT NULL,grade TEXT NOT NULL,status TEXT NOT NULL,task_json TEXT NOT NULL,answer_json TEXT NOT NULL,checks_json TEXT NOT NULL,result_json TEXT,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,revision INTEGER NOT NULL);
 "#;
 
 #[cfg(test)]
@@ -1066,6 +1946,421 @@ mod tests {
             2
         );
         drop(service);
+        std::fs::remove_file(path).expect("temporary database is removed");
+    }
+
+    #[test]
+    fn idempotency_keys_round_trip_and_keep_the_first_response() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system clock must be after Unix epoch")
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("fsp-idem-{nonce}.sqlite3"));
+        let repository = SqliteRepository::open(&path).expect("database opens");
+
+        assert!(
+            repository
+                .idempotency_get("actor:op:/path:key-0001")
+                .expect("lookup works")
+                .is_none()
+        );
+        repository
+            .idempotency_put(
+                "actor:op:/path:key-0001",
+                "{\"a\":1}",
+                201,
+                "{\"id\":\"one\"}",
+                "2026-10-06T00:00:00Z",
+            )
+            .expect("first response is stored");
+        // A racing retry must not overwrite the stored response.
+        repository
+            .idempotency_put(
+                "actor:op:/path:key-0001",
+                "{\"a\":2}",
+                200,
+                "{\"id\":\"two\"}",
+                "2026-10-06T00:00:01Z",
+            )
+            .expect("conflicting inserts are ignored");
+        let stored = repository
+            .idempotency_get("actor:op:/path:key-0001")
+            .expect("lookup works")
+            .expect("response is stored");
+        assert_eq!(stored.fingerprint, "{\"a\":1}");
+        assert_eq!(stored.status, 201);
+        assert_eq!(stored.body, "{\"id\":\"one\"}");
+        drop(repository);
+        std::fs::remove_file(path).expect("temporary database is removed");
+    }
+
+    #[test]
+    fn shortlists_round_trip_and_stay_scoped_to_the_company() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system clock must be after Unix epoch")
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("fsp-shortlists-{nonce}.sqlite3"));
+        let repository = SqliteRepository::open(&path).expect("database opens");
+        repository
+            .connection()
+            .expect("connection opens")
+            .execute(
+                "INSERT INTO companies(id,display_name,business_area,description,contact_email,website) VALUES('company-sever','Север Тех','Разработка','','hr@sever-tech.example',NULL)",
+                [],
+            )
+            .expect("company is stored");
+        repository
+            .save_shortlist(&fsp_domain::ShortlistRecord {
+                id: "shortlist-test".into(),
+                company_id: "company-sever".into(),
+                title: "Кандидаты".into(),
+                member_ids: vec!["candidate018".into()],
+                created_at: "2026-10-06T00:00:00Z".into(),
+                updated_at: "2026-10-06T00:00:00Z".into(),
+            })
+            .expect("shortlist is stored");
+
+        let stored = repository
+            .shortlist("company-sever", "shortlist-test")
+            .expect("lookup works")
+            .expect("shortlist exists");
+        assert_eq!(stored.member_ids, ["candidate018"]);
+        assert!(
+            repository
+                .shortlist("company-other", "shortlist-test")
+                .expect("lookup works")
+                .is_none()
+        );
+        assert_eq!(
+            repository
+                .shortlists("company-sever")
+                .expect("list works")
+                .len(),
+            1
+        );
+
+        repository
+            .delete_shortlist("company-sever", "shortlist-test")
+            .expect("shortlist is removed");
+        assert!(
+            repository
+                .shortlists("company-sever")
+                .expect("list works")
+                .is_empty()
+        );
+        drop(repository);
+        std::fs::remove_file(path).expect("temporary database is removed");
+    }
+
+    #[test]
+    fn invitations_and_disclosures_round_trip() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system clock must be after Unix epoch")
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("fsp-invitations-{nonce}.sqlite3"));
+        let repository = SqliteRepository::open(&path).expect("database opens");
+        let need = HiringNeedRecord {
+            id: "need-test".into(),
+            company_id: "company-sever".into(),
+            title: "Backend-разработчик".into(),
+            need: demo_need(),
+            work_mode: "remote".into(),
+            salary_from: 200_000,
+            salary_to: 300_000,
+            description: "Описание вакансии".into(),
+            published: true,
+            published_at: Some("2026-10-06T00:00:00Z".into()),
+            created_at: "2026-10-06T00:00:00Z".into(),
+            updated_at: "2026-10-06T00:00:00Z".into(),
+            revision: 1,
+        };
+        let record = fsp_domain::InvitationRecord {
+            id: "invitation-test".into(),
+            company_id: "company-sever".into(),
+            candidate_id: "candidate018".into(),
+            candidate_alias: "Кандидат №018".into(),
+            company: fsp_domain::CompanyCard {
+                id: "company-sever".into(),
+                display_name: "Север Тех".into(),
+                business_area: "Разработка".into(),
+                description: String::new(),
+                contact_email: "hr@sever-tech.example".into(),
+            },
+            need: fsp_domain::NeedSnapshot {
+                id: need.id.clone(),
+                title: need.title.clone(),
+                work_mode: need.work_mode.clone(),
+                salary_from: need.salary_from,
+                salary_to: need.salary_to,
+                description: need.description.clone(),
+            },
+            need_definition: need,
+            message: "Приглашаем на интервью".into(),
+            status: fsp_domain::InteractionStatus::Sent,
+            created_at: "2026-10-06T00:00:00Z".into(),
+            viewed_at: None,
+            responded_at: None,
+            disclosure_fields: Vec::new(),
+        };
+        repository
+            .save_invitation(&record)
+            .expect("invitation is stored");
+
+        let stored = repository
+            .invitation("invitation-test")
+            .expect("lookup works")
+            .expect("invitation exists");
+        assert_eq!(stored.status, fsp_domain::InteractionStatus::Sent);
+        assert_eq!(stored.need.id, "need-test");
+        assert_eq!(stored.need_definition.id, "need-test");
+        assert_eq!(repository.invitations("company-sever").unwrap().len(), 1);
+        assert_eq!(
+            repository
+                .candidate_invitations("candidate018")
+                .unwrap()
+                .len(),
+            1
+        );
+        assert!(
+            repository
+                .candidate_invitations("candidate031")
+                .unwrap()
+                .is_empty()
+        );
+
+        repository
+            .save_disclosure(&fsp_domain::DisclosureRecord {
+                candidate_id: "candidate018".into(),
+                company_id: "company-sever".into(),
+                invitation_id: Some("invitation-test".into()),
+                application_id: None,
+                granted_at: Some("2026-10-06T00:00:00Z".into()),
+                name: Some("Илья Соколов".into()),
+                email: None,
+                source_links: vec!["https://github.com/example".into()],
+            })
+            .expect("disclosure is stored");
+        let grant = repository
+            .disclosure("company-sever", "candidate018")
+            .expect("lookup works")
+            .expect("grant exists");
+        assert_eq!(grant.name.as_deref(), Some("Илья Соколов"));
+        assert!(grant.email.is_none());
+        assert_eq!(grant.source_links, ["https://github.com/example"]);
+
+        repository
+            .delete_disclosure("company-sever", "candidate018")
+            .expect("disclosure is removed");
+        assert!(
+            repository
+                .disclosure("company-sever", "candidate018")
+                .expect("lookup works")
+                .is_none()
+        );
+        drop(repository);
+        std::fs::remove_file(path).expect("temporary database is removed");
+    }
+
+    #[test]
+    fn tasks_and_responses_round_trip_and_stay_scoped() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system clock must be after Unix epoch")
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("fsp-tasks-{nonce}.sqlite3"));
+        let repository = SqliteRepository::open(&path).expect("database opens");
+        repository
+            .connection()
+            .expect("connection opens")
+            .execute(
+                "INSERT INTO companies(id,display_name,business_area,description,contact_email,website) VALUES('company-sever','Север Тех','Разработка','','hr@sever-tech.example',NULL)",
+                [],
+            )
+            .expect("company is stored");
+
+        repository
+            .save_task(&fsp_domain::TaskRecord {
+                id: "task-test".into(),
+                company_id: "company-sever".into(),
+                title: "Задание".into(),
+                prompt: "Опишите подход".into(),
+                skill_id: "rust".into(),
+                grade: Grade::Middle,
+                estimate_minutes: 45,
+                status: fsp_domain::TaskStatus::Active,
+                created_at: "2026-10-06T00:00:00Z".into(),
+            })
+            .expect("task is stored");
+        let stored = repository
+            .task("task-test")
+            .expect("lookup works")
+            .expect("task exists");
+        assert_eq!(stored.status, fsp_domain::TaskStatus::Active);
+        assert_eq!(stored.grade, Grade::Middle);
+        assert_eq!(
+            repository.active_tasks().expect("active list works").len(),
+            1
+        );
+
+        repository
+            .save_task_response(&fsp_domain::TaskResponseRecord {
+                id: "task-response-test".into(),
+                candidate_id: "candidate018".into(),
+                candidate_alias: "Кандидат №018".into(),
+                task: fsp_domain::OfferedTaskSnapshot {
+                    id: "task-test".into(),
+                    company_id: "company-sever".into(),
+                    company_display_name: "Север Тех".into(),
+                    title: "Задание".into(),
+                    prompt: "Опишите подход".into(),
+                    skill_id: "rust".into(),
+                    grade: Grade::Middle,
+                    estimate_minutes: 45,
+                },
+                mode: fsp_domain::TaskMode::Approach,
+                answer: "Ответ".into(),
+                status: fsp_domain::TaskResponseStatus::Submitted,
+                feedback: None,
+                submitted_at: "2026-10-06T12:00:00Z".into(),
+                reviewed_at: None,
+            })
+            .expect("response is stored");
+        let response = repository
+            .task_response("task-response-test")
+            .expect("lookup works")
+            .expect("response exists");
+        assert_eq!(response.task.id, "task-test");
+        assert_eq!(response.task.company_display_name, "Север Тех");
+        assert_eq!(
+            repository
+                .candidate_task_responses("candidate018")
+                .expect("candidate list works")
+                .len(),
+            1
+        );
+        assert_eq!(
+            repository
+                .company_task_responses("company-sever")
+                .expect("company list works")
+                .len(),
+            1
+        );
+        assert!(
+            repository
+                .company_task_responses("company-other")
+                .expect("other company list works")
+                .is_empty()
+        );
+        drop(repository);
+        std::fs::remove_file(path).expect("temporary database is removed");
+    }
+
+    #[test]
+    fn assessments_and_jobs_round_trip_with_persisted_results() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system clock must be after Unix epoch")
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("fsp-assessments-{nonce}.sqlite3"));
+        let repository = SqliteRepository::open(&path).expect("database opens");
+
+        repository
+            .save_assessment(&fsp_domain::AssessmentRecord {
+                id: "assessment-test".into(),
+                candidate_id: "candidate-024".into(),
+                specialization: Specialization::Backend,
+                grade: Grade::Middle,
+                status: fsp_domain::AssessmentStatus::InProgress,
+                task: fsp_domain::AssessmentTask {
+                    id: "task-idempotency-v1".into(),
+                    family: "idempotent-api".into(),
+                    version: "1".into(),
+                    variant_id: "orders-middle-a".into(),
+                    title: "Задание".into(),
+                    prompt: "Опишите подход".into(),
+                    language: "rust".into(),
+                    starter_code: "todo!()".into(),
+                    acceptance_criteria: vec!["Первый запрос создаёт заказ".into()],
+                    rubric: vec![fsp_domain::RubricCriterion {
+                        id: "correctness".into(),
+                        label: "Корректность".into(),
+                        weight: 4,
+                    }],
+                    ai_allowed: true,
+                    external_ai_allowed: true,
+                    execution: "simulated".into(),
+                },
+                answer: fsp_domain::AssessmentAnswer {
+                    code: "todo!()".into(),
+                    explanation: "Ответ".into(),
+                    external_ai_used: false,
+                },
+                checks: vec![fsp_domain::AssessmentCheck {
+                    id: "check-1".into(),
+                    label: "Проверка".into(),
+                    status: "passed".into(),
+                    message: "Успешно".into(),
+                }],
+                result: None,
+                created_at: "2026-10-06T00:00:00Z".into(),
+                updated_at: "2026-10-06T01:00:00Z".into(),
+                revision: 3,
+            })
+            .expect("assessment is stored");
+        let stored = repository
+            .assessment("assessment-test")
+            .expect("lookup works")
+            .expect("assessment exists");
+        assert_eq!(stored.status, fsp_domain::AssessmentStatus::InProgress);
+        assert_eq!(stored.revision, 3);
+        assert_eq!(stored.task.variant_id, "orders-middle-a");
+        assert_eq!(stored.checks.len(), 1);
+        assert_eq!(
+            repository
+                .candidate_assessments("candidate-024")
+                .expect("candidate list works")
+                .len(),
+            1
+        );
+        assert!(
+            repository
+                .candidate_assessments("candidate-999")
+                .expect("other candidate list works")
+                .is_empty()
+        );
+
+        repository
+            .save_job(&fsp_domain::JobRecord {
+                id: "job-assessment".into(),
+                owner_id: "candidate-024".into(),
+                kind: "assessment".into(),
+                status: "succeeded".into(),
+                candidate_id: Some("candidate-024".into()),
+                assessment_id: Some("assessment-test".into()),
+                input_revision: Some(3),
+                result_json: Some("{\"kind\":\"assessment\",\"ok\":true}".into()),
+                confirmed: false,
+                created_at: "2026-10-06T00:00:00Z".into(),
+                updated_at: "2026-10-06T01:00:00Z".into(),
+                result_source_id: None,
+                error_code: None,
+                error_message: None,
+            })
+            .expect("job is stored");
+        let job = repository
+            .job("candidate-024", "job-assessment")
+            .expect("lookup works")
+            .expect("job exists");
+        assert_eq!(job.kind, "assessment");
+        assert_eq!(job.input_revision, Some(3));
+        assert_eq!(
+            job.result_json.as_deref(),
+            Some("{\"kind\":\"assessment\",\"ok\":true}")
+        );
+
+        drop(repository);
         std::fs::remove_file(path).expect("temporary database is removed");
     }
 }
