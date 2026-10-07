@@ -1,5 +1,5 @@
-//! Contract behavior tests: the real HTTP router over a seeded temporary
-//! SQLite database. They mirror the mock's behavior matrix (mock-server's
+//! Contract behavior tests: the real HTTP router over a seeded isolated
+//! PostgreSQL database. They mirror the mock's behavior matrix (mock-server's
 //! `mock-api.test.ts`) against the Rust implementation.
 
 use std::sync::Arc;
@@ -9,11 +9,17 @@ use axum::http::{HeaderMap, Request, StatusCode, header};
 use fsp_application::{PlatformService, VerificationDelivery};
 use fsp_http::{HttpConfig, router};
 use fsp_integration_fsp_synthetic::SyntheticFsp;
-use fsp_storage_sqlite::SqliteRepository;
+use fsp_storage_postgres::PostgresRepository;
 use http_body_util::BodyExt;
 use serde_json::{Value, json};
 use tower::ServiceExt;
-use uuid::Uuid;
+
+/// Admin connection string for the test cluster; `just db-up` provides the
+/// matching local PostgreSQL, CI runs the same service container.
+fn test_admin_url() -> String {
+    std::env::var("FSP_TEST_DATABASE_URL")
+        .unwrap_or_else(|_| "postgres://fsp:fsp@127.0.0.1:5434/postgres".into())
+}
 
 struct FixedDelivery;
 
@@ -32,9 +38,9 @@ impl VerificationDelivery for FixedDelivery {
 }
 
 async fn test_app() -> axum::Router {
-    let path =
-        std::env::temp_dir().join(format!("fsp-contract-{}.sqlite3", Uuid::new_v4().simple()));
-    let repository = Arc::new(SqliteRepository::open(path).expect("temp database"));
+    let (repository, _database) =
+        PostgresRepository::connect_test_database(&test_admin_url()).await;
+    let repository = Arc::new(repository);
     let service = Arc::new(
         PlatformService::new(repository, Arc::new(FixedDelivery)).with_fsp(Arc::new(SyntheticFsp)),
     );

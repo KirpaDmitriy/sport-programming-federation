@@ -7,7 +7,7 @@ stand. Dima's first version, a Python (FastAPI) MVP, is tagged `archive/dima-mvp
 
 | Path | Owner | Contents |
 | --- | --- | --- |
-| [`backend/`](backend/README.md) | Дима | Hexagonal Rust backend that implements the contract (SQLite storage, GitHub/ФСП/Bifrost adapters; coverage tracked in [`docs/backend-implementation-checklist.md`](docs/backend-implementation-checklist.md)) |
+| [`backend/`](backend/README.md) | Дима | Hexagonal Rust backend that implements the contract (PostgreSQL storage, GitHub/ФСП/Bifrost adapters; coverage tracked in [`docs/backend-implementation-checklist.md`](docs/backend-implementation-checklist.md)) |
 | [`contracts/`](contracts/README.md) | shared | OpenAPI contract, error codes, generated operation index, TypeScript generator |
 | [`mock-server/`](mock-server/README.md) | Данил | Stateful HTTP mock of the contract: frontend dev server and behavior reference for the backend |
 | [`frontend/`](frontend/README.md) | Данил | React/TypeScript/TanStack application (FSD); its own rules are in [`frontend/AGENTS.md`](frontend/AGENTS.md) |
