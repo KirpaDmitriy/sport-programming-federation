@@ -394,6 +394,18 @@ async fn source_ingestion_updates_evidence_without_inventing_or_overwriting_grad
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn corrupt_profile_json_is_reported_instead_of_silently_erased() {
+    let (repository, _database) = repository().await;
+    repository.seed_demo("2026-10-05T00:00:00Z").await.unwrap();
+    sqlx::query("UPDATE candidates SET soft_skills_json='not-json' WHERE id='candidate024'")
+        .execute(repository.pool())
+        .await
+        .unwrap();
+    assert!(repository.candidate("candidate024").await.is_err());
+    assert!(repository.candidate_index("candidate024").await.is_err());
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn shortlists_round_trip_and_stay_scoped_to_the_company() {
     let (repository, _database) = repository().await;
     sqlx::query(

@@ -143,8 +143,8 @@ impl PostgresRepository {
         .expect("stale test databases are listed");
         // Names carry their creation timestamp: a database without sessions is only
         // reaped once it is older than STALE_SECS, so the create→first-connect window
-        // of a parallel test can never look orphaned. FORCE terminates a session that
-        // sneaks in between the listing and the drop.
+        // of a parallel test does not look orphaned. Never force another test's
+        // connection closed if it appears between listing and cleanup.
         const STALE_SECS: i64 = 300;
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -160,12 +160,9 @@ impl PostgresRepository {
             if now - created_at < STALE_SECS {
                 continue;
             }
-            sqlx::query(&format!(
-                "DROP DATABASE IF EXISTS \"{stale_name}\" WITH (FORCE)"
-            ))
-            .execute(&admin)
-            .await
-            .expect("stale test database is dropped");
+            let _ = sqlx::query(&format!("DROP DATABASE IF EXISTS \"{stale_name}\""))
+                .execute(&admin)
+                .await;
         }
         let name = format!("fsp_test_{}_{}", now, uuid::Uuid::new_v4().simple());
         sqlx::query(&format!("CREATE DATABASE \"{name}\""))
@@ -2880,11 +2877,10 @@ fn candidate_prefixed(row: &PgRow) -> Result<CandidateProfile, RepositoryError> 
             .map_err(storage)?
             .map(|v| v as u32),
         experience: row.try_get("experience").map_err(storage)?,
-        soft_skills: serde_json::from_str(
+        soft_skills: parse_json(
             &row.try_get::<String, _>("soft_skills_json")
                 .map_err(storage)?,
-        )
-        .unwrap_or_default(),
+        )?,
         consents: Consents {
             processing: row.try_get("processing_consent").map_err(storage)?,
             publication: row.try_get("publication_consent").map_err(storage)?,
