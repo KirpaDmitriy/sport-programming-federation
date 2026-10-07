@@ -279,6 +279,121 @@ async fn idempotent_command_and_claim_roll_back_if_response_cannot_be_stored() {
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn source_ingestion_updates_evidence_without_inventing_or_overwriting_grades() {
+    struct GitHub;
+    #[async_trait::async_trait]
+    impl fsp_application::GitHubGateway for GitHub {
+        fn authorization_url(
+            &self,
+            _: &str,
+            _: &str,
+        ) -> Result<String, fsp_application::IntegrationError> {
+            unreachable!()
+        }
+        async fn exchange_code(
+            &self,
+            _: &str,
+        ) -> Result<String, fsp_application::IntegrationError> {
+            unreachable!()
+        }
+        async fn analyze(
+            &self,
+            username: &str,
+            _: &str,
+        ) -> Result<fsp_domain::GitHubAnalysis, fsp_application::IntegrationError> {
+            Ok(fsp_domain::GitHubAnalysis {
+                username: username.into(),
+                active_days: 2,
+                observed_from: None,
+                observed_to: None,
+                repositories: vec![fsp_domain::AnalyzedRepository {
+                    id: "repo-1".into(),
+                    name: "project".into(),
+                    url: "https://github.com/owner/project".into(),
+                    technologies: vec!["rust".into(), "react".into()],
+                    metrics: fsp_domain::RepositoryMetrics {
+                        stars: 1,
+                        forks: 0,
+                        open_issues: 0,
+                        size_kib: 5,
+                        pushed_at: None,
+                    },
+                }],
+            })
+        }
+    }
+    let (repository, _database) = repository().await;
+    let repository = Arc::new(repository);
+    let service = PlatformService::new(repository.clone(), Arc::new(FixedDelivery))
+        .with_github(Arc::new(GitHub));
+    service.initialize().await.unwrap();
+    let challenge = service
+        .request_challenge(EmailChallengeInput {
+            email: "alexey@example.com".into(),
+            role: Role::Candidate,
+        })
+        .await
+        .unwrap();
+    let (session, _) = service
+        .verify_email(EmailVerifyInput {
+            challenge_id: challenge.challenge_id,
+            code: "123456".into(),
+        })
+        .await
+        .unwrap();
+    let id = session.candidate_id.as_deref().unwrap();
+    repository.save_github_token(id, "fixture").await.unwrap();
+    let before = repository.candidate_index(id).await.unwrap().unwrap();
+    let source = service
+        .connect_source(
+            &session,
+            "github",
+            fsp_application::SourceConnectInput {
+                account: "owner".into(),
+            },
+        )
+        .await
+        .unwrap();
+    let connected = repository.candidate_index(id).await.unwrap().unwrap();
+    assert_eq!(
+        connected.profile.verified_grade,
+        before.profile.verified_grade
+    );
+    assert!(
+        connected
+            .source_kinds
+            .contains(&fsp_domain::EvidenceSource::Github)
+    );
+    let rust = connected
+        .skills
+        .iter()
+        .find(|skill| skill.skill_id == "rust")
+        .unwrap();
+    assert!(rust.sources.contains(&fsp_domain::EvidenceSource::Github));
+    assert_eq!(
+        rust.evidence_grade,
+        before
+            .skills
+            .iter()
+            .find(|skill| skill.skill_id == "rust")
+            .unwrap()
+            .evidence_grade
+    );
+    let react = connected
+        .skills
+        .iter()
+        .find(|skill| skill.skill_id == "react")
+        .unwrap();
+    assert_eq!(react.status, fsp_domain::EvidenceStatus::Evidence);
+    assert_eq!(react.evidence_grade, None);
+    let job = service.sync_source(&session, &source.id).await.unwrap();
+    assert_eq!(job.status, "succeeded");
+    let synced = repository.candidate_index(id).await.unwrap().unwrap();
+    assert_eq!(synced.skills, connected.skills);
+    assert_eq!(synced.profile.verified_grade, before.profile.verified_grade);
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn shortlists_round_trip_and_stay_scoped_to_the_company() {
     let (repository, _database) = repository().await;
     sqlx::query(

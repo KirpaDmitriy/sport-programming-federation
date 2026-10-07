@@ -593,6 +593,40 @@ async fn needs_write_side_and_vacancy_projection() {
 }
 
 #[tokio::test]
+async fn source_connection_sync_and_jobs_remain_private() {
+    let app = test_app().await;
+    let candidate = login(&app, CANDIDATE_JUNIOR, "candidate").await;
+    let (status, source) = send(
+        &app,
+        "POST",
+        "/api/v1/me/sources/fsp/connect",
+        Some(&candidate),
+        json!({"account":"FSP-DEMO-024"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{source}");
+    let (status, job) = post(
+        &app,
+        &format!("/api/v1/me/sources/{}/sync", source["id"].as_str().unwrap()),
+        Some(&candidate),
+    )
+    .await;
+    assert_eq!(status, StatusCode::ACCEPTED, "{job}");
+    assert_eq!(job["status"], "succeeded");
+    assert_eq!(job["result"]["kind"], "source_sync");
+    let job_path = format!("/api/v1/jobs/{}", job["id"].as_str().unwrap());
+    assert_eq!(
+        get(&app, &job_path, Some(&candidate)).await.0,
+        StatusCode::OK
+    );
+    let outsider = login(&app, "outsider@example.com", "candidate").await;
+    assert_eq!(
+        get(&app, &job_path, Some(&outsider)).await.0,
+        StatusCode::NOT_FOUND
+    );
+}
+
+#[tokio::test]
 async fn concurrent_shortlist_edits_preserve_members_and_company_scope() {
     let app = test_app().await;
     let employer = login(&app, EMPLOYER, "employer").await;
