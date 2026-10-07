@@ -10,7 +10,9 @@ concurrency:
   group: stand-deploy
   cancel-in-progress: false
 
-permissions: {}
+# contents:read is required for actions/checkout on the private repository.
+permissions:
+  contents: read
 
 jobs:
   stand:
