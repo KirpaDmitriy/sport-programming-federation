@@ -17,8 +17,9 @@ key, host key, droplet metadata) lives in the git-ignored `.fsp-infra/` at the r
 nginx serves the built SPA from `/opt/fsp/current/frontend/dist` with an `index.html` fallback, forwards only
 `/api/v1/` to `127.0.0.1:4010` with a loopback `Host`, marks the session cookie `Secure` and answers `/__mock__`
 with 404. The mock runs with `FSP_MOCK_DEV_ROUTES=0` and the stand's origin in `FSP_MOCK_ALLOWED_ORIGINS`
-(`/etc/fsp/mock-api.env`); the Rust service reads `/etc/fsp/rust-api.env` (`FSP_DATABASE`, `FSP_AUTH_MODE=demo`,
-`FSP_SECURE_COOKIE=1`, origins and the GitHub callback URL). Build-time flags for the stand are in
+(`/etc/fsp/mock-api.env`); the Rust service reads `/etc/fsp/rust-api.env` (`FSP_AUTH_MODE=demo`,
+`FSP_SECURE_COOKIE=1`, origins and the GitHub callback URL) plus `/etc/fsp/db.env` (`DATABASE_URL`) and
+`/etc/fsp/llm.env` (`BIFROST_*`). Build-time flags for the stand are in
 `/etc/fsp/frontend-build.env` (`VITE_DEMO_STAND=1`, `VITE_DEMO_EMAIL_CODE`). The host builds with Bun and Rust
 (`/opt/rustup`, `/opt/cargo`); there is no Node.
 
@@ -44,8 +45,9 @@ builds [`../frontend/Dockerfile`](../frontend/Dockerfile) (the demo build served
 [`docker/nginx.conf`](docker/nginx.conf) and the stand's security headers). `web` shares the network namespace of
 `api`, so nginx reaches the API on `127.0.0.1:4010` exactly as on the stand and only port 8080 is published. Both
 containers run read-only as non-root users with every capability dropped. `FSP_PORT` changes the published port;
-`FSP_ALLOWED_ORIGINS` lists browser origins when the demo is opened under another host name. The `fsp-data` volume
-persists the SQLite database across container restarts. An optional LLM chain reaches the host's Bifrost gateway
+`FSP_ALLOWED_ORIGINS` lists browser origins when the demo is opened under another host name. A `db` service runs
+`postgres:17-alpine` on `127.0.0.1:5434` with a `pg_isready` healthcheck that `api` waits for; the `pg-data`
+volume persists the database across container restarts. An optional LLM chain reaches the host's Bifrost gateway
 through `host.docker.internal` (see [`.env.example`](../.env.example)).
 
 ## Commands
@@ -89,13 +91,34 @@ atomic switching plus automatic rollback on failed health checks.
 | API status / logs | `systemctl status fsp-mock-api fsp-api`, `journalctl -u fsp-api -n 100` |
 | Which API serves | `cat /etc/fsp/api-backend` |
 | Reset demo data (mock) | `systemctl restart fsp-mock-api` (state is in memory; seeded `baseline` scenario) |
-| Reset demo data (rust) | `systemctl stop fsp-api && rm /var/lib/fsp/fsp.sqlite3* && systemctl start fsp-api` (reseeds on boot) |
+| Reset demo data (rust) | `su - postgres -c "psql -d fsp -c 'DROP SCHEMA public CASCADE; CREATE SCHEMA public'" && systemctl restart fsp-api` (migrations + seed run on boot) |
 | Certificate | `certbot certificates`; renewal by `snap.certbot.renew.timer` three days before expiry, then `systemctl reload nginx` |
 | Renewal dry run | `certbot renew --cert-name fsp-demo --dry-run --no-random-sleep-on-renew` |
 
 While the mock serves, the demo API is shared by every visitor and keeps state only until restart. It is not
 production authentication: codes are fixed, there is no rate limiting beyond the mock's attempt counter, and data
-is synthetic. The Rust backend persists sessions and profiles in SQLite; the demo code stays fixed in `demo` mode.
+is synthetic. The Rust backend persists sessions and profiles in PostgreSQL; the demo code stays fixed in `demo`
+mode.
+
+## PostgreSQL
+
+The only datastore. `provision.sh` installs the distro package, pins `listen_addresses = 'localhost'` via a
+`conf.d/fsp-localhost.conf` drop-in, creates a `fsp` login role and `fsp` database owned by it, and writes the
+generated URL to root-managed `/etc/fsp/db.env` (`640 root:fsp`). The file is created once — re-runs never
+rotate the password. `fsp-api.service` loads it through `EnvironmentFile=-/etc/fsp/db.env` and orders itself
+`After=postgresql.service`; migrations and the demo seed run inside `PostgresRepository::connect`, so a fresh
+database is ready on first start.
+
+| Task | Command |
+| --- | --- |
+| Shell | `su - postgres -c "psql -d fsp"` or `psql "$DATABASE_URL"` after sourcing `db.env` |
+| Backup | `su - postgres -c "pg_dump -Fc fsp" > /var/backups/fsp-$(date +%F).dump` |
+| Restore | `su - postgres -c "pg_restore -d fsp --clean --if-exists /path/to.dump"` |
+| Rotate password | `ALTER ROLE fsp PASSWORD '…'` then update `DATABASE_URL` in `/etc/fsp/db.env` and restart `fsp-api` |
+
+Migrations are forward-only (`sqlx::migrate!` at startup); roll back by redeploying the previous release against
+a pre-migration backup. Schedule `pg_dump` (e.g. a daily cron or systemd timer) for real backups — the stand has
+no automated backup job yet.
 
 ## LLM chain
 
@@ -113,8 +136,7 @@ Host-side secrets (never committed):
 | `/etc/fsp/cliproxy.yaml` | CLIProxyAPI config; template: [`llm/cliproxy.yaml.example`](llm/cliproxy.yaml.example) |
 | `/var/lib/fsp/cliproxy-auth/xai-*.json` | xAI OAuth token file (writable — CLIProxyAPI refreshes it) |
 | `/var/lib/fsp/bifrost/config.json` | Bifrost config; reference: [`llm/bifrost-config.json`](llm/bifrost-config.json) |
-| `/etc/fsp/llm.env` | `NDDEV_CLIPROXY_KEY` (CLIProxyAPI api-key) and `NDDEV_BIFROST_KEY` (Bifrost virtual key) |
-| `/etc/fsp/rust-api.env` | `BIFROST_CHAT_URL`, `BIFROST_API_KEY` (= the virtual key), `BIFROST_MODEL=grok-build/grok-4.7` |
+| `/etc/fsp/llm.env` | `NDDEV_CLIPROXY_KEY` (CLIProxyAPI api-key), `NDDEV_BIFROST_KEY` (Bifrost virtual key) and the backend-side `BIFROST_CHAT_URL`, `BIFROST_API_KEY` (= the virtual key), `BIFROST_MODEL=grok-build/grok-4.7` — `fsp-api.service` loads the same file, so provisioning never rewrites it |
 
 Without `BIFROST_*` the backend reports `meta.capabilities.realLlm: false` and serves the deterministic
 fallback graph. The xAI OAuth token is shared with the local `nddev-runtime` setup; refresh-token rotation

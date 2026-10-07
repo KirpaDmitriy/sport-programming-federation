@@ -9,7 +9,9 @@ Group=dima
 WorkingDirectory=/opt/kontur-talent/current
 Environment=HOST=0.0.0.0
 Environment=PORT=8010
-Environment=FSP_DATABASE=/var/lib/kontur-talent/fsp.sqlite3
+# DATABASE_URL comes from a host-managed env file; create a postgres role and
+# database first (see infra/README.md#postgresql).
+EnvironmentFile=-/etc/kontur-talent/db.env
 Environment=FSP_AUTH_MODE=demo
 Environment=FSP_DEMO_EMAIL_CODE=123456
 Environment=FSP_ALLOWED_ORIGINS=http://93.77.179.211:8010,http://93-77-179-211.nip.io:8010
