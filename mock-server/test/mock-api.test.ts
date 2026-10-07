@@ -3,8 +3,8 @@ import { randomUUID } from 'node:crypto';
 import { readdirSync } from 'node:fs';
 import { readFile, writeFile } from 'node:fs/promises';
 import { request as rawHttpRequest } from 'node:http';
-import { fileURLToPath } from 'node:url';
 import test, { after, type TestContext } from 'node:test';
+import { fileURLToPath } from 'node:url';
 import { buildOpenApi, routes, routeTable } from '../src/contract.ts';
 import { createMockServer, type MockServerOptions } from '../src/server.ts';
 import { validators } from '../src/validation.ts';
@@ -186,12 +186,10 @@ test('error-codes.json catalogues every code, status and literal message the Rus
   walk(rustDir);
   for (const file of files) {
     const source = await readFile(file, 'utf8');
-    const triples = [
+    const triples: { status: number | undefined; code: string; message: string | undefined }[] = [
       ...source.matchAll(/(?:ApplicationError::new|Self::new)\(\s*(\d{3})\s*,\s*"([a-z_]+)"(?:\s*,\s*"([^"]*)")?/g),
     ].map((m) => ({ status: Number(m[1]), code: m[2] ?? '', message: m[3] }));
-    for (const m of source.matchAll(
-      /ApiError::new\(\s*StatusCode::([A-Z_]+)\s*,\s*"([a-z_]+)"(?:\s*,\s*"([^"]*)")?/g,
-    ))
+    for (const m of source.matchAll(/ApiError::new\(\s*StatusCode::([A-Z_]+)\s*,\s*"([a-z_]+)"(?:\s*,\s*"([^"]*)")?/g))
       triples.push({ status: statusByName[m[1] ?? ''] ?? -1, code: m[2] ?? '', message: m[3] });
     for (const m of source.matchAll(/ApiError::forbidden\(\s*"([a-z_]+)"\s*,\s*"([^"]*)"/g))
       triples.push({ status: 403, code: m[1] ?? '', message: m[2] });
