@@ -4,7 +4,9 @@ use std::env;
 use std::error::Error;
 use std::sync::Arc;
 
-use fsp_application::{PlatformService, VerificationDelivery};
+use fsp_application::{
+    IntegrationError, PlatformRepository, PlatformService, VerificationDelivery,
+};
 use fsp_http::HttpConfig;
 use fsp_integration_bifrost::BifrostGateway;
 use fsp_integration_fsp_synthetic::SyntheticFsp;
@@ -20,18 +22,22 @@ struct ConfiguredDelivery {
     mock: bool,
 }
 
+#[async_trait::async_trait]
 impl VerificationDelivery for ConfiguredDelivery {
     fn code_for(&self) -> String {
         self.code.clone()
     }
 
-    fn deliver(&self, _email: &str, _code: &str) -> Result<(), String> {
+    async fn deliver(&self, _email: &str, _code: &str) -> Result<(), IntegrationError> {
         if self.mock {
             // Demo mode "delivers" the fixed code; never log addresses or codes.
             tracing::info!("verification code issued (demo mailbox)");
             Ok(())
         } else {
-            Err("Отправка почты не настроена".into())
+            Err(IntegrationError {
+                code: "verification_delivery_failed",
+                message: "Отправка почты не настроена".into(),
+            })
         }
     }
 
@@ -66,7 +72,16 @@ async fn main() -> Result<(), Box<dyn Error>> {
         code: env::var("FSP_DEMO_EMAIL_CODE").unwrap_or_else(|_| "123456".into()),
         mock,
     });
-    let mut platform = PlatformService::new(repository, delivery).with_fsp(Arc::new(SyntheticFsp));
+    // `successfulGradeChangeCooldownDays` from meta.assessmentPolicy: 0-365,
+    // default 90; out-of-range values fall back rather than crash the boot.
+    let grade_cooldown_days = env::var("FSP_GRADE_CHANGE_COOLDOWN_DAYS")
+        .ok()
+        .and_then(|value| value.parse::<u16>().ok())
+        .filter(|days| *days <= 365)
+        .unwrap_or(90);
+    let mut platform = PlatformService::new(repository.clone(), delivery)
+        .with_grade_cooldown_days(grade_cooldown_days)
+        .with_fsp(Arc::new(SyntheticFsp));
     if let (Some(client_id), Some(client_secret)) = (
         nonempty_env("GITHUB_CLIENT_ID"),
         nonempty_env("GITHUB_CLIENT_SECRET"),
@@ -86,6 +101,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
     }
     let service = Arc::new(platform);
     service.initialize().await.map_err(|error| error.message)?;
+    // Expired challenges, sessions and stale idempotency markers are workload
+    // the service layer cannot schedule on its own; sweep them once a minute.
+    tokio::spawn(sweep_expired(repository.clone()));
     let secure_cookie = env::var("FSP_SECURE_COOKIE").is_ok_and(|value| value == "1");
     let public_web_url =
         env::var("FSP_PUBLIC_WEB_URL").unwrap_or_else(|_| "http://127.0.0.1:5173".into());
@@ -111,6 +129,17 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
 fn nonempty_env(name: &str) -> Option<String> {
     env::var(name).ok().filter(|value| !value.trim().is_empty())
+}
+
+async fn sweep_expired(repository: Arc<PostgresRepository>) {
+    let mut interval = tokio::time::interval(std::time::Duration::from_secs(60));
+    loop {
+        interval.tick().await;
+        let at = chrono::Utc::now().to_rfc3339();
+        if let Err(error) = repository.sweep_expired(&at).await {
+            tracing::warn!(error = ?error, "expired-record sweep failed");
+        }
+    }
 }
 
 async fn shutdown() {

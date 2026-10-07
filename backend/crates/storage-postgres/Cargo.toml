@@ -10,11 +10,14 @@ testing = ["dep:uuid"]
 
 [dependencies]
 async-trait.workspace = true
+chrono.workspace = true
 fsp-application.workspace = true
 fsp-domain.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sqlx.workspace = true
+tokio = { workspace = true, features = ["sync", "time"] }
+tracing.workspace = true
 uuid = { workspace = true, optional = true }
 
 [dev-dependencies]

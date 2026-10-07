@@ -16,9 +16,9 @@ use crate::{
     ConsumeChallenge, DisclosureFieldsView, DisclosureView, EmailChallengeInput,
     EmailChallengeView, EmailVerifyInput, EvidencePolicyView, EvidenceView, FreshnessView,
     FspGateway, GapItemView, GapPlanView, GitHubGateway, GradeEligibilityView, GraphEdgeView,
-    GraphNodeView, GraphView, ImportConfirmInput, IntegrationError, InvitationInput,
-    InvitationNeedView, InvitationView, InvitationsView, JobResultView, JobView, LlmGateway,
-    MatchRequirementView, MyTasksView, NeedInput, NeedPatch, NeedView, NeedsView,
+    GraphNodeView, GraphView, IdempotencyClaim, ImportConfirmInput, IntegrationError,
+    InvitationInput, InvitationNeedView, InvitationView, InvitationsView, JobResultView, JobView,
+    LlmGateway, MatchRequirementView, MyTasksView, NeedInput, NeedPatch, NeedView, NeedsView,
     OfferedCompanyView, OfferedTaskView, OnboardingView, PendingChallenge, PlatformRepository,
     ProfilePatch, ProfileView, RepositoryError, RequirementInput, RequirementView, SalaryView,
     SelfSkillView, SessionView, ShortlistInput, ShortlistMemberView, ShortlistSummaryView,
@@ -75,6 +75,7 @@ pub struct PlatformService {
     github: Option<Arc<dyn GitHubGateway>>,
     llm: Option<Arc<dyn LlmGateway>>,
     fsp: Option<Arc<dyn FspGateway>>,
+    grade_cooldown_days: u16,
 }
 
 impl PlatformService {
@@ -88,7 +89,14 @@ impl PlatformService {
             github: None,
             llm: None,
             fsp: None,
+            grade_cooldown_days: 90,
         }
+    }
+
+    #[must_use]
+    pub fn with_grade_cooldown_days(mut self, days: u16) -> Self {
+        self.grade_cooldown_days = days;
+        self
     }
 
     #[must_use]
@@ -116,6 +124,19 @@ impl PlatformService {
             .map_err(ApplicationError::storage)
     }
 
+    /// Readiness probe: the service is healthy only while its repository is.
+    pub async fn healthy(&self) -> Result<(), ApplicationError> {
+        self.repository
+            .ping()
+            .await
+            .map_err(ApplicationError::storage)
+    }
+
+    #[must_use]
+    pub fn grade_cooldown_days(&self) -> u16 {
+        self.grade_cooldown_days
+    }
+
     #[must_use]
     pub fn github_configured(&self) -> bool {
         self.github.is_some()
@@ -138,40 +159,51 @@ impl PlatformService {
                 "Проверьте адрес электронной почты",
             ));
         }
-        let account = match self
+        if let Some(account) = self
             .repository
             .account_by_email(&email)
             .await
             .map_err(ApplicationError::storage)?
+            && account.role != input.role
         {
-            Some(account) if account.role != input.role => {
-                return Err(ApplicationError::new(
-                    409,
-                    "role_mismatch",
-                    "Этот адрес зарегистрирован с другой ролью",
-                ));
-            }
-            Some(account) => account,
-            None => self.register_account(email.clone(), input.role).await?,
-        };
+            return Err(ApplicationError::new(
+                409,
+                "role_mismatch",
+                "Этот адрес зарегистрирован с другой ролью",
+            ));
+        }
         let code = self.delivery.code_for();
-        let issued_at = Utc::now();
-        let expires_at = issued_at + Duration::minutes(15);
+        let expires_at = Utc::now() + Duration::minutes(15);
         let challenge = PendingChallenge {
             id: format!("challenge-{}", Uuid::new_v4().simple()),
-            account_id: account.id,
+            email: email.clone(),
+            role: input.role,
             code_hash: digest(&code),
             expires_at: expires_at.to_rfc3339(),
             attempts: 0,
             used: false,
         };
-        self.repository
-            .save_challenge(&challenge)
+        // Accounts are created lazily at verify time (mock parity), so issuing
+        // a challenge never squats an email — and `issue_challenge` enforces
+        // the cumulative five-attempt lockout across reissued codes.
+        let issued = self
+            .repository
+            .issue_challenge(&challenge)
             .await
             .map_err(ApplicationError::storage)?;
-        self.delivery.deliver(&email, &code).map_err(|message| {
-            ApplicationError::new(502, "verification_delivery_failed", message)
-        })?;
+        if !issued {
+            return Err(ApplicationError::new(
+                429,
+                "challenge_locked",
+                "Создайте новый запрос подтверждения",
+            ));
+        }
+        self.delivery
+            .deliver(&email, &code)
+            .await
+            .map_err(|error| {
+                ApplicationError::new(502, "verification_delivery_failed", error.message)
+            })?;
         Ok(EmailChallengeView {
             challenge_id: challenge.id,
             expires_at: challenge.expires_at,
@@ -186,13 +218,22 @@ impl PlatformService {
         if input.code.len() != 6 || !input.code.bytes().all(|byte| byte.is_ascii_digit()) {
             return Err(ApplicationError::new(400, "invalid_code", "Неверный код"));
         }
-        let (outcome, account) = self
+        // Challenge consumption, account resolution/registration and session
+        // creation share one transaction: a failure anywhere rolls back the
+        // used-mark, so a crashed verify never burns a code.
+        let tx = self
             .repository
+            .transaction()
+            .await
+            .map_err(ApplicationError::storage)?;
+        let (outcome, challenge) = tx
             .consume_challenge(&input.challenge_id, &digest(&input.code), &now())
             .await
             .map_err(ApplicationError::storage)?;
-        match outcome {
-            ConsumeChallenge::Consumed => {}
+        let challenge = match outcome {
+            ConsumeChallenge::Consumed => challenge.ok_or_else(|| {
+                ApplicationError::new(500, "internal_error", "Сервис временно недоступен")
+            })?,
             ConsumeChallenge::Missing => {
                 return Err(ApplicationError::new(
                     404,
@@ -224,19 +265,40 @@ impl PlatformService {
             ConsumeChallenge::WrongCode => {
                 return Err(ApplicationError::new(400, "invalid_code", "Неверный код"));
             }
-        }
-        let account = account.ok_or_else(|| {
-            ApplicationError::new(500, "internal_error", "Сервис временно недоступен")
-        })?;
-        let raw_token = Uuid::new_v4().to_string();
-        self.repository
-            .create_session(
-                &digest(&raw_token),
-                &account.id,
-                &(Utc::now() + Duration::days(30)).to_rfc3339(),
-            )
+        };
+        let mut account = match tx
+            .account_by_email(&challenge.email)
+            .await
+            .map_err(ApplicationError::storage)?
+        {
+            Some(account) => {
+                if account.role != challenge.role {
+                    return Err(ApplicationError::new(
+                        409,
+                        "role_mismatch",
+                        "Этот адрес зарегистрирован с другой ролью",
+                    ));
+                }
+                account
+            }
+            None => {
+                self.register_account(&*tx, challenge.email.clone(), challenge.role)
+                    .await?
+            }
+        };
+        tx.mark_email_verified(&account.id)
             .await
             .map_err(ApplicationError::storage)?;
+        account.email_verified = true;
+        let raw_token = Uuid::new_v4().to_string();
+        tx.create_session(
+            &digest(&raw_token),
+            &account.id,
+            &(Utc::now() + Duration::days(30)).to_rfc3339(),
+        )
+        .await
+        .map_err(ApplicationError::storage)?;
+        tx.commit().await.map_err(ApplicationError::storage)?;
         Ok((self.session_view(&account).await?, raw_token))
     }
 
@@ -276,6 +338,7 @@ impl PlatformService {
             session.email_verified,
             &signals,
             assessment_running,
+            self.grade_cooldown_days,
         ))
     }
 
@@ -288,19 +351,32 @@ impl PlatformService {
         let id = session.candidate_id.as_deref().ok_or_else(|| {
             ApplicationError::new(403, "role_forbidden", "Действие доступно кандидату")
         })?;
-        let mut profile = self
-            .repository
-            .candidate(id)
-            .await
-            .map_err(ApplicationError::storage)?
-            .ok_or_else(|| ApplicationError::new(404, "not_found", "Профиль не найден"))?;
-        apply_profile_patch(&mut profile, patch)?;
-        profile.revision += 1;
-        profile.updated_at = now();
-        self.repository
-            .save_candidate(&profile)
-            .await
-            .map_err(ApplicationError::storage)?;
+        // Optimistic concurrency: re-read and reapply once if a concurrent
+        // writer bumped the revision between our read and guarded write.
+        let mut attempts = 0;
+        let profile = loop {
+            let mut profile = self
+                .repository
+                .candidate(id)
+                .await
+                .map_err(ApplicationError::storage)?
+                .ok_or_else(|| ApplicationError::new(404, "not_found", "Профиль не найден"))?;
+            apply_profile_patch(&mut profile, patch.clone())?;
+            let base_revision = profile.revision;
+            profile.revision += 1;
+            profile.updated_at = now();
+            match self
+                .repository
+                .save_candidate_guarded(&profile, base_revision)
+                .await
+            {
+                Ok(()) => break profile,
+                Err(RepositoryError::NotFound) if attempts == 0 => {
+                    attempts += 1;
+                }
+                Err(error) => return Err(ApplicationError::storage(error)),
+            }
+        };
         let signals = self
             .freshness_signals(&profile.id, profile.grade_confirmed_at.as_deref())
             .await?;
@@ -310,6 +386,7 @@ impl PlatformService {
             session.email_verified,
             &signals,
             assessment_running,
+            self.grade_cooldown_days,
         ))
     }
 
@@ -518,12 +595,18 @@ impl PlatformService {
         record.salary_from = salary_from;
         record.salary_to = salary_to;
         record.need.requirements = requirements;
+        let base_revision = record.revision;
         record.revision += 1;
         record.updated_at = now();
         self.repository
-            .save_need(&record)
+            .save_need_guarded(&record, base_revision)
             .await
-            .map_err(ApplicationError::storage)?;
+            .map_err(|error| match error {
+                RepositoryError::NotFound => {
+                    ApplicationError::new(404, "not_found", "Потребность не найдена")
+                }
+                other => ApplicationError::storage(other),
+            })?;
         Ok(need_view(record))
     }
 
@@ -578,9 +661,14 @@ impl PlatformService {
         record.published = true;
         record.published_at = Some(now());
         self.repository
-            .save_need(&record)
+            .save_need_guarded(&record, record.revision)
             .await
-            .map_err(ApplicationError::storage)?;
+            .map_err(|error| match error {
+                RepositoryError::NotFound => {
+                    ApplicationError::new(404, "not_found", "Потребность не найдена")
+                }
+                other => ApplicationError::storage(other),
+            })?;
         Ok(need_view(record))
     }
 
@@ -593,9 +681,14 @@ impl PlatformService {
         record.published = false;
         record.published_at = None;
         self.repository
-            .save_need(&record)
+            .save_need_guarded(&record, record.revision)
             .await
-            .map_err(ApplicationError::storage)?;
+            .map_err(|error| match error {
+                RepositoryError::NotFound => {
+                    ApplicationError::new(404, "not_found", "Потребность не найдена")
+                }
+                other => ApplicationError::storage(other),
+            })?;
         Ok(need_view(record))
     }
 
@@ -1195,7 +1288,16 @@ impl PlatformService {
         self.repository
             .save_invitation(&record)
             .await
-            .map_err(ApplicationError::storage)?;
+            .map_err(|error| match error {
+                // The partial unique index fires when the duplicate check above
+                // lost a race with a concurrent create.
+                RepositoryError::Conflict => ApplicationError::new(
+                    409,
+                    "invitation_exists",
+                    "Приглашение по этой потребности уже существует",
+                ),
+                other => ApplicationError::storage(other),
+            })?;
         Ok(invitation_view(record))
     }
 
@@ -1228,9 +1330,19 @@ impl PlatformService {
         record.status = InteractionStatus::Withdrawn;
         record.responded_at = Some(now());
         self.repository
-            .save_invitation(&record)
+            .save_invitation_guarded(
+                &record,
+                &[InteractionStatus::Sent, InteractionStatus::Viewed],
+            )
             .await
-            .map_err(ApplicationError::storage)?;
+            .map_err(|error| match error {
+                RepositoryError::NotFound => ApplicationError::new(
+                    409,
+                    "invitation_terminal",
+                    "Решение по приглашению уже принято",
+                ),
+                other => ApplicationError::storage(other),
+            })?;
         Ok(invitation_view(record))
     }
 
@@ -1298,12 +1410,29 @@ impl PlatformService {
         record.status = InteractionStatus::Accepted;
         record.responded_at = Some(now());
         record.disclosure_fields = disclose;
-        self.repository
-            .save_invitation(&record)
+        // The status flip and the disclosure recompute commit together: a
+        // half-accepted invitation with a stale grant is not observable.
+        let tx = self
+            .repository
+            .transaction()
             .await
             .map_err(ApplicationError::storage)?;
-        self.refresh_disclosure(&record.company_id.clone(), &candidate)
+        tx.save_invitation_guarded(
+            &record,
+            &[InteractionStatus::Sent, InteractionStatus::Viewed],
+        )
+        .await
+        .map_err(|error| match error {
+            RepositoryError::NotFound => ApplicationError::new(
+                409,
+                "invitation_terminal",
+                "Решение по приглашению уже принято",
+            ),
+            other => ApplicationError::storage(other),
+        })?;
+        self.refresh_disclosure(&*tx, &record.company_id.clone(), &candidate)
             .await?;
+        tx.commit().await.map_err(ApplicationError::storage)?;
         Ok(invitation_view(record))
     }
 
@@ -1326,22 +1455,33 @@ impl PlatformService {
         record.status = InteractionStatus::Declined;
         record.responded_at = Some(now());
         self.repository
-            .save_invitation(&record)
+            .save_invitation_guarded(
+                &record,
+                &[InteractionStatus::Sent, InteractionStatus::Viewed],
+            )
             .await
-            .map_err(ApplicationError::storage)?;
+            .map_err(|error| match error {
+                RepositoryError::NotFound => ApplicationError::new(
+                    409,
+                    "invitation_terminal",
+                    "Решение по приглашению уже принято",
+                ),
+                other => ApplicationError::storage(other),
+            })?;
         Ok(invitation_view(record))
     }
 
     /// The mock's `refreshDisclosure`: recomputes a company's disclosure grant
     /// from accepted invitations and non-withdrawn applications. Removing the
-    /// last grant deletes the record.
+    /// last grant deletes the record. Runs on the caller's repository handle so
+    /// the read-modify-write shares the surrounding transaction.
     async fn refresh_disclosure(
         &self,
+        repo: &dyn PlatformRepository,
         company_id: &str,
         candidate: &CandidateIndexRecord,
     ) -> Result<(), ApplicationError> {
-        let invitations = self
-            .repository
+        let invitations = repo
             .invitations(company_id)
             .await
             .map_err(ApplicationError::storage)?
@@ -1351,8 +1491,7 @@ impl PlatformService {
                     && item.status == InteractionStatus::Accepted
             })
             .collect::<Vec<_>>();
-        let applications = self
-            .repository
+        let applications = repo
             .company_applications(company_id)
             .await
             .map_err(ApplicationError::storage)?
@@ -1373,8 +1512,7 @@ impl PlatformService {
             .cloned()
             .collect::<std::collections::BTreeSet<_>>();
         if granted.is_empty() {
-            return self
-                .repository
+            return repo
                 .delete_disclosure(company_id, &candidate.profile.id)
                 .await
                 .map_err(ApplicationError::storage);
@@ -1388,8 +1526,7 @@ impl PlatformService {
             .max_by(|a, b| a.created_at.cmp(&b.created_at));
         let source_links = if granted.contains("sourceLinks") {
             let mut links = Vec::new();
-            for source in self
-                .repository
+            for source in repo
                 .sources(&candidate.profile.id)
                 .await
                 .map_err(ApplicationError::storage)?
@@ -1427,8 +1564,7 @@ impl PlatformService {
                 .then(|| candidate.profile.email.clone()),
             source_links,
         };
-        self.repository
-            .save_disclosure(&record)
+        repo.save_disclosure(&record)
             .await
             .map_err(ApplicationError::storage)
     }
@@ -1681,12 +1817,26 @@ impl PlatformService {
             responded_at: None,
             disclosure_fields: disclose,
         };
-        self.repository
-            .save_application(&record)
+        let tx = self
+            .repository
+            .transaction()
             .await
             .map_err(ApplicationError::storage)?;
-        self.refresh_disclosure(&record.company_id.clone(), &candidate)
+        tx.save_application(&record)
+            .await
+            .map_err(|error| match error {
+                // Partial unique index: a concurrent create on the same
+                // vacancy won the race after the eligibility check.
+                RepositoryError::Conflict => ApplicationError::new(
+                    409,
+                    "application_exists",
+                    "Вы уже откликнулись на эту вакансию",
+                ),
+                other => ApplicationError::storage(other),
+            })?;
+        self.refresh_disclosure(&*tx, &record.company_id.clone(), &candidate)
             .await?;
+        tx.commit().await.map_err(ApplicationError::storage)?;
         self.application_view(record).await
     }
 
@@ -1717,13 +1867,28 @@ impl PlatformService {
         }
         record.status = InteractionStatus::Withdrawn;
         record.responded_at = Some(now());
-        self.repository
-            .save_application(&record)
+        let candidate = self.candidate_index(&record.candidate_id.clone()).await?;
+        let tx = self
+            .repository
+            .transaction()
             .await
             .map_err(ApplicationError::storage)?;
-        let candidate = self.candidate_index(&record.candidate_id.clone()).await?;
-        self.refresh_disclosure(&record.company_id.clone(), &candidate)
+        tx.save_application_guarded(
+            &record,
+            &[InteractionStatus::Sent, InteractionStatus::Viewed],
+        )
+        .await
+        .map_err(|error| match error {
+            RepositoryError::NotFound => ApplicationError::new(
+                409,
+                "application_terminal",
+                "Решение по отклику уже принято",
+            ),
+            other => ApplicationError::storage(other),
+        })?;
+        self.refresh_disclosure(&*tx, &record.company_id.clone(), &candidate)
             .await?;
+        tx.commit().await.map_err(ApplicationError::storage)?;
         self.application_view(record).await
     }
 
@@ -1818,9 +1983,19 @@ impl PlatformService {
         }
         record.responded_at = Some(now());
         self.repository
-            .save_application(&record)
+            .save_application_guarded(
+                &record,
+                &[InteractionStatus::Sent, InteractionStatus::Viewed],
+            )
             .await
-            .map_err(ApplicationError::storage)?;
+            .map_err(|error| match error {
+                RepositoryError::NotFound => ApplicationError::new(
+                    409,
+                    "application_terminal",
+                    "Решение по отклику уже принято",
+                ),
+                other => ApplicationError::storage(other),
+            })?;
         self.application_view(record).await
     }
 
@@ -1894,7 +2069,16 @@ impl PlatformService {
         self.repository
             .save_task_response(&record)
             .await
-            .map_err(ApplicationError::storage)?;
+            .map_err(|error| match error {
+                // One response per (candidate, task): the offer check above lost
+                // the race with a concurrent submission.
+                RepositoryError::Conflict => ApplicationError::new(
+                    409,
+                    "task_response_exists",
+                    "Ответ на задание этой недели уже отправлен",
+                ),
+                other => ApplicationError::storage(other),
+            })?;
         Ok(task_response_view(&record))
     }
 
@@ -2176,13 +2360,30 @@ impl PlatformService {
             ));
         }
         record.status = outcome;
-        record.feedback = feedback;
+        record.feedback = feedback.clone();
         record.reviewed_at = Some(now());
-        self.repository
-            .save_task_response(&record)
-            .await
-            .map_err(ApplicationError::storage)?;
-        Ok(task_response_view(&record))
+        let result = self.repository.review_task_response(&record).await;
+        match result {
+            Ok(()) => Ok(task_response_view(&record)),
+            // A concurrent review landed first: replay when the outcome matches,
+            // conflict otherwise — same rule the pre-read check applied.
+            Err(RepositoryError::NotFound) => match self
+                .repository
+                .task_response(response_id)
+                .await
+                .map_err(ApplicationError::storage)?
+            {
+                Some(current) if current.status == outcome && current.feedback == feedback => {
+                    Ok(task_response_view(&current))
+                }
+                _ => Err(ApplicationError::new(
+                    409,
+                    "task_response_reviewed",
+                    "Ответ уже оценён",
+                )),
+            },
+            Err(other) => Err(ApplicationError::storage(other)),
+        }
     }
 
     /// The mock's `listMyAssessments`, newest id first.
@@ -2261,7 +2462,9 @@ impl PlatformService {
             .grade_confirmed_at
             .as_deref()
             .and_then(timestamp_at)
-            .is_some_and(|at| at + Duration::days(GRADE_COOLDOWN_DAYS) > Utc::now());
+            .is_some_and(|at| {
+                at + Duration::days(i64::from(self.grade_cooldown_days)) > Utc::now()
+            });
         if changing && cooling_off {
             return Err(ApplicationError::new(
                 409,
@@ -2323,12 +2526,27 @@ impl PlatformService {
         mutable_assessment(&record)?;
         record.answer = input;
         record.status = fsp_domain::AssessmentStatus::InProgress;
+        let base_revision = record.revision;
         record.revision += 1;
         record.updated_at = now();
         self.repository
-            .save_assessment(&record)
+            .save_assessment_guarded(
+                &record,
+                base_revision,
+                &[
+                    fsp_domain::AssessmentStatus::Draft,
+                    fsp_domain::AssessmentStatus::InProgress,
+                ],
+            )
             .await
-            .map_err(ApplicationError::storage)?;
+            .map_err(|error| match error {
+                RepositoryError::NotFound => ApplicationError::new(
+                    409,
+                    "assessment_not_editable",
+                    "Проверка уже отправлена или завершена",
+                ),
+                other => ApplicationError::storage(other),
+            })?;
         Ok(assessment_view(&record))
     }
 
@@ -2351,10 +2569,29 @@ impl PlatformService {
         );
         record.checks = assessment_checks("pass");
         record.updated_at = now();
-        self.repository
-            .save_assessment(&record)
+        // Checks write and the job row commit together.
+        let tx = self
+            .repository
+            .transaction()
             .await
             .map_err(ApplicationError::storage)?;
+        tx.save_assessment_guarded(
+            &record,
+            record.revision,
+            &[
+                fsp_domain::AssessmentStatus::Draft,
+                fsp_domain::AssessmentStatus::InProgress,
+            ],
+        )
+        .await
+        .map_err(|error| match error {
+            RepositoryError::NotFound => ApplicationError::new(
+                409,
+                "assessment_not_editable",
+                "Проверка уже отправлена или завершена",
+            ),
+            other => ApplicationError::storage(other),
+        })?;
         job.status = "succeeded".into();
         job.updated_at = now();
         job.result_json = Some(self.job_result(&JobResultView::Checks {
@@ -2362,10 +2599,8 @@ impl PlatformService {
             checks: record.checks.clone(),
             simulation: true,
         })?);
-        self.repository
-            .save_job(&job)
-            .await
-            .map_err(ApplicationError::storage)?;
+        tx.save_job(&job).await.map_err(ApplicationError::storage)?;
+        tx.commit().await.map_err(ApplicationError::storage)?;
         Ok(job_view(job, None))
     }
 
@@ -2408,15 +2643,35 @@ impl PlatformService {
         }
         record.status = fsp_domain::AssessmentStatus::Submitted;
         record.updated_at = now();
+        let base_revision = record.revision;
         record.revision += 1;
-        self.repository
-            .save_assessment(&record)
+        // Submission, the grade/profile write inside `complete_assessment`, the
+        // result and the job row share one transaction.
+        let tx = self
+            .repository
+            .transaction()
             .await
             .map_err(ApplicationError::storage)?;
+        tx.save_assessment_guarded(
+            &record,
+            base_revision,
+            &[
+                fsp_domain::AssessmentStatus::Draft,
+                fsp_domain::AssessmentStatus::InProgress,
+            ],
+        )
+        .await
+        .map_err(|error| match error {
+            RepositoryError::NotFound => ApplicationError::new(
+                409,
+                "assessment_not_editable",
+                "Проверка уже отправлена или завершена",
+            ),
+            other => ApplicationError::storage(other),
+        })?;
         let mut job = self.new_job(&record.candidate_id, "assessment", Some(&record.id), None);
-        self.complete_assessment(&mut record).await?;
-        self.repository
-            .save_assessment(&record)
+        self.complete_assessment(&*tx, &mut record).await?;
+        tx.save_assessment(&record)
             .await
             .map_err(ApplicationError::storage)?;
         job.status = if record.status == fsp_domain::AssessmentStatus::ServiceError {
@@ -2431,17 +2686,18 @@ impl PlatformService {
         job.result_json = Some(self.job_result(&JobResultView::Assessment {
             assessment: assessment_view(&record),
         })?);
-        self.repository
-            .save_job(&job)
-            .await
-            .map_err(ApplicationError::storage)?;
+        tx.save_job(&job).await.map_err(ApplicationError::storage)?;
+        tx.commit().await.map_err(ApplicationError::storage)?;
         Ok(job_view(job, None))
     }
 
     /// The mock's `completeAssessment` happy path: confirm or raise the
     /// verified grade, refresh the two demo skills and build the result.
+    /// Writes go through the caller's repository handle so the grade change and
+    /// the assessment result commit in one transaction.
     async fn complete_assessment(
         &self,
+        repo: &dyn PlatformRepository,
         record: &mut fsp_domain::AssessmentRecord,
     ) -> Result<(), ApplicationError> {
         let mut candidate = self.candidate_index(&record.candidate_id).await?;
@@ -2487,12 +2743,10 @@ impl PlatformService {
             }
             candidate.profile.revision += 1;
             candidate.profile.updated_at = now();
-            self.repository
-                .save_candidate(&candidate.profile)
+            repo.save_candidate(&candidate.profile)
                 .await
                 .map_err(ApplicationError::storage)?;
-            self.repository
-                .save_candidate_index(&candidate)
+            repo.save_candidate_index(&candidate)
                 .await
                 .map_err(ApplicationError::storage)?;
         }
@@ -2523,7 +2777,7 @@ impl PlatformService {
                 .grade_confirmed_at
                 .as_deref()
                 .and_then(timestamp_at)
-                .map(|at| (at + Duration::days(GRADE_COOLDOWN_DAYS)).to_rfc3339()),
+                .map(|at| (at + Duration::days(i64::from(self.grade_cooldown_days))).to_rfc3339()),
             simulation: true,
         });
         Ok(())
@@ -2720,25 +2974,48 @@ impl PlatformService {
         }
         self.require_processing_consent(candidate_id).await?;
         validate_profile_patch(&input.profile)?;
-        let mut profile = self
-            .repository
-            .candidate(candidate_id)
-            .await
-            .map_err(ApplicationError::storage)?
-            .ok_or_else(|| ApplicationError::new(404, "not_found", "Профиль не найден"))?;
-        apply_profile_patch(&mut profile, input.profile)?;
-        profile.revision += 1;
-        profile.updated_at = now();
-        self.repository
-            .save_candidate(&profile)
-            .await
-            .map_err(ApplicationError::storage)?;
-        job.confirmed = true;
-        job.updated_at = now();
-        self.repository
-            .save_job(&job)
-            .await
-            .map_err(ApplicationError::storage)?;
+        // Profile write and the confirmed-flag on the job commit together; the
+        // revision-guarded save retries once when a concurrent profile update
+        // lands between this transaction's read and write.
+        let mut attempts = 0;
+        let profile = loop {
+            let tx = self
+                .repository
+                .transaction()
+                .await
+                .map_err(ApplicationError::storage)?;
+            let mut profile = tx
+                .candidate(candidate_id)
+                .await
+                .map_err(ApplicationError::storage)?
+                .ok_or_else(|| ApplicationError::new(404, "not_found", "Профиль не найден"))?;
+            apply_profile_patch(&mut profile, input.profile.clone())?;
+            let base_revision = profile.revision;
+            profile.revision += 1;
+            profile.updated_at = now();
+            match tx.save_candidate_guarded(&profile, base_revision).await {
+                Ok(()) => {}
+                Err(RepositoryError::NotFound) if attempts == 0 => {
+                    attempts += 1;
+                    continue;
+                }
+                Err(error) => return Err(ApplicationError::storage(error)),
+            }
+            job.confirmed = true;
+            job.updated_at = now();
+            tx.save_job_unconfirmed(&job)
+                .await
+                .map_err(|error| match error {
+                    RepositoryError::NotFound => ApplicationError::new(
+                        409,
+                        "import_already_confirmed",
+                        "Импорт уже применён",
+                    ),
+                    other => ApplicationError::storage(other),
+                })?;
+            tx.commit().await.map_err(ApplicationError::storage)?;
+            break profile;
+        };
         let signals = self
             .freshness_signals(&profile.id, profile.grade_confirmed_at.as_deref())
             .await?;
@@ -2748,6 +3025,7 @@ impl PlatformService {
             session.email_verified,
             &signals,
             assessment_running,
+            self.grade_cooldown_days,
         ))
     }
 
@@ -3137,11 +3415,9 @@ impl PlatformService {
 
     async fn candidate_index(&self, id: &str) -> Result<CandidateIndexRecord, ApplicationError> {
         self.repository
-            .candidates()
+            .candidate_index(id)
             .await
             .map_err(ApplicationError::storage)?
-            .into_iter()
-            .find(|record| record.profile.id == id)
             .ok_or_else(|| ApplicationError::new(404, "not_found", "Кандидат не найден"))
     }
 
@@ -3197,33 +3473,64 @@ impl PlatformService {
         let fingerprint = serde_json::to_string(body).map_err(|_| {
             ApplicationError::new(500, "internal_error", "Сервис временно недоступен")
         })?;
-        if let Some(stored) = self
-            .repository
-            .idempotency_get(&scope)
-            .await
-            .map_err(ApplicationError::storage)?
-        {
-            if stored.fingerprint != fingerprint {
-                return Err(ApplicationError::new(
-                    409,
-                    "idempotency_conflict",
-                    "Ключ уже использован с другим запросом",
-                ));
+        // Claim the scope before running: only the claim winner executes the
+        // command; concurrent same-key requests see `InFlight`, wait briefly
+        // and replay the stored response — concurrent double-execution is
+        // impossible. A `running` row abandoned by a crash is reclaimed after
+        // two minutes inside `idempotency_claim`.
+        for attempt in 0..20 {
+            match self
+                .repository
+                .idempotency_claim(&scope, &fingerprint)
+                .await
+                .map_err(ApplicationError::storage)?
+            {
+                IdempotencyClaim::Execute => {
+                    // A failed command releases the claim so a retried request
+                    // executes instead of waiting out the stale window; only
+                    // successful responses become replayable.
+                    let value = match run().await {
+                        Ok(value) => value,
+                        Err(error) => {
+                            let _ = self.repository.idempotency_abort(&scope).await;
+                            return Err(error);
+                        }
+                    };
+                    let stored_body = serde_json::to_string(&value).map_err(|_| {
+                        ApplicationError::new(500, "internal_error", "Сервис временно недоступен")
+                    })?;
+                    self.repository
+                        .idempotency_finish(&scope, status, &stored_body)
+                        .await
+                        .map_err(ApplicationError::storage)?;
+                    return Ok(Idempotent::Fresh(value));
+                }
+                IdempotencyClaim::Stored(stored) => {
+                    if stored.fingerprint != fingerprint {
+                        return Err(ApplicationError::new(
+                            409,
+                            "idempotency_conflict",
+                            "Ключ уже использован с другим запросом",
+                        ));
+                    }
+                    return Ok(Idempotent::Replayed {
+                        status: stored.status,
+                        body: stored.body,
+                    });
+                }
+                IdempotencyClaim::InFlight => {
+                    tokio::time::sleep(std::time::Duration::from_millis(
+                        75 + u64::from(attempt as u32) * 25,
+                    ))
+                    .await;
+                }
             }
-            return Ok(Idempotent::Replayed {
-                status: stored.status,
-                body: stored.body,
-            });
         }
-        let value = run().await?;
-        let stored_body = serde_json::to_string(&value).map_err(|_| {
-            ApplicationError::new(500, "internal_error", "Сервис временно недоступен")
-        })?;
-        self.repository
-            .idempotency_put(&scope, &fingerprint, status, &stored_body, &now())
-            .await
-            .map_err(ApplicationError::storage)?;
-        Ok(Idempotent::Fresh(value))
+        Err(ApplicationError::new(
+            500,
+            "internal_error",
+            "Сервис временно недоступен",
+        ))
     }
 
     /// Mirrors the mock's `processing(candidate)` guard on data-processing
@@ -3297,6 +3604,7 @@ impl PlatformService {
                         ApplicationError::new(503, "fsp_not_configured", "Источник ФСП недоступен")
                     })?
                     .participation(account)
+                    .await
                     .map_err(integration_error)?;
                 fsp_domain::SourceRecord {
                     id: format!("source-fsp-{candidate_id}"),
@@ -3409,8 +3717,13 @@ impl PlatformService {
         };
         match result {
             Ok(updated) => {
-                self.repository
-                    .save_source(&updated)
+                // The refreshed source and the succeeded job commit together.
+                let tx = self
+                    .repository
+                    .transaction()
+                    .await
+                    .map_err(ApplicationError::storage)?;
+                tx.save_source(&updated)
                     .await
                     .map_err(ApplicationError::storage)?;
                 job.status = "succeeded".into();
@@ -3424,10 +3737,8 @@ impl PlatformService {
                         ApplicationError::new(500, "internal_error", error.to_string())
                     })?,
                 );
-                self.repository
-                    .save_job(&job)
-                    .await
-                    .map_err(ApplicationError::storage)?;
+                tx.save_job(&job).await.map_err(ApplicationError::storage)?;
+                tx.commit().await.map_err(ApplicationError::storage)?;
                 Ok(job_view(job, Some(source_view(updated))))
             }
             Err(error) => {
@@ -3484,8 +3795,11 @@ impl PlatformService {
         })
     }
 
+    /// Account + role profile creation; takes the unit-of-work handle so the
+    /// caller's transaction owns the write. `email` is stored normalized.
     async fn register_account(
         &self,
+        repo: &dyn PlatformRepository,
         email: String,
         role: Role,
     ) -> Result<Account, ApplicationError> {
@@ -3498,50 +3812,48 @@ impl PlatformService {
             company_id: (role == Role::Employer).then(|| format!("company-{}", &suffix[..12])),
             email_verified: false,
         };
-        self.repository
-            .create_account(&account, &now())
+        // Referenced rows first: accounts carry FKs to candidates/companies.
+        if let Some(candidate_id) = &account.candidate_id {
+            repo.create_candidate(&CandidateProfile {
+                id: candidate_id.clone(),
+                alias: format!("Кандидат №{}", suffix[..3].to_uppercase()),
+                email: email.clone(),
+                name: "Новый кандидат".into(),
+                specialization: Specialization::Backend,
+                selected_grade: Grade::Junior,
+                stack: Vec::new(),
+                team_role: String::new(),
+                experience_months: None,
+                experience: String::new(),
+                soft_skills: Vec::new(),
+                consents: Consents {
+                    processing: false,
+                    publication: false,
+                },
+                verified_grade: None,
+                verified_specialization: None,
+                grade_confirmed_at: None,
+                revision: 1,
+                updated_at: now(),
+            })
             .await
             .map_err(ApplicationError::storage)?;
-        if let Some(candidate_id) = &account.candidate_id {
-            self.repository
-                .create_candidate(&CandidateProfile {
-                    id: candidate_id.clone(),
-                    alias: format!("Кандидат №{}", suffix[..3].to_uppercase()),
-                    email: email.clone(),
-                    name: "Новый кандидат".into(),
-                    specialization: Specialization::Backend,
-                    selected_grade: Grade::Junior,
-                    stack: Vec::new(),
-                    team_role: String::new(),
-                    experience_months: None,
-                    experience: String::new(),
-                    soft_skills: Vec::new(),
-                    consents: Consents {
-                        processing: false,
-                        publication: false,
-                    },
-                    verified_grade: None,
-                    verified_specialization: None,
-                    grade_confirmed_at: None,
-                    revision: 1,
-                    updated_at: now(),
-                })
-                .await
-                .map_err(ApplicationError::storage)?;
         }
         if let Some(company_id) = &account.company_id {
-            self.repository
-                .create_company(&Company {
-                    id: company_id.clone(),
-                    display_name: "Новая компания".into(),
-                    business_area: String::new(),
-                    description: String::new(),
-                    contact_email: email,
-                    website: None,
-                })
-                .await
-                .map_err(ApplicationError::storage)?;
+            repo.create_company(&Company {
+                id: company_id.clone(),
+                display_name: "Новая компания".into(),
+                business_area: String::new(),
+                description: String::new(),
+                contact_email: email.clone(),
+                website: None,
+            })
+            .await
+            .map_err(ApplicationError::storage)?;
         }
+        repo.create_account(&account, &now())
+            .await
+            .map_err(ApplicationError::storage)?;
         Ok(account)
     }
 
@@ -3913,8 +4225,6 @@ fn skill_summary(status: EvidenceStatus) -> &'static str {
 /// The mock's `FRESHNESS_DAYS`: a verified grade or a counted task answer keeps a
 /// profile fresh for this window.
 const FRESHNESS_DAYS: i64 = 90;
-/// `successfulGradeChangeCooldownDays` from `meta.assessmentPolicy`.
-const GRADE_COOLDOWN_DAYS: i64 = 90;
 
 /// The mock's `taskPeriod`: ISO weeks anchored to Monday 1970-01-05 UTC.
 const EPOCH_MONDAY_MS: i64 = 345_600_000;
@@ -4173,6 +4483,7 @@ fn profile_view(
     email_verified: bool,
     signals: &[(String, &'static str)],
     assessment_running: bool,
+    cooldown_days: u16,
 ) -> ProfileView {
     let questionnaire_complete = profile.questionnaire_complete();
     let assessment_passed =
@@ -4204,7 +4515,7 @@ fn profile_view(
         .grade_confirmed_at
         .as_deref()
         .and_then(|at| chrono::DateTime::parse_from_rfc3339(at).ok())
-        .map(|at| (at + Duration::days(GRADE_COOLDOWN_DAYS)).to_rfc3339());
+        .map(|at| (at + Duration::days(i64::from(cooldown_days))).to_rfc3339());
     let cooling = next_eligible_at
         .as_deref()
         .is_some_and(|at| at > Utc::now().to_rfc3339().as_str());
@@ -4280,7 +4591,7 @@ fn profile_view(
             selected_reason,
             can_start_upgrade: reason.is_none(),
             next_eligible_at,
-            cooldown_days: GRADE_COOLDOWN_DAYS as u16,
+            cooldown_days,
             reason,
         },
         revision: profile.revision,
