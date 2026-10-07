@@ -601,6 +601,44 @@ pub struct SalaryInput {
     pub tax_basis: SalaryTaxBasis,
 }
 
+/// The contract's `Requirement`/`EvidencePolicy` arrive camelCased; the
+/// domain types stay snake_case for stored JSON.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct EvidencePolicyInput {
+    pub accept_assessments: bool,
+    pub accept_github: bool,
+    pub accept_fsp: bool,
+    pub competition_selection: String,
+    pub competition_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RequirementInput {
+    pub skill_id: String,
+    pub criticality: fsp_domain::Criticality,
+    pub minimum_grade: Grade,
+    pub evidence_policy: EvidencePolicyInput,
+}
+
+impl RequirementInput {
+    pub fn into_domain(self) -> fsp_domain::Requirement {
+        fsp_domain::Requirement {
+            skill_id: self.skill_id,
+            criticality: self.criticality,
+            minimum_grade: self.minimum_grade,
+            evidence_policy: fsp_domain::EvidencePolicy {
+                accept_assessments: self.evidence_policy.accept_assessments,
+                accept_github: self.evidence_policy.accept_github,
+                accept_fsp: self.evidence_policy.accept_fsp,
+                competition_selection: self.evidence_policy.competition_selection,
+                competition_ids: self.evidence_policy.competition_ids,
+            },
+        }
+    }
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct NeedInput {
@@ -610,7 +648,7 @@ pub struct NeedInput {
     pub work_mode: String,
     pub salary: SalaryInput,
     pub description: String,
-    pub requirements: Vec<fsp_domain::Requirement>,
+    pub requirements: Vec<RequirementInput>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -622,7 +660,7 @@ pub struct NeedPatch {
     pub work_mode: Option<String>,
     pub salary: Option<SalaryInput>,
     pub description: Option<String>,
-    pub requirements: Option<Vec<fsp_domain::Requirement>>,
+    pub requirements: Option<Vec<RequirementInput>>,
 }
 
 impl NeedPatch {

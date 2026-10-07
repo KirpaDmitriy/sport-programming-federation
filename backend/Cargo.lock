@@ -476,9 +476,13 @@ dependencies = [
  "fsp-integration-fsp-synthetic",
  "fsp-integration-github",
  "fsp-storage-sqlite",
+ "http-body-util",
+ "serde_json",
  "tokio",
+ "tower",
  "tracing",
  "tracing-subscriber",
+ "uuid",
 ]
 
 [[package]]

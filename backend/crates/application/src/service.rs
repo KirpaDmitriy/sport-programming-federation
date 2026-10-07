@@ -20,12 +20,13 @@ use crate::{
     InvitationNeedView, InvitationView, InvitationsView, JobResultView, JobView, LlmGateway,
     MatchRequirementView, MyTasksView, NeedInput, NeedPatch, NeedView, NeedsView,
     OfferedCompanyView, OfferedTaskView, OnboardingView, PendingChallenge, PlatformRepository,
-    ProfilePatch, ProfileView, RepositoryError, RequirementView, SalaryView, SelfSkillView,
-    SessionView, ShortlistInput, ShortlistMemberView, ShortlistSummaryView, ShortlistView,
-    ShortlistsView, SkillView, SkillsView, SourceConnectInput, SourceView, SourcesView, TaskInput,
-    TaskPeriodView, TaskResponseInput, TaskResponseView, TaskResponsesView, TaskReviewInput,
-    TaskReviewOutcome, TaskView, TasksView, VacancyPageView, VacancyRequirementView, VacancySearch,
-    VacancyView, VerificationDelivery, job_view, match_status, source_view,
+    ProfilePatch, ProfileView, RepositoryError, RequirementInput, RequirementView, SalaryView,
+    SelfSkillView, SessionView, ShortlistInput, ShortlistMemberView, ShortlistSummaryView,
+    ShortlistView, ShortlistsView, SkillView, SkillsView, SourceConnectInput, SourceView,
+    SourcesView, TaskInput, TaskPeriodView, TaskResponseInput, TaskResponseView, TaskResponsesView,
+    TaskReviewInput, TaskReviewOutcome, TaskView, TasksView, VacancyPageView,
+    VacancyRequirementView, VacancySearch, VacancyView, VerificationDelivery, job_view,
+    match_status, source_view,
 };
 
 #[derive(Debug)]
@@ -376,13 +377,18 @@ impl PlatformService {
         input: NeedInput,
     ) -> Result<NeedView, ApplicationError> {
         let company_id = employer_company_id(session)?.to_owned();
+        let requirements: Vec<fsp_domain::Requirement> = input
+            .requirements
+            .into_iter()
+            .map(RequirementInput::into_domain)
+            .collect();
         validate_need_schema(
             &input.title,
             &input.work_mode,
             &input.description,
-            &input.requirements,
+            &requirements,
         )?;
-        validate_need_rules(input.salary.from, input.salary.to, &input.requirements)?;
+        validate_need_rules(input.salary.from, input.salary.to, &requirements)?;
         let timestamp = now();
         let record = HiringNeedRecord {
             id: format!("need-{}", Uuid::new_v4().simple()),
@@ -391,7 +397,7 @@ impl PlatformService {
             need: fsp_domain::HiringNeed {
                 specialization: input.specialization,
                 grade: input.grade,
-                requirements: input.requirements,
+                requirements,
             },
             work_mode: input.work_mode,
             salary_from: input.salary.from,
@@ -451,13 +457,28 @@ impl PlatformService {
             return Err(validation("Запрос не соответствует контракту"));
         }
         if let Some(requirements) = &patch.requirements {
-            validate_requirements_schema(requirements)?;
+            if requirements.is_empty() || requirements.len() > 5 {
+                return Err(validation("Запрос не соответствует контракту"));
+            }
+            let domain: Vec<fsp_domain::Requirement> = requirements
+                .iter()
+                .cloned()
+                .map(RequirementInput::into_domain)
+                .collect();
+            validate_requirements_schema(&domain)?;
         }
         let (salary_from, salary_to) = patch
             .salary
             .map(|salary| (salary.from, salary.to))
             .unwrap_or((record.salary_from, record.salary_to));
-        let requirements = patch.requirements.unwrap_or(record.need.requirements);
+        let requirements = patch
+            .requirements
+            .map(|list| {
+                list.into_iter()
+                    .map(RequirementInput::into_domain)
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or(record.need.requirements);
         validate_need_rules(salary_from, salary_to, &requirements)?;
         if let Some(title) = patch.title {
             record.title = title;
