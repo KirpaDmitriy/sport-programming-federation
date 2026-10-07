@@ -503,6 +503,35 @@ pub struct AssessmentsView {
     pub items: Vec<AssessmentView>,
 }
 
+/// The contract's `GapPlan`: requirements of a need the candidate does not
+/// yet meet, with the accepted path to close each gap.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GapPlanView {
+    pub candidate_id: String,
+    pub need_id: String,
+    pub items: Vec<GapItemView>,
+    pub simulation: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GapItemView {
+    pub skill_id: String,
+    /// `needs_verification` or `not_evidenced` — `meets` never appears.
+    pub status: &'static str,
+    pub reason: &'static str,
+    pub action: &'static str,
+    pub accepted_competition_ids: Vec<String>,
+    pub assessment_available: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ImportConfirmInput {
+    pub profile: ProfilePatch,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SalaryView {
@@ -855,6 +884,13 @@ pub enum JobResultView {
     },
     Assessment {
         assessment: AssessmentView,
+    },
+    /// The mock's fixed `fixture_preview` parse result: the upload is
+    /// validated, the preview does not depend on its contents.
+    ProfileImport {
+        preview: serde_json::Value,
+        parser: &'static str,
+        simulation: bool,
     },
 }
 

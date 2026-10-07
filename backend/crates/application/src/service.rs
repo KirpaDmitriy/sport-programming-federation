@@ -15,17 +15,17 @@ use crate::{
     CandidatePageView, CandidateSearch, CategoryView, CompanyCardView, CompanyPatch, CompanyView,
     ConsumeChallenge, DisclosureFieldsView, DisclosureView, EmailChallengeInput,
     EmailChallengeView, EmailVerifyInput, EvidencePolicyView, EvidenceView, FreshnessView,
-    FspGateway, GitHubGateway, GradeEligibilityView, GraphEdgeView, GraphNodeView, GraphView,
-    IntegrationError, InvitationInput, InvitationNeedView, InvitationView, InvitationsView,
-    JobResultView, JobView, LlmGateway, MatchRequirementView, MyTasksView, NeedInput, NeedPatch,
-    NeedView, NeedsView, OfferedCompanyView, OfferedTaskView, OnboardingView, PendingChallenge,
-    PlatformRepository, ProfilePatch, ProfileView, RepositoryError, RequirementView, SalaryView,
-    SelfSkillView, SessionView, ShortlistInput, ShortlistMemberView, ShortlistSummaryView,
-    ShortlistView, ShortlistsView, SkillView, SkillsView, SourceConnectInput, SourceView,
-    SourcesView, TaskInput, TaskPeriodView, TaskResponseInput, TaskResponseView, TaskResponsesView,
-    TaskReviewInput, TaskReviewOutcome, TaskView, TasksView, VacancyPageView,
-    VacancyRequirementView, VacancySearch, VacancyView, VerificationDelivery, job_view,
-    match_status, source_view,
+    FspGateway, GapItemView, GapPlanView, GitHubGateway, GradeEligibilityView, GraphEdgeView,
+    GraphNodeView, GraphView, ImportConfirmInput, IntegrationError, InvitationInput,
+    InvitationNeedView, InvitationView, InvitationsView, JobResultView, JobView, LlmGateway,
+    MatchRequirementView, MyTasksView, NeedInput, NeedPatch, NeedView, NeedsView,
+    OfferedCompanyView, OfferedTaskView, OnboardingView, PendingChallenge, PlatformRepository,
+    ProfilePatch, ProfileView, RepositoryError, RequirementView, SalaryView, SelfSkillView,
+    SessionView, ShortlistInput, ShortlistMemberView, ShortlistSummaryView, ShortlistView,
+    ShortlistsView, SkillView, SkillsView, SourceConnectInput, SourceView, SourcesView, TaskInput,
+    TaskPeriodView, TaskResponseInput, TaskResponseView, TaskResponsesView, TaskReviewInput,
+    TaskReviewOutcome, TaskView, TasksView, VacancyPageView, VacancyRequirementView, VacancySearch,
+    VacancyView, VerificationDelivery, job_view, match_status, source_view,
 };
 
 #[derive(Debug)]
@@ -282,40 +282,7 @@ impl PlatformService {
             .candidate(id)
             .map_err(ApplicationError::storage)?
             .ok_or_else(|| ApplicationError::new(404, "not_found", "Профиль не найден"))?;
-        if let Some(name) = patch.name {
-            profile.name = name.trim().to_owned();
-        }
-        if let Some(value) = patch.specialization {
-            profile.specialization = value;
-        }
-        if let Some(value) = patch.selected_grade {
-            profile.selected_grade = value;
-        }
-        if let Some(value) = patch.stack {
-            profile.stack = unique(value);
-        }
-        if let Some(value) = patch.team_role {
-            profile.team_role = value.trim().to_owned();
-        }
-        if let Some(value) = patch.experience_months {
-            profile.experience_months = value;
-        }
-        if let Some(value) = patch.experience {
-            profile.experience = value;
-        }
-        if let Some(value) = patch.soft_skills {
-            profile.soft_skills = unique(value);
-        }
-        if let Some(value) = patch.consents {
-            profile.consents = value;
-        }
-        if profile.consents.publication && !profile.consents.processing {
-            return Err(ApplicationError::new(
-                403,
-                "processing_consent_required",
-                "Для обработки данных необходимо согласие",
-            ));
-        }
+        apply_profile_patch(&mut profile, patch)?;
         profile.revision += 1;
         profile.updated_at = now();
         self.repository
@@ -1405,26 +1372,7 @@ impl PlatformService {
         // Without a grant the candidate must still be reachable: the mock's
         // `candidateForCompany` accepts a live application or public-bank
         // visibility, and always requires the candidate to exist.
-        let applied = self
-            .repository
-            .company_applications(company_id)
-            .map_err(ApplicationError::storage)?
-            .iter()
-            .any(|item| {
-                item.candidate_id == requested_candidate_id
-                    && item.status != InteractionStatus::Withdrawn
-            });
-        let candidate = self
-            .repository
-            .candidates()
-            .map_err(ApplicationError::storage)?
-            .into_iter()
-            .find(|item| item.profile.id == requested_candidate_id);
-        let reachable = candidate
-            .is_some_and(|item| applied || item.profile.visible_to_employers(item.email_verified));
-        if !reachable {
-            return Err(ApplicationError::new(404, "not_found", "Ресурс не найден"));
-        }
+        self.candidate_for_company(company_id, requested_candidate_id)?;
         Ok(DisclosureView {
             candidate_id: requested_candidate_id.to_owned(),
             company_id: company_id.to_owned(),
@@ -2485,6 +2433,7 @@ impl PlatformService {
             assessment_id: assessment_id.map(str::to_string),
             input_revision,
             result_json: None,
+            confirmed: false,
             created_at: timestamp.clone(),
             updated_at: timestamp,
             result_source_id: None,
@@ -2496,6 +2445,166 @@ impl PlatformService {
     fn job_result(&self, result: &JobResultView) -> Result<String, ApplicationError> {
         serde_json::to_string(result)
             .map_err(|error| ApplicationError::new(500, "internal_error", error.to_string()))
+    }
+
+    /// The mock's `getMyGapPlan`: the need is reachable only through an
+    /// invitation addressed to this candidate.
+    pub fn my_gap_plan(
+        &self,
+        session: &SessionView,
+        need_id: Option<&str>,
+    ) -> Result<GapPlanView, ApplicationError> {
+        let candidate_id = candidate_id(session)?;
+        let candidate = self.candidate_index(candidate_id)?;
+        let invitation = self
+            .repository
+            .candidate_invitations(candidate_id)
+            .map_err(ApplicationError::storage)?
+            .into_iter()
+            .find(|item| Some(item.need_definition.id.as_str()) == need_id)
+            .ok_or_else(|| {
+                ApplicationError::new(404, "not_found", "Потребность недоступна этому кандидату")
+            })?;
+        Ok(gap_plan(&candidate, &invitation.need_definition))
+    }
+
+    /// The mock's `getCandidateGapPlan`: the candidate must be reachable by
+    /// the company and the need must belong to it.
+    pub fn candidate_gap_plan(
+        &self,
+        session: &SessionView,
+        candidate_id: &str,
+        need_id: Option<&str>,
+    ) -> Result<GapPlanView, ApplicationError> {
+        let company_id = employer_company_id(session)?;
+        let candidate = self.candidate_for_company(company_id, candidate_id)?;
+        let need_id =
+            need_id.ok_or_else(|| ApplicationError::new(404, "not_found", "Ресурс не найден"))?;
+        let need = self
+            .repository
+            .need(company_id, need_id)
+            .map_err(ApplicationError::storage)?
+            .ok_or_else(|| ApplicationError::new(404, "not_found", "Ресурс не найден"))?;
+        Ok(gap_plan(&candidate, &need))
+    }
+
+    /// The mock's `candidateForCompany`: a live application or public-bank
+    /// visibility makes the candidate reachable for the company.
+    fn candidate_for_company(
+        &self,
+        company_id: &str,
+        candidate_id: &str,
+    ) -> Result<CandidateIndexRecord, ApplicationError> {
+        let applied = self
+            .repository
+            .company_applications(company_id)
+            .map_err(ApplicationError::storage)?
+            .iter()
+            .any(|item| {
+                item.candidate_id == candidate_id && item.status != InteractionStatus::Withdrawn
+            });
+        self.repository
+            .candidates()
+            .map_err(ApplicationError::storage)?
+            .into_iter()
+            .find(|item| {
+                item.profile.id == candidate_id
+                    && (applied || item.profile.visible_to_employers(item.email_verified))
+            })
+            .ok_or_else(|| ApplicationError::new(404, "not_found", "Ресурс не найден"))
+    }
+
+    /// The mock's `importMyProfile`: the upload was validated by the
+    /// transport; the fixture preview completes inline.
+    pub fn import_profile(&self, session: &SessionView) -> Result<JobView, ApplicationError> {
+        let candidate_id = candidate_id(session)?;
+        self.require_processing_consent(candidate_id)?;
+        let mut job = self.new_job(candidate_id, "profile_import", None, None);
+        job.status = "succeeded".into();
+        job.updated_at = now();
+        job.result_json = Some(self.job_result(&JobResultView::ProfileImport {
+            preview: serde_json::json!({
+                "name": "Алексей Морозов",
+                "specialization": "backend",
+                "selectedGrade": "middle",
+                "stack": ["rust", "postgresql", "docker"],
+                "teamRole": "Разработчик",
+                "experienceMonths": serde_json::Value::Null,
+                "experience": "Демонстрационное извлечение: API на Rust и PostgreSQL. Содержимое загруженного файла не анализировалось.",
+                "softSkills": ["Командная работа"]
+            }),
+            parser: "fixture_preview",
+            simulation: true,
+        })?);
+        self.repository
+            .save_job(&job)
+            .map_err(ApplicationError::storage)?;
+        Ok(job_view(job, None))
+    }
+
+    /// The mock's `confirmProfileImport`: a succeeded, unconfirmed
+    /// `profile_import` job applies the submitted profile patch once.
+    pub fn confirm_profile_import(
+        &self,
+        session: &SessionView,
+        job_id: &str,
+        input: ImportConfirmInput,
+    ) -> Result<ProfileView, ApplicationError> {
+        let candidate_id = candidate_id(session)?;
+        let mut job = self
+            .repository
+            .job(candidate_id, job_id)
+            .map_err(ApplicationError::storage)?
+            .ok_or_else(|| ApplicationError::new(404, "not_found", "Ресурс не найден"))?;
+        if job.kind != "profile_import" {
+            return Err(ApplicationError::new(404, "not_found", "Импорт не найден"));
+        }
+        if job.status != "succeeded" {
+            return Err(ApplicationError::new(
+                409,
+                "import_not_ready",
+                "Дождитесь завершения импорта",
+            ));
+        }
+        if job.confirmed {
+            return Err(ApplicationError::new(
+                409,
+                "import_already_confirmed",
+                "Импорт уже применён",
+            ));
+        }
+        self.require_processing_consent(candidate_id)?;
+        validate_profile_patch(&input.profile)?;
+        let mut profile = self
+            .repository
+            .candidate(candidate_id)
+            .map_err(ApplicationError::storage)?
+            .ok_or_else(|| ApplicationError::new(404, "not_found", "Профиль не найден"))?;
+        apply_profile_patch(&mut profile, input.profile)?;
+        profile.revision += 1;
+        profile.updated_at = now();
+        self.repository
+            .save_candidate(&profile)
+            .map_err(ApplicationError::storage)?;
+        job.confirmed = true;
+        job.updated_at = now();
+        self.repository
+            .save_job(&job)
+            .map_err(ApplicationError::storage)?;
+        let signals = self.freshness_signals(&profile.id, profile.grade_confirmed_at.as_deref())?;
+        let assessment_running = self.has_active_assessment(&profile.id)?;
+        Ok(profile_view(
+            profile,
+            session.email_verified,
+            &signals,
+            assessment_running,
+        ))
+    }
+
+    /// The mock's `exportMyProfile`: the profile DTO the PDF is rendered
+    /// from; rendering lives in the transport layer.
+    pub fn export_profile(&self, session: &SessionView) -> Result<ProfileView, ApplicationError> {
+        self.profile(session)
     }
 
     pub fn candidate_search(
@@ -3081,6 +3190,7 @@ impl PlatformService {
             assessment_id: None,
             input_revision: None,
             result_json: None,
+            confirmed: false,
             created_at: created_at.clone(),
             updated_at: created_at,
             result_source_id: None,
@@ -3493,7 +3603,7 @@ fn match_view(
         .need
         .requirements
         .iter()
-        .map(|requirement| match_requirement(candidate, requirement))
+        .map(|requirement| match_requirement(&candidate.skills, requirement))
         .collect::<Vec<_>>();
     let status = match_status(&result, &requirements);
     CandidateMatchView {
@@ -3518,11 +3628,10 @@ fn match_view(
 }
 
 fn match_requirement(
-    candidate: &fsp_domain::RankableCandidate,
+    skills: &[fsp_domain::SkillEvidence],
     requirement: &Requirement,
 ) -> MatchRequirementView {
-    let skill = candidate
-        .skills
+    let skill = skills
         .iter()
         .find(|item| item.skill_id == requirement.skill_id);
     // Like the mock's match(): only an assessment the policy accepts counts
@@ -3771,6 +3880,61 @@ fn assessment_view(record: &fsp_domain::AssessmentRecord) -> AssessmentView {
     }
 }
 
+/// The mock's `COMPETITIONS` fixture — id and accepted skills.
+const COMPETITIONS: [(&str, &[&str]); 2] = [
+    ("competition-demo-api", &["rust", "postgresql"]),
+    ("competition-demo-systems", &["docker", "redis"]),
+];
+
+/// The mock's `gapPlan`: every unmet requirement gets an action, the FSP
+/// competitions the policy accepts and whether an assessment can close it.
+fn gap_plan(candidate: &CandidateIndexRecord, need: &HiringNeedRecord) -> GapPlanView {
+    let items = need
+        .need
+        .requirements
+        .iter()
+        .filter_map(|requirement| {
+            let item = match_requirement(&candidate.skills, requirement);
+            if item.status == "meets" {
+                return None;
+            }
+            let policy = &requirement.evidence_policy;
+            let accepted_competition_ids = if policy.accept_fsp {
+                COMPETITIONS
+                    .iter()
+                    .filter(|(_, skills)| skills.contains(&item.skill_id.as_str()))
+                    .filter(|(id, _)| {
+                        policy.competition_selection == "system"
+                            || policy.competition_ids.iter().any(|listed| listed == id)
+                    })
+                    .map(|(id, _)| (*id).to_owned())
+                    .collect()
+            } else {
+                Vec::new()
+            };
+            Some(GapItemView {
+                skill_id: item.skill_id,
+                status: item.status,
+                reason: item.reason,
+                action: if policy.accept_assessments {
+                    "Пройдите практическую проверку навыка нужного уровня."
+                } else {
+                    "Предоставьте свидетельство из источников, которые принимает работодатель."
+                },
+                accepted_competition_ids,
+                assessment_available: policy.accept_assessments
+                    && need.need.specialization == Specialization::Backend,
+            })
+        })
+        .collect();
+    GapPlanView {
+        candidate_id: candidate.profile.id.clone(),
+        need_id: need.id.clone(),
+        items,
+        simulation: true,
+    }
+}
+
 /// The mock's `freshness()`: the latest verified-grade or counted task
 /// signal decides `lastSignal`; `assessment` sorts first on ties because the
 /// mock pushes it before task signals and uses a stable sort.
@@ -3925,6 +4089,49 @@ fn unique(values: Vec<String>) -> Vec<String> {
         }
     }
     result
+}
+
+/// Applies a validated `ProfilePatch`, like the mock's `patchProfile`. The
+/// publication consent cannot outlive the processing consent.
+fn apply_profile_patch(
+    profile: &mut CandidateProfile,
+    patch: ProfilePatch,
+) -> Result<(), ApplicationError> {
+    if let Some(name) = patch.name {
+        profile.name = name.trim().to_owned();
+    }
+    if let Some(value) = patch.specialization {
+        profile.specialization = value;
+    }
+    if let Some(value) = patch.selected_grade {
+        profile.selected_grade = value;
+    }
+    if let Some(value) = patch.stack {
+        profile.stack = unique(value);
+    }
+    if let Some(value) = patch.team_role {
+        profile.team_role = value.trim().to_owned();
+    }
+    if let Some(value) = patch.experience_months {
+        profile.experience_months = value;
+    }
+    if let Some(value) = patch.experience {
+        profile.experience = value;
+    }
+    if let Some(value) = patch.soft_skills {
+        profile.soft_skills = unique(value);
+    }
+    if let Some(value) = patch.consents {
+        profile.consents = value;
+    }
+    if profile.consents.publication && !profile.consents.processing {
+        return Err(ApplicationError::new(
+            403,
+            "processing_consent_required",
+            "Для обработки данных необходимо согласие",
+        ));
+    }
+    Ok(())
 }
 
 fn validate_profile_patch(patch: &ProfilePatch) -> Result<(), ApplicationError> {

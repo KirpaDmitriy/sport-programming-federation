@@ -2,13 +2,17 @@
 
 mod error;
 mod extract;
+mod pdf;
 
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use axum::body::Body;
-use axum::extract::{DefaultBodyLimit, Request, State};
-use axum::http::header::{CACHE_CONTROL, COOKIE, ORIGIN, SET_COOKIE, X_CONTENT_TYPE_OPTIONS};
+use axum::extract::{DefaultBodyLimit, FromRequest, Request, State};
+use axum::http::header::{
+    CACHE_CONTROL, CONTENT_DISPOSITION, CONTENT_TYPE, COOKIE, ORIGIN, SET_COOKIE,
+    X_CONTENT_TYPE_OPTIONS,
+};
 use axum::http::{HeaderMap, HeaderName, HeaderValue, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Redirect, Response};
@@ -34,6 +38,11 @@ const IDEMPOTENT_REPLAY: HeaderName = HeaderName::from_static("x-idempotent-repl
 const SESSION_COOKIE: &str = "fsp_session";
 /// JSON body ceiling, shared with the mock's `MAX_JSON`.
 const MAX_JSON_BODY: usize = 512 * 1024;
+/// Profile-import envelope ceiling: the mock accepts a 2 MiB `file` part,
+/// the extra room covers the multipart framing.
+const MAX_IMPORT_BODY: usize = 3 * 1024 * 1024;
+/// The mock's `MAX_PDF`.
+const MAX_PDF_FILE: usize = 2 * 1024 * 1024;
 
 #[derive(Debug, Clone)]
 pub struct HttpConfig {
@@ -158,6 +167,12 @@ pub fn router(config: HttpConfig, service: Arc<PlatformService>) -> Router {
         .route("/api/v1/tasks", get(list_tasks))
         .route("/api/v1/tasks/{task_id}/archive", post(archive_task))
         .route("/api/v1/task-responses", get(list_task_responses))
+        .route("/api/v1/me/gap-plan", get(get_my_gap_plan))
+        .route(
+            "/api/v1/candidates/{candidate_id}/gap-plan",
+            get(get_candidate_gap_plan),
+        )
+        .route("/api/v1/me/profile/export", get(export_profile))
         .route("/api/v1/me/assessments", get(get_my_assessments))
         .route(
             "/api/v1/me/assessments/{assessment_id}",
@@ -211,6 +226,14 @@ pub fn router(config: HttpConfig, service: Arc<PlatformService>) -> Router {
         .route(
             "/api/v1/me/assessments/{assessment_id}/assistant",
             post(ask_assessment_assistant),
+        )
+        .route(
+            "/api/v1/me/profile/imports",
+            post(import_profile).layer(DefaultBodyLimit::max(MAX_IMPORT_BODY)),
+        )
+        .route(
+            "/api/v1/me/profile/imports/{job_id}/confirm",
+            post(confirm_profile_import),
         );
     let router: Router = bodyless
         .merge(bodied)
@@ -279,7 +302,7 @@ async fn meta(State(state): State<AppState>) -> Json<Value> {
         "serverTime": Utc::now().to_rfc3339(),
         "scenario": "live",
         "capabilities": {
-            "emailVerification": true, "profilePdf": false, "githubFixture": false,
+            "emailVerification": true, "profilePdf": true, "githubFixture": false,
             "fspFixture": true, "matching": true, "directInvitations": true,
             "vacancyPublication": true, "selfApplication": true, "chat": false,
             "recurringTasks": true, "realCodeExecution": false, "realLlm": state.service.llm_configured(),
@@ -1194,6 +1217,170 @@ async fn submit_assessment(
         )
         .map_err(api_error)?;
     Ok(idempotent_response(StatusCode::ACCEPTED, outcome))
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct GapPlanQuery {
+    need_id: Option<String>,
+}
+
+async fn get_my_gap_plan(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ContractQuery(query): ContractQuery<GapPlanQuery>,
+) -> Result<Json<fsp_application::GapPlanView>, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    require_role(&session, "candidate")?;
+    state
+        .service
+        .my_gap_plan(&session, query.need_id.as_deref())
+        .map(Json)
+        .map_err(api_error)
+}
+
+async fn get_candidate_gap_plan(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ContractPath(candidate_id): ContractPath<String>,
+    ContractQuery(query): ContractQuery<GapPlanQuery>,
+) -> Result<Json<fsp_application::GapPlanView>, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    require_role(&session, "employer")?;
+    state
+        .service
+        .candidate_gap_plan(&session, &candidate_id, query.need_id.as_deref())
+        .map(Json)
+        .map_err(api_error)
+}
+
+/// The mock's `parseMultipart`: a single `file` part whose declared type is
+/// `application/pdf`, 1 byte to 2 MiB, with a `%PDF-` header and `%%EOF`
+/// marker inside the trailing 2048 bytes.
+async fn import_profile(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    request: Request,
+) -> Result<Response, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    require_role(&session, "candidate")?;
+    let content_type = headers
+        .get(CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or_default();
+    if !content_type.starts_with("multipart/form-data;") {
+        return Err(ApiError::new(
+            StatusCode::UNSUPPORTED_MEDIA_TYPE,
+            "multipart_required",
+            "Ожидается multipart/form-data",
+        ));
+    }
+    let invalid_multipart = || {
+        ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "invalid_multipart",
+            "Не удалось прочитать форму загрузки",
+        )
+    };
+    let mut multipart = axum::extract::Multipart::from_request(request, &state)
+        .await
+        .map_err(|_| invalid_multipart())?;
+    let mut parts = Vec::new();
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|_| invalid_multipart())?
+    {
+        let name = field.name().unwrap_or_default().to_owned();
+        let declared_type = field.content_type().map(str::to_owned);
+        let bytes = field.bytes().await.map_err(|_| invalid_multipart())?;
+        parts.push((name, declared_type, bytes));
+    }
+    let [(name, declared_type, bytes)] = <[_; 1]>::try_from(parts).map_err(|_| {
+        ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "file_required",
+            "Передайте один PDF в поле file",
+        )
+    })?;
+    if name != "file" {
+        return Err(ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "file_required",
+            "Передайте один PDF в поле file",
+        ));
+    }
+    if declared_type.as_deref() != Some("application/pdf") {
+        return Err(ApiError::new(
+            StatusCode::UNSUPPORTED_MEDIA_TYPE,
+            "pdf_required",
+            "Поддерживаются только PDF",
+        ));
+    }
+    if bytes.is_empty() || bytes.len() > MAX_PDF_FILE {
+        return Err(ApiError::new(
+            StatusCode::PAYLOAD_TOO_LARGE,
+            "file_too_large",
+            "Размер PDF должен быть от 1 байта до 2 МиБ",
+        ));
+    }
+    let tail = &bytes[bytes.len().saturating_sub(2048)..];
+    if !bytes.starts_with(b"%PDF-") || !tail.windows(5).any(|window| window == b"%%EOF") {
+        return Err(ApiError::new(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "invalid_pdf",
+            "Файл не содержит ожидаемую сигнатуру PDF",
+        ));
+    }
+    state
+        .service
+        .import_profile(&session)
+        .map(|view| (StatusCode::ACCEPTED, Json(view)).into_response())
+        .map_err(api_error)
+}
+
+async fn confirm_profile_import(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ContractPath(job_id): ContractPath<String>,
+    ContractJson(input): ContractJson<fsp_application::ImportConfirmInput>,
+) -> Result<Json<fsp_application::ProfileView>, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    require_role(&session, "candidate")?;
+    state
+        .service
+        .confirm_profile_import(&session, &job_id, input)
+        .map(Json)
+        .map_err(api_error)
+}
+
+/// The mock's `exportMyProfile`: a generated PDF download, not JSON.
+async fn export_profile(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    let session = authenticated(&state, &headers)?;
+    require_role(&session, "candidate")?;
+    let profile = state.service.export_profile(&session).map_err(api_error)?;
+    let bytes = pdf::profile_pdf(&profile).map_err(|error| {
+        tracing::error!(error = %error, "profile PDF render failed");
+        ApiError::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "internal_error",
+            "Сервис временно недоступен",
+        )
+    })?;
+    Ok((
+        [
+            (CONTENT_TYPE, "application/pdf"),
+            (
+                CONTENT_DISPOSITION,
+                "attachment; filename=\"fsp-profile.pdf\"",
+            ),
+        ],
+        bytes,
+    )
+        .into_response())
 }
 
 async fn list_tasks(

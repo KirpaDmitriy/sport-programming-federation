@@ -74,6 +74,8 @@ pub struct JobRecord {
     pub input_revision: Option<u64>,
     /// Serialized result payload (`Job.result` in the contract).
     pub result_json: Option<String>,
+    /// Whether a `profile_import` job's preview was confirmed and applied.
+    pub confirmed: bool,
     pub created_at: String,
     pub updated_at: String,
     pub result_source_id: Option<String>,

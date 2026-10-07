@@ -50,6 +50,7 @@ fn migrate(connection: &Connection) -> Result<(), RepositoryError> {
         ("assessment_id", "TEXT"),
         ("input_revision", "INTEGER"),
         ("result_json", "TEXT"),
+        ("confirmed", "INTEGER NOT NULL DEFAULT 0"),
     ] {
         if !existing.iter().any(|name| name == column) {
             connection
@@ -840,8 +841,8 @@ impl PlatformRepository for SqliteRepository {
     fn save_job(&self, job: &JobRecord) -> Result<(), RepositoryError> {
         self.connection()?
             .execute(
-                "INSERT INTO jobs(id,owner_id,kind,status,created_at,updated_at,candidate_id,assessment_id,input_revision,result_json,result_source_id,error_code,error_message) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET kind=excluded.kind,status=excluded.status,updated_at=excluded.updated_at,candidate_id=excluded.candidate_id,assessment_id=excluded.assessment_id,input_revision=excluded.input_revision,result_json=excluded.result_json,result_source_id=excluded.result_source_id,error_code=excluded.error_code,error_message=excluded.error_message",
-                params![job.id,job.owner_id,job.kind,job.status,job.created_at,job.updated_at,job.candidate_id,job.assessment_id,job.input_revision,job.result_json,job.result_source_id,job.error_code,job.error_message],
+                "INSERT INTO jobs(id,owner_id,kind,status,created_at,updated_at,candidate_id,assessment_id,input_revision,result_json,confirmed,result_source_id,error_code,error_message) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET kind=excluded.kind,status=excluded.status,updated_at=excluded.updated_at,candidate_id=excluded.candidate_id,assessment_id=excluded.assessment_id,input_revision=excluded.input_revision,result_json=excluded.result_json,confirmed=excluded.confirmed,result_source_id=excluded.result_source_id,error_code=excluded.error_code,error_message=excluded.error_message",
+                params![job.id,job.owner_id,job.kind,job.status,job.created_at,job.updated_at,job.candidate_id,job.assessment_id,job.input_revision,job.result_json,job.confirmed,job.result_source_id,job.error_code,job.error_message],
             )
             .map_err(storage)?;
         Ok(())
@@ -850,7 +851,7 @@ impl PlatformRepository for SqliteRepository {
     fn job(&self, owner_id: &str, job_id: &str) -> Result<Option<JobRecord>, RepositoryError> {
         self.connection()?
             .query_row(
-                "SELECT id,owner_id,kind,status,created_at,updated_at,candidate_id,assessment_id,input_revision,result_json,result_source_id,error_code,error_message FROM jobs WHERE owner_id=? AND id=?",
+                "SELECT id,owner_id,kind,status,created_at,updated_at,candidate_id,assessment_id,input_revision,result_json,confirmed,result_source_id,error_code,error_message FROM jobs WHERE owner_id=? AND id=?",
                 params![owner_id, job_id],
                 |row| {
                     Ok(JobRecord {
@@ -864,9 +865,10 @@ impl PlatformRepository for SqliteRepository {
                         assessment_id: row.get(7)?,
                         input_revision: row.get::<_, Option<i64>>(8)?.map(|value| value as u64),
                         result_json: row.get(9)?,
-                        result_source_id: row.get(10)?,
-                        error_code: row.get(11)?,
-                        error_message: row.get(12)?,
+                        confirmed: row.get(10)?,
+                        result_source_id: row.get(11)?,
+                        error_code: row.get(12)?,
+                        error_message: row.get(13)?,
                     })
                 },
             )
@@ -1777,7 +1779,7 @@ CREATE TABLE IF NOT EXISTS needs(id TEXT PRIMARY KEY,company_id TEXT NOT NULL RE
 CREATE TABLE IF NOT EXISTS oauth_states(state TEXT PRIMARY KEY,candidate_id TEXT NOT NULL,expires_at TEXT NOT NULL,used INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS github_credentials(candidate_id TEXT PRIMARY KEY,access_token TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS sources(id TEXT PRIMARY KEY,candidate_id TEXT NOT NULL,provider TEXT NOT NULL,synthetic INTEGER NOT NULL,active_job_id TEXT,account_label TEXT,last_synced_at TEXT,analysis_json TEXT,verified_participation INTEGER NOT NULL,competition_ids_json TEXT NOT NULL);
-CREATE TABLE IF NOT EXISTS jobs(id TEXT PRIMARY KEY,owner_id TEXT NOT NULL,kind TEXT NOT NULL DEFAULT 'source_sync',status TEXT NOT NULL,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,candidate_id TEXT,assessment_id TEXT,input_revision INTEGER,result_json TEXT,result_source_id TEXT,error_code TEXT,error_message TEXT);
+CREATE TABLE IF NOT EXISTS jobs(id TEXT PRIMARY KEY,owner_id TEXT NOT NULL,kind TEXT NOT NULL DEFAULT 'source_sync',status TEXT NOT NULL,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,candidate_id TEXT,assessment_id TEXT,input_revision INTEGER,result_json TEXT,confirmed INTEGER NOT NULL DEFAULT 0,result_source_id TEXT,error_code TEXT,error_message TEXT);
 CREATE TABLE IF NOT EXISTS idempotency_keys(scope TEXT PRIMARY KEY,fingerprint TEXT NOT NULL,status INTEGER NOT NULL,body_json TEXT NOT NULL,created_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS shortlists(id TEXT PRIMARY KEY,company_id TEXT NOT NULL REFERENCES companies(id),title TEXT NOT NULL,members_json TEXT NOT NULL,created_at TEXT NOT NULL,updated_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS invitations(id TEXT PRIMARY KEY,company_id TEXT NOT NULL,candidate_id TEXT NOT NULL,candidate_alias TEXT NOT NULL,company_json TEXT NOT NULL,need_json TEXT NOT NULL,need_definition_json TEXT NOT NULL,message TEXT NOT NULL,status TEXT NOT NULL,created_at TEXT NOT NULL,viewed_at TEXT,responded_at TEXT,disclosure_json TEXT NOT NULL);
@@ -2339,6 +2341,7 @@ mod tests {
                 assessment_id: Some("assessment-test".into()),
                 input_revision: Some(3),
                 result_json: Some("{\"kind\":\"assessment\",\"ok\":true}".into()),
+                confirmed: false,
                 created_at: "2026-10-06T00:00:00Z".into(),
                 updated_at: "2026-10-06T01:00:00Z".into(),
                 result_source_id: None,
