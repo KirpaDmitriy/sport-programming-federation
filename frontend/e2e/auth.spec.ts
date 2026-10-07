@@ -36,6 +36,7 @@ test('UI-25 roles are separated and deep links return after sign-in', async ({ p
   await page.waitForURL(/\/login\?redirect=/);
   await page.getByLabel('Электронная почта').fill(ALEXEY);
   await page.getByRole('button', { name: 'Получить код' }).click();
+  await expect(page.getByLabel('Код из письма')).toBeVisible();
   await page.getByLabel('Код из письма').fill(await latestCode(ALEXEY));
   await page.getByRole('button', { name: 'Подтвердить и войти' }).click();
   await page.waitForURL('**/candidate/skills?view=graph');
