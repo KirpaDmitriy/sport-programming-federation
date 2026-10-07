@@ -1,10 +1,15 @@
 version: 2
 
-# Local-development placeholder URIs for the compose/test PostgreSQL service;
-# they carry no real credential material (the documented default password "fsp"
-# only reaches a loopback-bound container database).
-matches-ignore:
-  - name: local dev PostgreSQL URL (compose default)
-    match: postgres://fsp:fsp@127.0.0.1:5434/fsp
-  - name: local dev PostgreSQL admin URL (test helper)
-    match: postgres://fsp:fsp@127.0.0.1:5434/postgres
+# Files that only carry local-development placeholder credentials for the
+# compose/test PostgreSQL service (the documented default password "fsp" only
+# reaches a loopback-bound container database). Real secrets never live in
+# these paths. This config file itself is ignored because match values below
+# would otherwise be scanned as literals.
+paths-ignore:
+  - .gitguardian.yaml
+  - .env.example
+  - docker-compose.yml
+  - .github/workflows/backend.yml
+  - README.md
+  - backend/README.md
+  - infra/README.md

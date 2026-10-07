@@ -63,9 +63,24 @@ impl PostgresRepository {
         .fetch_all(&admin)
         .await
         .expect("stale test databases are listed");
+        // Names carry their creation timestamp: a database without sessions is only
+        // reaped once it is older than STALE_SECS, so the create→first-connect window
+        // of a parallel test can never look orphaned. FORCE terminates a session that
+        // sneaks in between the listing and the drop.
+        const STALE_SECS: i64 = 300;
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system clock")
+            .as_secs() as i64;
         for stale_name in stale {
-            // FORCE terminates a session that connected between the listing above
-            // and this drop — a parallel test may still be tearing its pool down.
+            let created_at = stale_name
+                .strip_prefix("fsp_test_")
+                .and_then(|rest| rest.split('_').next())
+                .and_then(|ts| ts.parse::<i64>().ok());
+            match created_at {
+                Some(ts) if now - ts < STALE_SECS => continue,
+                _ => {}
+            }
             sqlx::query(&format!(
                 "DROP DATABASE IF EXISTS \"{stale_name}\" WITH (FORCE)"
             ))
@@ -73,7 +88,7 @@ impl PostgresRepository {
             .await
             .expect("stale test database is dropped");
         }
-        let name = format!("fsp_test_{}", uuid::Uuid::new_v4().simple());
+        let name = format!("fsp_test_{}_{}", now, uuid::Uuid::new_v4().simple());
         sqlx::query(&format!("CREATE DATABASE \"{name}\""))
             .execute(&admin)
             .await
