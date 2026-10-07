@@ -9,7 +9,7 @@ use fsp_http::HttpConfig;
 use fsp_integration_bifrost::BifrostGateway;
 use fsp_integration_fsp_synthetic::SyntheticFsp;
 use fsp_integration_github::GitHubApi;
-use fsp_storage_sqlite::SqliteRepository;
+use fsp_storage_postgres::PostgresRepository;
 use tokio::net::TcpListener;
 use tokio::signal;
 
@@ -54,12 +54,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .map(String::from)
         .collect();
 
-    let database_path = env::var("FSP_DATABASE").unwrap_or_else(|_| "data/fsp.sqlite3".into());
-    if let Some(parent) = std::path::Path::new(&database_path).parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    let repository =
-        Arc::new(SqliteRepository::open(database_path).map_err(|error| format!("{error:?}"))?);
+    let database_url =
+        env::var("DATABASE_URL").unwrap_or_else(|_| "postgres://fsp:fsp@127.0.0.1:5434/fsp".into());
+    let repository = Arc::new(
+        PostgresRepository::connect(&database_url)
+            .await
+            .map_err(|error| format!("{error:?}"))?,
+    );
     let mock = env::var("FSP_AUTH_MODE").unwrap_or_else(|_| "demo".into()) == "demo";
     let delivery = Arc::new(ConfiguredDelivery {
         code: env::var("FSP_DEMO_EMAIL_CODE").unwrap_or_else(|_| "123456".into()),
@@ -84,7 +85,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         platform = platform.with_llm(Arc::new(bifrost));
     }
     let service = Arc::new(platform);
-    service.initialize().map_err(|error| error.message)?;
+    service.initialize().await.map_err(|error| error.message)?;
     let secure_cookie = env::var("FSP_SECURE_COOKIE").is_ok_and(|value| value == "1");
     let public_web_url =
         env::var("FSP_PUBLIC_WEB_URL").unwrap_or_else(|_| "http://127.0.0.1:5173".into());

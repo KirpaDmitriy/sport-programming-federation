@@ -13,7 +13,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -q
 apt-get upgrade -yq
-apt-get install -yq nginx ufw curl unzip build-essential
+apt-get install -yq nginx ufw curl unzip build-essential postgresql
 
 if [ "$(/opt/bun/bin/bun --version 2>/dev/null)" != "$BUN_VERSION" ]; then
   tmp="$(mktemp -d)"
@@ -53,6 +53,32 @@ ln -sf /snap/bin/certbot /usr/local/bin/certbot
 id fsp >/dev/null 2>&1 || useradd --system --home-dir /opt/fsp --shell /usr/sbin/nologin fsp
 install -d -m 755 /opt/fsp /opt/fsp/releases /var/www/acme /etc/fsp
 
+# PostgreSQL is the only datastore. Loopback-only listen, a dedicated fsp role and database,
+# credentials generated once and kept in root-managed /etc/fsp/db.env (never re-generated on
+# re-runs: an existing file means the role already holds that password).
+systemctl enable --now postgresql
+for pg_main in /etc/postgresql/*/main; do
+  [ -d "$pg_main" ] || continue
+  install -d -m 755 "$pg_main/conf.d"
+  printf "listen_addresses = 'localhost'\n" > "$pg_main/conf.d/fsp-localhost.conf"
+done
+systemctl restart postgresql
+if [ ! -f /etc/fsp/db.env ]; then
+  db_password="$(openssl rand -hex 24)"
+  install -m 640 -o root -g fsp /dev/null /etc/fsp/db.env
+  printf 'DATABASE_URL=postgres://fsp:%s@127.0.0.1:5432/fsp\n' "$db_password" > /etc/fsp/db.env
+  init_sql="$(mktemp)"
+  chmod 600 "$init_sql"
+  cat > "$init_sql" <<'SQL'
+DO $$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname='fsp') THEN CREATE ROLE fsp LOGIN; END IF; END $$;
+SQL
+  printf "ALTER ROLE fsp WITH LOGIN PASSWORD '%s';\n" "$db_password" >> "$init_sql"
+  su - postgres -c "psql -v ON_ERROR_STOP=1 -f $init_sql"
+  rm -f "$init_sql"
+  su - postgres -c "psql -tAc \"SELECT 1 FROM pg_database WHERE datname='fsp'\"" | grep -q 1 \
+    || su - postgres -c "createdb -O fsp fsp"
+fi
+
 ufw allow OpenSSH >/dev/null
 ufw allow 'Nginx Full' >/dev/null
 ufw --force enable >/dev/null
@@ -68,7 +94,6 @@ EOF
 # The Rust backend takes over once /etc/fsp/api-backend says "rust" (release.sh switches the
 # services); until then it builds alongside without serving.
 cat > /etc/fsp/rust-api.env <<EOF
-FSP_DATABASE=/var/lib/fsp/fsp.sqlite3
 FSP_AUTH_MODE=demo
 FSP_DEMO_EMAIL_CODE=123456
 FSP_SECURE_COOKIE=1

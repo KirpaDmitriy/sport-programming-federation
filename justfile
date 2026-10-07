@@ -40,9 +40,21 @@ stand-frontend:
 e2e:
     bun run --cwd frontend e2e
 
-# Rust backend on 127.0.0.1:8080
+# Rust backend on 127.0.0.1:8080 (needs `just db-up` for a local PostgreSQL)
 backend:
     cd backend && cargo run -p fsp-server
+
+# Local PostgreSQL for development and tests (127.0.0.1:5434, user/db "fsp")
+db-up:
+    docker compose up --detach --wait db
+
+# Stop the local PostgreSQL (keeps the pg-data volume)
+db-down:
+    docker compose stop db
+
+# Remove the local PostgreSQL and its data volume
+db-reset:
+    docker compose down --volumes
 
 # Rust backend: format check, clippy and tests
 backend-check:

@@ -1,8 +1,8 @@
 # Backend
 
 The Rust service that replaces the mock behind the same `/api/v1` paths, built as a hexagonal architecture.
-[`Dockerfile`](Dockerfile) builds the production API image used by `docker compose up --build`. SQLite persists
-accounts, sessions, profiles, sources, processing jobs and the matching index.
+[`Dockerfile`](Dockerfile) builds the production API image used by `docker compose up --build`. PostgreSQL
+persists accounts, sessions, profiles, sources, processing jobs and the matching index.
 
 ## Layout
 
@@ -11,7 +11,7 @@ accounts, sessions, profiles, sources, processing jobs and the matching index.
 | `crates/domain` | `fsp-domain` | Domain model: entities, value objects and rules, no I/O and no framework. Holds the contract vocabulary (`Grade` with its order, `Specialization`, `Role`) |
 | `crates/application` | `fsp-application` | Use cases and outbound ports for persistence, verification, GitHub, FSP and LLM analysis |
 | `crates/http` | `fsp-http` | Inbound adapter on axum: routing, origin check, `X-Request-Id`, the error envelope `{ code, message, requestId, details }`, `GET /health`, `404 not_found` for unknown routes |
-| `crates/storage-sqlite` | `fsp-storage-sqlite` | Persistent SQLite adapter and synthetic demo seed |
+| `crates/storage-postgres` | `fsp-storage-postgres` | PostgreSQL adapter on `sqlx`/`PgPool`: embedded migrations and the synthetic demo seed |
 | `crates/integration-github` | `fsp-integration-github` | GitHub OAuth and bounded repository analysis |
 | `crates/integration-fsp-synthetic` | `fsp-integration-fsp-synthetic` | Synthetic FSP data behind the production FSP port |
 | `crates/integration-bifrost` | `fsp-integration-bifrost` | Optional Bifrost adapter for graph extraction and repository-to-competition matching |
@@ -26,13 +26,15 @@ direction.
 
 Rust 1.99.0 (pinned in `rust-toolchain.toml`, with rustfmt and clippy), edition 2024, resolver 3. Dependencies are
 the latest releases as of 2026-10-06 — axum 0.8.9, tokio 1.53.2, serde 1.0.229, serde_json 1.0.151, uuid 1.27.0,
-tracing 0.1.44, tracing-subscriber 0.3.23, async-trait 0.1.92, chrono 0.4.45, rusqlite 0.37.0 (bundled SQLite),
-reqwest 0.12.28 (rustls), sha2 0.10.9, tower-http 0.6.11 — declared once in the workspace `Cargo.toml` and locked in
-`Cargo.lock`. `unsafe` code is forbidden and clippy warnings fail the build.
+tracing 0.1.44, tracing-subscriber 0.3.23, async-trait 0.1.92, chrono 0.4.45, sqlx 0.8.6 (PostgreSQL, `PgPool`,
+embedded migrations in `crates/storage-postgres/migrations`), reqwest 0.12.28 (rustls), sha2 0.10.9,
+tower-http 0.6.11 — declared once in the workspace `Cargo.toml` and locked in `Cargo.lock`. `unsafe` code is
+forbidden and clippy warnings fail the build.
 
 ## Run and check
 
 ```sh
+just db-up                           # local PostgreSQL on 127.0.0.1:5434 (docker compose service)
 cd backend
 cargo run -p fsp-server              # http://127.0.0.1:8080, or `just backend` from the root
 cargo fmt --all --check
@@ -40,12 +42,17 @@ cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo test --workspace --locked      # `just backend-check` runs all three
 ```
 
+Storage tests and the `server/tests/contract.rs` suite run against real PostgreSQL: each test creates an
+isolated `fsp_test_<uuid>` database through the admin URL in `FSP_TEST_DATABASE_URL` (default
+`postgres://fsp:fsp@127.0.0.1:5434/postgres`, the `just db-up` service). Idle test databases are reaped on the
+next run.
+
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `HOST` | `127.0.0.1` | Bind address |
 | `PORT` | `8080` | Bind port |
 | `FSP_ALLOWED_ORIGINS` | `http://127.0.0.1:5173,http://localhost:5173` | Comma-separated browser origins accepted on requests with `Origin`; others get `403 origin_not_allowed` |
-| `FSP_DATABASE` | `data/fsp.sqlite3` | SQLite database path (the directory is created automatically) |
+| `DATABASE_URL` | `postgres://fsp:fsp@127.0.0.1:5434/fsp` | PostgreSQL connection; migrations and the demo seed run on startup |
 | `FSP_AUTH_MODE` | `demo` | `demo` exposes the fixed verification code; e-mail delivery is not implemented, so other values cannot issue challenges |
 | `FSP_DEMO_EMAIL_CODE` | `123456` | Verification code used only in demo mode |
 | `FSP_SECURE_COOKIE` | unset | `1` adds `Secure` to the session cookie (set it behind HTTPS) |
