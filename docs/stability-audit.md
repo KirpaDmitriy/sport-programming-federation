@@ -74,7 +74,7 @@ The ownership requirement in `AGENTS.md` is satisfied for the stabilization work
 | No expiry cleanup, no SQL/connect deadlines | Existing sweep and deadlines retained; only completed idempotency replays expire, never unresolved claims. |
 | No auth rate limit, default service restart limits | Service hardening retained; nginx auth-only limit returns immediate JSON 429 in both deployment configurations. |
 | Platform CI misses backend error-catalog changes | Platform, backend, Docker and infra gates now run on every PR/push. |
-| Unbounded company fields/unsafe website | Current company validator enforces field bounds and HTTP(S) URLs; existing HTTP tests cover invalid input. |
+| Unbounded company fields/unsafe website | Final reconciliation reproduced this older defect (HTTP 200 for an overlong name). Fixed field/email/HTTP(S) validation; new PostgreSQL and mock tests cover rejection and nullable PATCH clearing. |
 | GitHub username/token binding | Confirmed and repaired: authenticated `/user` login must match the requested account. |
 | Request-derived integration errors/logs | Integration errors use stable public messages; GitHub error_description is not reflected. Live logs are part of delivery verification; no raw secrets or session transcripts are published. |
 | Source active-job marker and cold/full-table reads | Inline execution is explicit; stale/consent checks protect source writes. Indexed single-profile reads replace hot full scans; collection ranking remains in memory. |
@@ -141,8 +141,8 @@ tests without a new change or unresolved concern.
   consent prevents applying an external result. Real GitHub repository metrics are not a qualification score.
 - Storage: malformed soft-skill JSON errors instead of silently erasing data; migration directory changes rebuild
   embedded SQL; test cleanup no longer terminates another test's active connections.
-- Local gates: `just verify` passed (24 mock tests, 34 component tests, type/lint/FSD/build/bundle checks).
-  `just backend-check` passed (21 HTTP tests, 10 PostgreSQL repository tests plus domain/adapter tests).
+- Local gates: `just verify` passed (25 mock tests, 34 component tests, type/lint/FSD/build/bundle checks).
+  `just backend-check` passed (23 HTTP tests, 10 PostgreSQL repository tests plus domain/adapter tests).
   Release fault suite passed; actual nginx container probe verified immediate JSON 429 + retry hint and an
   auth-only budget. Baseline and CI browser suites: 34 passed, one intentional opt-in screenshot skip.
   A later local run exposed a pre-existing mailbox-read race in the deep-link test (33 passed, one failed).
@@ -158,3 +158,12 @@ tests without a new change or unresolved concern.
   are recorded in [issue #16](https://github.com/KirpaDmitriy/sport-programming-federation/issues/16).
   Its checked completion list and closure are the delivery evidence; this document does not assert a
   deployment from a local test result.
+
+- Final contract reconciliation: company PATCH had retained a missing field validator despite historical
+  completion claims. A regression reproduced `200` for a 121-character display name before the repair.
+  Company bounds/email/HTTP(S) URLs now match the mock, and nullable website/experience PATCH fields clear
+  correctly while omissions preserve values; non-nullable profile/company/need fields reject explicit null.
+  Two PostgreSQL HTTP cases and mock parity coverage were added. Existing `url` 2.5.8 is reused from the lock.
+  Serde's [field deserialization](https://serde.rs/field-attrs.html) and the
+  [three-state patch behavior](https://docs.rs/serde_with/latest/serde_with/rust/double_option/index.html)
+  informed the small local deserializer; no serializer library was added.

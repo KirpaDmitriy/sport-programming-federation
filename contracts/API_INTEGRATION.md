@@ -79,7 +79,7 @@ branches on `code`; `message` is user-facing Russian text. Implemented codes are
 | `409` | Conflict: cooldown, active attempt, terminal invitation or application, existing invitation or application, application not allowed yet, task not offered or already answered or reviewed, idempotency conflict, stale import | Refetch and show the current state |
 | `413`, `415` | File too large or wrong media type | Explain the limit |
 | `422` | Business validation (salary range, evidence policy, incomplete company, unsupported scope, downgrade) | Show the message next to the form |
-| `429` | Too many wrong codes | Ask for a new code |
+| `429` | Verification budget or proxy request limit | Follow the error message and Retry-After hint |
 | `5xx` | Service failure | «Сервис временно недоступен» with retry; the request ID stays visible |
 
 Queries retry once on transport errors and `5xx` (job polling twice), never on `4xx`; mutations never retry

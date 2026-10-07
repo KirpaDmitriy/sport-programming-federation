@@ -6,7 +6,7 @@ are checked by `.github/workflows/infra.yml`.
 
 | Suite | Runner | Where | Count | Command |
 | --- | --- | --- | --- | --- |
-| Mock API | `bun test` | `mock-server/test/mock-api.test.ts` | 24 | `bun run --cwd ../mock-server test` |
+| Mock API | `bun test` | `mock-server/test/mock-api.test.ts` | 25 | `bun run --cwd ../mock-server test` |
 | Unit and component | Vitest 5 + Testing Library + MSW 3 (jsdom, on Node) | `src/**/*.test.ts(x)` | 34 in 8 files | `bun run test` |
 | Browser acceptance | Playwright 1.63 + axe, Chromium 1440×900 | `e2e/*.spec.ts` | 34 + 1 opt-in | `bun run e2e` |
 | Deployed stand | Playwright | `e2e/public/stand.spec.ts` | 2 | `FSP_PUBLIC_URL=https://188.166.88.183 bun run e2e:public` |

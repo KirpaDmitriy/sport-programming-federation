@@ -17,11 +17,12 @@ no-attribution preference. Work in a feature branch and follow personal → dev 
 - cfcb4d0 / f3aecfc: GitHub identity, safe graph projection and atomic source evidence.
 - 0e29a81 / 3f45fdb: strict storage parsing/migration rebuilds and command documentation.
 - db581b2: immediate structured nginx authentication limits.
+- 1be7311: bounded company fields, HTTP(S) websites, strict email format and correct nullable PATCH semantics.
 - 92c582d: current product/operating documentation; 38a741d: deterministic login E2E ordering.
 
 ## Verification and delivery record
 
-Local gates passed: just verify (24 mock, 34 component tests), just backend-check (21 HTTP, 10 repository tests
+Local gates passed: just verify (25 mock, 34 component tests), just backend-check (23 HTTP, 10 repository tests
 plus unit/adapter tests), seven release fault scenarios, cascade tests, actual nginx rate-limit probe and real
 PostgreSQL backup restore. Full browser suite has 34 cases plus one intentionally opt-in screenshot; a mailbox
 race discovered in a later local run was fixed and all five auth tests passed three repetitions (15/15).
