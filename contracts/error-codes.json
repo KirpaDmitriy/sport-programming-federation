@@ -508,6 +508,15 @@
       ]
     },
     {
+      "code": "rate_limited",
+      "statuses": [
+        429
+      ],
+      "messages": [
+        "Слишком много запросов. Повторите через минуту."
+      ]
+    },
+    {
       "code": "required_skill_missing",
       "statuses": [
         422

@@ -21,6 +21,8 @@ jobs:
           test "$(status "$base/__mock__/reset")" = 404
           test "$(status -X POST -H "Origin: $base" -H 'Content-Type: application/json' -d "$body" "$base/api/v1/auth/email/challenges")" = 201
           test "$(status -X POST -H 'Origin: https://evil.example' -H 'Content-Type: application/json' -d "$body" "$base/api/v1/auth/email/challenges")" = 403
+      - name: Authentication overload stays bounded and structured
+        run: bash infra/tests/nginx.sh http://localhost:8080
       - name: Container logs
         if: failure()
         run: docker compose logs
