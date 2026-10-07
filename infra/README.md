@@ -71,8 +71,18 @@ cd frontend && FSP_PUBLIC_URL=https://188.166.88.183 FSP_DEMO_CODE=123456 bun ru
 `deploy.sh` ships the scripts of the ref it deploys, so a ref from before the `infra/` layout cannot be deployed
 with it; roll back to a kept release instead. Failed health checks roll the release back automatically.
 
-`.github/workflows/deploy.yml` deploys `main` on every push to the shared repository with a dedicated deploy key
-(secrets `FSP_DEPLOY_KEY`, `FSP_DEPLOY_KNOWN_HOSTS`; the fork is skipped by a repository guard).
+`.github/workflows/deploy.yml` ships `main` as a gated pipeline on every push to the shared repository:
+
+1. `platform` and `backend` reusable jobs run the full CI suites — a red check blocks the release.
+2. `stand` deploys via `infra/deploy.sh` over SSH (secrets `FSP_DEPLOY_KEY`, `FSP_DEPLOY_KNOWN_HOSTS`; the
+   fork is skipped by a repository guard) and then runs a public smoke: HTTPS frontend, `/api/v1/meta`, a demo
+   login round-trip and `/__mock__` staying 404. The job targets the GitHub `stand` environment, so releases
+   show up under Deployments.
+3. `public-e2e` runs the Playwright public suite (`e2e:public`) against the live stand and uploads test
+   results on failure.
+
+Deploys serialize through the `stand-deploy` concurrency group and the host-side `release.sh` keeps
+atomic switching plus automatic rollback on failed health checks.
 
 | Task on the host | Command |
 | --- | --- |

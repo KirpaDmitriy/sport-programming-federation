@@ -15,10 +15,25 @@ permissions:
   contents: read
 
 jobs:
+  # The stand only ships code that passes the platform and backend gates.
+  # docker.yml still runs on every push but does not gate: the stand deploys a
+  # host-built release, not the container image.
+  platform:
+    if: github.repository == 'KirpaDmitriy/sport-programming-federation'
+    uses: ./.github/workflows/platform.yml
+  backend:
+    if: github.repository == 'KirpaDmitriy/sport-programming-federation'
+    uses: ./.github/workflows/backend.yml
+
   stand:
     # The demo stand is deployed only from the shared repository; the fork mirrors it.
     if: github.repository == 'KirpaDmitriy/sport-programming-federation'
+    needs: [platform, backend]
+    environment:
+      name: stand
+      url: https://188.166.88.183
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
       - name: Install the deploy SSH identity
@@ -42,5 +57,61 @@ jobs:
             IdentitiesOnly yes
             UserKnownHostsFile ~/.ssh/known_hosts
             StrictHostKeyChecking yes
+            BatchMode yes
+            ConnectTimeout 15
+            ServerAliveInterval 15
+            ServerAliveCountMax 4
           EOF
           infra/deploy.sh main
+      - name: Public smoke check
+        run: |
+          set -euo pipefail
+          base=https://188.166.88.183
+          curl -fsS -o /dev/null "$base/"
+          meta="$(curl -fsS "$base/api/v1/meta")"
+          challenge="$(curl -fsS -X POST "$base/api/v1/auth/email/challenges" \
+            -H 'content-type: application/json' \
+            -d '{"email":"alexey@example.com","role":"candidate"}' \
+            | python3 -c 'import json,sys; print(json.load(sys.stdin)["challengeId"])')"
+          curl -fsS -c cookies.txt -X POST "$base/api/v1/auth/email/verify" \
+            -H 'content-type: application/json' \
+            -d "{\"challengeId\":\"$challenge\",\"code\":\"123456\"}" > /dev/null
+          curl -fsS -b cookies.txt -o /dev/null "$base/api/v1/session"
+          code="$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$base/__mock__/session")"
+          [ "$code" = 404 ] || { echo "__mock__ answered $code publicly"; exit 1; }
+          {
+            echo "### Post-deploy smoke"
+            echo "- HTTPS frontend: ok"
+            echo "- /api/v1/meta served, realLlm=$(echo "$meta" | python3 -c 'import json,sys; print(json.load(sys.stdin)["capabilities"]["realLlm"])')"
+            echo "- Demo login and session round-trip: ok"
+            echo "- /__mock__ stays closed publicly (HTTP $code)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  public-e2e:
+    # Full browser acceptance suite against the freshly deployed stand.
+    if: github.repository == 'KirpaDmitriy/sport-programming-federation'
+    needs: stand
+    environment:
+      name: stand
+      url: https://188.166.88.183
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+      - run: bun install --cwd frontend --frozen-lockfile
+      - name: Browser acceptance tests against the deployed stand
+        working-directory: frontend
+        env:
+          FSP_PUBLIC_URL: https://188.166.88.183
+          FSP_DEMO_CODE: "123456"
+        run: |
+          bunx playwright install --with-deps chromium
+          bun run e2e:public
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: playwright-public-results
+          path: frontend/test-results/
