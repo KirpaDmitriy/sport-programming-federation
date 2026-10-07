@@ -419,7 +419,7 @@ async fn invitations_freeze_terms_and_disclose_on_accept() {
             .body(Body::from(
                 serde_json::to_vec(&json!({
                     "candidateId": "candidate031",
-                    "needId": "need-backend-middle",
+                    "needId": "need-001",
                     "message": "Позиция в основной команде"
                 }))
                 .unwrap(),
@@ -441,7 +441,7 @@ async fn invitations_freeze_terms_and_disclose_on_accept() {
             .as_array()
             .unwrap()
             .iter()
-            .any(|item| item["id"] == invitation_id || item["need"]["id"] == "need-backend-middle")
+            .any(|item| item["id"] == invitation_id || item["need"]["id"] == "need-001")
     );
     let (status, body) = send(
         &app,
@@ -469,12 +469,7 @@ async fn applications_flow_both_sides() {
     let employer = login(&app, EMPLOYER, "employer").await;
     let candidate = login(&app, CANDIDATE_JUNIOR, "candidate").await;
     // The published vacancy is reachable and reports eligibility.
-    let (status, vacancy) = get(
-        &app,
-        "/api/v1/vacancies/need-backend-middle",
-        Some(&candidate),
-    )
-    .await;
+    let (status, vacancy) = get(&app, "/api/v1/vacancies/need-002", Some(&candidate)).await;
     assert_eq!(status, StatusCode::OK);
     assert!(vacancy["eligibility"].is_object());
     // Apply with disclosure choices; createApplication is idempotent.
@@ -485,7 +480,7 @@ async fn applications_flow_both_sides() {
         Some(&candidate),
         "apply-key-0000001",
         json!({
-            "vacancyId": "need-backend-middle",
+            "vacancyId": "need-002",
             "message": "Хочу работать над вашими сервисами",
             "disclose": ["name", "email"]
         }),
@@ -655,7 +650,7 @@ async fn idempotency_replays_and_conflicts() {
     // createInvitation is one of the five idempotent commands.
     let body = json!({
         "candidateId": "candidate018",
-        "needId": "need-backend-middle",
+        "needId": "need-001",
         "message": "Предложение по вакансии"
     });
     let invite = |key: &str, body: Value| {
@@ -680,7 +675,7 @@ async fn idempotency_replays_and_conflicts() {
             "idem-key-00001",
             json!({
                 "candidateId": "candidate041",
-                "needId": "need-backend-middle",
+                "needId": "need-001",
                 "message": "Другое сообщение"
             }),
         ),
@@ -697,7 +692,7 @@ async fn idempotency_replays_and_conflicts() {
             Some(&employer),
             Some(json!({
                 "candidateId": "candidate018",
-                "needId": "need-backend-middle",
+                "needId": "need-001",
                 "message": "Без ключа"
             })),
         ),
@@ -714,7 +709,7 @@ async fn gap_plans_and_reachability() {
     // Reachable public candidate against the company's need.
     let (status, plan) = get(
         &app,
-        "/api/v1/candidates/candidate018/gap-plan?needId=need-backend-middle",
+        "/api/v1/candidates/candidate018/gap-plan?needId=need-001",
         Some(&employer),
     )
     .await;

@@ -942,10 +942,18 @@ fn seed(connection: &Connection, now: &str) -> Result<(), RepositoryError> {
         email: "hr@sever-tech.example".into(),
         role: Role::Employer,
         candidate_id: None,
-        company_id: Some("company-sever".into()),
+        company_id: Some("company-a".into()),
         email_verified: true,
     };
-    for account_value in [&candidate, &employer] {
+    let employer_b = Account {
+        id: "employer-b".into(),
+        email: "hr@second-company.example".into(),
+        role: Role::Employer,
+        candidate_id: None,
+        company_id: Some("company-b".into()),
+        email_verified: true,
+    };
+    for account_value in [&candidate, &employer, &employer_b] {
         connection.execute("INSERT INTO accounts(id,email,role,candidate_id,company_id,email_verified,created_at) VALUES(?,?,?,?,?,?,?)", params![account_value.id,account_value.email,role(account_value.role),account_value.candidate_id,account_value.company_id,account_value.email_verified,now]).map_err(storage)?;
     }
     save_candidate(
@@ -1013,37 +1021,124 @@ fn seed(connection: &Connection, now: &str) -> Result<(), RepositoryError> {
             ],
         )
         .map_err(storage)?;
-    connection.execute("INSERT INTO companies(id,display_name,business_area,description,contact_email,website) VALUES(?,?,?,?,?,?)", params!["company-sever","Север Тех","Разработка ИТ-продуктов","Команда продуктовой разработки надёжных сервисов.","hr@sever-tech.example","https://sever-tech.example"]).map_err(storage)?;
-    let need = demo_need();
-    connection
-        .execute(
-            "INSERT INTO needs(id,company_id,title,specialization,grade,work_mode,salary_from,salary_to,description,requirements_json,published,published_at,created_at,updated_at,revision) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            params![
-                "need-backend-middle",
-                "company-sever",
-                "Backend-разработчик Rust",
-                specialization(need.specialization),
-                grade(need.grade),
-                "remote",
-                220000_u64,
-                320000_u64,
-                "Разработка сервисов обработки данных и надёжных API.",
-                serde_json::to_string(&need.requirements).map_err(json_storage)?,
-                true,
-                now,
-                now,
-                now,
-                1_u64
-            ],
-        )
-        .map_err(storage)?;
+    // Companies and needs mirror the mock fixtures so the demo stand serves the
+    // same dataset whichever implementation is active.
+    for company in [
+        (
+            "company-a",
+            "Север Тех",
+            "Разработка программного обеспечения",
+            "Демонстрационная технологическая компания. Разрабатываем сервисы для управления заказами и логистикой.",
+            "hr@sever-tech.example",
+            Some("https://example.com/sever-tech"),
+        ),
+        (
+            "company-b",
+            "Вторая компания",
+            "Информационные технологии",
+            "Вторая демонстрационная компания для проверки разграничения доступа.",
+            "hr@second-company.example",
+            None,
+        ),
+    ] {
+        connection
+            .execute(
+                "INSERT INTO companies(id,display_name,business_area,description,contact_email,website) VALUES(?,?,?,?,?,?)",
+                params![company.0, company.1, company.2, company.3, company.4, company.5],
+            )
+            .map_err(storage)?;
+    }
+    let default_requirements = demo_need().requirements;
+    let junior_requirements = vec![
+        requirement("rust", Criticality::Required, Grade::Junior),
+        requirement("postgresql", Criticality::Desired, Grade::Junior),
+        requirement("docker", Criticality::Desired, Grade::Junior),
+    ];
+    // (id, company, title, specialization, grade, work_mode, from, to, description, requirements, published)
+    for item in [
+        (
+            "need-001",
+            "company-a",
+            "Бэкенд-разработчик",
+            Specialization::Backend,
+            Grade::Middle,
+            "remote",
+            200000_u64,
+            260000_u64,
+            "Разработка надёжных API на Rust и PostgreSQL. Удалённая работа, задачи по надёжности и качеству сервисов.",
+            default_requirements.clone(),
+            false,
+        ),
+        (
+            "need-002",
+            "company-a",
+            "Бэкенд-разработчик сервиса уведомлений",
+            Specialization::Backend,
+            Grade::Junior,
+            "hybrid",
+            120000_u64,
+            160000_u64,
+            "Сервис доставки уведомлений на Rust: очереди, повторные попытки и наблюдаемость. Гибрид, офис в Москве два дня в неделю, наставник в команде.",
+            junior_requirements,
+            true,
+        ),
+        (
+            "need-b-001",
+            "company-b",
+            "Бэкенд-разработчик",
+            Specialization::Backend,
+            Grade::Middle,
+            "remote",
+            200000_u64,
+            260000_u64,
+            "Разработка надёжных API на Rust и PostgreSQL. Удалённая работа, задачи по надёжности и качеству сервисов.",
+            default_requirements.clone(),
+            true,
+        ),
+        (
+            "need-b-002",
+            "company-b",
+            "Фронтенд-разработчик (React)",
+            Specialization::Frontend,
+            Grade::Middle,
+            "office",
+            180000_u64,
+            230000_u64,
+            "Интерфейсы внутренних сервисов на React и TypeScript: формы, таблицы, доступность. Офис в Санкт-Петербурге.",
+            vec![requirement("react", Criticality::Required, Grade::Middle)],
+            true,
+        ),
+    ] {
+        connection
+            .execute(
+                "INSERT INTO needs(id,company_id,title,specialization,grade,work_mode,salary_from,salary_to,description,requirements_json,published,published_at,created_at,updated_at,revision) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                params![
+                    item.0,
+                    item.1,
+                    item.2,
+                    specialization(item.3),
+                    grade(item.4),
+                    item.5,
+                    item.6,
+                    item.7,
+                    item.8,
+                    serde_json::to_string(&item.9).map_err(json_storage)?,
+                    item.10,
+                    if item.10 { Some(now) } else { Option::<&str>::None },
+                    now,
+                    now,
+                    1_u64
+                ],
+            )
+            .map_err(storage)?;
+    }
     // Mirror of the mock's `shortlist-001` fixture for the demo employer.
     connection
         .execute(
             "INSERT INTO shortlists(id,company_id,title,members_json,created_at,updated_at) VALUES(?,?,?,?,?,?)",
             params![
                 "shortlist-001",
-                "company-sever",
+                "company-a",
                 "Бэкенд · Мидл",
                 serde_json::to_string(&vec![
                     "candidate-024",
@@ -1056,10 +1151,11 @@ fn seed(connection: &Connection, now: &str) -> Result<(), RepositoryError> {
             ],
         )
         .map_err(storage)?;
-    // Mirror of the mock's task fixtures, on the demo employer.
-    for (id, title, prompt, skill_id, task_grade, minutes) in [
+    // Mirror of the mock's task fixtures: task-003 belongs to the second company.
+    for (id, company_id, title, prompt, skill_id, task_grade, minutes) in [
         (
             "task-001",
+            "company-a",
             "Повтор платежа без двойного списания",
             "Платёжный сервис получает повторный запрос после таймаута клиента. Как сделать, чтобы деньги не списались дважды? Решите или опишите подход: таблицы и ограничения PostgreSQL, порядок операций, что вернуть повторному запросу.",
             "postgresql",
@@ -1068,6 +1164,7 @@ fn seed(connection: &Connection, now: &str) -> Result<(), RepositoryError> {
         ),
         (
             "task-002",
+            "company-a",
             "Повторные попытки отправки уведомлений",
             "Сервис уведомлений на Rust вызывает внешний API, который иногда отвечает ошибкой или не отвечает. Предложите, как организовать повторные попытки: где хранить состояние, как не перегрузить внешний сервис и когда прекращать попытки.",
             "rust",
@@ -1076,6 +1173,7 @@ fn seed(connection: &Connection, now: &str) -> Result<(), RepositoryError> {
         ),
         (
             "task-003",
+            "company-b",
             "Форма регистрации с проверкой полей",
             "Нужна форма регистрации на React: почта, пароль и согласие с условиями. Опишите, как проверять поля и показывать ошибки так, чтобы форма была доступна с клавиатуры и для экранного диктора.",
             "react",
@@ -1088,7 +1186,7 @@ fn seed(connection: &Connection, now: &str) -> Result<(), RepositoryError> {
                 "INSERT INTO tasks(id,company_id,title,prompt,skill_id,grade,estimate_minutes,status,created_at) VALUES(?,?,?,?,?,?,?,?,?)",
                 params![
                     id,
-                    "company-sever",
+                    company_id,
                     title,
                     prompt,
                     skill_id,
@@ -1124,21 +1222,30 @@ fn seed(connection: &Connection, now: &str) -> Result<(), RepositoryError> {
             "2026-09-14T12:00:00Z",
         ),
     ] {
-        let task_json = connection
+        let (task_json, task_company) = connection
             .query_row(
-                "SELECT title,prompt,skill_id,grade,estimate_minutes FROM tasks WHERE id=?",
+                "SELECT company_id,title,prompt,skill_id,grade,estimate_minutes FROM tasks WHERE id=?",
                 [task_id],
                 |row| {
-                    Ok(serde_json::json!({
-                        "id": task_id,
-                        "companyId": "company-sever",
-                        "companyDisplayName": "Север Тех",
-                        "title": row.get::<_, String>(0)?,
-                        "prompt": row.get::<_, String>(1)?,
-                        "skillId": row.get::<_, String>(2)?,
-                        "grade": row.get::<_, String>(3)?,
-                        "estimateMinutes": row.get::<_, i64>(4)?,
-                    }))
+                    let company_id: String = row.get(0)?;
+                    let company_name = if company_id == "company-b" {
+                        "Вторая компания"
+                    } else {
+                        "Север Тех"
+                    };
+                    Ok((
+                        serde_json::json!({
+                            "id": task_id,
+                            "companyId": company_id,
+                            "companyDisplayName": company_name,
+                            "title": row.get::<_, String>(1)?,
+                            "prompt": row.get::<_, String>(2)?,
+                            "skillId": row.get::<_, String>(3)?,
+                            "grade": row.get::<_, String>(4)?,
+                            "estimateMinutes": row.get::<_, i64>(5)?,
+                        }),
+                        company_id,
+                    ))
                 },
             )
             .map_err(storage)?;
@@ -1148,7 +1255,7 @@ fn seed(connection: &Connection, now: &str) -> Result<(), RepositoryError> {
                 params![
                     id,
                     candidate_id,
-                    "company-sever",
+                    task_company,
                     alias,
                     task_json.to_string(),
                     "approach",
@@ -1271,6 +1378,21 @@ fn demo_candidate_indexes() -> Vec<(&'static str, Vec<SkillEvidence>, Vec<Eviden
             false,
         ),
     ]
+}
+
+fn requirement(skill_id: &str, criticality: Criticality, minimum_grade: Grade) -> Requirement {
+    Requirement {
+        skill_id: skill_id.into(),
+        criticality,
+        minimum_grade,
+        evidence_policy: EvidencePolicy {
+            accept_assessments: true,
+            accept_github: true,
+            accept_fsp: true,
+            competition_selection: "system".into(),
+            competition_ids: Vec::new(),
+        },
+    }
 }
 
 fn demo_need() -> HiringNeed {
@@ -1923,7 +2045,7 @@ mod tests {
             .candidate_search(
                 &session,
                 CandidateSearch {
-                    need_id: Some("need-backend-middle".into()),
+                    need_id: Some("need-001".into()),
                     recommended: true,
                     page: 1,
                     page_size: 10,
