@@ -5,7 +5,8 @@ on:
     branches: [main]
   workflow_dispatch:
 
-# One deploy at a time; a queued run is never cancelled mid-flight.
+# One running deployment; newer pending runs may supersede older pending runs.
+# release.sh also locks the host so manual deployments use the same serialization.
 concurrency:
   group: stand-deploy
   cancel-in-progress: false
@@ -24,11 +25,14 @@ jobs:
   backend:
     if: github.repository == 'KirpaDmitriy/sport-programming-federation'
     uses: ./.github/workflows/backend.yml
+  infra:
+    if: github.repository == 'KirpaDmitriy/sport-programming-federation'
+    uses: ./.github/workflows/infra.yml
 
   stand:
     # The demo stand is deployed only from the shared repository; the fork mirrors it.
     if: github.repository == 'KirpaDmitriy/sport-programming-federation'
-    needs: [platform, backend]
+    needs: [platform, backend, infra]
     environment:
       name: stand
       url: https://188.166.88.183
@@ -62,7 +66,7 @@ jobs:
             ServerAliveInterval 15
             ServerAliveCountMax 4
           EOF
-          infra/deploy.sh main
+          infra/deploy.sh "$GITHUB_SHA"
       - name: Public smoke check
         run: |
           set -euo pipefail

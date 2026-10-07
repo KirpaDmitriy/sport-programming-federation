@@ -11,7 +11,7 @@ key, host key, droplet metadata) lives in the git-ignored `.fsp-infra/` at the r
 | `release.sh` | On the host: builds the release (frontend, mock, Rust backend), switches `/opt/fsp/current` atomically, runs the API implementation chosen by `/etc/fsp/api-backend`, health-checks and rolls back on failure |
 | `fsp-mock-api.service` | Hardened systemd unit for the mock API (user `fsp`, `127.0.0.1:4010`) |
 | `fsp-api.service` | Hardened systemd unit for the Rust API (same user and port; `StateDirectory=fsp` gives it `/var/lib/fsp`) |
-| `kontur-talent-rust.service` | The unit Dima uses on his own test stand (93.77.179.211); kept for reference, not installed here |
+| `backup-db.sh`, `fsp-backup.service`, `fsp-backup.timer` | Private daily PostgreSQL archives, with a tested restore procedure |
 | `nginx/` | Site config (SPA fallback, `/api/v1/` proxy, `/__mock__` → 404), ACME bootstrap config, security headers |
 
 nginx serves the built SPA from `/opt/fsp/current/frontend/dist` with an `index.html` fallback, forwards only
@@ -25,7 +25,7 @@ with 404. The mock runs with `FSP_MOCK_DEV_ROUTES=0` and the stand's origin in `
 
 ## API implementation
 
-`/etc/fsp/api-backend` contains `mock` (default) or `rust`. `release.sh` reads it on every deploy: only the selected
+`/etc/fsp/api-backend` contains `mock` (initial provisioning default) or `rust` (current stand). `release.sh` reads it on every deploy: only the selected
 unit is enabled and bound to :4010, so a reboot restores exactly the selected implementation. Switching is a flag
 plus a service restart — no redeploy needed:
 
@@ -62,20 +62,29 @@ ssh -F .fsp-infra/ssh/config fsp-demo 'bash /root/fsp-deploy/provision.sh 188.16
 # build a git ref on the host and switch to it (default ref: main); the last five releases are kept
 infra/deploy.sh main
 
-# roll back to a kept release
+# roll back to a kept release through the same lock, validation and recovery path
 ssh -F .fsp-infra/ssh/config fsp-demo 'ls -1dt /opt/fsp/releases/*'
-ssh -F .fsp-infra/ssh/config fsp-demo 'ln -sfn /opt/fsp/releases/<sha> /opt/fsp/current && systemctl restart fsp-mock-api'
+ssh -F .fsp-infra/ssh/config fsp-demo 'bash /opt/fsp/current/infra/release.sh <full-sha>'
 
 # smoke the deployed stand from a workstation
 cd frontend && FSP_PUBLIC_URL=https://188.166.88.183 FSP_DEMO_CODE=123456 bun run e2e:public
 ```
 
-`deploy.sh` ships the scripts of the ref it deploys, so a ref from before the `infra/` layout cannot be deployed
-with it; roll back to a kept release instead. Failed health checks roll the release back automatically.
+`deploy.sh` uploads into a unique staging directory. The host lock covers build, activation and verification;
+it also serializes manual deployments with CI. Completed SHA directories are immutable. Repeating the current
+SHA only checks health; it never deletes or rebuilds the running application. Use a new commit for a rebuild.
+Activation installs the release's API units, nginx site and security headers. A failed nginx validation, restart,
+reload or health check restores the prior files, symlink and selected API. The current and previous releases
+are protected from retention even when rolling back to an older SHA. A process killed with SIGKILL or a host
+power failure cannot run a shell rollback handler; inspect the current symlink and service health after recovery.
+
+Database migrations run when Rust starts and are forward-only. A binary rollback does not undo a migration;
+releases must retain compatibility with the previous schema. Take a backup before a schema change.
+`deploy.sh` ships the scripts of the requested ref; use the current release script for historical rollback.
 
 `.github/workflows/deploy.yml` ships `main` as a gated pipeline on every push to the shared repository:
 
-1. `platform` and `backend` reusable jobs run the full CI suites — a red check blocks the release.
+1. `platform`, `backend` and `infra` reusable jobs run the CI suites and deployment fault/backup tests — a red check blocks the release.
 2. `stand` deploys via `infra/deploy.sh` over SSH (secrets `FSP_DEPLOY_KEY`, `FSP_DEPLOY_KNOWN_HOSTS`; the
    fork is skipped by a repository guard) and then runs a public smoke: HTTPS frontend, `/api/v1/meta`, a demo
    login round-trip and `/__mock__` staying 404. The job targets the GitHub `stand` environment, so releases
@@ -86,17 +95,43 @@ with it; roll back to a kept release instead. Failed health checks roll the rele
 Deploys serialize through the `stand-deploy` concurrency group and the host-side `release.sh` keeps
 atomic switching plus automatic rollback on failed health checks.
 
+## Backups and recovery
+
+`fsp-backup.timer` runs daily with persistent scheduling. Its service runs as `postgres`, writes mode-600
+custom-format archives under `/var/backups/fsp`, and retains completed archives for 14 days. It validates an
+archive before publishing it atomically or pruning old files. A failed dump preserves previous backups.
+The backup script is installed at `/usr/local/libexec/fsp-backup-db` by provisioning; update that installed
+copy when changing the script. Run `systemctl start fsp-backup` before a migration and inspect
+`journalctl -u fsp-backup` and `systemctl list-timers fsp-backup.timer`.
+
+Local archives protect against application mistakes, not loss of the droplet. Copy them over the existing
+SSH connection to private storage outside the host (for example git-ignored `.fsp-infra/backups/`); never
+commit them or send them to a public artifact service. Off-host retention is not automated.
+
+Test recovery into a newly created isolated database, not the live `fsp` database:
+
+```sh
+sudo -u postgres createdb fsp_restore_check
+sudo -u postgres pg_restore --dbname=fsp_restore_check --single-transaction --exit-on-error --no-owner /var/backups/fsp/<archive>.dump
+sudo -u postgres psql -d fsp_restore_check -c 'SELECT count(*) FROM _sqlx_migrations'
+sudo -u postgres dropdb fsp_restore_check
+```
+
+For a live recovery, stop the API, preserve the damaged database, restore into a new database owned by `fsp`,
+validate it, and change the root-managed connection setting before starting the API. This requires a deliberate
+recovery decision; ordinary deployment never restores or drops the live database. CI verifies a real dump/restore
+round trip and that a failed backup leaves the previous archive intact (`infra/tests/backup.sh`).
+
 | Task on the host | Command |
 | --- | --- |
 | API status / logs | `systemctl status fsp-mock-api fsp-api`, `journalctl -u fsp-api -n 100` |
 | Which API serves | `cat /etc/fsp/api-backend` |
 | Reset demo data (mock) | `systemctl restart fsp-mock-api` (state is in memory; seeded `baseline` scenario) |
-| Reset demo data (rust) | `su - postgres -c "psql -d fsp -c 'DROP SCHEMA public CASCADE; CREATE SCHEMA public'" && systemctl restart fsp-api` (migrations + seed run on boot) |
 | Certificate | `certbot certificates`; renewal by `snap.certbot.renew.timer` three days before expiry, then `systemctl reload nginx` |
 | Renewal dry run | `certbot renew --cert-name fsp-demo --dry-run --no-random-sleep-on-renew` |
 
 While the mock serves, the demo API is shared by every visitor and keeps state only until restart. It is not
-production authentication: codes are fixed, there is no rate limiting beyond the mock's attempt counter, and data
+production authentication: codes are fixed, email codes remain publicly known, and fixture data
 is synthetic. The Rust backend persists sessions and profiles in PostgreSQL; the demo code stays fixed in `demo`
 mode.
 
