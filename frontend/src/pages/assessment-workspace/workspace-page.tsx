@@ -48,7 +48,15 @@ const AUTOSAVE_DELAY = 1200;
 const stepLabels: Record<Step, string> = { task: 'Условие', solution: 'Решение', explanation: 'Объяснение' };
 const stepOrder: Step[] = ['task', 'solution', 'explanation'];
 
-function CodeEditor({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+function CodeEditor({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  disabled: boolean;
+}) {
   const gutter = useRef<HTMLPreElement>(null);
   const lines = value.split('\n').length;
   return (
@@ -59,6 +67,7 @@ function CodeEditor({ value, onChange }: { value: string; onChange: (value: stri
       <textarea
         className={styles.code}
         value={value}
+        disabled={disabled}
         spellCheck={false}
         autoCapitalize="off"
         autoCorrect="off"
@@ -213,6 +222,7 @@ function Workspace({ assessment }: { assessment: Assessment }) {
   const lastSaved = useRef(JSON.stringify(assessment.answer));
   const submitKey = useRef<string | null>(null);
   const timer = useRef<number | undefined>(undefined);
+  const saveQueue = useRef<Promise<boolean>>(Promise.resolve(true));
 
   const latest = useRef(answer);
   latest.current = answer;
@@ -221,22 +231,27 @@ function Workspace({ assessment }: { assessment: Assessment }) {
   });
 
   const flush = useCallback(
-    async (value: AssessmentAnswer) => {
-      const serialized = JSON.stringify(value);
-      if (serialized === lastSaved.current) return true;
-      setSave((current) => ({ ...current, status: 'saving' }));
-      try {
-        const updated = await persistAnswer(value);
-        lastSaved.current = serialized;
-        queryClient.setQueryData(assessmentKey(scope, assessment.id), updated);
-        setSave({ status: serialized === JSON.stringify(latest.current) ? 'saved' : 'dirty', at: new Date() });
-        return true;
-      } catch (error) {
-        setSave((current) => ({ status: 'error', at: current.at, error }));
-        if (isApiError(error, 409))
-          void queryClient.invalidateQueries({ queryKey: assessmentKey(scope, assessment.id) });
-        return false;
-      }
+    (value: AssessmentAnswer) => {
+      // Compare with the acknowledged draft only after all earlier writes finish.
+      const next = saveQueue.current.then(async () => {
+        const serialized = JSON.stringify(value);
+        if (serialized === lastSaved.current) return true;
+        setSave((current) => ({ ...current, status: 'saving' }));
+        try {
+          const updated = await persistAnswer(value);
+          lastSaved.current = serialized;
+          queryClient.setQueryData(assessmentKey(scope, assessment.id), updated);
+          setSave({ status: serialized === JSON.stringify(latest.current) ? 'saved' : 'dirty', at: new Date() });
+          return true;
+        } catch (error) {
+          setSave((current) => ({ status: 'error', at: current.at, error }));
+          if (isApiError(error, 409))
+            void queryClient.invalidateQueries({ queryKey: assessmentKey(scope, assessment.id) });
+          return false;
+        }
+      });
+      saveQueue.current = next;
+      return next;
     },
     [assessment.id, persistAnswer, queryClient, scope],
   );
@@ -368,7 +383,11 @@ function Workspace({ assessment }: { assessment: Assessment }) {
                     Язык: Rust
                   </StatusChip>
                 </div>
-                <CodeEditor value={answer.code} onChange={(code) => setAnswer((value) => ({ ...value, code }))} />
+                <CodeEditor
+                  value={answer.code}
+                  onChange={(code) => setAnswer((value) => ({ ...value, code }))}
+                  disabled={submit.isPending}
+                />
                 <p id="editor-hint" className="small muted" style={{ marginTop: '0.5rem' }}>
                   Tab переводит фокус к следующему элементу; для отступов используйте пробелы.
                 </p>
@@ -408,6 +427,7 @@ function Workspace({ assessment }: { assessment: Assessment }) {
                 </p>
                 <TextareaField
                   id="assessment-explanation"
+                  disabled={submit.isPending}
                   label="Объяснение"
                   rows={10}
                   maxLength={20000}
@@ -420,6 +440,7 @@ function Workspace({ assessment }: { assessment: Assessment }) {
                 />
                 <Checkbox
                   checked={answer.externalAiUsed}
+                  disabled={submit.isPending}
                   onChange={(event) => setAnswer((value) => ({ ...value, externalAiUsed: event.target.checked }))}
                   label="Я использовал внешние ИИ-инструменты"
                   description="Это разрешено и не снижает оценку; отметка помогает интерпретировать результат."
