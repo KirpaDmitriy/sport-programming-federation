@@ -18,6 +18,18 @@ jobs:
   release-safety:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          # Disposable test container, no host port; probes use docker exec.
+          POSTGRES_HOST_AUTH_METHOD: trust
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
     steps:
       - uses: actions/checkout@v7
       - name: Shell syntax and deployment fault recovery
@@ -26,4 +38,10 @@ jobs:
           bash -n infra/release.sh
           bash infra/tests/release.sh
       - name: Check deployment scripts
-        run: shellcheck infra/deploy.sh infra/release.sh infra/tests/release.sh
+        run: shellcheck infra/deploy.sh infra/release.sh infra/provision.sh infra/backup-db.sh infra/tests/*.sh
+      - name: Verify PostgreSQL backup and restore
+        run: |
+          container='${{ job.services.postgres.id }}'
+          docker exec "$container" mkdir -p /tmp/fsp-infra
+          docker cp infra/. "$container:/tmp/fsp-infra/"
+          docker exec -e PGUSER=postgres "$container" bash /tmp/fsp-infra/tests/backup.sh
