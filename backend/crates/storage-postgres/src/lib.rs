@@ -64,10 +64,14 @@ impl PostgresRepository {
         .await
         .expect("stale test databases are listed");
         for stale_name in stale {
-            sqlx::query(&format!("DROP DATABASE IF EXISTS \"{stale_name}\""))
-                .execute(&admin)
-                .await
-                .expect("stale test database is dropped");
+            // FORCE terminates a session that connected between the listing above
+            // and this drop — a parallel test may still be tearing its pool down.
+            sqlx::query(&format!(
+                "DROP DATABASE IF EXISTS \"{stale_name}\" WITH (FORCE)"
+            ))
+            .execute(&admin)
+            .await
+            .expect("stale test database is dropped");
         }
         let name = format!("fsp_test_{}", uuid::Uuid::new_v4().simple());
         sqlx::query(&format!("CREATE DATABASE \"{name}\""))

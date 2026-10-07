@@ -1,0 +1,10 @@
+version: 2
+
+# Local-development placeholder URIs for the compose/test PostgreSQL service;
+# they carry no real credential material (the documented default password "fsp"
+# only reaches a loopback-bound container database).
+matches-ignore:
+  - name: local dev PostgreSQL URL (compose default)
+    match: postgres://fsp:fsp@127.0.0.1:5434/fsp
+  - name: local dev PostgreSQL admin URL (test helper)
+    match: postgres://fsp:fsp@127.0.0.1:5434/postgres
