@@ -1,13 +1,13 @@
 # Testing
 
-Four suites check the platform at different levels. All of them run locally; CI
-(`.github/workflows/platform.yml`) runs the first three on every change to `contracts/`, `mock-server/` or
-`frontend/`.
+These suites check the frontend and mock. CI (`.github/workflows/platform.yml`) runs on every push and PR.
+Rust/PostgreSQL behavior is checked separately by `just backend-check`; deployment recovery and backup/restore
+are checked by `.github/workflows/infra.yml`.
 
 | Suite | Runner | Where | Count | Command |
 | --- | --- | --- | --- | --- |
-| Mock API | `bun test` | `mock-server/test/mock-api.test.ts` | 22 | `bun run --cwd ../mock-server test` |
-| Unit and component | Vitest 5 + Testing Library + MSW 3 (jsdom, on Node) | `src/**/*.test.ts(x)` | 31 in 7 files | `bun run test` |
+| Mock API | `bun test` | `mock-server/test/mock-api.test.ts` | 24 | `bun run --cwd ../mock-server test` |
+| Unit and component | Vitest 5 + Testing Library + MSW 3 (jsdom, on Node) | `src/**/*.test.ts(x)` | 34 in 8 files | `bun run test` |
 | Browser acceptance | Playwright 1.63 + axe, Chromium 1440×900 | `e2e/*.spec.ts` | 34 + 1 opt-in | `bun run e2e` |
 | Deployed stand | Playwright | `e2e/public/stand.spec.ts` | 2 | `FSP_PUBLIC_URL=https://188.166.88.183 bun run e2e:public` |
 
@@ -40,7 +40,8 @@ MSW intercepts requests at `http://localhost:3000` (`VITE_API_ORIGIN` in tests) 
 | `features/shortlist-membership/use-membership.test.tsx` | Optimistic add rolled back on rejection; removal reflected everywhere |
 | `features/respond-invitation/invitation-decision.test.tsx` | At least one disclosed field, exactly the chosen fields sent, conflicts keep contacts closed, no decision on a withdrawn invitation |
 | `pages/login/login-page.test.tsx` | Address validation, wrong-code recovery, role conflict |
-| `pages/assessment-workspace/workspace-page.test.tsx` | «Черновик сохранён» only after the server acknowledges, failed saves keep the edit, no submission without an explanation |
+| `pages/assessment-workspace/workspace-page.test.tsx` | Acknowledged and failed saves, serialized overlapping edits, submission prerequisites |
+| `features/connect-source/use-source-processing.test.tsx` | Inline terminal jobs refresh derived data and expose failures |
 
 ## Browser acceptance tests
 
@@ -67,7 +68,8 @@ e-mail, repository names, references or fixture links) before disclosure.
 
 `e2e/public/stand.spec.ts` needs no mock controls: it checks that the HTTPS stand serves the app and deep links
 without `/__mock__`, and walks a new candidate and two companies through the whole flow with fresh accounts
-(`FSP_DEMO_CODE`, default `123456`). Afterwards `systemctl restart fsp-mock-api` on the host resets the demo data.
+(`FSP_DEMO_CODE`, default `123456`). These accounts and records persist in PostgreSQL. The suite uses unique addresses and does not reset or delete
+stand data. A mock restart has no effect on Rust data.
 
 ## What the tests do not show
 

@@ -1,7 +1,7 @@
 # Mock API
 
 A stateful HTTP server that implements the contract in [`../contracts/openapi.json`](../contracts/openapi.json)
-with synthetic data. It serves the frontend in development and on the demo stand, and it is the executable reference
+with synthetic data. It serves the frontend in development and as an explicit fallback, and it is the executable reference
 of the business rules in [`../docs/product/BUSINESS_RULES.md`](../docs/product/BUSINESS_RULES.md) for the backend.
 It is not production authentication, does not execute code, call models, read uploaded files or contact GitHub, FSP
 or a mail server.
@@ -26,8 +26,9 @@ curl http://127.0.0.1:4010/health
 | `FSP_MOCK_ALLOWED_ORIGINS` | `http://localhost:5173,http://127.0.0.1:5173` | Comma-separated browser origins accepted on requests with `Origin` |
 | `FSP_MOCK_DEV_ROUTES` | `1` | `0` answers every `/__mock__` route with `404` |
 
-State lives in memory: a restart or a reset returns to the seed data and drops sessions, codes and jobs. The stand
-runs the server under systemd with `FSP_MOCK_DEV_ROUTES=0` and its own origin ([`../infra/README.md`](../infra/README.md)).
+State lives in memory: a restart or reset drops mock sessions, codes and jobs. The stand currently runs Rust
+with PostgreSQL; restarting the dormant mock does not reset stand data. The optional mock systemd unit uses
+`FSP_MOCK_DEV_ROUTES=0` and the stand origin ([`../infra/README.md`](../infra/README.md)).
 
 ## Seed data
 

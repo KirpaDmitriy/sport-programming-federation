@@ -11,7 +11,7 @@ key, host key, droplet metadata) lives in the git-ignored `.fsp-infra/` at the r
 | `release.sh` | On the host: builds the release (frontend, mock, Rust backend), switches `/opt/fsp/current` atomically, runs the API implementation chosen by `/etc/fsp/api-backend`, health-checks and rolls back on failure |
 | `fsp-mock-api.service` | Hardened systemd unit for the mock API (user `fsp`, `127.0.0.1:4010`) |
 | `fsp-api.service` | Hardened systemd unit for the Rust API (same user and port; `StateDirectory=fsp` gives it `/var/lib/fsp`) |
-| `kontur-talent-rust.service` | The unit Dima uses on his own test stand (93.77.179.211); kept for reference, not installed here |
+| `backup-db.sh`, `fsp-backup.service`, `fsp-backup.timer` | Private daily PostgreSQL archives, with a tested restore procedure |
 | `nginx/` | Site config (SPA fallback, `/api/v1/` proxy, `/__mock__` → 404), ACME bootstrap config, security headers |
 
 nginx serves the built SPA from `/opt/fsp/current/frontend/dist` with an `index.html` fallback, forwards only
@@ -25,7 +25,7 @@ with 404. The mock runs with `FSP_MOCK_DEV_ROUTES=0` and the stand's origin in `
 
 ## API implementation
 
-`/etc/fsp/api-backend` contains `mock` (default) or `rust`. `release.sh` reads it on every deploy: only the selected
+`/etc/fsp/api-backend` contains `mock` (initial provisioning default) or `rust` (current stand). `release.sh` reads it on every deploy: only the selected
 unit is enabled and bound to :4010, so a reboot restores exactly the selected implementation. Switching is a flag
 plus a service restart — no redeploy needed:
 
@@ -127,12 +127,11 @@ round trip and that a failed backup leaves the previous archive intact (`infra/t
 | API status / logs | `systemctl status fsp-mock-api fsp-api`, `journalctl -u fsp-api -n 100` |
 | Which API serves | `cat /etc/fsp/api-backend` |
 | Reset demo data (mock) | `systemctl restart fsp-mock-api` (state is in memory; seeded `baseline` scenario) |
-| Reset demo data (rust) | `su - postgres -c "psql -d fsp -c 'DROP SCHEMA public CASCADE; CREATE SCHEMA public'" && systemctl restart fsp-api` (migrations + seed run on boot) |
 | Certificate | `certbot certificates`; renewal by `snap.certbot.renew.timer` three days before expiry, then `systemctl reload nginx` |
 | Renewal dry run | `certbot renew --cert-name fsp-demo --dry-run --no-random-sleep-on-renew` |
 
 While the mock serves, the demo API is shared by every visitor and keeps state only until restart. It is not
-production authentication: codes are fixed, there is no rate limiting beyond the mock's attempt counter, and data
+production authentication: codes are fixed, email codes remain publicly known, and fixture data
 is synthetic. The Rust backend persists sessions and profiles in PostgreSQL; the demo code stays fixed in `demo`
 mode.
 

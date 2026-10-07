@@ -29,6 +29,11 @@ The fifth incorrect code returns `400 invalid_code`; later verification and issu
 `429 challenge_locked` until the relevant challenges expire. Reissuing a code does not reset the
 budget. Wrong attempts are persisted even though verification returns an error.
 
+The stand and Docker nginx apply an additional per-IP limit to challenge/verify endpoints: 5 requests per
+minute with a burst of 10. Excess requests return immediate `429 rate_limited`, the normal JSON error envelope
+and `Retry-After: 60`. Other routes, including logout, do not consume this budget. The development mock alone
+does not emulate the proxy limiter.
+
 The cookie is opaque, `HttpOnly`, `SameSite=Lax` (`Secure` behind TLS). The client sends it with
 `credentials: "include"` and never reads it. Identity, role and company always come from the session, never from
 request fields.
@@ -91,13 +96,16 @@ Concurrent requests wait for the same scope and then replay or conflict. A faile
 claim and effects. Completed responses are retained for one day; an unresolved claim left by an older
 release fails closed and requires investigation rather than automatic execution based on its age.
 
-## Background jobs
+## Jobs
 
 PDF import, source sync, assessment checks and submission answer `202` with a `Job`
 (`id`, `kind`, `status`, `result`, `error`, `pollAfterMs`, `simulation`). The client polls `GET /api/v1/jobs/{jobId}`
 no faster than every 250 ms, follows `pollAfterMs`, stops at `succeeded` or `failed`, and then refetches what the job
-changes (sources, skills, graph, profile, the assessment). A source's `activeJobId` lets polling resume after a
-reload. A job belongs to the actor who started it; a failure carries `{ code, message, retryable }`.
+changes (sources, skills, graph, profile, the assessment). The mock publishes `activeJobId` for timer jobs.
+Rust completes work inline and may return an already-terminal job with no active marker; clients must also
+follow the job returned by the command. Rust jobs persist in PostgreSQL. A job belongs to the initiating
+candidate; a failure carries `{ code, message, retryable }`. A source changed during synchronization yields
+`stale_input`, and revoked processing consent yields `processing_consent_revoked` without applying the result.
 
 ## Pagination
 
@@ -164,9 +172,9 @@ The candidate shell also reads `listMyInvitations` for the new-invitation badge,
 `listApplications` for the new-application badge. `getNeedGraph` and the employer's
 `getInvitation` are in the contract but not used by the current screens.
 
-## Backend cutover checklist
+## Backend compatibility checklist
 
-Before the stand switches from the mock to the backend, the backend must show the same behavior for: every request
+The Rust stand and development mock must preserve the shared behavior for: every request
 and response shape and the error envelope; cookie attributes, origin checks and role/tenant scoping (`404` for
 foreign records); anonymous projections and per-company disclosure; idempotent commands and terminal conflicts;
 job states and `pollAfterMs`; UTC timestamps, nullable fields and stable search order; and truthful `mode`,

@@ -42,19 +42,19 @@ stand. Avoid a replacement stack or speculative services. Preserve applied migra
 
 ## Verified findings and planned waves
 
-Status: **open** = confirmed work; **verify** = hypothesis requiring a targeted reproduction;
-**pending coordination** = another owner's files; **done** requires the evidence listed below.
+Status: **implemented** = repaired and checked locally, pending final delivery proof; **open** = work still
+in progress. Evidence below records the baseline defects; the execution log records their resolution.
 
 | Wave | Status | Evidence in current code | Change and completion proof |
 | --- | --- | --- | --- |
-| 1. Release safety | open | `infra/deploy.sh` deletes the SHA directory before building, including the active release; no host lock. `release.sh` rolls back only after its health loop, so `systemctl restart`/nginx failure exits before recovery. | Serialize uploads/build/activation, stage immutable releases, make same-SHA deploy safe, validate input, restore release/config/service on every activation failure. Fault tests: repeat current SHA, failed build, failed restart, failed health, overlapping deploys, active/previous retention. |
-| 2. Provisioning and recovery | open | `provision.sh` writes `db.env` before successful bootstrap, then asks postgres to read a root-owned mode-600 temporary SQL file; reruns enable mock even when Rust is selected. No PostgreSQL backup/restore procedure is automated. | Transaction-safe credential-file publication, SQL via stdin, preserve selected implementation and existing settings; least-privilege backup timer, validate backup restoration in an isolated database. No destructive reset on the stand. |
-| 3. Authentication | pending coordination | `verify_email` returns WrongCode/Locked before committing `consume_challenge` changes. `contract.rs` checks only one wrong code. | Persist failed-attempt accounting while keeping successful registration/session issuance atomic. Prove fifth-attempt lockout, reissued challenge behavior, used/expired codes and concurrent new-account verification through HTTP on PostgreSQL. |
-| 4. Command atomicity | pending coordination | `idempotent` claims in the pool, executes a separately committed command, then stores its response; a crash before finish leaves a committed effect without replay. Running claims expire after two minutes. | Put claim/result and business writes in one unit of work or use an equivalent transactional boundary; no unsafe stale-owner takeover. Concurrent same/different payload tests plus rollback/failure injection. Preserve documented status/body replay. |
-| 5. Concurrent domain changes | pending coordination | `view_my_invitation` and `view_application` use unguarded record replacement. `refresh_disclosure` reads separate interaction sets without serializing a candidate/company pair. Assessment completion reads a candidate through the outer pool. Shortlist membership does read/replace. | Prevent terminal-state resurrection, disclosure lost updates and profile overwrite; use narrow locks/guarded writes within existing repository ports. Concurrent acceptance/withdrawal, view/decision, profile/assessment and shortlist membership probes; cross-company privacy checks. |
-| 6. Integrations and bounded behavior | verify | Source sync's running-job branch is unreachable because active_job_id is never persisted. LLM graph generation is per read; validate model output before public projection. Docker proxy timeout (30s) is shorter than LLM client timeout (45s). | Verify OAuth identity binding, error redaction, graph reference validity and employer anonymity; correct demonstrated issues. Align proxy deadlines, retain explicit simulation flags, avoid invented background-worker architecture. |
-| 7. Delivery gates and coverage | open | Cascade catches any auto-merge failure and immediately tries direct merge. No release-script fault gate. Public suite covers two flows; backend source/shortlist HTTP coverage is absent. | Require successful checks for the actual PR head, bound waits and fail closed. Add meaningful missing regressions and deployment checks. Verify path filters, exact deployed SHA and public behavior, not merely HTTP 200. |
-| 8. Structure and scaling | verify | Service ~4,900 lines; storage ~3,200 lines; list paths load whole collections and several views repeat reads. | Identify hot-path duplication and separate coherent modules where it makes the fixed behaviors easier to maintain. Keep deterministic ordering/privacy and avoid premature distributed architecture; benchmark or query-count evidence before introducing caches or indexes. |
+| 1. Release safety | implemented | `infra/deploy.sh` deletes the SHA directory before building, including the active release; no host lock. `release.sh` rolls back only after its health loop, so `systemctl restart`/nginx failure exits before recovery. | Serialize uploads/build/activation, stage immutable releases, make same-SHA deploy safe, validate input, restore release/config/service on every activation failure. Fault tests: repeat current SHA, failed build, failed restart, failed health, overlapping deploys, active/previous retention. |
+| 2. Provisioning and recovery | implemented | `provision.sh` writes `db.env` before successful bootstrap, then asks postgres to read a root-owned mode-600 temporary SQL file; reruns enable mock even when Rust is selected. No PostgreSQL backup/restore procedure is automated. | Transaction-safe credential-file publication, SQL via stdin, preserve selected implementation and existing settings; least-privilege backup timer, validate backup restoration in an isolated database. No destructive reset on the stand. |
+| 3. Authentication | implemented | `verify_email` returns WrongCode/Locked before committing `consume_challenge` changes. `contract.rs` checks only one wrong code. | Persist failed-attempt accounting while keeping successful registration/session issuance atomic. Prove fifth-attempt lockout, reissued challenge behavior, used/expired codes and concurrent new-account verification through HTTP on PostgreSQL. |
+| 4. Command atomicity | implemented | `idempotent` claims in the pool, executes a separately committed command, then stores its response; a crash before finish leaves a committed effect without replay. Running claims expire after two minutes. | Put claim/result and business writes in one unit of work or use an equivalent transactional boundary; no unsafe stale-owner takeover. Concurrent same/different payload tests plus rollback/failure injection. Preserve documented status/body replay. |
+| 5. Concurrent domain changes | implemented | `view_my_invitation` and `view_application` use unguarded record replacement. `refresh_disclosure` reads separate interaction sets without serializing a candidate/company pair. Assessment completion reads a candidate through the outer pool. Shortlist membership does read/replace. | Prevent terminal-state resurrection, disclosure lost updates and profile overwrite; use narrow locks/guarded writes within existing repository ports. Concurrent acceptance/withdrawal, view/decision, profile/assessment and shortlist membership probes; cross-company privacy checks. |
+| 6. Integrations and bounded behavior | implemented | Source sync's running-job branch is unreachable because active_job_id is never persisted. LLM graph generation is per read; validate model output before public projection. Docker proxy timeout (30s) is shorter than LLM client timeout (45s). | Verify OAuth identity binding, error redaction, graph reference validity and employer anonymity; correct demonstrated issues. Align proxy deadlines, retain explicit simulation flags, avoid invented background-worker architecture. |
+| 7. Delivery gates and coverage | implemented | Cascade catches any auto-merge failure and immediately tries direct merge. No release-script fault gate. Public suite covers two flows; backend source/shortlist HTTP coverage is absent. | Require successful checks for the actual PR head, bound waits and fail closed. Add meaningful missing regressions and deployment checks. Verify path filters, exact deployed SHA and public behavior, not merely HTTP 200. |
+| 8. Structure and scaling | implemented | Service ~4,900 lines; storage ~3,200 lines; list paths load whole collections and several views repeat reads. | Identify hot-path duplication and separate coherent modules where it makes the fixed behaviors easier to maintain. Keep deterministic ordering/privacy and avoid premature distributed architecture; benchmark or query-count evidence before introducing caches or indexes. |
 | 9. Documentation and memories | open | Root README points to deleted `dima/mvp`; traceability still describes a Rust skeleton; backend checklist names a different server; infra rollback restarts mock; project memory repeats stale reset and branch instructions. | Update engineering docs in English and UI copy in Russian against final code; use archive tag, current stand, commands, real capabilities and verification limits. Refresh project-specific memories; preserve user preferences and historical session logs. |
 | 10. Final synchronization | open | Baseline is aligned; new work must pass the repository's feature -> personal -> dev -> main lane. | Atomic commits, PRs into danil, green cascade/deploy, stand release SHA equals upstream main, mirror/local fast-forward, clean working trees and no abandoned audit resources. Preserve permanent branch identities rather than force-resetting all branches to one SHA. |
 
@@ -65,7 +65,7 @@ The ownership requirement in `AGENTS.md` is satisfied for the stabilization work
 
 | Earlier concern | Current disposition |
 | --- | --- |
-| SQLite, synchronous repository API, missing unit of work | PostgreSQL and async repository implemented; unit of work exists, but usage needs waves 3–5. |
+| SQLite, synchronous repository API, missing unit of work | PostgreSQL unit-of-work usage corrected in waves 3–5. |
 | Timestamp strings, missing indexes, silent enum defaults, startup seed race | Timestamp migration, indexes, parsers and seed advisory lock exist; verify migration behavior without rewriting 0001–0003. |
 | Polymorphic jobs.owner_id FK | Fixed by 0003 and fresh-candidate regression; preserve this ownership model. |
 | Grade cooldown ignored; seed candidate ID mismatch | Corrected in service/config/seed. |
@@ -73,9 +73,9 @@ The ownership requirement in `AGENTS.md` is satisfied for the stabilization work
 | No auth rate limit, default service restart limits | Host nginx limit and systemd hardening exist; inspect actual installed config, contract error behavior and container parity. |
 | Platform CI misses backend error-catalog changes | Backend paths now trigger platform workflow. |
 | Unbounded company fields/unsafe website | Current validator needs verification against contract cases before retaining the old finding. |
-| GitHub username/token binding | Verify current adapter before making an accusation from the old report. |
+| GitHub username/token binding | Confirmed and repaired: authenticated `/user` login must match the requested account. |
 | Request-derived integration errors/logs | Inspect current adapters and live log redaction; do not export raw tokens, cookies, addresses or session transcripts. |
-| Source active-job marker and cold/full-table reads | Still present; wave 6/8 determine the smallest correct design. |
+| Source active-job marker and cold/full-table reads | Inline execution is explicit; stale/consent checks protect source writes. Indexed single-profile reads replace hot full scans; collection ranking remains in memory. |
 | Real email/FSP/assessment/PDF parsing | Explicit demo boundaries; documentation must describe them accurately. |
 | Optional need graph UI, repository metrics UI, editable work modes | Separate product enhancements, not broken contract operations; keep their current limits explicit. |
 
@@ -91,7 +91,18 @@ The ownership requirement in `AGENTS.md` is satisfied for the stabilization work
 - systemd [service reference](https://www.freedesktop.org/software/systemd/man/latest/systemd.service.html):
   restart failure and timeout semantics must be included in rollback probes.
 
-Add primary-source references as each wave resolves a specific implementation question. Recheck
+- GitHub [OAuth identity validation](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps):
+  verify the authenticated user instead of treating a successful token exchange as proof of an arbitrary handle.
+- SQLx [embedded migrations](https://docs.rs/sqlx/0.8.6/sqlx/macro.migrate.html): a build-script directory watch
+  handles new SQL files without touching source code to invalidate Cargo.
+- nginx [request limiting](https://nginx.org/en/docs/http/ngx_http_limit_req_module.html): explicit `nodelay`
+  and rejection status avoid long request queues and default HTML 503 errors.
+- React [effect race handling](https://react.dev/reference/react/useEffect) and TanStack
+  [mutation behavior](https://github.com/TanStack/query/blob/main/docs/framework/react/guides/mutations.md):
+  asynchronous completion order is not submission order; assessment saves use an explicit promise queue.
+
+These are current primary-source pages checked against the pinned implementation. Mutable pages are not
+claimed as exact September 26 snapshots. No dependency was upgraded merely because a newer version exists. Recheck
 changed behavior and the current GitHub/stand state after every wave; do not repeatedly run unrelated
 tests without a new change or unresolved concern.
 
@@ -112,3 +123,20 @@ tests without a new change or unresolved concern.
   stores the replay response, in a dedicated `service/commands.rs` module. Parallel HTTP requests
   return the same invitation; a forced serialization failure rolls back both the invitation and
   its claim, and retry succeeds once. No timed takeover of unresolved claims remains.
+
+- Concurrent domain updates: guarded view transitions, candidate row locks for grade/source writes, serialized
+  company/shortlist changes and disclosure recomputation. PostgreSQL HTTP tests cover simultaneous saves,
+  decisions, deletion/addition and withdrawal of the last two grants.
+- Integrations: GitHub identity binding and a total 45-second analysis deadline; no raw upstream errors exposed.
+  Graph validation rejects duplicate/dangling/ungrounded output and strips private model labels/IDs/evidence
+  from employer views. Bifrost output is bounded. Modules now separate commands, graphs and source ingestion.
+- Source ingestion now updates evidence/index atomically, preserving assessed grades; stale source or revoked
+  consent prevents applying an external result. Real GitHub repository metrics are not a qualification score.
+- Storage: malformed soft-skill JSON errors instead of silently erasing data; migration directory changes rebuild
+  embedded SQL; test cleanup no longer terminates another test's active connections.
+- Local gates: `just verify` passed (24 mock tests, 34 component tests, type/lint/FSD/build/bundle checks).
+  `just backend-check` passed (21 HTTP tests, 10 PostgreSQL repository tests plus domain/adapter tests).
+  Release fault suite passed; actual nginx container probe verified immediate JSON 429 + retry hint and an
+  auth-only budget. Baseline browser suite: 34 passed, one intentional opt-in screenshot skip; final run pending.
+- Stand recheck: `c0d86d8` still active, `fsp-api`, `fsp-bifrost`, `fsp-cliproxy`, nginx and PostgreSQL healthy.
+  No unreviewed audit commit has been deployed. Delivery, installed backups and final memories remain open.
