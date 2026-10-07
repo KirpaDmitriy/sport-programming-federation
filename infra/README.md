@@ -87,6 +87,29 @@ While the mock serves, the demo API is shared by every visitor and keeps state o
 production authentication: codes are fixed, there is no rate limiting beyond the mock's attempt counter, and data
 is synthetic. The Rust backend persists sessions and profiles in SQLite; the demo code stays fixed in `demo` mode.
 
+## LLM chain
+
+The Rust backend can call a real model for competence-graph extraction. The chain on the stand is
+`fsp-api` → Bifrost (`127.0.0.1:4000`) → CLIProxyAPI (`127.0.0.1:18317`) → xAI OAuth → Grok.
+
+Services `fsp-cliproxy.service` and `fsp-bifrost.service` run as `fsp`, bound to loopback. Binaries live in
+`/opt/fsp/llm/bin/` (`cli-proxy-api`, and `bifrost` extracted from the `maximhq/bifrost:v2.2.1` image — the
+stand has no Docker). Both are installed and enabled by `provision.sh` once `/etc/fsp/llm.env` exists.
+
+Host-side secrets (never committed):
+
+| Path | Contents |
+| --- | --- |
+| `/etc/fsp/cliproxy.yaml` | CLIProxyAPI config; template: [`llm/cliproxy.yaml.example`](llm/cliproxy.yaml.example) |
+| `/var/lib/fsp/cliproxy-auth/xai-*.json` | xAI OAuth token file (writable — CLIProxyAPI refreshes it) |
+| `/var/lib/fsp/bifrost/config.json` | Bifrost config; reference: [`llm/bifrost-config.json`](llm/bifrost-config.json) |
+| `/etc/fsp/llm.env` | `NDDEV_CLIPROXY_KEY` (CLIProxyAPI api-key) and `NDDEV_BIFROST_KEY` (Bifrost virtual key) |
+| `/etc/fsp/rust-api.env` | `BIFROST_CHAT_URL`, `BIFROST_API_KEY` (= the virtual key), `BIFROST_MODEL=grok-build/grok-4.7` |
+
+Without `BIFROST_*` the backend reports `meta.capabilities.realLlm: false` and serves the deterministic
+fallback graph. The xAI OAuth token is shared with the local `nddev-runtime` setup; refresh-token rotation
+on one side can invalidate the other, in which case re-copy the auth file.
+
 ## Backend cutover checklist
 
 1. The backend passes the [cutover checklist](../contracts/API_INTEGRATION.md#backend-cutover-checklist) —

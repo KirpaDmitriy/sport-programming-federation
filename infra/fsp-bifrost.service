@@ -1,0 +1,31 @@
+[Unit]
+Description=FSP Bifrost LLM gateway
+After=network.target fsp-cliproxy.service
+Requires=fsp-cliproxy.service
+
+[Service]
+Type=simple
+User=fsp
+Group=fsp
+Environment=APP_HOST=127.0.0.1
+Environment=APP_PORT=4000
+Environment=APP_DIR=/var/lib/fsp/bifrost
+Environment=LOG_LEVEL=warn
+EnvironmentFile=-/etc/fsp/llm.env
+StateDirectory=fsp
+ExecStart=/opt/fsp/llm/bin/bifrost -app-dir /var/lib/fsp/bifrost -port 4000 -host 127.0.0.1 -log-level warn -log-style json
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+ReadWritePaths=/var/lib/fsp/bifrost
+
+[Install]
+WantedBy=multi-user.target

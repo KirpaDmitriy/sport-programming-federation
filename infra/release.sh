@@ -38,6 +38,8 @@ mv -Tf /opt/fsp/current.next /opt/fsp/current
 # The units follow the release so path changes ship with the code.
 install -m 644 "$DIR/infra/fsp-mock-api.service" /etc/systemd/system/fsp-mock-api.service
 install -m 644 "$DIR/infra/fsp-api.service" /etc/systemd/system/fsp-api.service
+install -m 644 "$DIR/infra/fsp-cliproxy.service" /etc/systemd/system/fsp-cliproxy.service
+install -m 644 "$DIR/infra/fsp-bifrost.service" /etc/systemd/system/fsp-bifrost.service
 systemctl daemon-reload
 
 case "$IMPL" in

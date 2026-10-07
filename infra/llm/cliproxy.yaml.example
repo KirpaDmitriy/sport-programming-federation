@@ -1,0 +1,31 @@
+# CLIProxyAPI on the FSP stand: native xAI OAuth for the Grok Build subscription.
+# Loopback only; secrets live in /var/lib/fsp/cliproxy-auth and this file.
+commercial-mode: true
+logging-to-file: false
+request-log: false
+host: "127.0.0.1"
+port: 18317
+tls:
+  enable: false
+remote-management:
+  allow-remote: false
+  secret-key: ""
+  disable-control-panel: true
+  disable-auto-update-panel: true
+auth-dir: "/var/lib/fsp/cliproxy-auth"
+api-keys:
+  - "<cliproxy-api-key>"
+xai:
+  inject-x-search: false
+request-retry: 0
+max-retry-interval: 0
+debug: false
+discovery:
+  enabled: false
+quota-exceeded:
+  switch-project: false
+  switch-preview-model: false
+  antigravity-credits: false
+routing:
+  strategy: "round-robin"
+  session-affinity: false

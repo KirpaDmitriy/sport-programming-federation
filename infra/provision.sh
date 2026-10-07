@@ -79,8 +79,17 @@ EOF
 [ -f /etc/fsp/api-backend ] || echo mock > /etc/fsp/api-backend
 install -m 644 "$HERE/fsp-api.service" /etc/systemd/system/fsp-api.service
 install -m 644 "$HERE/fsp-mock-api.service" /etc/systemd/system/fsp-mock-api.service
+# Optional LLM chain (Grok through CLIProxyAPI + Bifrost). Binaries, the xAI
+# auth file and /etc/fsp/llm.env are host secrets placed outside the repo; the
+# units are enabled once the env file exists. See infra/README.md#llm-chain.
+install -m 644 "$HERE/fsp-cliproxy.service" /etc/systemd/system/fsp-cliproxy.service
+install -m 644 "$HERE/fsp-bifrost.service" /etc/systemd/system/fsp-bifrost.service
+install -d -m 700 -o fsp -g fsp /var/lib/fsp/cliproxy-auth /var/lib/fsp/bifrost
 systemctl daemon-reload
 systemctl enable fsp-mock-api.service >/dev/null
+if [ -f /etc/fsp/llm.env ]; then
+  systemctl enable fsp-cliproxy.service fsp-bifrost.service >/dev/null
+fi
 
 install -m 644 "$HERE/nginx/fsp-security-headers.conf" /etc/nginx/snippets/fsp-security-headers.conf
 rm -f /etc/nginx/sites-enabled/default

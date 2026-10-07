@@ -1,0 +1,64 @@
+{
+  "$schema": "https://www.getbifrost.ai/schema",
+  "version": 2,
+  "client": {
+    "enforce_auth_on_inference": true,
+    "enable_logging": false,
+    "disable_content_logging": true,
+    "log_retention_days": 7,
+    "drop_excess_requests": false,
+    "allow_private_network": true
+  },
+  "providers": {
+    "grok-build": {
+      "keys": [
+        {
+          "name": "grok-build",
+          "value": "env.NDDEV_CLIPROXY_KEY",
+          "models": ["grok-4.7"],
+          "weight": 1.0
+        }
+      ],
+      "network_config": {
+        "base_url": "http://127.0.0.1:18317",
+        "default_request_timeout_in_seconds": 180,
+        "max_retries": 0,
+        "allow_private_network": true
+      },
+      "concurrency_and_buffer_size": {
+        "concurrency": 4,
+        "buffer_size": 16
+      },
+      "custom_provider_config": {
+        "base_provider_type": "openai",
+        "allowed_requests": {
+          "list_models": true,
+          "chat_completion": true,
+          "chat_completion_stream": true
+        }
+      }
+    }
+  },
+  "governance": {
+    "virtual_keys": [
+      {
+        "id": "vk-fsp",
+        "name": "fsp-backend",
+        "value": "env.NDDEV_BIFROST_KEY",
+        "is_active": true,
+        "provider_configs": [
+          {
+            "provider": "grok-build",
+            "allowed_models": ["grok-4.7"],
+            "key_ids": ["*"]
+          }
+        ]
+      }
+    ]
+  },
+  "config_store": {
+    "enabled": true,
+    "type": "sqlite",
+    "config": { "path": "/var/lib/fsp/bifrost/config.db" }
+  }
+}

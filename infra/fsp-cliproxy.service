@@ -1,0 +1,26 @@
+[Unit]
+Description=FSP CLIProxyAPI (xAI OAuth for Grok)
+After=network.target
+
+[Service]
+Type=simple
+User=fsp
+Group=fsp
+EnvironmentFile=-/etc/fsp/llm.env
+StateDirectory=fsp
+ExecStart=/opt/fsp/llm/bin/cli-proxy-api -config /etc/fsp/cliproxy.yaml
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+ReadWritePaths=/var/lib/fsp/cliproxy-auth
+
+[Install]
+WantedBy=multi-user.target
