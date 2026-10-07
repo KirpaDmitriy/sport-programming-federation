@@ -1,0 +1,59 @@
+name: cascade
+
+# Merge flow: feature branch -> personal (danil, dima) -> dev -> main.
+# Personal branches, dev and main are permanent; merged feature branches are
+# deleted. Uses CASCADE_PAT because merges made with GITHUB_TOKEN do not
+# trigger the follow-up push workflows (deploy.yml on main).
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  cascade:
+    if: >-
+      github.event.pull_request.merged == true &&
+      github.repository == 'KirpaDmitriy/sport-programming-federation' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Cascade the merge up the chain
+        env:
+          GH_TOKEN: ${{ secrets.CASCADE_PAT }}
+          REPO: ${{ github.repository }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+
+          # Merged feature branches are deleted; danil, dima, dev and main
+          # are permanent.
+          case "$HEAD_REF" in
+            danil|dima|dev|main) ;;
+            *)
+              gh api -X DELETE "repos/$REPO/git/refs/heads/$HEAD_REF" \
+                && echo "deleted merged feature branch $HEAD_REF" \
+                || echo "could not delete $HEAD_REF"
+              ;;
+          esac
+
+          case "$BASE_REF" in
+            danil|dima) next=dev ;;
+            dev)        next=main ;;
+            *)          echo "chain ends at $BASE_REF"; exit 0 ;;
+          esac
+
+          gh pr create --repo "$REPO" --base "$next" --head "$BASE_REF" \
+            --title "Merge $BASE_REF into $next" \
+            --body "Automatic cascade after #$PR_NUMBER merged into $BASE_REF." \
+            || echo "a PR for $BASE_REF -> $next already exists"
+
+          # Prefer repo auto-merge (waits for checks); fall back to a direct
+          # merge while allow_auto_merge is off for the repository.
+          gh pr merge --repo "$REPO" "$BASE_REF" --auto --merge \
+            || gh pr merge --repo "$REPO" "$BASE_REF" --merge
