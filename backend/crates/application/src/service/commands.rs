@@ -82,6 +82,7 @@ impl PlatformService {
 }
 
 impl Commands {
+    /// The mock's `createInvitation`, run inside `idempotent` by the caller.
     pub async fn create_invitation(
         &self,
         session: &SessionView,
@@ -164,6 +165,7 @@ impl Commands {
         Ok(invitation_view(record))
     }
 
+    /// The mock's `createApplication`, run inside `idempotent` by the caller.
     pub async fn create_application(
         &self,
         session: &SessionView,
@@ -266,6 +268,7 @@ impl Commands {
         self.service.application_view(record).await
     }
 
+    /// The mock's `respondToTask`, run inside `idempotent` by the caller.
     pub async fn respond_to_task(
         &self,
         session: &SessionView,
@@ -324,6 +327,9 @@ impl Commands {
         Ok(task_response_view(&record))
     }
 
+    /// The mock's `startAssessment`, run inside `idempotent` by the caller:
+    /// consent, onboarding, backend-only scope, one active attempt,
+    /// no same-scope downgrade and the grade-change cooldown, in this order.
     pub async fn start_assessment(
         &self,
         session: &SessionView,
@@ -421,6 +427,8 @@ impl Commands {
         Ok(assessment_view(&record))
     }
 
+    /// The mock's `submitAssessment`, run inside `idempotent` by the caller:
+    /// guards, then the submitted attempt completes inline.
     pub async fn submit_assessment(
         &self,
         session: &SessionView,

@@ -1303,8 +1303,6 @@ impl PlatformService {
         Ok(InvitationsView { items })
     }
 
-    /// The mock's `createInvitation`, run inside `idempotent` by the caller.
-
     pub async fn get_invitation(
         &self,
         session: &SessionView,
@@ -1750,8 +1748,6 @@ impl PlatformService {
         Ok(ApplicationsView { items })
     }
 
-    /// The mock's `createApplication`, run inside `idempotent` by the caller.
-
     pub async fn get_my_application(
         &self,
         session: &SessionView,
@@ -1944,8 +1940,6 @@ impl PlatformService {
             freshness: freshness_view(&signals),
         })
     }
-
-    /// The mock's `respondToTask`, run inside `idempotent` by the caller.
 
     /// The mock's `taskOffer`: this week's answered response wins; otherwise
     /// the rotating pool of active tasks on evidenced skills at or below the
@@ -2268,10 +2262,6 @@ impl PlatformService {
         })
     }
 
-    /// The mock's `startAssessment`, run inside `idempotent` by the caller:
-    /// consent, onboarding, backend-only scope, one active attempt,
-    /// no same-scope downgrade and the grade-change cooldown, in this order.
-
     pub async fn get_assessment(
         &self,
         session: &SessionView,
@@ -2395,9 +2385,6 @@ impl PlatformService {
             external_ai_allowed: true,
         })
     }
-
-    /// The mock's `submitAssessment`, run inside `idempotent` by the caller:
-    /// guards, then the submitted attempt completes inline.
 
     /// The mock's `completeAssessment` happy path: confirm or raise the
     /// verified grade, refresh the two demo skills and build the result.
