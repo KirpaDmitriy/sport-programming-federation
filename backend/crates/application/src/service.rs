@@ -1,4 +1,5 @@
 mod commands;
+mod graphs;
 pub use commands::Commands;
 
 use std::sync::Arc;
@@ -3010,114 +3011,6 @@ impl PlatformService {
         })
     }
 
-    pub async fn my_graph(&self, session: &SessionView) -> Result<GraphView, ApplicationError> {
-        let candidate_id = candidate_id(session)?;
-        let record = self.candidate_index(candidate_id).await?;
-        self.graph_from_skills("self", &record.profile.team_role, &record.skills)
-            .await
-    }
-
-    pub async fn candidate_graph(
-        &self,
-        session: &SessionView,
-        requested_candidate_id: &str,
-    ) -> Result<GraphView, ApplicationError> {
-        employer_company_id(session)?;
-        let record = self.candidate_index(requested_candidate_id).await?;
-        if !record.profile.visible_to_employers(record.email_verified) {
-            return Err(ApplicationError::new(
-                404,
-                "not_found",
-                "Кандидат не найден",
-            ));
-        }
-        self.graph_from_skills("employer", &record.profile.team_role, &record.skills)
-            .await
-    }
-
-    async fn graph_from_skills(
-        &self,
-        audience: &'static str,
-        subject: &str,
-        skills: &[fsp_domain::SkillEvidence],
-    ) -> Result<GraphView, ApplicationError> {
-        if let Some(llm) = &self.llm {
-            let extracted = llm
-                .extract_graph(&fsp_domain::GraphExtractionRequest {
-                    schema_version: "competence-graph-v1",
-                    subject: subject.into(),
-                    evidence: skills
-                        .iter()
-                        .map(|skill| fsp_domain::LlmEvidence {
-                            reference: format!("skill:{}", skill.skill_id),
-                            text: format!(
-                                "{}; status={:?}; grade={:?}; sources={:?}",
-                                skill.skill_id, skill.status, skill.evidence_grade, skill.sources
-                            ),
-                        })
-                        .collect(),
-                })
-                .await
-                .map_err(integration_error)?;
-            return graph_from_extracted(audience, extracted);
-        }
-        let root = GraphNodeView {
-            id: "role-main".into(),
-            kind: "role".into(),
-            label: if subject.trim().is_empty() {
-                "Профиль компетенций".into()
-            } else {
-                subject.into()
-            },
-            skill_id: None,
-            status: None,
-        };
-        let mut nodes = vec![root];
-        let mut edges = Vec::new();
-        for skill in skills {
-            let id = format!("skill-{}", skill.skill_id);
-            nodes.push(GraphNodeView {
-                id: id.clone(),
-                kind: "skill".into(),
-                label: skill_label(&skill.skill_id).into(),
-                skill_id: Some(skill.skill_id.clone()),
-                status: Some(evidence_status_name(skill.status).into()),
-            });
-            edges.push(GraphEdgeView {
-                id: format!("edge-role-{}", skill.skill_id),
-                from: "role-main".into(),
-                to: id.clone(),
-                relation: "uses".into(),
-            });
-            // Evidence nodes are disclosed only to the candidate, as in the
-            // mock's `graph(candidate, audience)`.
-            if audience == "self" {
-                for index in 0..skill.sources.len() {
-                    let evidence_id = format!("evidence-{}-{index}", skill.skill_id);
-                    nodes.push(GraphNodeView {
-                        id: evidence_id.clone(),
-                        kind: "evidence".into(),
-                        label: format!("Свидетельство: {}", skill_label(&skill.skill_id)),
-                        skill_id: None,
-                        status: None,
-                    });
-                    edges.push(GraphEdgeView {
-                        id: format!("edge-{evidence_id}"),
-                        from: evidence_id,
-                        to: id.clone(),
-                        relation: "supports".into(),
-                    });
-                }
-            }
-        }
-        Ok(GraphView {
-            audience,
-            nodes,
-            edges,
-            simulation: true,
-        })
-    }
-
     async fn candidate_index(&self, id: &str) -> Result<CandidateIndexRecord, ApplicationError> {
         self.repository
             .candidate_index(id)
@@ -3542,77 +3435,6 @@ fn evidence_status_name(status: EvidenceStatus) -> &'static str {
         EvidenceStatus::Observed => "observed",
         EvidenceStatus::Insufficient => "insufficient",
     }
-}
-
-fn graph_from_extracted(
-    audience: &'static str,
-    graph: fsp_domain::ExtractedGraph,
-) -> Result<GraphView, ApplicationError> {
-    // Models return free-form casing and often omit `kind`; normalize before
-    // validating so a well-formed intent is not rejected on cosmetics.
-    let normalized_nodes: Vec<(String, Option<String>, fsp_domain::ExtractedGraphNode)> = graph
-        .nodes
-        .into_iter()
-        .map(|node| {
-            let kind = if node.kind.is_empty() {
-                if node.skill_id.is_some() || node.status.is_some() {
-                    "skill".to_string()
-                } else if node.evidence_references.is_empty() {
-                    "role".to_string()
-                } else {
-                    "evidence".to_string()
-                }
-            } else {
-                node.kind.to_lowercase()
-            };
-            let status = node.status.as_deref().map(str::to_lowercase);
-            (kind, status, node)
-        })
-        .collect();
-    let normalized_edges: Vec<(String, fsp_domain::ExtractedGraphEdge)> = graph
-        .edges
-        .into_iter()
-        .map(|edge| (edge.relation.to_lowercase(), edge))
-        .collect();
-    let valid_nodes = normalized_nodes.iter().all(|(kind, status, _)| {
-        ["role", "skill", "evidence"].contains(&kind.as_str())
-            && status.as_deref().is_none_or(|status| {
-                ["confirmed", "evidence", "observed", "insufficient"].contains(&status)
-            })
-    });
-    let valid_edges = normalized_edges
-        .iter()
-        .all(|(relation, _)| ["requires", "supports", "uses"].contains(&relation.as_str()));
-    if !valid_nodes || !valid_edges {
-        return Err(ApplicationError::new(
-            502,
-            "bifrost_invalid_response",
-            "Модель вернула граф неподдерживаемого формата",
-        ));
-    }
-    Ok(GraphView {
-        audience,
-        nodes: normalized_nodes
-            .into_iter()
-            .map(|(kind, status, node)| GraphNodeView {
-                id: node.id,
-                kind,
-                label: node.label,
-                skill_id: node.skill_id,
-                status,
-            })
-            .collect(),
-        edges: normalized_edges
-            .into_iter()
-            .map(|(relation, edge)| GraphEdgeView {
-                id: edge.id,
-                from: edge.from,
-                to: edge.to,
-                relation,
-            })
-            .collect(),
-        simulation: false,
-    })
 }
 
 fn need_view(record: HiringNeedRecord) -> NeedView {
