@@ -120,10 +120,10 @@ impl PostgresRepository {
     }
 
     /// Creates an isolated `fsp_test_<ts>_<uuid>` database against the admin
-    /// connection string `admin_url` (for example
-    /// `postgres://fsp:fsp@127.0.0.1:5434/postgres`). Idle test databases left
-    /// behind by earlier runs are reaped first; live tests keep at least one
-    /// pooled connection so their database is never reaped.
+    /// connection string `admin_url` (`FSP_TEST_DATABASE_URL`; the compose
+    /// `db` service default is documented in `.env.example`). Idle test
+    /// databases left behind by earlier runs are reaped first; live tests keep
+    /// at least one pooled connection so their database is never reaped.
     #[cfg(feature = "testing")]
     pub async fn connect_test_database(admin_url: &str) -> (Self, TestDatabase) {
         let admin = PgPoolOptions::new()

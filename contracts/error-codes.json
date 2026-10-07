@@ -335,7 +335,8 @@
     {
       "code": "internal_error",
       "statuses": [
-        500
+        500,
+        503
       ],
       "messages": [
         "Ошибка мок-сервера",
