@@ -45,6 +45,10 @@ impl VerificationDelivery for FixedDelivery {
 async fn test_app() -> axum::Router {
     let (repository, _database) =
         PostgresRepository::connect_test_database(&test_admin_url()).await;
+    app_with_repository(repository).await
+}
+
+async fn app_with_repository(repository: PostgresRepository) -> axum::Router {
     let repository = Arc::new(repository);
     let service = Arc::new(
         PlatformService::new(repository, Arc::new(FixedDelivery)).with_fsp(Arc::new(SyntheticFsp)),
@@ -1378,4 +1382,54 @@ async fn nullable_patch_fields_clear_values_while_omission_preserves_them() {
     )
     .await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn concurrent_assessment_starts_with_distinct_keys_return_domain_conflicts() {
+    let (repository, _database) =
+        PostgresRepository::connect_test_database(&test_admin_url()).await;
+    let pool = repository.pool().clone();
+    let app = app_with_repository(repository).await;
+    // Force overlapping inserts in this isolated database, rather than relying
+    // on the local machine to happen to schedule two fast requests together.
+    sqlx::raw_sql("CREATE FUNCTION delay_assessment_insert() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN PERFORM pg_sleep(0.2); RETURN NEW; END $$; CREATE TRIGGER delay_assessment_insert BEFORE INSERT ON assessments FOR EACH ROW EXECUTE FUNCTION delay_assessment_insert();")
+        .execute(&pool).await.unwrap();
+    let candidate = login(&app, CANDIDATE_JUNIOR, "candidate").await;
+    let mut requests = tokio::task::JoinSet::new();
+    for index in 0..8 {
+        let app = app.clone();
+        let cookie = candidate.clone();
+        requests.spawn(async move {
+            send_keyed(
+                &app,
+                "POST",
+                "/api/v1/me/assessments",
+                Some(&cookie),
+                &format!("start-race-key-{index:04}"),
+                json!({"specialization": "backend", "grade": "junior"}),
+            )
+            .await
+        });
+    }
+    let mut created = 0;
+    while let Some(result) = requests.join_next().await {
+        let (status, body) = result.unwrap();
+        if status == StatusCode::CREATED {
+            created += 1;
+        } else {
+            assert_eq!(status, StatusCode::CONFLICT, "{body}");
+            assert_eq!(code(&body), "assessment_active");
+        }
+    }
+    assert_eq!(created, 1);
+    let (_, listing) = get(&app, "/api/v1/me/assessments", Some(&candidate)).await;
+    assert_eq!(
+        listing["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|item| item["status"] == "draft")
+            .count(),
+        1
+    );
 }

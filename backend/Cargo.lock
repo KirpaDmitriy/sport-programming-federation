@@ -601,6 +601,7 @@ dependencies = [
  "fsp-storage-postgres",
  "http-body-util",
  "serde_json",
+ "sqlx",
  "tokio",
  "tower",
  "tracing",
