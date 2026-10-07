@@ -58,8 +58,8 @@ Status: **open** = confirmed work; **verify** = hypothesis requiring a targeted 
 | 9. Documentation and memories | open | Root README points to deleted `dima/mvp`; traceability still describes a Rust skeleton; backend checklist names a different server; infra rollback restarts mock; project memory repeats stale reset and branch instructions. | Update engineering docs in English and UI copy in Russian against final code; use archive tag, current stand, commands, real capabilities and verification limits. Refresh project-specific memories; preserve user preferences and historical session logs. |
 | 10. Final synchronization | open | Baseline is aligned; new work must pass the repository's feature -> personal -> dev -> main lane. | Atomic commits, PRs into danil, green cascade/deploy, stand release SHA equals upstream main, mirror/local fast-forward, clean working trees and no abandoned audit resources. Preserve permanent branch identities rather than force-resetting all branches to one SHA. |
 
-Backend implementation remains pending the owner's coordination response under `AGENTS.md`.
-Read-only investigation and work on infrastructure/docs continue independently.
+Backend changes were explicitly coordinated with Dima and authorized by the user during this audit.
+The ownership requirement in `AGENTS.md` is satisfied for the stabilization work.
 
 ## Reconciliation of earlier findings
 
@@ -100,4 +100,11 @@ tests without a new change or unresolved concern.
 - 2026-10-08: completed initial session inventory, canonical/mirror/stand baseline, existing gate runs,
   and code review of release/provisioning, authentication, idempotency and disclosure boundaries.
   Created issue #16 and isolated worktree `fix/stability-audit-16`.
-- No implementation wave is complete yet. Initial findings are not a claim of exhaustive coverage.
+- Release fault tests, backup restore tests and fail-closed cascade tests pass locally and in the
+  initial PR infrastructure gate. Activation on the stand remains part of the final delivery proof.
+- Frontend regressions: serialized assessment saves, submission editing lock, and terminal inline
+  source-sync refresh/error handling; six focused tests and TypeScript pass.
+- Authentication: the HTTP regression failed on baseline (`200` after five wrong attempts, expected
+  `429`). Failed attempts now commit, issuance/verification serialize per email in PostgreSQL, and
+  the shared live-challenge budget is mirrored in the mock. Three focused PostgreSQL HTTP tests
+  pass, including parallel registration; all 24 mock tests pass.

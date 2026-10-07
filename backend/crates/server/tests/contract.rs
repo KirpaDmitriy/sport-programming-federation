@@ -374,6 +374,111 @@ async fn email_challenge_lifecycle() {
 }
 
 #[tokio::test]
+async fn email_attempt_budget_survives_errors_and_reissued_codes() {
+    let app = test_app().await;
+    let email = json!({"email": "locked@example.com", "role": "candidate"});
+    let (_, first) = send(
+        &app,
+        "POST",
+        "/api/v1/auth/email/challenges",
+        None,
+        email.clone(),
+    )
+    .await;
+    for _ in 0..3 {
+        let (status, body) = send(
+            &app,
+            "POST",
+            "/api/v1/auth/email/verify",
+            None,
+            json!({"challengeId": first["challengeId"], "code": "000000"}),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(code(&body), "invalid_code");
+    }
+    let (status, second) = send(
+        &app,
+        "POST",
+        "/api/v1/auth/email/challenges",
+        None,
+        email.clone(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    for _ in 0..2 {
+        let (status, _) = send(
+            &app,
+            "POST",
+            "/api/v1/auth/email/verify",
+            None,
+            json!({"challengeId": second["challengeId"], "code": "000000"}),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+    }
+    for challenge in [first, second] {
+        let (status, body) = send(
+            &app,
+            "POST",
+            "/api/v1/auth/email/verify",
+            None,
+            json!({"challengeId": challenge["challengeId"], "code": "123456"}),
+        )
+        .await;
+        assert_eq!(status, StatusCode::TOO_MANY_REQUESTS, "{body}");
+        assert_eq!(code(&body), "challenge_locked");
+    }
+    let (status, body) = send(&app, "POST", "/api/v1/auth/email/challenges", None, email).await;
+    assert_eq!(status, StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(code(&body), "challenge_locked");
+}
+
+#[tokio::test]
+async fn simultaneous_email_verification_reuses_one_account() {
+    let app = test_app().await;
+    let email = json!({"email": "parallel@example.com", "role": "candidate"});
+    let (_, first) = send(
+        &app,
+        "POST",
+        "/api/v1/auth/email/challenges",
+        None,
+        email.clone(),
+    )
+    .await;
+    let (_, second) = send(&app, "POST", "/api/v1/auth/email/challenges", None, email).await;
+    let (a, b) = tokio::join!(
+        send(
+            &app,
+            "POST",
+            "/api/v1/auth/email/verify",
+            None,
+            json!({"challengeId": first["challengeId"], "code": "123456"})
+        ),
+        send(
+            &app,
+            "POST",
+            "/api/v1/auth/email/verify",
+            None,
+            json!({"challengeId": second["challengeId"], "code": "123456"})
+        ),
+    );
+    assert_eq!(a.0, StatusCode::OK, "{}", a.1);
+    assert_eq!(b.0, StatusCode::OK, "{}", b.1);
+    assert_eq!(a.1, b.1);
+    let (status, body) = send(
+        &app,
+        "POST",
+        "/api/v1/auth/email/verify",
+        None,
+        json!({"challengeId": first["challengeId"], "code": "123456"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(code(&body), "challenge_used");
+}
+
+#[tokio::test]
 async fn consent_gates_sensitive_operations() {
     let app = test_app().await;
     // A fresh candidate has no processing consent: profile import refuses.

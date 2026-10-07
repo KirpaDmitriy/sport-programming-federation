@@ -1723,6 +1723,15 @@ mod ops {
         now: &str,
     ) -> Result<(ConsumeChallenge, Option<PendingChallenge>), RepositoryError> {
         let mut transaction = conn.begin().await.map_err(storage)?;
+        let email: Option<String> = sqlx::query_scalar("SELECT email FROM challenges WHERE id=$1")
+            .bind(id)
+            .fetch_optional(&mut *transaction)
+            .await
+            .map_err(storage)?;
+        let Some(email) = email else {
+            return Ok((ConsumeChallenge::Missing, None));
+        };
+        lock_email(&mut transaction, &email).await?;
         let challenge = sqlx::query(
         "SELECT email,role,code_hash,expires_at,attempts,used FROM challenges WHERE id=$1 FOR UPDATE",
     )
@@ -1745,7 +1754,7 @@ mod ops {
         if used {
             return Ok((ConsumeChallenge::Used, None));
         }
-        if attempts >= 5 {
+        if challenge_attempts(&mut transaction, &email).await? >= 5 {
             return Ok((ConsumeChallenge::Locked, None));
         }
         if expected != code_hash {
@@ -1785,14 +1794,8 @@ mod ops {
         value: &PendingChallenge,
     ) -> Result<bool, RepositoryError> {
         let mut transaction = conn.begin().await.map_err(storage)?;
-        let spent: i64 = sqlx::query_scalar(
-            "SELECT COALESCE(SUM(attempts),0) FROM challenges \
-         WHERE email=$1 AND used=FALSE AND expires_at > now() - interval '15 minutes'",
-        )
-        .bind(&value.email)
-        .fetch_one(&mut *transaction)
-        .await
-        .map_err(storage)?;
+        lock_email(&mut transaction, &value.email).await?;
+        let spent = challenge_attempts(&mut transaction, &value.email).await?;
         if spent >= 5 {
             transaction.commit().await.map_err(storage)?;
             return Ok(false);
@@ -1812,6 +1815,32 @@ mod ops {
     .map_err(storage)?;
         transaction.commit().await.map_err(storage)?;
         Ok(true)
+    }
+
+    // Issuance and verification use the same transaction-scoped lock. On a
+    // successful verification it survives the savepoint through registration
+    // and session creation in the outer unit of work.
+    async fn lock_email(conn: &mut PgConnection, email: &str) -> Result<(), RepositoryError> {
+        sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended('auth-email:' || $1, 0))")
+            .bind(email)
+            .execute(conn)
+            .await
+            .map_err(storage)?;
+        Ok(())
+    }
+
+    async fn challenge_attempts(
+        conn: &mut PgConnection,
+        email: &str,
+    ) -> Result<i64, RepositoryError> {
+        sqlx::query_scalar(
+            "SELECT COALESCE(SUM(attempts),0) FROM challenges \
+             WHERE email=$1 AND used=FALSE AND expires_at > now()",
+        )
+        .bind(email)
+        .fetch_one(conn)
+        .await
+        .map_err(storage)
     }
 
     pub(super) async fn mark_email_verified(

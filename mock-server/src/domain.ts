@@ -47,6 +47,10 @@ export class ApiError extends Error {
 const fail = (status: number, code: string, message: string): never => {
   throw new ApiError(status, code, message);
 };
+const challengeAttempts = (s: State, email: string) =>
+  [...s.challenges.values()]
+    .filter((item) => item.email === email && !item.used && Date.parse(item.expiresAt) > Date.parse(s.clock))
+    .reduce((sum, item) => sum + item.attempts, 0);
 const found = <T>(value: T | null | undefined): T => value ?? fail(404, 'not_found', 'Ресурс не найден');
 /** For states the seed data and the rules make impossible; reaching one is a mock defect. */
 const must = <T>(value: T | null | undefined, what: string): T => {
@@ -927,6 +931,8 @@ const handlers: Handlers = {
     const existing = [...s.actors.values()].find((item) => item.email === body.email.toLowerCase());
     if (existing && existing.role !== body.role)
       fail(409, 'role_mismatch', 'Роль существующего аккаунта изменить нельзя');
+    if (challengeAttempts(s, body.email.toLowerCase()) >= 5)
+      fail(429, 'challenge_locked', 'Создайте новый запрос подтверждения');
     const item = {
       id: nextId(s, 'challenge'),
       role: body.role,
@@ -944,9 +950,12 @@ const handlers: Handlers = {
     if (Date.parse(challenge.expiresAt) <= Date.parse(s.clock))
       fail(400, 'challenge_expired', 'Срок действия кода истёк');
     if (challenge.used) fail(409, 'challenge_used', 'Код уже использован');
-    if (challenge.attempts >= 5) fail(429, 'challenge_locked', 'Создайте новый запрос подтверждения');
-    challenge.attempts += 1;
-    if (challenge.code !== body.code) fail(400, 'invalid_code', 'Неверный код');
+    if (challengeAttempts(s, challenge.email) >= 5)
+      fail(429, 'challenge_locked', 'Создайте новый запрос подтверждения');
+    if (challenge.code !== body.code) {
+      challenge.attempts += 1;
+      fail(400, 'invalid_code', 'Неверный код');
+    }
     let actor = [...s.actors.values()].find((item) => item.email === challenge.email);
     if (!actor) {
       if (challenge.role === 'candidate') {

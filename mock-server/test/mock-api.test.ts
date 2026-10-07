@@ -275,6 +275,27 @@ test('deployment configuration admits only the configured origin and removes dev
   });
 });
 
+test('verification attempt budget spans reissued live challenges', async (t) => {
+  const { request } = await setup(t);
+  const body = { email: 'locked@example.com', role: 'candidate' };
+  const first = (await request('POST', '/api/v1/auth/email/challenges', { body, status: 201 })).body;
+  const second = (await request('POST', '/api/v1/auth/email/challenges', { body, status: 201 })).body;
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    await request('POST', '/api/v1/auth/email/verify', {
+      body: { challengeId: (attempt < 3 ? first : second).challengeId, code: '000000' },
+      status: 400,
+    });
+  }
+  for (const challenge of [first, second]) {
+    const result = await request('POST', '/api/v1/auth/email/verify', {
+      body: { challengeId: challenge.challengeId, code: '123456' },
+      status: 429,
+    });
+    assert.equal(result.body.code, 'challenge_locked');
+  }
+  await request('POST', '/api/v1/auth/email/challenges', { body, status: 429 });
+});
+
 test('email verification creates role-bound candidate and employer accounts; expiry is authoritative', async (t) => {
   const { request, client } = await setup(t);
   let challenge = (

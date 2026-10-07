@@ -24,6 +24,11 @@ implements and the frontend relies on; the backend has to keep it.
    `displayName`) or `401`.
 4. `DELETE /api/v1/auth/session` → `204`, the cookie is cleared.
 
+Five incorrect codes exhaust the email's shared budget across all unused, unexpired challenges.
+The fifth incorrect code returns `400 invalid_code`; later verification and issuance return
+`429 challenge_locked` until the relevant challenges expire. Reissuing a code does not reset the
+budget. Wrong attempts are persisted even though verification returns an error.
+
 The cookie is opaque, `HttpOnly`, `SameSite=Lax` (`Secure` behind TLS). The client sends it with
 `credentials: "include"` and never reads it. Identity, role and company always come from the session, never from
 request fields.

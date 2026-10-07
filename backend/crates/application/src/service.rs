@@ -263,6 +263,9 @@ impl PlatformService {
                 ));
             }
             ConsumeChallenge::WrongCode => {
+                // A rejected code is still a durable security event. Returning
+                // without committing would restore the attempt budget.
+                tx.commit().await.map_err(ApplicationError::storage)?;
                 return Err(ApplicationError::new(400, "invalid_code", "Неверный код"));
             }
         };
