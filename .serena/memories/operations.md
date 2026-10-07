@@ -16,9 +16,10 @@ under /var/backups/fsp, retained for 14 days after successful backup. Real resto
 
 ## Known Gaps
 
-Local backups do not survive loss of the droplet; no off-host destination is configured. Shell recovery cannot
+Local backups do not survive loss of the droplet. A verified pre-release archive was copied to the original
+checkout's private `.fsp-infra/backups/`; off-host scheduling and retention are not automated. Shell recovery cannot
 handle SIGKILL/power loss and binary rollback does not reverse schema changes. Applied migrations are immutable.
 GitHub OAuth is disabled; LLM chain OAuth tokens can expire/rotate. Never print credentials or auth state.
 No OpenObserve deployment exists in this project; verification uses systemd/nginx logs and direct response bodies.
 
-Last commit: 38a741d (implementation snapshot; exact delivery evidence is in issue #16).
+Last commit: 847b0f8 (implementation snapshot; exact delivery evidence is in issue #16).

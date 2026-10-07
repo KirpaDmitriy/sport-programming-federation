@@ -17,18 +17,19 @@ no-attribution preference. Work in a feature branch and follow personal → dev 
 - cfcb4d0 / f3aecfc: GitHub identity, safe graph projection and atomic source evidence.
 - 0e29a81 / 3f45fdb: strict storage parsing/migration rebuilds and command documentation.
 - db581b2: immediate structured nginx authentication limits.
+- 4c2e28a / 847b0f8: independent review follow-up: serialize distinct-key assessment starts and remove obsolete backup instructions.
 - 1be7311: bounded company fields, HTTP(S) websites, strict email format and correct nullable PATCH semantics.
 - 92c582d: current product/operating documentation; 38a741d: deterministic login E2E ordering.
 
 ## Verification and delivery record
 
-Local gates passed: just verify (25 mock, 34 component tests), just backend-check (23 HTTP, 10 repository tests
+Local gates passed: just verify (25 mock, 34 component tests), just backend-check (24 HTTP, 10 repository tests
 plus unit/adapter tests), seven release fault scenarios, cascade tests, actual nginx rate-limit probe and real
 PostgreSQL backup restore. Full browser suite has 34 cases plus one intentionally opt-in screenshot; a mailbox
 race discovered in a later local run was fixed and all five auth tests passed three repetitions (15/15).
 All gates, including the full browser suite, must pass on the final PR head.
 
-[PR #17](https://github.com/KirpaDmitriy/sport-programming-federation/pull/17) carries the implementation.
+[PR #17](https://github.com/KirpaDmitriy/sport-programming-federation/pull/17) carries the initial implementation; the follow-up verification fixes are linked from issue #16.
 [Issue #16](https://github.com/KirpaDmitriy/sport-programming-federation/issues/16) is the final delivery ledger:
 its checked list and closure record canonical/mirror/local permanent refs, active stand SHA, public browser,
 real LLM/privacy checks and independent read-only verification. Read it before resuming; do not repeat completed

@@ -142,7 +142,7 @@ tests without a new change or unresolved concern.
 - Storage: malformed soft-skill JSON errors instead of silently erasing data; migration directory changes rebuild
   embedded SQL; test cleanup no longer terminates another test's active connections.
 - Local gates: `just verify` passed (25 mock tests, 34 component tests, type/lint/FSD/build/bundle checks).
-  `just backend-check` passed (23 HTTP tests, 10 PostgreSQL repository tests plus domain/adapter tests).
+  `just backend-check` passed (24 HTTP tests, 10 PostgreSQL repository tests plus domain/adapter tests).
   Release fault suite passed; actual nginx container probe verified immediate JSON 429 + retry hint and an
   auth-only budget. Baseline and CI browser suites: 34 passed, one intentional opt-in screenshot skip.
   A later local run exposed a pre-existing mailbox-read race in the deep-link test (33 passed, one failed).
@@ -167,3 +167,13 @@ tests without a new change or unresolved concern.
   Serde's [field deserialization](https://serde.rs/field-attrs.html) and the
   [three-state patch behavior](https://docs.rs/serde_with/latest/serde_with/rust/double_option/index.html)
   informed the small local deserializer; no serializer library was added.
+
+- Independent read-only verification found one remaining command race: concurrent assessment starts with
+  distinct idempotency keys could lose the active-attempt unique constraint race and return generic `500`.
+  An isolated PostgreSQL delayed-insert regression reproduced the failure. Candidate row locking before
+  eligibility and active-attempt reads now yields exactly one `201` and seven `409 assessment_active` responses.
+  The other four command conflict paths were reviewed and already map concurrent losers to domain conflicts.
+  Rechecked [PostgreSQL 16 row-lock semantics](https://www.postgresql.org/docs/16/explicit-locking.html).
+- Removed duplicate obsolete backup/restore guidance from the PostgreSQL section of the infrastructure README.
+  The pre-release private archive also has an off-host copy in the original checkout's git-ignored
+  `.fsp-infra/backups/`, with SHA-256 matching the server; automatic off-host retention is still not configured.
