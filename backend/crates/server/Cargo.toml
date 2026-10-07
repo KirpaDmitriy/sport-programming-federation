@@ -10,7 +10,9 @@ name = "fsp-career-api"
 path = "src/main.rs"
 
 [dependencies]
+async-trait.workspace = true
 axum.workspace = true
+chrono.workspace = true
 fsp-application.workspace = true
 fsp-http.workspace = true
 fsp-integration-bifrost.workspace = true

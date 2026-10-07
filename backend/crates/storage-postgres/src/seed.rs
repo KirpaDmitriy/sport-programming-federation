@@ -6,17 +6,17 @@ use fsp_domain::{
     Account, CandidateProfile, Consents, Criticality, EvidencePolicy, EvidenceSource,
     EvidenceStatus, Grade, HiringNeed, Requirement, Role, SkillEvidence, Specialization,
 };
-use sqlx::PgPool;
+use sqlx::{Connection, PgConnection};
 
-use crate::{grade, json_storage, specialization, storage};
+use crate::{grade, json_storage, specialization, storage, ts, ts_opt};
 
-pub(crate) async fn seed(pool: &PgPool, now: &str) -> Result<(), RepositoryError> {
-    let mut tx = pool.begin().await.map_err(storage)?;
+pub(crate) async fn seed(conn: &mut PgConnection, now: &str) -> Result<(), RepositoryError> {
+    let mut tx = conn.begin().await.map_err(storage)?;
     let candidate = Account {
         id: "candidate024".into(),
         email: "alexey@example.com".into(),
         role: Role::Candidate,
-        candidate_id: Some("candidate-024".into()),
+        candidate_id: Some("candidate024".into()),
         company_id: None,
         email_verified: true,
     };
@@ -36,26 +36,12 @@ pub(crate) async fn seed(pool: &PgPool, now: &str) -> Result<(), RepositoryError
         company_id: Some("company-b".into()),
         email_verified: true,
     };
-    for account in [&candidate, &employer, &employer_b] {
-        sqlx::query(
-            "INSERT INTO accounts(id,email,role,candidate_id,company_id,email_verified,created_at) VALUES($1,$2,$3,$4,$5,$6,$7)",
-        )
-        .bind(&account.id)
-        .bind(&account.email)
-        .bind(crate::role(account.role))
-        .bind(&account.candidate_id)
-        .bind(&account.company_id)
-        .bind(account.email_verified)
-        .bind(now)
-        .execute(&mut *tx)
-        .await
-        .map_err(storage)?;
-    }
+    // Referenced rows first: accounts carry FKs to candidates and companies.
     sqlx::query(
         "INSERT INTO candidates(id,alias,email,name,specialization,selected_grade,stack_json,team_role,experience_months,experience,soft_skills_json,processing_consent,publication_consent,verified_grade,verified_specialization,grade_confirmed_at,revision,updated_at) \
          VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)",
     )
-    .bind("candidate-024")
+    .bind("candidate024")
     .bind("Кандидат №024")
     .bind(&candidate.email)
     .bind("Алексей Морозов")
@@ -70,61 +56,15 @@ pub(crate) async fn seed(pool: &PgPool, now: &str) -> Result<(), RepositoryError
     .bind(true)
     .bind("junior")
     .bind("backend")
-    .bind("2026-06-01T12:00:00Z")
+    .bind(Some(ts("2026-06-01T12:00:00Z")?))
     .bind(1_i64)
-    .bind(now)
+    .bind(ts(now)?)
     .execute(&mut *tx)
     .await
     .map_err(storage)?;
     for profile in demo_candidates(now) {
-        // Demo candidates are pre-verified fixtures: give each one a verified
-        // account so employer visibility checks see the same state as the mock.
-        sqlx::query(
-            "INSERT INTO accounts(id,email,role,candidate_id,company_id,email_verified,created_at) VALUES($1,$2,$3,$4,$5,$6,$7)",
-        )
-        .bind(format!("account-{}", profile.id))
-        .bind(&profile.email)
-        .bind("candidate")
-        .bind(&profile.id)
-        .bind(Option::<String>::None)
-        .bind(true)
-        .bind(now)
-        .execute(&mut *tx)
-        .await
-        .map_err(storage)?;
         insert_candidate_tx(&mut tx, &profile).await?;
     }
-    for (id, skills, sources, fsp_verified) in demo_candidate_indexes() {
-        sqlx::query(
-            "INSERT INTO candidate_index(candidate_id,work_modes_json,available_for_offers,skills_json,source_kinds_json,fsp_verified,last_signal_at) VALUES($1,$2,$3,$4,$5,$6,$7)",
-        )
-        .bind(id)
-        .bind("[\"remote\",\"hybrid\"]")
-        .bind(true)
-        .bind(serde_json::to_string(&skills).map_err(json_storage)?)
-        .bind(serde_json::to_string(&sources).map_err(json_storage)?)
-        .bind(fsp_verified)
-        .bind(now)
-        .execute(&mut *tx)
-        .await
-        .map_err(storage)?;
-    }
-    sqlx::query(
-        "INSERT INTO sources(id,candidate_id,provider,synthetic,active_job_id,account_label,last_synced_at,analysis_json,verified_participation,competition_ids_json) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)",
-    )
-    .bind("source-fsp-candidate-024")
-    .bind("candidate-024")
-    .bind("fsp")
-    .bind(true)
-    .bind(Option::<String>::None)
-    .bind("fsp-demo-024")
-    .bind(now)
-    .bind(Option::<String>::None)
-    .bind(true)
-    .bind("[\"competition-demo-api\"]")
-    .execute(&mut *tx)
-    .await
-    .map_err(storage)?;
     // Companies and needs mirror the mock fixtures so the demo stand serves the
     // same dataset whichever implementation is active.
     for company in [
@@ -158,6 +98,69 @@ pub(crate) async fn seed(pool: &PgPool, now: &str) -> Result<(), RepositoryError
         .await
         .map_err(storage)?;
     }
+    for account in [&candidate, &employer, &employer_b] {
+        sqlx::query(
+            "INSERT INTO accounts(id,email,role,candidate_id,company_id,email_verified,created_at) VALUES($1,$2,$3,$4,$5,$6,$7)",
+        )
+        .bind(&account.id)
+        .bind(&account.email)
+        .bind(crate::role(account.role))
+        .bind(&account.candidate_id)
+        .bind(&account.company_id)
+        .bind(account.email_verified)
+        .bind(ts(now)?)
+        .execute(&mut *tx)
+        .await
+        .map_err(storage)?;
+    }
+    for profile in demo_candidates(now) {
+        // Demo candidates are pre-verified fixtures: give each one a verified
+        // account so employer visibility checks see the same state as the mock.
+        sqlx::query(
+            "INSERT INTO accounts(id,email,role,candidate_id,company_id,email_verified,created_at) VALUES($1,$2,$3,$4,$5,$6,$7)",
+        )
+        .bind(format!("account-{}", profile.id))
+        .bind(&profile.email)
+        .bind("candidate")
+        .bind(&profile.id)
+        .bind(Option::<String>::None)
+        .bind(true)
+        .bind(ts(now)?)
+        .execute(&mut *tx)
+        .await
+        .map_err(storage)?;
+    }
+    for (id, skills, sources, fsp_verified) in demo_candidate_indexes() {
+        sqlx::query(
+            "INSERT INTO candidate_index(candidate_id,work_modes_json,available_for_offers,skills_json,source_kinds_json,fsp_verified,last_signal_at) VALUES($1,$2,$3,$4,$5,$6,$7)",
+        )
+        .bind(id)
+        .bind("[\"remote\",\"hybrid\"]")
+        .bind(true)
+        .bind(serde_json::to_string(&skills).map_err(json_storage)?)
+        .bind(serde_json::to_string(&sources).map_err(json_storage)?)
+        .bind(fsp_verified)
+        .bind(ts(now)?)
+        .execute(&mut *tx)
+        .await
+        .map_err(storage)?;
+    }
+    sqlx::query(
+        "INSERT INTO sources(id,candidate_id,provider,synthetic,active_job_id,account_label,last_synced_at,analysis_json,verified_participation,competition_ids_json) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)",
+    )
+    .bind("source-fsp-candidate024")
+    .bind("candidate024")
+    .bind("fsp")
+    .bind(true)
+    .bind(Option::<String>::None)
+    .bind("fsp-demo-024")
+    .bind(ts(now)?)
+    .bind(Option::<String>::None)
+    .bind(true)
+    .bind("[\"competition-demo-api\"]")
+    .execute(&mut *tx)
+    .await
+    .map_err(storage)?;
     let default_requirements = demo_need().requirements;
     let junior_requirements = vec![
         requirement("rust", Criticality::Required, Grade::Junior),
@@ -233,9 +236,9 @@ pub(crate) async fn seed(pool: &PgPool, now: &str) -> Result<(), RepositoryError
         .bind(item.8)
         .bind(serde_json::to_string(&item.9).map_err(json_storage)?)
         .bind(item.10)
-        .bind(if item.10 { Some(now) } else { None })
-        .bind(now)
-        .bind(now)
+        .bind(if item.10 { Some(ts(now)?) } else { None })
+        .bind(ts(now)?)
+        .bind(ts(now)?)
         .bind(1_i64)
         .execute(&mut *tx)
         .await
@@ -248,9 +251,9 @@ pub(crate) async fn seed(pool: &PgPool, now: &str) -> Result<(), RepositoryError
     .bind("shortlist-001")
     .bind("company-a")
     .bind("Бэкенд · Мидл")
-    .bind(serde_json::to_string(&vec!["candidate-024", "candidate018", "candidate041"]).map_err(json_storage)?)
-    .bind(now)
-    .bind(now)
+    .bind(serde_json::to_string(&vec!["candidate024", "candidate018", "candidate041"]).map_err(json_storage)?)
+    .bind(ts(now)?)
+    .bind(ts(now)?)
     .execute(&mut *tx)
     .await
     .map_err(storage)?;
@@ -295,7 +298,7 @@ pub(crate) async fn seed(pool: &PgPool, now: &str) -> Result<(), RepositoryError
         .bind(grade(task_grade))
         .bind(minutes)
         .bind("active")
-        .bind(now)
+        .bind(ts(now)?)
         .execute(&mut *tx)
         .await
         .map_err(storage)?;
@@ -348,19 +351,20 @@ pub(crate) async fn seed(pool: &PgPool, now: &str) -> Result<(), RepositoryError
             "estimateMinutes": sqlx::Row::try_get::<i32, _>(&row, "estimate_minutes").map_err(storage)?,
         });
         sqlx::query(
-            "INSERT INTO task_responses(id,candidate_id,company_id,candidate_alias,task_json,mode,answer,status,feedback,submitted_at,reviewed_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)",
+            "INSERT INTO task_responses(id,candidate_id,company_id,task_id,candidate_alias,task_json,mode,answer,status,feedback,submitted_at,reviewed_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)",
         )
         .bind(id)
         .bind(candidate_id)
         .bind(&task_company)
+        .bind(task_id)
         .bind(alias)
         .bind(task_json.to_string())
         .bind("approach")
         .bind(answer)
         .bind("accepted")
         .bind(feedback)
-        .bind(submitted)
-        .bind(reviewed)
+        .bind(ts(submitted)?)
+        .bind(ts(reviewed)?)
         .execute(&mut *tx)
         .await
         .map_err(storage)?;
@@ -392,9 +396,9 @@ async fn insert_candidate_tx(
     .bind(value.consents.publication)
     .bind(value.verified_grade.map(grade))
     .bind(value.verified_specialization.map(specialization))
-    .bind(&value.grade_confirmed_at)
+    .bind(ts_opt(&value.grade_confirmed_at)?)
     .bind(value.revision as i64)
-    .bind(&value.updated_at)
+    .bind(ts(&value.updated_at)?)
     .execute(&mut **tx)
     .await
     .map_err(storage)?;
@@ -475,7 +479,7 @@ fn demo_candidate_indexes() -> Vec<(&'static str, Vec<SkillEvidence>, Vec<Eviden
     };
     vec![
         (
-            "candidate-024",
+            "candidate024",
             skills(&[
                 ("rust", Grade::Junior),
                 ("postgresql", Grade::Junior),

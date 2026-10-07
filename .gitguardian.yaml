@@ -13,3 +13,8 @@ paths-ignore:
   - README.md
   - backend/README.md
   - infra/README.md
+  # Bare-metal dev defaults for the loopback compose database (same documented
+  # "fsp" placeholder): the api's DATABASE_URL fallback and the test admin URL.
+  - backend/crates/server/src/main.rs
+  - backend/crates/server/tests/contract.rs
+  - backend/crates/storage-postgres/tests/repository.rs
