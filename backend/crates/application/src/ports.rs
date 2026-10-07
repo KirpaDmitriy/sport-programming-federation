@@ -1,8 +1,7 @@
 use async_trait::async_trait;
 use fsp_domain::{
     Account, CandidateIndexRecord, CandidateProfile, Company, ExtractedGraph, FspParticipation,
-    GitHubAnalysis, GraphExtractionRequest, HiringNeedRecord, JobRecord,
-    RepositoryCompetitionMatch, RepositoryMatchRequest, Role, SourceRecord,
+    GitHubAnalysis, GraphExtractionRequest, HiringNeedRecord, JobRecord, SourceRecord,
 };
 
 use crate::PendingChallenge;
@@ -19,24 +18,89 @@ pub enum ConsumeChallenge {
 
 #[derive(Debug)]
 pub enum RepositoryError {
+    /// A uniqueness constraint rejected the write (map to a 409 surface).
     Conflict,
+    /// The row addressed by a guarded write did not exist or no longer
+    /// satisfies the preconditions (map to a 404/409 surface per call site).
+    NotFound,
+    /// Transient infrastructure failure: pool exhaustion, lost connection.
+    /// Retrying the request may succeed.
+    Unavailable,
     Storage(String),
 }
 
+/// Outcome of claiming an idempotency scope for a request.
+#[derive(Debug)]
+pub enum IdempotencyClaim {
+    /// No row existed: this caller runs the command and finalizes the scope
+    /// with [`PlatformRepository::idempotency_finish`].
+    Execute,
+    /// A finished response is stored; the caller must fingerprint-check it.
+    Stored(Box<StoredIdempotentResponse>),
+    /// A concurrent request with the same key is still executing; the caller
+    /// should wait briefly and re-claim.
+    InFlight,
+}
+
+/// The storage boundary. Every method is async; multi-statement use cases run
+/// inside a [`RepositoryTransaction`] obtained from `transaction()` so partial
+/// commits are impossible by construction.
 #[async_trait]
 pub trait PlatformRepository: Send + Sync {
+    /// Opens a unit of work. All repository methods on the returned value share
+    /// one database transaction until `commit()`; dropping it rolls back.
+    /// Calling `transaction()` on a transaction returns an error.
+    async fn transaction(&self) -> Result<Box<dyn RepositoryTransaction>, RepositoryError>;
+
     async fn account_by_email(&self, email: &str) -> Result<Option<Account>, RepositoryError>;
-    async fn account_by_id(&self, account_id: &str) -> Result<Option<Account>, RepositoryError>;
     async fn create_account(&self, account: &Account, now: &str) -> Result<(), RepositoryError>;
     async fn create_candidate(&self, profile: &CandidateProfile) -> Result<(), RepositoryError>;
     async fn create_company(&self, company: &Company) -> Result<(), RepositoryError>;
-    async fn save_challenge(&self, challenge: &PendingChallenge) -> Result<(), RepositoryError>;
+    async fn candidate(
+        &self,
+        candidate_id: &str,
+    ) -> Result<Option<CandidateProfile>, RepositoryError>;
+    async fn save_candidate(&self, profile: &CandidateProfile) -> Result<(), RepositoryError>;
+    /// Conditional write: updates only when the stored row is still at
+    /// `expected_revision`. `NotFound` means a concurrent writer moved it.
+    async fn save_candidate_guarded(
+        &self,
+        profile: &CandidateProfile,
+        expected_revision: u64,
+    ) -> Result<(), RepositoryError>;
+    async fn company(&self, company_id: &str) -> Result<Option<Company>, RepositoryError>;
+    async fn save_company(&self, company: &Company) -> Result<(), RepositoryError>;
+    async fn candidates(&self) -> Result<Vec<CandidateIndexRecord>, RepositoryError>;
+    /// Single-candidate index row — the hot-path lookup; `candidates()` is the
+    /// full scan for listing/search use cases.
+    async fn candidate_index(
+        &self,
+        candidate_id: &str,
+    ) -> Result<Option<CandidateIndexRecord>, RepositoryError>;
+    /// Persists the derived candidate index (skills, visibility flags); the
+    /// row is created on first save when seeding missed the candidate.
+    async fn save_candidate_index(
+        &self,
+        record: &CandidateIndexRecord,
+    ) -> Result<(), RepositoryError>;
+
+    /// Atomically issues a verification challenge: persists it only when the
+    /// caller is under the lockout budget — the running sum of attempts on
+    /// live challenges for the same email stays below five. `false` means the
+    /// email is locked out (the contract's `challenge_locked` surface).
+    async fn issue_challenge(&self, challenge: &PendingChallenge) -> Result<bool, RepositoryError>;
+    /// Marks `true` on the resolved account once its challenge is consumed.
+    async fn mark_email_verified(&self, account_id: &str) -> Result<(), RepositoryError>;
+    /// Consumes a challenge row under `FOR UPDATE`: expiry/usage/lock checks,
+    /// attempt counting and the used-mark share one transaction. On
+    /// `Consumed` the claimed challenge comes back so the caller can resolve
+    /// or register the account inside its own unit of work.
     async fn consume_challenge(
         &self,
         challenge_id: &str,
         code_hash: &str,
         now: &str,
-    ) -> Result<(ConsumeChallenge, Option<Account>), RepositoryError>;
+    ) -> Result<(ConsumeChallenge, Option<PendingChallenge>), RepositoryError>;
     async fn create_session(
         &self,
         token_hash: &str,
@@ -49,20 +113,7 @@ pub trait PlatformRepository: Send + Sync {
         now: &str,
     ) -> Result<Option<Account>, RepositoryError>;
     async fn delete_session(&self, token_hash: &str) -> Result<(), RepositoryError>;
-    async fn candidate(
-        &self,
-        candidate_id: &str,
-    ) -> Result<Option<CandidateProfile>, RepositoryError>;
-    async fn save_candidate(&self, profile: &CandidateProfile) -> Result<(), RepositoryError>;
-    async fn company(&self, company_id: &str) -> Result<Option<Company>, RepositoryError>;
-    async fn save_company(&self, company: &Company) -> Result<(), RepositoryError>;
-    async fn candidates(&self) -> Result<Vec<CandidateIndexRecord>, RepositoryError>;
-    /// Persists the derived candidate index (skills, visibility flags); the
-    /// row is created on first save when seeding missed the candidate.
-    async fn save_candidate_index(
-        &self,
-        record: &CandidateIndexRecord,
-    ) -> Result<(), RepositoryError>;
+
     async fn needs(&self, company_id: &str) -> Result<Vec<HiringNeedRecord>, RepositoryError>;
     async fn need(
         &self,
@@ -70,9 +121,16 @@ pub trait PlatformRepository: Send + Sync {
         need_id: &str,
     ) -> Result<Option<HiringNeedRecord>, RepositoryError>;
     async fn save_need(&self, need: &HiringNeedRecord) -> Result<(), RepositoryError>;
+    /// Conditional write mirroring [`save_candidate_guarded`].
+    async fn save_need_guarded(
+        &self,
+        need: &HiringNeedRecord,
+        expected_revision: u64,
+    ) -> Result<(), RepositoryError>;
     async fn delete_need(&self, company_id: &str, need_id: &str) -> Result<(), RepositoryError>;
     /// Published needs across all companies, i.e. the vacancy projection.
     async fn published_needs(&self) -> Result<Vec<HiringNeedRecord>, RepositoryError>;
+
     async fn shortlists(
         &self,
         company_id: &str,
@@ -91,6 +149,7 @@ pub trait PlatformRepository: Send + Sync {
         company_id: &str,
         shortlist_id: &str,
     ) -> Result<(), RepositoryError>;
+
     /// Invitations sent by a company, in creation order.
     async fn invitations(
         &self,
@@ -110,6 +169,14 @@ pub trait PlatformRepository: Send + Sync {
         &self,
         invitation: &fsp_domain::InvitationRecord,
     ) -> Result<(), RepositoryError>;
+    /// Conditional transition: updates only while the stored status is still
+    /// in `expected_statuses` — the concurrent-decision guard.
+    async fn save_invitation_guarded(
+        &self,
+        invitation: &fsp_domain::InvitationRecord,
+        expected_statuses: &[fsp_domain::InteractionStatus],
+    ) -> Result<(), RepositoryError>;
+
     async fn disclosure(
         &self,
         company_id: &str,
@@ -124,6 +191,7 @@ pub trait PlatformRepository: Send + Sync {
         company_id: &str,
         candidate_id: &str,
     ) -> Result<(), RepositoryError>;
+
     /// Applications addressed to a company's needs.
     async fn company_applications(
         &self,
@@ -143,6 +211,13 @@ pub trait PlatformRepository: Send + Sync {
         &self,
         application: &fsp_domain::ApplicationRecord,
     ) -> Result<(), RepositoryError>;
+    /// Conditional transition mirroring [`save_invitation_guarded`].
+    async fn save_application_guarded(
+        &self,
+        application: &fsp_domain::ApplicationRecord,
+        expected_statuses: &[fsp_domain::InteractionStatus],
+    ) -> Result<(), RepositoryError>;
+
     /// Tasks owned by a company.
     async fn tasks(&self, company_id: &str)
     -> Result<Vec<fsp_domain::TaskRecord>, RepositoryError>;
@@ -151,6 +226,7 @@ pub trait PlatformRepository: Send + Sync {
     /// Unscoped lookup; the service applies the caller's tenancy rule.
     async fn task(&self, task_id: &str) -> Result<Option<fsp_domain::TaskRecord>, RepositoryError>;
     async fn save_task(&self, task: &fsp_domain::TaskRecord) -> Result<(), RepositoryError>;
+
     /// Responses sent by a candidate, for offers, history and freshness.
     async fn candidate_task_responses(
         &self,
@@ -166,11 +242,24 @@ pub trait PlatformRepository: Send + Sync {
         &self,
         response_id: &str,
     ) -> Result<Option<fsp_domain::TaskResponseRecord>, RepositoryError>;
+    /// Candidate's response to a specific task — the submit-time dedup read.
+    async fn task_response_for(
+        &self,
+        candidate_id: &str,
+        task_id: &str,
+    ) -> Result<Option<fsp_domain::TaskResponseRecord>, RepositoryError>;
     async fn save_task_response(
         &self,
         response: &fsp_domain::TaskResponseRecord,
     ) -> Result<(), RepositoryError>;
-    /// Assessments owned by a candidate.
+    /// Conditional review transition: `NotFound` means another reviewer beat
+    /// this request (the contract's `task_response_reviewed` surface).
+    async fn review_task_response(
+        &self,
+        response: &fsp_domain::TaskResponseRecord,
+    ) -> Result<(), RepositoryError>;
+
+    /// Assessments owned by a candidate, newest first.
     async fn candidate_assessments(
         &self,
         candidate_id: &str,
@@ -184,6 +273,15 @@ pub trait PlatformRepository: Send + Sync {
         &self,
         assessment: &fsp_domain::AssessmentRecord,
     ) -> Result<(), RepositoryError>;
+    /// Conditional write: updates only when the stored row is still at
+    /// `expected_revision` and its status is in `expected_statuses`.
+    async fn save_assessment_guarded(
+        &self,
+        assessment: &fsp_domain::AssessmentRecord,
+        expected_revision: u64,
+        expected_statuses: &[fsp_domain::AssessmentStatus],
+    ) -> Result<(), RepositoryError>;
+
     async fn save_oauth_state(
         &self,
         candidate_id: &str,
@@ -205,21 +303,47 @@ pub trait PlatformRepository: Send + Sync {
     async fn sources(&self, candidate_id: &str) -> Result<Vec<SourceRecord>, RepositoryError>;
     async fn save_source(&self, source: &SourceRecord) -> Result<(), RepositoryError>;
     async fn save_job(&self, job: &JobRecord) -> Result<(), RepositoryError>;
+    /// Conditional job write: persists only while `confirmed` is still FALSE —
+    /// the profile-import confirm guard.
+    async fn save_job_unconfirmed(&self, job: &JobRecord) -> Result<(), RepositoryError>;
     async fn job(&self, owner_id: &str, job_id: &str)
     -> Result<Option<JobRecord>, RepositoryError>;
-    async fn idempotency_get(
-        &self,
-        scope: &str,
-    ) -> Result<Option<StoredIdempotentResponse>, RepositoryError>;
-    async fn idempotency_put(
+
+    /// Claims an idempotency scope. `Execute` — this caller runs the command;
+    /// `Stored` — a finished response exists (fingerprint-check it);
+    /// `InFlight` — a concurrent request is executing, wait and re-claim.
+    /// Running rows older than ~2 minutes are reclaimed as crashed.
+    async fn idempotency_claim(
         &self,
         scope: &str,
         fingerprint: &str,
+    ) -> Result<IdempotencyClaim, RepositoryError>;
+    async fn idempotency_finish(
+        &self,
+        scope: &str,
         status: u16,
         body: &str,
-        now: &str,
     ) -> Result<(), RepositoryError>;
+    /// Releases a `running` claim whose command failed: the key becomes
+    /// claimable again instead of sitting out the stale-reclaim window.
+    async fn idempotency_abort(&self, scope: &str) -> Result<(), RepositoryError>;
+
+    /// Periodic retention sweep: deletes expired sessions, challenges and
+    /// OAuth states plus finished idempotency rows older than a day.
+    async fn sweep_expired(&self, now: &str) -> Result<u64, RepositoryError>;
+
+    /// Liveness probe for the health surface.
+    async fn ping(&self) -> Result<(), RepositoryError>;
+
     async fn seed_demo(&self, now: &str) -> Result<(), RepositoryError>;
+}
+
+/// A live unit of work: the full repository surface bound to one transaction.
+/// Obtain via [`PlatformRepository::transaction`]; `commit()` persists, drop
+/// rolls back.
+#[async_trait]
+pub trait RepositoryTransaction: PlatformRepository {
+    async fn commit(self: Box<Self>) -> Result<(), RepositoryError>;
 }
 
 /// A stored `Idempotency-Key` response: the request fingerprint plus the
@@ -260,22 +384,18 @@ pub trait LlmGateway: Send + Sync {
     ) -> Result<ExtractedGraph, IntegrationError>;
     async fn match_repository(
         &self,
-        request: &RepositoryMatchRequest,
-    ) -> Result<RepositoryCompetitionMatch, IntegrationError>;
+        request: &fsp_domain::RepositoryMatchRequest,
+    ) -> Result<fsp_domain::RepositoryCompetitionMatch, IntegrationError>;
 }
 
+#[async_trait]
 pub trait FspGateway: Send + Sync {
-    fn participation(&self, account: &str) -> Result<FspParticipation, IntegrationError>;
+    async fn participation(&self, account: &str) -> Result<FspParticipation, IntegrationError>;
 }
 
+#[async_trait]
 pub trait VerificationDelivery: Send + Sync {
     fn code_for(&self) -> String;
-    fn deliver(&self, email: &str, code: &str) -> Result<(), String>;
+    async fn deliver(&self, email: &str, code: &str) -> Result<(), IntegrationError>;
     fn contract_name(&self) -> &'static str;
-}
-
-#[derive(Debug, Clone)]
-pub struct NewAccount {
-    pub role: Role,
-    pub email: String,
 }

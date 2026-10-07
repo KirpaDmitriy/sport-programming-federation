@@ -5,8 +5,8 @@
 use std::sync::Arc;
 
 use fsp_application::{
-    CandidateSearch, EmailChallengeInput, EmailVerifyInput, PlatformRepository, PlatformService,
-    ProfilePatch, VerificationDelivery,
+    CandidateSearch, EmailChallengeInput, EmailVerifyInput, IdempotencyClaim, PlatformRepository,
+    PlatformService, ProfilePatch, VerificationDelivery,
 };
 use fsp_domain::{
     Criticality, EvidencePolicy, Grade, HiringNeed, HiringNeedRecord, Requirement, Role,
@@ -21,12 +21,13 @@ fn admin_url() -> String {
 
 struct FixedDelivery;
 
+#[async_trait::async_trait]
 impl VerificationDelivery for FixedDelivery {
     fn code_for(&self) -> String {
         "123456".into()
     }
 
-    fn deliver(&self, _: &str, _: &str) -> Result<(), String> {
+    async fn deliver(&self, _: &str, _: &str) -> Result<(), fsp_application::IntegrationError> {
         Ok(())
     }
 
@@ -169,39 +170,29 @@ async fn seeded_recommendations_use_the_recorded_deterministic_order() {
 async fn idempotency_keys_round_trip_and_keep_the_first_response() {
     let (repository, _database) = repository().await;
 
-    assert!(
-        repository
-            .idempotency_get("actor:op:/path:key-0001")
-            .await
-            .expect("lookup works")
-            .is_none()
-    );
+    // First claim wins the right to execute.
+    let claim = repository
+        .idempotency_claim("actor:op:/path:key-0001", "{\"a\":1}")
+        .await
+        .expect("claim works");
+    assert!(matches!(claim, IdempotencyClaim::Execute));
+    // A racing same-key request observes InFlight until the winner finishes.
+    let racing = repository
+        .idempotency_claim("actor:op:/path:key-0001", "{\"a\":1}")
+        .await
+        .expect("claim works");
+    assert!(matches!(racing, IdempotencyClaim::InFlight));
     repository
-        .idempotency_put(
-            "actor:op:/path:key-0001",
-            "{\"a\":1}",
-            201,
-            "{\"id\":\"one\"}",
-            "2026-10-06T00:00:00Z",
-        )
+        .idempotency_finish("actor:op:/path:key-0001", 201, "{\"id\":\"one\"}")
         .await
-        .expect("first response is stored");
-    // A racing retry must not overwrite the stored response.
-    repository
-        .idempotency_put(
-            "actor:op:/path:key-0001",
-            "{\"a\":2}",
-            200,
-            "{\"id\":\"two\"}",
-            "2026-10-06T00:00:01Z",
-        )
-        .await
-        .expect("conflicting inserts are ignored");
-    let stored = repository
-        .idempotency_get("actor:op:/path:key-0001")
-        .await
-        .expect("lookup works")
         .expect("response is stored");
+    let stored = repository
+        .idempotency_claim("actor:op:/path:key-0001", "{\"a\":1}")
+        .await
+        .expect("claim works");
+    let IdempotencyClaim::Stored(stored) = stored else {
+        panic!("finished scope replays the stored response");
+    };
     assert_eq!(stored.fingerprint, "{\"a\":1}");
     assert_eq!(stored.status, 201);
     assert_eq!(stored.body, "{\"id\":\"one\"}");
@@ -266,6 +257,16 @@ async fn shortlists_round_trip_and_stay_scoped_to_the_company() {
 #[tokio::test(flavor = "current_thread")]
 async fn invitations_and_disclosures_round_trip() {
     let (repository, _database) = repository().await;
+    repository
+        .seed_demo("2026-10-06T00:00:00Z")
+        .await
+        .expect("demo data is seeded");
+    sqlx::query(
+        "INSERT INTO companies(id,display_name,business_area,description,contact_email,website) VALUES('company-sever','Север Тех','Разработка','','hr@sever-tech.example',NULL)",
+    )
+    .execute(repository.pool())
+    .await
+    .expect("company is stored");
     let need = HiringNeedRecord {
         id: "need-test".into(),
         company_id: "company-sever".into(),
@@ -380,6 +381,10 @@ async fn invitations_and_disclosures_round_trip() {
 #[tokio::test(flavor = "current_thread")]
 async fn tasks_and_responses_round_trip_and_stay_scoped() {
     let (repository, _database) = repository().await;
+    repository
+        .seed_demo("2026-10-06T00:00:00Z")
+        .await
+        .expect("demo data is seeded");
     sqlx::query(
         "INSERT INTO companies(id,display_name,business_area,description,contact_email,website) VALUES('company-sever','Север Тех','Разработка','','hr@sever-tech.example',NULL)",
     )
@@ -408,13 +413,13 @@ async fn tasks_and_responses_round_trip_and_stay_scoped() {
         .expect("task exists");
     assert_eq!(stored.status, fsp_domain::TaskStatus::Active);
     assert_eq!(stored.grade, Grade::Middle);
-    assert_eq!(
+    assert!(
         repository
             .active_tasks()
             .await
             .expect("active list works")
-            .len(),
-        1
+            .iter()
+            .any(|task| task.id == "task-test")
     );
 
     repository
@@ -476,11 +481,15 @@ async fn tasks_and_responses_round_trip_and_stay_scoped() {
 #[tokio::test(flavor = "current_thread")]
 async fn assessments_and_jobs_round_trip_with_persisted_results() {
     let (repository, _database) = repository().await;
+    repository
+        .seed_demo("2026-10-06T00:00:00Z")
+        .await
+        .expect("demo data is seeded");
 
     repository
         .save_assessment(&fsp_domain::AssessmentRecord {
             id: "assessment-test".into(),
-            candidate_id: "candidate-024".into(),
+            candidate_id: "candidate024".into(),
             specialization: Specialization::Backend,
             grade: Grade::Middle,
             status: fsp_domain::AssessmentStatus::InProgress,
@@ -532,7 +541,7 @@ async fn assessments_and_jobs_round_trip_with_persisted_results() {
     assert_eq!(stored.checks.len(), 1);
     assert_eq!(
         repository
-            .candidate_assessments("candidate-024")
+            .candidate_assessments("candidate024")
             .await
             .expect("candidate list works")
             .len(),
@@ -549,10 +558,10 @@ async fn assessments_and_jobs_round_trip_with_persisted_results() {
     repository
         .save_job(&fsp_domain::JobRecord {
             id: "job-assessment".into(),
-            owner_id: "candidate-024".into(),
+            owner_id: "candidate024".into(),
             kind: "assessment".into(),
             status: "succeeded".into(),
-            candidate_id: Some("candidate-024".into()),
+            candidate_id: Some("candidate024".into()),
             assessment_id: Some("assessment-test".into()),
             input_revision: Some(3),
             result_json: Some("{\"kind\":\"assessment\",\"ok\":true}".into()),
@@ -566,7 +575,7 @@ async fn assessments_and_jobs_round_trip_with_persisted_results() {
         .await
         .expect("job is stored");
     let job = repository
-        .job("candidate-024", "job-assessment")
+        .job("candidate024", "job-assessment")
         .await
         .expect("lookup works")
         .expect("job exists");

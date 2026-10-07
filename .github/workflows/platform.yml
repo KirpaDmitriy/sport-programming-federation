@@ -6,6 +6,7 @@ on:
       - contracts/**
       - mock-server/**
       - frontend/**
+      - backend/**
       - biome.json
       - .github/workflows/platform.yml
   pull_request:
@@ -13,6 +14,7 @@ on:
       - contracts/**
       - mock-server/**
       - frontend/**
+      - backend/**
       - biome.json
       - .github/workflows/platform.yml
   # Called by deploy.yml as the frontend/contract gate before a stand release.

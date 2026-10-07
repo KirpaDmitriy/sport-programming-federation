@@ -26,6 +26,7 @@ use fsp_application::{
 use fsp_domain::{Grade, Specialization};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use tower_http::catch_panic::CatchPanicLayer;
 use tower_http::services::{ServeDir, ServeFile};
 use uuid::Uuid;
 
@@ -43,6 +44,9 @@ const MAX_JSON_BODY: usize = 512 * 1024;
 const MAX_IMPORT_BODY: usize = 3 * 1024 * 1024;
 /// The mock's `MAX_PDF`.
 const MAX_PDF_FILE: usize = 2 * 1024 * 1024;
+/// Per-request ceiling: every query runs under the pool's 15s statement
+/// timeout, so a request outliving this is a defect, not slow business work.
+const REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
 #[derive(Debug, Clone)]
 pub struct HttpConfig {
@@ -254,7 +258,33 @@ pub fn router(config: HttpConfig, service: Arc<PlatformService>) -> Router {
     } else {
         router
     };
-    router.layer(middleware::from_fn_with_state(state, transport))
+    router
+        // Outermost-last ordering: transport renders the envelope for the
+        // `ApiError` extensions produced by the timeout and panic guards.
+        .layer(CatchPanicLayer::custom(panic_response))
+        .layer(middleware::from_fn(with_timeout))
+        .layer(middleware::from_fn_with_state(state, transport))
+}
+
+fn panic_response(_: Box<dyn std::any::Any + Send>) -> Response {
+    ApiError::new(
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "internal_error",
+        "Сервис временно недоступен",
+    )
+    .into_response()
+}
+
+async fn with_timeout(request: Request, next: Next) -> Response {
+    match tokio::time::timeout(REQUEST_TIMEOUT, next.run(request)).await {
+        Ok(response) => response,
+        Err(_) => ApiError::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "internal_error",
+            "Сервис временно недоступен",
+        )
+        .into_response(),
+    }
 }
 
 #[derive(Serialize)]
@@ -264,12 +294,19 @@ struct Health {
     version: &'static str,
 }
 
-async fn health() -> Json<Health> {
-    Json(Health {
+async fn health(State(state): State<AppState>) -> Result<Json<Health>, ApiError> {
+    state.service.healthy().await.map_err(|_| {
+        ApiError::new(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "internal_error",
+            "Сервис временно недоступен",
+        )
+    })?;
+    Ok(Json(Health {
         status: "ok",
         service: "fsp-career-api",
         version: env!("CARGO_PKG_VERSION"),
-    })
+    }))
 }
 
 /// Emits an idempotent command's outcome: stored bodies replay verbatim with
@@ -309,7 +346,7 @@ async fn meta(State(state): State<AppState>) -> Json<Value> {
             "githubOAuth": state.service.github_configured()
         },
         "assessmentPolicy": {
-            "successfulGradeChangeCooldownDays": 90, "failedAttemptCooldownDays": 0,
+            "successfulGradeChangeCooldownDays": state.service.grade_cooldown_days(), "failedAttemptCooldownDays": 0,
             "serviceFailureCooldownDays": 0, "sameGradeRetryCooldownDays": 0,
             "aiAllowed": true, "externalAiAllowed": true,
             "supportedScopes": [
@@ -1827,8 +1864,8 @@ async fn transport(State(state): State<AppState>, request: Request, next: Next) 
 mod tests {
     use super::*;
     use fsp_application::{
-        ConsumeChallenge, PendingChallenge, PlatformRepository, RepositoryError,
-        VerificationDelivery,
+        ConsumeChallenge, IdempotencyClaim, PendingChallenge, PlatformRepository, RepositoryError,
+        RepositoryTransaction, VerificationDelivery,
     };
     use fsp_domain::{
         Account, CandidateIndexRecord, CandidateProfile, Company, HiringNeedRecord, JobRecord,
@@ -1838,35 +1875,89 @@ mod tests {
     struct EmptyRepository;
     #[async_trait::async_trait]
     impl PlatformRepository for EmptyRepository {
+        async fn transaction(&self) -> Result<Box<dyn RepositoryTransaction>, RepositoryError> {
+            Err(RepositoryError::Storage("test stub".into()))
+        }
+
         async fn account_by_email(&self, _: &str) -> Result<Option<Account>, RepositoryError> {
             Ok(None)
         }
-        async fn account_by_id(&self, _: &str) -> Result<Option<Account>, RepositoryError> {
-            Ok(None)
-        }
+
         async fn create_account(&self, _: &Account, _: &str) -> Result<(), RepositoryError> {
             Ok(())
         }
+
         async fn create_candidate(&self, _: &CandidateProfile) -> Result<(), RepositoryError> {
             Ok(())
         }
+
         async fn create_company(&self, _: &Company) -> Result<(), RepositoryError> {
             Ok(())
         }
-        async fn save_challenge(&self, _: &PendingChallenge) -> Result<(), RepositoryError> {
+
+        async fn candidate(&self, _: &str) -> Result<Option<CandidateProfile>, RepositoryError> {
+            Ok(None)
+        }
+
+        async fn save_candidate(&self, _: &CandidateProfile) -> Result<(), RepositoryError> {
             Ok(())
         }
+
+        async fn save_candidate_guarded(
+            &self,
+            _: &CandidateProfile,
+            _: u64,
+        ) -> Result<(), RepositoryError> {
+            Ok(())
+        }
+
+        async fn company(&self, _: &str) -> Result<Option<Company>, RepositoryError> {
+            Ok(None)
+        }
+
+        async fn save_company(&self, _: &Company) -> Result<(), RepositoryError> {
+            Ok(())
+        }
+
+        async fn candidates(&self) -> Result<Vec<CandidateIndexRecord>, RepositoryError> {
+            Ok(Vec::new())
+        }
+
+        async fn candidate_index(
+            &self,
+            _: &str,
+        ) -> Result<Option<CandidateIndexRecord>, RepositoryError> {
+            Ok(None)
+        }
+
+        async fn save_candidate_index(
+            &self,
+            _: &CandidateIndexRecord,
+        ) -> Result<(), RepositoryError> {
+            Ok(())
+        }
+
+        async fn issue_challenge(&self, _: &PendingChallenge) -> Result<bool, RepositoryError> {
+            Ok(false)
+        }
+
+        async fn mark_email_verified(&self, _: &str) -> Result<(), RepositoryError> {
+            Ok(())
+        }
+
         async fn consume_challenge(
             &self,
             _: &str,
             _: &str,
             _: &str,
-        ) -> Result<(ConsumeChallenge, Option<Account>), RepositoryError> {
+        ) -> Result<(ConsumeChallenge, Option<PendingChallenge>), RepositoryError> {
             Ok((ConsumeChallenge::Missing, None))
         }
+
         async fn create_session(&self, _: &str, _: &str, _: &str) -> Result<(), RepositoryError> {
             Ok(())
         }
+
         async fn account_for_session(
             &self,
             _: &str,
@@ -1874,27 +1965,15 @@ mod tests {
         ) -> Result<Option<Account>, RepositoryError> {
             Ok(None)
         }
+
         async fn delete_session(&self, _: &str) -> Result<(), RepositoryError> {
             Ok(())
         }
-        async fn candidate(&self, _: &str) -> Result<Option<CandidateProfile>, RepositoryError> {
-            Ok(None)
-        }
-        async fn save_candidate(&self, _: &CandidateProfile) -> Result<(), RepositoryError> {
-            Ok(())
-        }
-        async fn company(&self, _: &str) -> Result<Option<Company>, RepositoryError> {
-            Ok(None)
-        }
-        async fn save_company(&self, _: &Company) -> Result<(), RepositoryError> {
-            Ok(())
-        }
-        async fn candidates(&self) -> Result<Vec<CandidateIndexRecord>, RepositoryError> {
-            Ok(Vec::new())
-        }
+
         async fn needs(&self, _: &str) -> Result<Vec<HiringNeedRecord>, RepositoryError> {
             Ok(Vec::new())
         }
+
         async fn need(
             &self,
             _: &str,
@@ -1902,21 +1981,34 @@ mod tests {
         ) -> Result<Option<HiringNeedRecord>, RepositoryError> {
             Ok(None)
         }
+
         async fn save_need(&self, _: &HiringNeedRecord) -> Result<(), RepositoryError> {
             Ok(())
         }
+
+        async fn save_need_guarded(
+            &self,
+            _: &HiringNeedRecord,
+            _: u64,
+        ) -> Result<(), RepositoryError> {
+            Ok(())
+        }
+
         async fn delete_need(&self, _: &str, _: &str) -> Result<(), RepositoryError> {
             Ok(())
         }
+
         async fn published_needs(&self) -> Result<Vec<HiringNeedRecord>, RepositoryError> {
             Ok(Vec::new())
         }
+
         async fn shortlists(
             &self,
             _: &str,
         ) -> Result<Vec<fsp_domain::ShortlistRecord>, RepositoryError> {
             Ok(Vec::new())
         }
+
         async fn shortlist(
             &self,
             _: &str,
@@ -1924,39 +2016,54 @@ mod tests {
         ) -> Result<Option<fsp_domain::ShortlistRecord>, RepositoryError> {
             Ok(None)
         }
+
         async fn save_shortlist(
             &self,
             _: &fsp_domain::ShortlistRecord,
         ) -> Result<(), RepositoryError> {
             Ok(())
         }
+
         async fn delete_shortlist(&self, _: &str, _: &str) -> Result<(), RepositoryError> {
             Ok(())
         }
+
         async fn invitations(
             &self,
             _: &str,
         ) -> Result<Vec<fsp_domain::InvitationRecord>, RepositoryError> {
             Ok(Vec::new())
         }
+
         async fn candidate_invitations(
             &self,
             _: &str,
         ) -> Result<Vec<fsp_domain::InvitationRecord>, RepositoryError> {
             Ok(Vec::new())
         }
+
         async fn invitation(
             &self,
             _: &str,
         ) -> Result<Option<fsp_domain::InvitationRecord>, RepositoryError> {
             Ok(None)
         }
+
         async fn save_invitation(
             &self,
             _: &fsp_domain::InvitationRecord,
         ) -> Result<(), RepositoryError> {
             Ok(())
         }
+
+        async fn save_invitation_guarded(
+            &self,
+            _: &fsp_domain::InvitationRecord,
+            _: &[fsp_domain::InteractionStatus],
+        ) -> Result<(), RepositoryError> {
+            Ok(())
+        }
+
         async fn disclosure(
             &self,
             _: &str,
@@ -1964,102 +2071,147 @@ mod tests {
         ) -> Result<Option<fsp_domain::DisclosureRecord>, RepositoryError> {
             Ok(None)
         }
+
         async fn save_disclosure(
             &self,
             _: &fsp_domain::DisclosureRecord,
         ) -> Result<(), RepositoryError> {
             Ok(())
         }
+
         async fn delete_disclosure(&self, _: &str, _: &str) -> Result<(), RepositoryError> {
             Ok(())
         }
+
         async fn company_applications(
             &self,
             _: &str,
         ) -> Result<Vec<fsp_domain::ApplicationRecord>, RepositoryError> {
             Ok(Vec::new())
         }
+
         async fn candidate_applications(
             &self,
             _: &str,
         ) -> Result<Vec<fsp_domain::ApplicationRecord>, RepositoryError> {
             Ok(Vec::new())
         }
+
         async fn application(
             &self,
             _: &str,
         ) -> Result<Option<fsp_domain::ApplicationRecord>, RepositoryError> {
             Ok(None)
         }
+
         async fn save_application(
             &self,
             _: &fsp_domain::ApplicationRecord,
         ) -> Result<(), RepositoryError> {
             Ok(())
         }
+
+        async fn save_application_guarded(
+            &self,
+            _: &fsp_domain::ApplicationRecord,
+            _: &[fsp_domain::InteractionStatus],
+        ) -> Result<(), RepositoryError> {
+            Ok(())
+        }
+
         async fn tasks(&self, _: &str) -> Result<Vec<fsp_domain::TaskRecord>, RepositoryError> {
             Ok(Vec::new())
         }
+
         async fn active_tasks(&self) -> Result<Vec<fsp_domain::TaskRecord>, RepositoryError> {
             Ok(Vec::new())
         }
+
         async fn task(&self, _: &str) -> Result<Option<fsp_domain::TaskRecord>, RepositoryError> {
             Ok(None)
         }
+
         async fn save_task(&self, _: &fsp_domain::TaskRecord) -> Result<(), RepositoryError> {
             Ok(())
         }
+
         async fn candidate_task_responses(
             &self,
             _: &str,
         ) -> Result<Vec<fsp_domain::TaskResponseRecord>, RepositoryError> {
             Ok(Vec::new())
         }
+
         async fn company_task_responses(
             &self,
             _: &str,
         ) -> Result<Vec<fsp_domain::TaskResponseRecord>, RepositoryError> {
             Ok(Vec::new())
         }
+
         async fn task_response(
             &self,
             _: &str,
         ) -> Result<Option<fsp_domain::TaskResponseRecord>, RepositoryError> {
             Ok(None)
         }
+
+        async fn task_response_for(
+            &self,
+            _: &str,
+            _: &str,
+        ) -> Result<Option<fsp_domain::TaskResponseRecord>, RepositoryError> {
+            Ok(None)
+        }
+
         async fn save_task_response(
             &self,
             _: &fsp_domain::TaskResponseRecord,
         ) -> Result<(), RepositoryError> {
             Ok(())
         }
+
+        async fn review_task_response(
+            &self,
+            _: &fsp_domain::TaskResponseRecord,
+        ) -> Result<(), RepositoryError> {
+            Ok(())
+        }
+
         async fn candidate_assessments(
             &self,
             _: &str,
         ) -> Result<Vec<fsp_domain::AssessmentRecord>, RepositoryError> {
             Ok(Vec::new())
         }
+
         async fn assessment(
             &self,
             _: &str,
         ) -> Result<Option<fsp_domain::AssessmentRecord>, RepositoryError> {
             Ok(None)
         }
+
         async fn save_assessment(
             &self,
             _: &fsp_domain::AssessmentRecord,
         ) -> Result<(), RepositoryError> {
             Ok(())
         }
-        async fn save_candidate_index(
+
+        async fn save_assessment_guarded(
             &self,
-            _: &CandidateIndexRecord,
+            _: &fsp_domain::AssessmentRecord,
+            _: u64,
+            _: &[fsp_domain::AssessmentStatus],
         ) -> Result<(), RepositoryError> {
             Ok(())
         }
+
         async fn save_oauth_state(&self, _: &str, _: &str, _: &str) -> Result<(), RepositoryError> {
             Ok(())
         }
+
         async fn consume_oauth_state(
             &self,
             _: &str,
@@ -2068,50 +2220,76 @@ mod tests {
         ) -> Result<bool, RepositoryError> {
             Ok(false)
         }
+
         async fn save_github_token(&self, _: &str, _: &str) -> Result<(), RepositoryError> {
             Ok(())
         }
+
         async fn github_token(&self, _: &str) -> Result<Option<String>, RepositoryError> {
             Ok(None)
         }
+
         async fn sources(&self, _: &str) -> Result<Vec<SourceRecord>, RepositoryError> {
             Ok(Vec::new())
         }
+
         async fn save_source(&self, _: &SourceRecord) -> Result<(), RepositoryError> {
             Ok(())
         }
+
         async fn save_job(&self, _: &JobRecord) -> Result<(), RepositoryError> {
             Ok(())
         }
+
+        async fn save_job_unconfirmed(&self, _: &JobRecord) -> Result<(), RepositoryError> {
+            Ok(())
+        }
+
         async fn job(&self, _: &str, _: &str) -> Result<Option<JobRecord>, RepositoryError> {
             Ok(None)
         }
-        async fn idempotency_get(
+
+        async fn idempotency_claim(
             &self,
             _: &str,
-        ) -> Result<Option<fsp_application::StoredIdempotentResponse>, RepositoryError> {
-            Ok(None)
+            _: &str,
+        ) -> Result<IdempotencyClaim, RepositoryError> {
+            Ok(fsp_application::IdempotencyClaim::InFlight)
         }
-        async fn idempotency_put(
+
+        async fn idempotency_finish(
             &self,
-            _: &str,
             _: &str,
             _: u16,
-            _: &str,
             _: &str,
         ) -> Result<(), RepositoryError> {
             Ok(())
         }
+
+        async fn idempotency_abort(&self, _: &str) -> Result<(), RepositoryError> {
+            Ok(())
+        }
+
+        async fn sweep_expired(&self, _: &str) -> Result<u64, RepositoryError> {
+            Ok(0)
+        }
+
+        async fn ping(&self) -> Result<(), RepositoryError> {
+            Ok(())
+        }
+
         async fn seed_demo(&self, _: &str) -> Result<(), RepositoryError> {
             Ok(())
         }
     }
+
     struct Delivery;
+    #[async_trait::async_trait]
     impl VerificationDelivery for Delivery {
         fn code_for(&self) -> String {
             "123456".into()
         }
-        fn deliver(&self, _: &str, _: &str) -> Result<(), String> {
+        async fn deliver(&self, _: &str, _: &str) -> Result<(), fsp_application::IntegrationError> {
             Ok(())
         }
         fn contract_name(&self) -> &'static str {

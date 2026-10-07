@@ -3,8 +3,9 @@ use fsp_domain::FspParticipation;
 
 pub struct SyntheticFsp;
 
+#[async_trait::async_trait]
 impl FspGateway for SyntheticFsp {
-    fn participation(&self, account: &str) -> Result<FspParticipation, IntegrationError> {
+    async fn participation(&self, account: &str) -> Result<FspParticipation, IntegrationError> {
         let normalized = account.trim();
         if normalized.is_empty() {
             return Err(IntegrationError {
@@ -31,19 +32,19 @@ impl FspGateway for SyntheticFsp {
 mod tests {
     use super::*;
 
-    #[test]
-    fn trims_the_demo_account_and_rejects_an_empty_identifier() {
+    #[tokio::test]
+    async fn trims_the_demo_account_and_rejects_an_empty_identifier() {
         let gateway = SyntheticFsp;
-        let participation = gateway.participation("  FSP-DEMO-024  ").unwrap();
+        let participation = gateway.participation("  FSP-DEMO-024  ").await.unwrap();
         assert_eq!(participation.account_label, "FSP-DEMO-024");
         assert!(participation.verified);
         assert_eq!(participation.competition_ids, ["competition-demo-api"]);
 
-        let unknown = gateway.participation("fsp-024").unwrap();
+        let unknown = gateway.participation("fsp-024").await.unwrap();
         assert!(!unknown.verified);
         assert!(unknown.competition_ids.is_empty());
 
-        let error = gateway.participation("  ").unwrap_err();
+        let error = gateway.participation("  ").await.unwrap_err();
         assert_eq!(error.code, "fsp_account_invalid");
     }
 }
