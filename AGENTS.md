@@ -1,7 +1,7 @@
 # Repository rules
 
 The FSP reverse-hiring platform for the FSP 2026 special track: contract, mock, frontend, Rust backend and the demo
-stand. Dima's first version, a Python (FastAPI) MVP, lives in branch `dima/mvp` and is not part of `main`.
+stand. Dima's first version, a Python (FastAPI) MVP, is tagged `archive/dima-mvp` and is not part of `main`.
 
 ## Map
 
@@ -20,7 +20,10 @@ stand. Dima's first version, a Python (FastAPI) MVP, lives in branch `dima/mvp` 
 - Change another owner's tree only in coordination with them.
 - The contract is the boundary between frontend and backend. Change it only as described in
   [`contracts/README.md`](contracts/README.md), in one change that updates every side.
-- Work on a named branch (`danil/…`, `dima/…`), merge into `dev`, then `dev` into `main`. `main` is what
+- Work on a feature branch and PR it into your personal branch (`danil` or `dima`). Feature branches must not
+  live under the `danil/` or `dima/` prefixes — those are the permanent personal branches, and git cannot hold
+  both `danil` and `danil/x`. `cascade.yml` then merges automatically: personal → `dev` → `main`, deletes the
+  merged feature branch and keeps `danil`, `dima`, `dev` and `main` permanent. `main` is what
   `infra/deploy.sh` ships to the stand.
 - Never commit secrets. Stand access lives in the git-ignored `.fsp-infra/`; service secrets belong in environment
   files on the host.
