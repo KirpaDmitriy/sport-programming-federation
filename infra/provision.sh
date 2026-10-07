@@ -13,7 +13,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -q
 apt-get upgrade -yq
-apt-get install -yq nginx ufw curl unzip
+apt-get install -yq nginx ufw curl unzip build-essential
 
 if [ "$(/opt/bun/bin/bun --version 2>/dev/null)" != "$BUN_VERSION" ]; then
   tmp="$(mktemp -d)"
@@ -28,6 +28,22 @@ ln -sf /opt/bun/bin/bun /usr/local/bin/bun
 # The stand builds and runs on Bun only; drop the Node/pnpm toolchain of earlier provisioning.
 rm -rf /opt/node /opt/node-v* /opt/pnpm
 rm -f /usr/local/bin/node /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/pnpm
+
+# Pinned rustup for the on-host backend build: a checksum-verified installer binary, never a
+# piped shell script. RUST_TOOLCHAIN must stay in sync with backend/rust-toolchain.toml.
+RUSTUP_INIT_VERSION=1.29.1
+RUSTUP_INIT_SHA256=dda7234360b7f578ca8b0ddcb80145646fa61a67c1720a5abc7051b35c9fcb71
+RUST_TOOLCHAIN=1.99.0
+if [ ! -x "/opt/rustup/toolchains/$RUST_TOOLCHAIN-x86_64-unknown-linux-gnu/bin/cargo" ]; then
+  tmp="$(mktemp -d)"
+  curl -fsSLo "$tmp/rustup-init" \
+    "https://static.rust-lang.org/rustup/archive/$RUSTUP_INIT_VERSION/x86_64-unknown-linux-gnu/rustup-init"
+  echo "$RUSTUP_INIT_SHA256  $tmp/rustup-init" | sha256sum -c -
+  chmod +x "$tmp/rustup-init"
+  RUSTUP_HOME=/opt/rustup CARGO_HOME=/opt/cargo \
+    "$tmp/rustup-init" -y --profile minimal --default-toolchain "$RUST_TOOLCHAIN" --no-modify-path
+  rm -rf "$tmp"
+fi
 
 snap install core >/dev/null 2>&1 || true
 snap list certbot >/dev/null 2>&1 || snap install --classic certbot
@@ -49,6 +65,19 @@ cat > /etc/fsp/frontend-build.env <<EOF
 VITE_DEMO_STAND=1
 VITE_DEMO_EMAIL_CODE=123456
 EOF
+# The Rust backend takes over once /etc/fsp/api-backend says "rust" (release.sh switches the
+# services); until then it builds alongside without serving.
+cat > /etc/fsp/rust-api.env <<EOF
+FSP_DATABASE=/var/lib/fsp/fsp.sqlite3
+FSP_AUTH_MODE=demo
+FSP_DEMO_EMAIL_CODE=123456
+FSP_SECURE_COOKIE=1
+FSP_ALLOWED_ORIGINS=https://$PUBLIC_IP
+FSP_PUBLIC_WEB_URL=https://$PUBLIC_IP
+GITHUB_CALLBACK_URL=https://$PUBLIC_IP/api/v1/integrations/github/callback
+EOF
+[ -f /etc/fsp/api-backend ] || echo mock > /etc/fsp/api-backend
+install -m 644 "$HERE/fsp-api.service" /etc/systemd/system/fsp-api.service
 install -m 644 "$HERE/fsp-mock-api.service" /etc/systemd/system/fsp-mock-api.service
 systemctl daemon-reload
 systemctl enable fsp-mock-api.service >/dev/null

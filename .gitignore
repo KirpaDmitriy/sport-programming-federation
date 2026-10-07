@@ -5,6 +5,9 @@ node_modules/
 
 # Local infrastructure state and secrets (never commit)
 .fsp-infra/
+.env
+.env.local
 
-# Rust build output
+# Rust build output and the local SQLite database (FSP_DATABASE default)
 target/
+backend/data/

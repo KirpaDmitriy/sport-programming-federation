@@ -1,0 +1,44 @@
+name: deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# One deploy at a time; a queued run is never cancelled mid-flight.
+concurrency:
+  group: stand-deploy
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  stand:
+    # The demo stand is deployed only from the shared repository; the fork mirrors it.
+    if: github.repository == 'KirpaDmitriy/sport-programming-federation'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install the deploy SSH identity
+        env:
+          FSP_DEPLOY_KEY: ${{ secrets.FSP_DEPLOY_KEY }}
+          FSP_DEPLOY_KNOWN_HOSTS: ${{ secrets.FSP_DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d "$HOME/.ssh"
+          install -m 600 /dev/stdin "$HOME/.ssh/fsp_deploy_ed25519" <<< "$FSP_DEPLOY_KEY"
+          install -m 644 /dev/stdin "$HOME/.ssh/known_hosts" <<< "$FSP_DEPLOY_KNOWN_HOSTS"
+      - name: Deploy main to the stand
+        env:
+          FSP_DEPLOY_HOST: stand
+          FSP_SSH_CONFIG: ci-ssh-config
+        run: |
+          cat > ci-ssh-config <<'EOF'
+          Host stand
+            HostName 188.166.88.183
+            User root
+            IdentityFile ~/.ssh/fsp_deploy_ed25519
+            IdentitiesOnly yes
+            UserKnownHostsFile ~/.ssh/known_hosts
+            StrictHostKeyChecking yes
+          EOF
+          infra/deploy.sh main

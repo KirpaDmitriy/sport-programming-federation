@@ -1,0 +1,29 @@
+[Unit]
+Description=FSP career API (Rust backend)
+After=network.target
+
+[Service]
+Type=simple
+User=fsp
+Group=fsp
+Environment=HOST=127.0.0.1
+Environment=PORT=4010
+EnvironmentFile=-/etc/fsp/rust-api.env
+StateDirectory=fsp
+ExecStart=/opt/fsp/current/bin/fsp-career-api
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+LockPersonality=yes
+MemoryMax=1G
+
+[Install]
+WantedBy=multi-user.target
