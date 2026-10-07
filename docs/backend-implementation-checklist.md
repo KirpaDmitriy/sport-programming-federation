@@ -17,10 +17,10 @@ the backend cutover and must stay aligned with the delivered behavior.
 
 ## Contract and product behavior
 
-- [ ] Implement the existing OpenAPI operations used by the frontend; do not redesign the frontend around a smaller API.
-- [ ] Persist candidate and employer profiles, consents, needs, vacancies, applications, invitations, shortlists, tasks and assessments.
-- [ ] Enforce role, ownership, contact disclosure and visibility rules on the server.
-- [ ] Implement server-side pagination, filters and every sort exposed by the frontend.
+- [x] Implement the existing OpenAPI operations used by the frontend; do not redesign the frontend around a smaller API.
+- [x] Persist candidate and employer profiles, consents, needs, vacancies, applications, invitations, shortlists, tasks and assessments.
+- [x] Enforce role, ownership, contact disclosure and visibility rules on the server.
+- [x] Implement server-side pagination, filters and every sort exposed by the frontend.
 - [x] Implement deterministic recommendations and explainable candidate ordering.
 - [x] Serve candidate profile data from the backend; seeded profiles remain available as backend data.
 - [x] Keep competence graphs as explicit placeholder data until an LLM provider is configured.
@@ -44,7 +44,7 @@ the backend cutover and must stay aligned with the delivered behavior.
 
 ## Quality and delivery
 
-- [ ] Add domain, application, adapter and HTTP contract tests for implemented behavior.
+- [x] Add domain, application, adapter and HTTP contract tests for implemented behavior.
 - [x] Preserve an offline CPU path for tests and the demo seed.
 - [x] Run `just backend-check`, relevant contract/frontend checks, Docker smoke and public stand smoke.
 - [x] Make granular commits on the named branch; merge through `dev`, then deploy `main`.
