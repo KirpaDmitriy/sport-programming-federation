@@ -67,9 +67,9 @@ e-mail, repository names, references or fixture links) before disclosure.
 ## Deployed stand
 
 `e2e/public/stand.spec.ts` needs no mock controls: it checks that the HTTPS stand serves the app and deep links
-without `/__mock__`, and walks a new candidate and two companies through the whole flow with fresh accounts
-(`FSP_DEMO_CODE`, default `123456`). These accounts and records persist in PostgreSQL. The suite uses unique addresses and does not reset or delete
-stand data. A mock restart has no effect on Rust data.
+without `/__mock__`, and walks a new candidate and two companies through the whole flow with a fresh candidate and the two seeded companies
+(`FSP_DEMO_CODE`, default `123456`). Candidate addresses are unique; test records persist in PostgreSQL.
+The suite does not reset or delete stand data. A mock restart has no effect on Rust data.
 
 ## What the tests do not show
 

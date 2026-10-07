@@ -42,8 +42,10 @@ stand. Avoid a replacement stack or speculative services. Preserve applied migra
 
 ## Verified findings and planned waves
 
-Status: **implemented** = repaired and checked locally, pending final delivery proof; **open** = work still
-in progress. Evidence below records the baseline defects; the execution log records their resolution.
+Status: **implemented** = repaired and checked; **delivery record** = exact merge/deploy/remote proof is
+maintained in [issue #16](https://github.com/KirpaDmitriy/sport-programming-federation/issues/16), avoiding
+a self-referential documentation-only release after every deployment. The issue closes only after live
+verification and synchronization. Evidence below records baseline defects, not remaining code defects.
 
 | Wave | Status | Evidence in current code | Change and completion proof |
 | --- | --- | --- | --- |
@@ -55,8 +57,8 @@ in progress. Evidence below records the baseline defects; the execution log reco
 | 6. Integrations and bounded behavior | implemented | Source sync's running-job branch is unreachable because active_job_id is never persisted. LLM graph generation is per read; validate model output before public projection. Docker proxy timeout (30s) is shorter than LLM client timeout (45s). | Verify OAuth identity binding, error redaction, graph reference validity and employer anonymity; correct demonstrated issues. Align proxy deadlines, retain explicit simulation flags, avoid invented background-worker architecture. |
 | 7. Delivery gates and coverage | implemented | Cascade catches any auto-merge failure and immediately tries direct merge. No release-script fault gate. Public suite covers two flows; backend source/shortlist HTTP coverage is absent. | Require successful checks for the actual PR head, bound waits and fail closed. Add meaningful missing regressions and deployment checks. Verify path filters, exact deployed SHA and public behavior, not merely HTTP 200. |
 | 8. Structure and scaling | implemented | Service ~4,900 lines; storage ~3,200 lines; list paths load whole collections and several views repeat reads. | Identify hot-path duplication and separate coherent modules where it makes the fixed behaviors easier to maintain. Keep deterministic ordering/privacy and avoid premature distributed architecture; benchmark or query-count evidence before introducing caches or indexes. |
-| 9. Documentation and memories | open | Root README points to deleted `dima/mvp`; traceability still describes a Rust skeleton; backend checklist names a different server; infra rollback restarts mock; project memory repeats stale reset and branch instructions. | Update engineering docs in English and UI copy in Russian against final code; use archive tag, current stand, commands, real capabilities and verification limits. Refresh project-specific memories; preserve user preferences and historical session logs. |
-| 10. Final synchronization | open | Baseline is aligned; new work must pass the repository's feature -> personal -> dev -> main lane. | Atomic commits, PRs into danil, green cascade/deploy, stand release SHA equals upstream main, mirror/local fast-forward, clean working trees and no abandoned audit resources. Preserve permanent branch identities rather than force-resetting all branches to one SHA. |
+| 9. Documentation and memories | implemented | Root README points to deleted `dima/mvp`; traceability still describes a Rust skeleton; backend checklist names a different server; infra rollback restarts mock; project memory repeats stale reset and branch instructions. | Update engineering docs in English and UI copy in Russian against final code; use archive tag, current stand, commands, real capabilities and verification limits. Refresh project-specific memories; preserve user preferences and historical session logs. |
+| 10. Final synchronization | delivery record | Baseline is aligned; new work must pass the repository's feature -> personal -> dev -> main lane. | Atomic commits, PRs into danil, green cascade/deploy, stand release SHA equals upstream main, mirror/local fast-forward, clean working trees and no abandoned audit resources. Preserve permanent branch identities rather than force-resetting all branches to one SHA. |
 
 Backend changes were explicitly coordinated with Dima and authorized by the user during this audit.
 The ownership requirement in `AGENTS.md` is satisfied for the stabilization work.
@@ -69,12 +71,12 @@ The ownership requirement in `AGENTS.md` is satisfied for the stabilization work
 | Timestamp strings, missing indexes, silent enum defaults, startup seed race | Timestamp migration, indexes, parsers and seed advisory lock exist; verify migration behavior without rewriting 0001–0003. |
 | Polymorphic jobs.owner_id FK | Fixed by 0003 and fresh-candidate regression; preserve this ownership model. |
 | Grade cooldown ignored; seed candidate ID mismatch | Corrected in service/config/seed. |
-| No expiry cleanup, no SQL/connect deadlines | Sweep and connection/query deadlines now exist; check runtime and retention boundaries. |
-| No auth rate limit, default service restart limits | Host nginx limit and systemd hardening exist; inspect actual installed config, contract error behavior and container parity. |
-| Platform CI misses backend error-catalog changes | Backend paths now trigger platform workflow. |
-| Unbounded company fields/unsafe website | Current validator needs verification against contract cases before retaining the old finding. |
+| No expiry cleanup, no SQL/connect deadlines | Existing sweep and deadlines retained; only completed idempotency replays expire, never unresolved claims. |
+| No auth rate limit, default service restart limits | Service hardening retained; nginx auth-only limit returns immediate JSON 429 in both deployment configurations. |
+| Platform CI misses backend error-catalog changes | Platform, backend, Docker and infra gates now run on every PR/push. |
+| Unbounded company fields/unsafe website | Current company validator enforces field bounds and HTTP(S) URLs; existing HTTP tests cover invalid input. |
 | GitHub username/token binding | Confirmed and repaired: authenticated `/user` login must match the requested account. |
-| Request-derived integration errors/logs | Inspect current adapters and live log redaction; do not export raw tokens, cookies, addresses or session transcripts. |
+| Request-derived integration errors/logs | Integration errors use stable public messages; GitHub error_description is not reflected. Live logs are part of delivery verification; no raw secrets or session transcripts are published. |
 | Source active-job marker and cold/full-table reads | Inline execution is explicit; stale/consent checks protect source writes. Indexed single-profile reads replace hot full scans; collection ranking remains in memory. |
 | Real email/FSP/assessment/PDF parsing | Explicit demo boundaries; documentation must describe them accurately. |
 | Optional need graph UI, repository metrics UI, editable work modes | Separate product enhancements, not broken contract operations; keep their current limits explicit. |
@@ -100,6 +102,11 @@ The ownership requirement in `AGENTS.md` is satisfied for the stabilization work
 - React [effect race handling](https://react.dev/reference/react/useEffect) and TanStack
   [mutation behavior](https://github.com/TanStack/query/blob/main/docs/framework/react/guides/mutations.md):
   asynchronous completion order is not submission order; assessment saves use an explicit promise queue.
+
+- PostgreSQL 16 [restore semantics](https://www.postgresql.org/docs/16/app-pgrestore.html):
+  restore real archives into an isolated database with `--single-transaction --exit-on-error`.
+- Playwright [web-first assertions](https://playwright.dev/docs/best-practices): wait for the visible
+  result of challenge delivery before reading the mock mailbox; a click does not await that request.
 
 These are current primary-source pages checked against the pinned implementation. Mutable pages are not
 claimed as exact September 26 snapshots. No dependency was upgraded merely because a newer version exists. Recheck
@@ -137,6 +144,17 @@ tests without a new change or unresolved concern.
 - Local gates: `just verify` passed (24 mock tests, 34 component tests, type/lint/FSD/build/bundle checks).
   `just backend-check` passed (21 HTTP tests, 10 PostgreSQL repository tests plus domain/adapter tests).
   Release fault suite passed; actual nginx container probe verified immediate JSON 429 + retry hint and an
-  auth-only budget. Baseline browser suite: 34 passed, one intentional opt-in screenshot skip; final run pending.
-- Stand recheck: `c0d86d8` still active, `fsp-api`, `fsp-bifrost`, `fsp-cliproxy`, nginx and PostgreSQL healthy.
-  No unreviewed audit commit has been deployed. Delivery, installed backups and final memories remain open.
+  auth-only budget. Baseline and CI browser suites: 34 passed, one intentional opt-in screenshot skip.
+  A later local run exposed a pre-existing mailbox-read race in the deep-link test (33 passed, one failed).
+  Waiting for the code form fixes the ordering; all five auth cases passed three repetitions (15/15).
+  The unchanged full suite remains mandatory in CI on the final PR head.
+- Pre-release stand recheck: baseline `c0d86d8`, API/LLM/nginx/PostgreSQL healthy. Installed the backup
+  script/service/timer and restored a real archive into an isolated temporary database: 3 migrations,
+  10 accounts, 8 candidates and 2 invitations matched; archive mode 600, owner postgres. The temporary
+  database was removed; working data was not reset. The timer is enabled. Off-host backup is not configured.
+- Reconciled project docs and local Claude project memories; preserved attribution preferences and historical
+  transcripts. Repository handoff is in `.serena/`. Relative Markdown file links and `git diff --check` pass.
+- Final exact SHA, public browser/real-LLM proof, installed nginx checks and local/upstream/mirror equality
+  are recorded in [issue #16](https://github.com/KirpaDmitriy/sport-programming-federation/issues/16).
+  Its checked completion list and closure are the delivery evidence; this document does not assert a
+  deployment from a local test result.
