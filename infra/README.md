@@ -147,13 +147,13 @@ database is ready on first start.
 | Task | Command |
 | --- | --- |
 | Shell | `su - postgres -c "psql -d fsp"` or `psql "$DATABASE_URL"` after sourcing `db.env` |
-| Backup | `su - postgres -c "pg_dump -Fc fsp" > /var/backups/fsp-$(date +%F).dump` |
-| Restore | `su - postgres -c "pg_restore -d fsp --clean --if-exists /path/to.dump"` |
+| Backup | `systemctl start fsp-backup.service`; inspect the private archive and service journal |
+| Restore test | Use a new isolated database as described in [Backups and recovery](#backups-and-recovery) |
 | Rotate password | `ALTER ROLE fsp PASSWORD '…'` then update `DATABASE_URL` in `/etc/fsp/db.env` and restart `fsp-api` |
 
-Migrations are forward-only (`sqlx::migrate!` at startup); roll back by redeploying the previous release against
-a pre-migration backup. Schedule `pg_dump` (e.g. a daily cron or systemd timer) for real backups — the stand has
-no automated backup job yet.
+Migrations are forward-only (`sqlx::migrate!` at startup). A binary rollback must remain compatible with the
+current schema; restoring an earlier database is a separate recovery operation, never an automatic deploy step.
+The installed `fsp-backup.timer` provides daily local backups. Off-host retention remains an operator task.
 
 ## LLM chain
 
