@@ -19,6 +19,7 @@ const dt = str({ format: 'date-time' });
 const id = str({ minLength: 1, maxLength: 100, pattern: '^[A-Za-z0-9_.:-]+$' });
 const email = str({ format: 'email', maxLength: 254 });
 const url = str({ format: 'uri', maxLength: 2048 });
+const companyUrl = str({ format: 'uri', maxLength: 2048, pattern: '^https?://[^/?#\\s]+(?:[/?#][^\\s]*)?$' });
 const grade = en('junior', 'middle', 'senior');
 const specialization = en('backend', 'frontend', 'fullstack');
 const skillId = en('rust', 'postgresql', 'docker', 'redis', 'react');
@@ -260,7 +261,7 @@ export const schemas = {
     businessArea: str(),
     description: str(),
     contactEmail: email,
-    website: nullable(url),
+    website: nullable(companyUrl),
     readyToInvite: bool,
   }),
   CompanyPatch: obj(
@@ -269,7 +270,7 @@ export const schemas = {
       businessArea: str({ maxLength: 200 }),
       description: str({ maxLength: 4000 }),
       contactEmail: email,
-      website: nullable(url),
+      website: nullable(companyUrl),
     },
     [],
     { minProperties: 1 },

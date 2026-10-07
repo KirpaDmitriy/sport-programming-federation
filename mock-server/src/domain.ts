@@ -1250,6 +1250,13 @@ const handlers: Handlers = {
   },
   getCompany: ({ s, actor }) => companyDto(found(actor.companyId ? s.companies.get(actor.companyId) : undefined)),
   updateCompany: ({ s, actor, body }) => {
+    if (body.website) {
+      try {
+        if (!new URL(body.website).hostname) fail(400, 'validation_error', 'Запрос не соответствует контракту');
+      } catch {
+        fail(400, 'validation_error', 'Запрос не соответствует контракту');
+      }
+    }
     const company = found(actor.companyId ? s.companies.get(actor.companyId) : undefined);
     Object.assign(company, body);
     return companyDto(company);

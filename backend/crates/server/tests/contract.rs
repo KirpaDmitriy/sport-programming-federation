@@ -1250,3 +1250,132 @@ async fn candidate_bank_anonymous_and_sorted() {
             .all(|item| item["fspVerified"] == true)
     );
 }
+
+#[tokio::test]
+async fn company_patch_rejects_invalid_fields_without_changing_stored_data() {
+    let app = test_app().await;
+    let employer = login(&app, EMPLOYER, "employer").await;
+    let (_, before) = get(&app, "/api/v1/company", Some(&employer)).await;
+    for email in [
+        "x@",
+        "a..b@example.com",
+        "a@-example.com",
+        "name with space@example.com",
+    ] {
+        let (status, _) = send(
+            &app,
+            "POST",
+            "/api/v1/auth/email/challenges",
+            None,
+            json!({"email": email, "role": "candidate"}),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+    }
+    for patch in [
+        json!({"displayName": "x".repeat(121)}),
+        json!({"businessArea": "x".repeat(201)}),
+        json!({"description": "x".repeat(4001)}),
+        json!({"contactEmail": "not-an-address"}),
+        json!({"contactEmail": "x@"}),
+        json!({"website": "javascript:alert(1)"}),
+        json!({"website": "https://"}),
+        json!({"website": "https://example.com/".to_owned() + &"x".repeat(2048)}),
+        json!({"displayName": null, "description": "must not be stored"}),
+    ] {
+        let (status, body) = send(&app, "PATCH", "/api/v1/company", Some(&employer), patch).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+        assert_eq!(code(&body), "validation_error");
+    }
+    let (_, after) = get(&app, "/api/v1/company", Some(&employer)).await;
+    assert_eq!(after, before);
+    let (status, body) = send(&app, "PATCH", "/api/v1/company", Some(&employer), json!({
+        "displayName": "я".repeat(120), "businessArea": "x".repeat(200),
+        "description": "x".repeat(4000), "contactEmail": "hr+jobs@example.com", "website": "https://example.com/jobs"
+    })).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+}
+
+#[tokio::test]
+async fn nullable_patch_fields_clear_values_while_omission_preserves_them() {
+    let app = test_app().await;
+    let employer = login(&app, EMPLOYER, "employer").await;
+    let (status, _) = send(
+        &app,
+        "PATCH",
+        "/api/v1/company",
+        Some(&employer),
+        json!({"website": "https://example.com"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let (_, company) = send(
+        &app,
+        "PATCH",
+        "/api/v1/company",
+        Some(&employer),
+        json!({"description": "Updated"}),
+    )
+    .await;
+    assert_eq!(company["website"], "https://example.com");
+    let (status, body) = send(
+        &app,
+        "PATCH",
+        "/api/v1/company",
+        Some(&employer),
+        json!({"website": null}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let (_, company) = get(&app, "/api/v1/company", Some(&employer)).await;
+    assert!(company["website"].is_null());
+
+    let candidate = login(&app, CANDIDATE, "candidate").await;
+    let (status, _) = send(
+        &app,
+        "PATCH",
+        "/api/v1/me/profile",
+        Some(&candidate),
+        json!({"experienceMonths": 24}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let (_, profile) = send(
+        &app,
+        "PATCH",
+        "/api/v1/me/profile",
+        Some(&candidate),
+        json!({"teamRole": "Developer"}),
+    )
+    .await;
+    assert_eq!(profile["experienceMonths"], 24);
+    let (status, body) = send(
+        &app,
+        "PATCH",
+        "/api/v1/me/profile",
+        Some(&candidate),
+        json!({"experienceMonths": null}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let (_, profile) = get(&app, "/api/v1/me/profile", Some(&candidate)).await;
+    assert!(profile["experienceMonths"].is_null());
+    let (status, _) = send(
+        &app,
+        "PATCH",
+        "/api/v1/me/profile",
+        Some(&candidate),
+        json!({"name": null, "teamRole": "Ignored"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    let (status, _) = send(
+        &app,
+        "PATCH",
+        "/api/v1/needs/need-001",
+        Some(&employer),
+        json!({"title": "Ignored", "salary": null}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}

@@ -120,15 +120,25 @@ pub struct GradeEligibilityView {
 #[derive(Debug, Default, Clone, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProfilePatch {
+    #[serde(default, deserialize_with = "present_patch_value")]
     pub name: Option<String>,
+    #[serde(default, deserialize_with = "present_patch_value")]
     pub industry: Option<String>,
+    #[serde(default, deserialize_with = "present_patch_value")]
     pub specialization: Option<Specialization>,
+    #[serde(default, deserialize_with = "present_patch_value")]
     pub selected_grade: Option<Grade>,
+    #[serde(default, deserialize_with = "present_patch_value")]
     pub stack: Option<Vec<String>>,
+    #[serde(default, deserialize_with = "present_patch_value")]
     pub team_role: Option<String>,
+    #[serde(default, deserialize_with = "present_patch_value")]
     pub experience_months: Option<Option<u32>>,
+    #[serde(default, deserialize_with = "present_patch_value")]
     pub experience: Option<String>,
+    #[serde(default, deserialize_with = "present_patch_value")]
     pub soft_skills: Option<Vec<String>>,
+    #[serde(default, deserialize_with = "present_patch_value")]
     pub consents: Option<fsp_domain::Consents>,
 }
 
@@ -162,10 +172,15 @@ impl From<Company> for CompanyView {
 #[derive(Debug, Default, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CompanyPatch {
+    #[serde(default, deserialize_with = "present_patch_value")]
     pub display_name: Option<String>,
+    #[serde(default, deserialize_with = "present_patch_value")]
     pub business_area: Option<String>,
+    #[serde(default, deserialize_with = "present_patch_value")]
     pub description: Option<String>,
+    #[serde(default, deserialize_with = "present_patch_value")]
     pub contact_email: Option<String>,
+    #[serde(default, deserialize_with = "present_patch_value")]
     pub website: Option<Option<String>>,
 }
 
@@ -655,12 +670,19 @@ pub struct NeedInput {
 #[derive(Debug, Default, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct NeedPatch {
+    #[serde(default, deserialize_with = "present_patch_value")]
     pub title: Option<String>,
+    #[serde(default, deserialize_with = "present_patch_value")]
     pub specialization: Option<Specialization>,
+    #[serde(default, deserialize_with = "present_patch_value")]
     pub grade: Option<Grade>,
+    #[serde(default, deserialize_with = "present_patch_value")]
     pub work_mode: Option<String>,
+    #[serde(default, deserialize_with = "present_patch_value")]
     pub salary: Option<SalaryInput>,
+    #[serde(default, deserialize_with = "present_patch_value")]
     pub description: Option<String>,
+    #[serde(default, deserialize_with = "present_patch_value")]
     pub requirements: Option<Vec<RequirementInput>>,
 }
 
@@ -1089,4 +1111,14 @@ pub struct GraphEdgeView {
     pub from: String,
     pub to: String,
     pub relation: String,
+}
+
+// Missing fields use the default outer None. Present values deserialize the
+// inner type, preserving explicit null only for nullable contract properties.
+fn present_patch_value<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    T::deserialize(deserializer).map(Some)
 }

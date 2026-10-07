@@ -360,7 +360,8 @@
       "method": "PATCH",
       "path": "/api/v1/company",
       "observedStatuses": [
-        200
+        200,
+        400
       ]
     },
     {
@@ -395,7 +396,8 @@
       "method": "PATCH",
       "path": "/api/v1/needs/{needId}",
       "observedStatuses": [
-        200
+        200,
+        400
       ]
     },
     {

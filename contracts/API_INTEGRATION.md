@@ -60,6 +60,10 @@ which is why nginx sends `Host: 127.0.0.1:4010`; that rule belongs to the mock.
 - The frontend sends only generated, typed requests (`openapi-fetch` with the generated `paths`); it never adds actor
   or company IDs as an authorization shortcut.
 
+Company websites accept only absolute HTTP/HTTPS URLs (up to 2,048 characters). Company display names,
+business areas and descriptions are bounded to 120, 200 and 4,000 characters. For PATCH, omission keeps
+a value; explicit `null` clears `website` and `experienceMonths`. Other patch properties reject `null`.
+
 ## Errors
 
 Every error body is `{ code, message, requestId, details }` and every response carries `X-Request-Id`. Behavior

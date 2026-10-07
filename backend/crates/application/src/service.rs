@@ -158,7 +158,7 @@ impl PlatformService {
         input: EmailChallengeInput,
     ) -> Result<EmailChallengeView, ApplicationError> {
         let email = input.email.trim().to_lowercase();
-        if !email.contains('@') || email.len() > 254 {
+        if !valid_email(&input.email) {
             return Err(ApplicationError::new(
                 400,
                 "validation_error",
@@ -3955,7 +3955,66 @@ fn validate_company_patch(patch: &CompanyPatch) -> Result<(), ApplicationError> 
     if !has_property {
         return Err(validation("Передайте хотя бы одно поле компании"));
     }
+    if patch
+        .display_name
+        .as_ref()
+        .is_some_and(|value| value.is_empty() || value.chars().count() > 120)
+        || patch
+            .business_area
+            .as_ref()
+            .is_some_and(|value| value.chars().count() > 200)
+        || patch
+            .description
+            .as_ref()
+            .is_some_and(|value| value.chars().count() > 4000)
+    {
+        return Err(validation("Проверьте длину полей компании"));
+    }
+    if patch
+        .contact_email
+        .as_deref()
+        .is_some_and(|value| !valid_email(value))
+    {
+        return Err(validation("Проверьте адрес электронной почты"));
+    }
+    if let Some(Some(value)) = &patch.website {
+        let valid = value.len() <= 2048
+            && (value.starts_with("https://") || value.starts_with("http://"))
+            && !value
+                .chars()
+                .any(|ch| ch.is_whitespace() || ch.is_control())
+            && value
+                .split_once("://")
+                .is_some_and(|(_, authority)| !authority.starts_with('/'))
+            && url::Url::parse(value).is_ok_and(|url| url.has_host());
+        if !valid {
+            return Err(validation("Укажите корректный HTTP(S)-адрес сайта"));
+        }
+    }
     Ok(())
+}
+
+// Matches the ASCII dot-atom address format used by the contract's Ajv validator.
+fn valid_email(value: &str) -> bool {
+    let Some((local, domain)) = value.split_once('@') else {
+        return false;
+    };
+    value.len() <= 254
+        && local.split('.').all(|atom| {
+            !atom.is_empty()
+                && atom
+                    .bytes()
+                    .all(|ch| ch.is_ascii_alphanumeric() || b"!#$%&'*+/=?^_`{|}~-".contains(&ch))
+        })
+        && domain.contains('.')
+        && domain.split('.').all(|label| {
+            !label.is_empty()
+                && label.as_bytes()[0].is_ascii_alphanumeric()
+                && label.as_bytes()[label.len() - 1].is_ascii_alphanumeric()
+                && label
+                    .bytes()
+                    .all(|ch| ch.is_ascii_alphanumeric() || ch == b'-')
+        })
 }
 
 fn unique_count(values: &[String]) -> usize {

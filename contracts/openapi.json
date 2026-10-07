@@ -13708,7 +13708,8 @@
               {
                 "type": "string",
                 "format": "uri",
-                "maxLength": 2048
+                "maxLength": 2048,
+                "pattern": "^https?://[^/?#\\s]+(?:[/?#][^\\s]*)?$"
               },
               {
                 "type": "null"
@@ -13756,7 +13757,8 @@
               {
                 "type": "string",
                 "format": "uri",
-                "maxLength": 2048
+                "maxLength": 2048,
+                "pattern": "^https?://[^/?#\\s]+(?:[/?#][^\\s]*)?$"
               },
               {
                 "type": "null"
