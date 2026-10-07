@@ -189,6 +189,79 @@ const EMPLOYER: &str = "hr@sever-tech.example";
 const CANDIDATE: &str = "candidate031@example.com";
 const CANDIDATE_JUNIOR: &str = "alexey@example.com";
 
+/// Regression: a lazily-registered candidate completes the assessment flow.
+/// Seeded accounts reuse the candidate id as the account id, so job writes
+/// keyed by candidate_id only fail for fresh `actor-*`/`candidate-*` pairs —
+/// this exercises the path the seeded fixtures cannot.
+#[tokio::test]
+async fn fresh_candidate_completes_assessment() {
+    let app = test_app().await;
+    let cookie = login(&app, "newcomer@example.com", "candidate").await;
+    let (status, profile) = send(
+        &app,
+        "PATCH",
+        "/api/v1/me/profile",
+        Some(&cookie),
+        json!({
+            "name": "Новый Кандидат", "selectedGrade": "junior",
+            "stack": ["rust"], "experience": "Учебные проекты.",
+            "teamRole": "Разработчик",
+            "consents": {"processing": true, "publication": true}
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{profile}");
+    assert_eq!(profile["onboarding"]["questionnaireComplete"], true);
+    assert_eq!(
+        profile["assessmentEligibility"]["selectedReason"],
+        Value::Null
+    );
+    let (status, assessment) = send_keyed(
+        &app,
+        "POST",
+        "/api/v1/me/assessments",
+        Some(&cookie),
+        "fresh-assess-01",
+        json!({"specialization": "backend", "grade": "junior"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{assessment}");
+    let assessment_id = assessment["id"].as_str().unwrap().to_owned();
+    let (status, body) = send(
+        &app,
+        "PUT",
+        &format!("/api/v1/me/assessments/{assessment_id}/answer"),
+        Some(&cookie),
+        json!({"code": "pub fn create_order() {}", "explanation": "Ключ и заказ в одной транзакции.", "externalAiUsed": false}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let (status, _, submit) = call(
+        &app,
+        keyed_request(
+            "POST",
+            &format!("/api/v1/me/assessments/{assessment_id}/submit"),
+            Some(&cookie),
+            "fresh-submit-01",
+            None,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::ACCEPTED, "{submit}");
+    let (status, job) = get(
+        &app,
+        &format!("/api/v1/jobs/{}", submit["id"].as_str().unwrap()),
+        Some(&cookie),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(job["status"], "succeeded");
+    let (status, profile) = get(&app, "/api/v1/me/profile", Some(&cookie)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(profile["verifiedGrade"], "junior");
+    assert_eq!(profile["verifiedSpecialization"], "backend");
+}
+
 #[tokio::test]
 async fn transport_envelope_and_boundaries() {
     let app = test_app().await;
