@@ -37,8 +37,8 @@ pub enum IdempotencyClaim {
     Execute,
     /// A finished response is stored; the caller must fingerprint-check it.
     Stored(Box<StoredIdempotentResponse>),
-    /// A concurrent request with the same key is still executing; the caller
-    /// should wait briefly and re-claim.
+    /// An unresolved legacy claim exists; its business effect is unknown.
+    /// Refuse execution instead of taking over by age.
     InFlight,
 }
 
@@ -311,8 +311,9 @@ pub trait PlatformRepository: Send + Sync {
 
     /// Claims an idempotency scope. `Execute` — this caller runs the command;
     /// `Stored` — a finished response exists (fingerprint-check it);
-    /// `InFlight` — a concurrent request is executing, wait and re-claim.
-    /// Running rows older than ~2 minutes are reclaimed as crashed.
+    /// `InFlight` — unresolved legacy work, execution must be refused.
+    /// Only valid on a transaction. Concurrent callers wait on its scope lock;
+    /// business writes and `idempotency_finish` must use the same unit of work.
     async fn idempotency_claim(
         &self,
         scope: &str,
@@ -324,9 +325,6 @@ pub trait PlatformRepository: Send + Sync {
         status: u16,
         body: &str,
     ) -> Result<(), RepositoryError>;
-    /// Releases a `running` claim whose command failed: the key becomes
-    /// claimable again instead of sitting out the stale-reclaim window.
-    async fn idempotency_abort(&self, scope: &str) -> Result<(), RepositoryError>;
 
     /// Periodic retention sweep: deletes expired sessions, challenges and
     /// OAuth states plus finished idempotency rows older than a day.
@@ -343,6 +341,9 @@ pub trait PlatformRepository: Send + Sync {
 /// rolls back.
 #[async_trait]
 pub trait RepositoryTransaction: PlatformRepository {
+    /// A repository view sharing this transaction, for composed application commands.
+    /// It becomes unusable after commit; dropping all views rolls back uncommitted work.
+    fn share(&self) -> std::sync::Arc<dyn PlatformRepository>;
     async fn commit(self: Box<Self>) -> Result<(), RepositoryError>;
 }
 

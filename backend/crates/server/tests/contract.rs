@@ -851,8 +851,20 @@ async fn idempotency_replays_and_conflicts() {
             Some(body),
         )
     };
-    let (status, _, first) = call(&app, invite("idem-key-00001", body.clone())).await;
+    let (first_call, second_call) = tokio::join!(
+        call(&app, invite("idem-key-00001", body.clone())),
+        call(&app, invite("idem-key-00001", body.clone())),
+    );
+    let ((status, _, first), (second_status, headers, second)) =
+        if first_call.1.contains_key("x-idempotent-replay") {
+            (second_call, first_call)
+        } else {
+            (first_call, second_call)
+        };
     assert_eq!(status, StatusCode::CREATED, "{first}");
+    assert_eq!(second_status, StatusCode::CREATED, "{second}");
+    assert_eq!(first, second);
+    assert_eq!(headers.get("x-idempotent-replay").unwrap(), "true");
     let (status, headers, replay) = call(&app, invite("idem-key-00001", body.clone())).await;
     assert_eq!(status, StatusCode::CREATED);
     assert_eq!(replay["id"], first["id"]);

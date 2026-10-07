@@ -108,3 +108,7 @@ tests without a new change or unresolved concern.
   `429`). Failed attempts now commit, issuance/verification serialize per email in PostgreSQL, and
   the shared live-challenge budget is mirrored in the mock. Three focused PostgreSQL HTTP tests
   pass, including parallel registration; all 24 mock tests pass.
+- Command atomicity: five commands now share the transaction that claims the idempotency key and
+  stores the replay response, in a dedicated `service/commands.rs` module. Parallel HTTP requests
+  return the same invitation; a forced serialization failure rolls back both the invitation and
+  its claim, and retry succeeds once. No timed takeover of unresolved claims remains.

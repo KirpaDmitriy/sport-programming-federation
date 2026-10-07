@@ -27,12 +27,14 @@ use tokio::sync::Mutex;
 
 /// Where repository calls run: either pooled one-shot connections or a shared
 /// unit-of-work transaction. `transaction()` hands out the `Tx` variant.
+#[derive(Clone)]
 enum Conn {
     Pool(PgPool),
     Tx(Arc<Mutex<Option<Transaction<'static, Postgres>>>>),
 }
 
 /// PostgreSQL implementation of [`PlatformRepository`].
+#[derive(Clone)]
 pub struct PostgresRepository {
     conn: Conn,
 }
@@ -335,6 +337,11 @@ impl PlatformRepository for PostgresRepository {
         scope: &str,
         fingerprint: &str,
     ) -> Result<IdempotencyClaim, RepositoryError> {
+        if !matches!(self.conn, Conn::Tx(_)) {
+            return Err(RepositoryError::Storage(
+                "idempotency requires a transaction".into(),
+            ));
+        }
         let mut conn = self.conn().await?;
         ops::idempotency_claim(conn.get()?, scope, fingerprint).await
     }
@@ -345,13 +352,13 @@ impl PlatformRepository for PostgresRepository {
         status: u16,
         body: &str,
     ) -> Result<(), RepositoryError> {
+        if !matches!(self.conn, Conn::Tx(_)) {
+            return Err(RepositoryError::Storage(
+                "idempotency requires a transaction".into(),
+            ));
+        }
         let mut conn = self.conn().await?;
         ops::idempotency_finish(conn.get()?, scope, status, body).await
-    }
-
-    async fn idempotency_abort(&self, scope: &str) -> Result<(), RepositoryError> {
-        let mut conn = self.conn().await?;
-        ops::idempotency_abort(conn.get()?, scope).await
     }
 
     async fn sweep_expired(&self, now: &str) -> Result<u64, RepositoryError> {
@@ -857,10 +864,6 @@ impl PlatformRepository for TxRepository {
         self.repo.idempotency_finish(scope, status, body).await
     }
 
-    async fn idempotency_abort(&self, scope: &str) -> Result<(), RepositoryError> {
-        self.repo.idempotency_abort(scope).await
-    }
-
     async fn sweep_expired(&self, now: &str) -> Result<u64, RepositoryError> {
         self.repo.sweep_expired(now).await
     }
@@ -1214,6 +1217,10 @@ impl PlatformRepository for TxRepository {
 
 #[async_trait::async_trait]
 impl RepositoryTransaction for TxRepository {
+    fn share(&self) -> Arc<dyn PlatformRepository> {
+        Arc::new(self.repo.clone())
+    }
+
     async fn commit(self: Box<Self>) -> Result<(), RepositoryError> {
         let tx = self
             .tx
@@ -1228,88 +1235,43 @@ impl RepositoryTransaction for TxRepository {
 mod ops {
     use super::*;
 
-    /// Atomically claims an idempotency scope. Inserts a `running` row; when the
-    /// scope exists, returns the stored response (`done`), `InFlight` for a fresh
-    /// concurrent claim, or reclaims a `running` row abandoned for two minutes —
-    /// the window in which a crashed worker's marker is safe to take over.
+    /// Claims and completes inside the caller's transaction. A process crash
+    /// rolls back the claim and the command together. The lock also serializes
+    /// the absent-row case without stealing an active owner's work.
     pub(super) async fn idempotency_claim(
         conn: &mut PgConnection,
         scope: &str,
         fingerprint: &str,
     ) -> Result<IdempotencyClaim, RepositoryError> {
-        let claimed = sqlx::query(
-            "INSERT INTO idempotency_keys(scope,fingerprint,state,created_at) \
-         VALUES($1,$2,'running',now()) ON CONFLICT(scope) DO NOTHING RETURNING scope",
-        )
-        .bind(scope)
-        .bind(fingerprint)
-        .fetch_optional(&mut *conn)
-        .await
-        .map_err(storage)?;
-        if claimed.is_some() {
-            return Ok(IdempotencyClaim::Execute);
-        }
-        let row = sqlx::query(
-            "SELECT fingerprint,status,body_json,state,\
-         created_at < now() - interval '120 seconds' AS stale \
-         FROM idempotency_keys WHERE scope=$1",
-        )
-        .bind(scope)
-        .fetch_optional(&mut *conn)
-        .await
-        .map_err(storage)?;
-        let Some(row) = row else {
-            // The loser of a delete-reclaim race: the row vanished between the
-            // conflicted insert and this read, so take the scope ourselves.
-            return Ok(IdempotencyClaim::Execute);
-        };
-        let state: String = row.try_get("state").map_err(storage)?;
-        if state == "done" {
-            return Ok(IdempotencyClaim::Stored(Box::new(
-                StoredIdempotentResponse {
-                    fingerprint: row
-                        .try_get::<Option<String>, _>("fingerprint")
-                        .map_err(storage)?
-                        .unwrap_or_default(),
-                    status: row
-                        .try_get::<Option<i32>, _>("status")
-                        .map_err(storage)?
-                        .unwrap_or_default()
-                        .try_into()
-                        .map_err(|_| RepositoryError::Storage("invalid status".into()))?,
-                    body: row
-                        .try_get::<Option<String>, _>("body_json")
-                        .map_err(storage)?
-                        .unwrap_or_default(),
-                },
-            )));
-        }
-        if row.try_get::<bool, _>("stale").map_err(storage)? {
-            let reclaimed = sqlx::query(
-                "DELETE FROM idempotency_keys WHERE scope=$1 AND state='running' \
-             AND created_at < now() - interval '120 seconds'",
-            )
+        sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended('idempotency:' || $1, 0))")
             .bind(scope)
             .execute(&mut *conn)
             .await
-            .map_err(storage)?
-            .rows_affected();
-            if reclaimed == 1 {
-                let claimed = sqlx::query(
-                    "INSERT INTO idempotency_keys(scope,fingerprint,state,created_at) \
-                 VALUES($1,$2,'running',now()) ON CONFLICT(scope) DO NOTHING RETURNING scope",
-                )
-                .bind(scope)
-                .bind(fingerprint)
-                .fetch_optional(&mut *conn)
-                .await
-                .map_err(storage)?;
-                if claimed.is_some() {
-                    return Ok(IdempotencyClaim::Execute);
-                }
+            .map_err(storage)?;
+        let row = sqlx::query(
+            "SELECT fingerprint,status,body_json,state FROM idempotency_keys WHERE scope=$1 FOR UPDATE",
+        ).bind(scope).fetch_optional(&mut *conn).await.map_err(storage)?;
+        if let Some(row) = row {
+            if row.try_get::<String, _>("state").map_err(storage)? != "done" {
+                // A visible running row can only come from the old release.
+                // Its business effect is unknown: never replay it by guessing.
+                return Ok(IdempotencyClaim::InFlight);
             }
+            return Ok(IdempotencyClaim::Stored(Box::new(
+                StoredIdempotentResponse {
+                    fingerprint: row.try_get("fingerprint").map_err(storage)?,
+                    status: row
+                        .try_get::<i32, _>("status")
+                        .map_err(storage)?
+                        .try_into()
+                        .map_err(|_| RepositoryError::Storage("invalid status".into()))?,
+                    body: row.try_get("body_json").map_err(storage)?,
+                },
+            )));
         }
-        Ok(IdempotencyClaim::InFlight)
+        sqlx::query("INSERT INTO idempotency_keys(scope,fingerprint,state,created_at) VALUES($1,$2,'running',now())")
+            .bind(scope).bind(fingerprint).execute(conn).await.map_err(storage)?;
+        Ok(IdempotencyClaim::Execute)
     }
 
     pub(super) async fn idempotency_finish(
@@ -1318,27 +1280,18 @@ mod ops {
         status: u16,
         body: &str,
     ) -> Result<(), RepositoryError> {
-        sqlx::query(
-            "UPDATE idempotency_keys SET state='done',status=$2,body_json=$3 WHERE scope=$1",
+        let changed = sqlx::query(
+            "UPDATE idempotency_keys SET state='done',status=$2,body_json=$3 WHERE scope=$1 AND state='running'",
         )
         .bind(scope)
         .bind(i32::from(status))
         .bind(body)
         .execute(&mut *conn)
         .await
-        .map_err(storage)?;
-        Ok(())
-    }
-
-    pub(super) async fn idempotency_abort(
-        conn: &mut PgConnection,
-        scope: &str,
-    ) -> Result<(), RepositoryError> {
-        sqlx::query("DELETE FROM idempotency_keys WHERE scope=$1 AND state='running'")
-            .bind(scope)
-            .execute(&mut *conn)
-            .await
-            .map_err(storage)?;
+        .map_err(storage)?.rows_affected();
+        if changed != 1 {
+            return Err(RepositoryError::NotFound);
+        }
         Ok(())
     }
 
@@ -1616,8 +1569,8 @@ mod ops {
         Ok(())
     }
 
-    /// Deletes expired sessions, challenges and OAuth states plus finished or
-    /// abandoned idempotency rows; returns the number of rows removed.
+    /// Deletes expired sessions, challenges and OAuth states plus finished
+    /// idempotency rows; legacy unresolved claims require investigation.
     pub(super) async fn sweep_expired(
         conn: &mut PgConnection,
         now: &str,
@@ -1628,9 +1581,7 @@ mod ops {
             "DELETE FROM sessions WHERE expires_at<=$1",
             "DELETE FROM challenges WHERE expires_at<=$1",
             "DELETE FROM oauth_states WHERE expires_at<=$1",
-            "DELETE FROM idempotency_keys WHERE \
-         (state='done' AND created_at < $1 - interval '1 day') OR \
-         (state='running' AND created_at < $1 - interval '2 minutes')",
+            "DELETE FROM idempotency_keys WHERE state='done' AND created_at < $1 - interval '1 day'",
         ] {
             removed += sqlx::query(statement)
                 .bind(now_ts)

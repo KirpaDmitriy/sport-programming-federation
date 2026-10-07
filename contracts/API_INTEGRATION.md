@@ -86,6 +86,11 @@ scopes a key to actor, operation and path: the same key with the same body repla
 key per intended command, reuses it when the same command is retried after a transport failure, and drops it once
 the server has answered.
 
+In Rust, the claim, command effects and serialized response commit in the same PostgreSQL transaction.
+Concurrent requests wait for the same scope and then replay or conflict. A failed command rolls back its
+claim and effects. Completed responses are retained for one day; an unresolved claim left by an older
+release fails closed and requires investigation rather than automatic execution based on its age.
+
 ## Background jobs
 
 PDF import, source sync, assessment checks and submission answer `202` with a `Job`

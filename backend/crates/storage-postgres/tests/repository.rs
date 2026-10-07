@@ -170,32 +170,112 @@ async fn seeded_recommendations_use_the_recorded_deterministic_order() {
 async fn idempotency_keys_round_trip_and_keep_the_first_response() {
     let (repository, _database) = repository().await;
 
-    // First claim wins the right to execute.
-    let claim = repository
+    let tx = repository.transaction().await.unwrap();
+    let claim = tx
         .idempotency_claim("actor:op:/path:key-0001", "{\"a\":1}")
         .await
-        .expect("claim works");
+        .unwrap();
     assert!(matches!(claim, IdempotencyClaim::Execute));
-    // A racing same-key request observes InFlight until the winner finishes.
-    let racing = repository
-        .idempotency_claim("actor:op:/path:key-0001", "{\"a\":1}")
+    let second = repository.transaction().await.unwrap();
+    // The competing transaction waits until both the effect and response commit.
+    let pending = second.idempotency_claim("actor:op:/path:key-0001", "{\"a\":1}");
+    tokio::pin!(pending);
+    assert!(
+        tokio::time::timeout(std::time::Duration::from_millis(100), &mut pending)
+            .await
+            .is_err()
+    );
+    tx.idempotency_finish("actor:op:/path:key-0001", 201, "{\"id\":\"one\"}")
         .await
-        .expect("claim works");
-    assert!(matches!(racing, IdempotencyClaim::InFlight));
-    repository
-        .idempotency_finish("actor:op:/path:key-0001", 201, "{\"id\":\"one\"}")
-        .await
-        .expect("response is stored");
-    let stored = repository
-        .idempotency_claim("actor:op:/path:key-0001", "{\"a\":1}")
-        .await
-        .expect("claim works");
-    let IdempotencyClaim::Stored(stored) = stored else {
+        .unwrap();
+    tx.commit().await.unwrap();
+    let IdempotencyClaim::Stored(stored) = pending.await.unwrap() else {
         panic!("finished scope replays the stored response");
     };
     assert_eq!(stored.fingerprint, "{\"a\":1}");
     assert_eq!(stored.status, 201);
     assert_eq!(stored.body, "{\"id\":\"one\"}");
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn idempotent_command_and_claim_roll_back_if_response_cannot_be_stored() {
+    struct Unserializable;
+    impl serde::Serialize for Unserializable {
+        fn serialize<S: serde::Serializer>(&self, _: S) -> Result<S::Ok, S::Error> {
+            Err(serde::ser::Error::custom(
+                "injected response serialization failure",
+            ))
+        }
+    }
+    let (repository, _database) = repository().await;
+    let repository = Arc::new(repository);
+    let service = PlatformService::new(repository.clone(), Arc::new(FixedDelivery));
+    service.initialize().await.unwrap();
+    let challenge = service
+        .request_challenge(EmailChallengeInput {
+            email: "hr@sever-tech.example".into(),
+            role: Role::Employer,
+        })
+        .await
+        .unwrap();
+    let (session, _) = service
+        .verify_email(EmailVerifyInput {
+            challenge_id: challenge.challenge_id,
+            code: "123456".into(),
+        })
+        .await
+        .unwrap();
+    let body = serde_json::json!({"candidateId":"candidate018", "needId":"need-001", "message":"Предложение"});
+    let context = || fsp_application::IdempotencyContext {
+        operation: "createInvitation",
+        path: "/api/v1/invitations",
+        key: "rollback-test",
+        body: &body,
+        status: 201,
+    };
+    let before = repository
+        .invitations(session.company_id.as_deref().unwrap())
+        .await
+        .unwrap()
+        .len();
+    let command_session = &session;
+    let input = serde_json::from_value(body.clone()).unwrap();
+    let result = service
+        .idempotent(&session, context(), |commands| async move {
+            commands.create_invitation(command_session, input).await?;
+            Ok(Unserializable)
+        })
+        .await;
+    assert!(matches!(result, Err(error) if error.code == "internal_error"));
+    assert_eq!(
+        repository
+            .invitations(session.company_id.as_deref().unwrap())
+            .await
+            .unwrap()
+            .len(),
+        before
+    );
+    let claims: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM idempotency_keys")
+        .fetch_one(repository.pool())
+        .await
+        .unwrap();
+    assert_eq!(claims, 0);
+    let input = serde_json::from_value(body.clone()).unwrap();
+    let result = service
+        .idempotent(&session, context(), |commands| async move {
+            commands.create_invitation(command_session, input).await
+        })
+        .await
+        .unwrap();
+    assert!(matches!(result, fsp_application::Idempotent::Fresh(_)));
+    assert_eq!(
+        repository
+            .invitations(session.company_id.as_deref().unwrap())
+            .await
+            .unwrap()
+            .len(),
+        before + 1
+    );
 }
 
 #[tokio::test(flavor = "current_thread")]

@@ -1094,6 +1094,7 @@ async fn create_application(
             "Запрос не соответствует контракту",
         )
     })?;
+    let command_session = &session;
     let outcome = state
         .service
         .idempotent(
@@ -1105,7 +1106,7 @@ async fn create_application(
                 body: &body,
                 status: StatusCode::CREATED.as_u16(),
             },
-            || state.service.create_application(&session, input),
+            |commands| async move { commands.create_application(command_session, input).await },
         )
         .await
         .map_err(api_error)?;
@@ -1173,6 +1174,7 @@ async fn respond_to_task(
         )
     })?;
     let path = format!("/api/v1/me/tasks/{task_id}/responses");
+    let command_session = &session;
     let outcome = state
         .service
         .idempotent(
@@ -1184,7 +1186,11 @@ async fn respond_to_task(
                 body: &body,
                 status: StatusCode::CREATED.as_u16(),
             },
-            || state.service.respond_to_task(&session, &task_id, input),
+            |commands| async move {
+                commands
+                    .respond_to_task(command_session, &task_id, input)
+                    .await
+            },
         )
         .await
         .map_err(api_error)?;
@@ -1220,6 +1226,7 @@ async fn start_assessment(
             "Запрос не соответствует контракту",
         )
     })?;
+    let command_session = &session;
     let outcome = state
         .service
         .idempotent(
@@ -1231,7 +1238,7 @@ async fn start_assessment(
                 body: &body,
                 status: StatusCode::CREATED.as_u16(),
             },
-            || state.service.start_assessment(&session, input),
+            |commands| async move { commands.start_assessment(command_session, input).await },
         )
         .await
         .map_err(api_error)?;
@@ -1309,6 +1316,7 @@ async fn submit_assessment(
     let session = authenticated(&state, &headers).await?;
     require_role(&session, "candidate")?;
     let path = format!("/api/v1/me/assessments/{assessment_id}/submit");
+    let command_session = &session;
     let outcome = state
         .service
         .idempotent(
@@ -1320,7 +1328,11 @@ async fn submit_assessment(
                 body: &serde_json::Value::Null,
                 status: StatusCode::ACCEPTED.as_u16(),
             },
-            || state.service.submit_assessment(&session, &assessment_id),
+            |commands| async move {
+                commands
+                    .submit_assessment(command_session, &assessment_id)
+                    .await
+            },
         )
         .await
         .map_err(api_error)?;
@@ -1609,6 +1621,7 @@ async fn create_invitation(
             "Запрос не соответствует контракту",
         )
     })?;
+    let command_session = &session;
     let outcome = state
         .service
         .idempotent(
@@ -1620,7 +1633,7 @@ async fn create_invitation(
                 body: &body,
                 status: StatusCode::CREATED.as_u16(),
             },
-            || state.service.create_invitation(&session, input),
+            |commands| async move { commands.create_invitation(command_session, input).await },
         )
         .await
         .map_err(api_error)?;
@@ -2263,10 +2276,6 @@ mod tests {
             _: u16,
             _: &str,
         ) -> Result<(), RepositoryError> {
-            Ok(())
-        }
-
-        async fn idempotency_abort(&self, _: &str) -> Result<(), RepositoryError> {
             Ok(())
         }
 
