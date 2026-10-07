@@ -40,7 +40,8 @@ pub struct EmailVerifyInput {
 #[derive(Debug, Clone)]
 pub struct PendingChallenge {
     pub id: String,
-    pub account_id: String,
+    pub email: String,
+    pub role: Role,
     pub code_hash: String,
     pub expires_at: String,
     pub attempts: u8,
@@ -116,7 +117,7 @@ pub struct GradeEligibilityView {
     pub reason: Option<&'static str>,
 }
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Clone, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProfilePatch {
     pub name: Option<String>,

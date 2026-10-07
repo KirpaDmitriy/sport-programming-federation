@@ -1,51 +1,127 @@
 //! PostgreSQL storage adapter for the platform repository port.
 //!
-//! One `PgPool` backs every operation; multi-statement units (challenge
-//! consumption, demo seeding) run in explicit transactions. JSON fields stay
-//! as text payloads because the SQL layer never inspects them, and RFC3339
-//! timestamps stay as text: their ISO form sorts correctly lexicographically.
+//! One `PgPool` backs every operation; multi-statement use cases share a
+//! `RepositoryTransaction` so partial commits are impossible. JSON fields stay
+//! as text payloads because the SQL layer never inspects them; timestamps are
+//! real `timestamptz` columns exchanged with the domain as RFC3339 strings.
 
 mod seed;
 
+use std::str::FromStr;
+use std::sync::Arc;
+use std::time::Duration;
+
+use chrono::{DateTime, SecondsFormat, Utc};
 use fsp_application::{
-    ConsumeChallenge, PendingChallenge, PlatformRepository, RepositoryError,
-    StoredIdempotentResponse,
+    ConsumeChallenge, IdempotencyClaim, PendingChallenge, PlatformRepository, RepositoryError,
+    RepositoryTransaction, StoredIdempotentResponse,
 };
 use fsp_domain::{
     Account, CandidateIndexRecord, CandidateProfile, Company, Consents, Grade, HiringNeedRecord,
     JobRecord, Role, SourceRecord, Specialization,
 };
 use serde::de::DeserializeOwned;
-use sqlx::Row;
-use sqlx::postgres::{PgPool, PgPoolOptions, PgRow};
+use sqlx::postgres::{PgConnectOptions, PgPool, PgPoolOptions, PgRow};
+use sqlx::{Connection, PgConnection, Postgres, Row, Transaction};
+use tokio::sync::Mutex;
 
+/// Where repository calls run: either pooled one-shot connections or a shared
+/// unit-of-work transaction. `transaction()` hands out the `Tx` variant.
+enum Conn {
+    Pool(PgPool),
+    Tx(Arc<Mutex<Option<Transaction<'static, Postgres>>>>),
+}
+
+/// PostgreSQL implementation of [`PlatformRepository`].
 pub struct PostgresRepository {
-    pool: PgPool,
+    conn: Conn,
+}
+
+/// A live transaction borrowed from the pool; exposes the full repository
+/// surface. `commit()` persists; dropping rolls the transaction back.
+struct TxRepository {
+    repo: PostgresRepository,
+    tx: Arc<Mutex<Option<Transaction<'static, Postgres>>>>,
+}
+
+/// Connection checkout backing one repository call: either a pooled
+/// connection or the lock guard of a unit-of-work transaction.
+enum ConnGuard<'a> {
+    Owned(sqlx::pool::PoolConnection<Postgres>),
+    Tx(tokio::sync::MutexGuard<'a, Option<Transaction<'static, Postgres>>>),
+}
+
+impl ConnGuard<'_> {
+    fn get(&mut self) -> Result<&mut PgConnection, RepositoryError> {
+        match self {
+            ConnGuard::Owned(conn) => Ok(conn),
+            ConnGuard::Tx(guard) => Ok(guard
+                .as_mut()
+                .ok_or_else(|| RepositoryError::Storage("transaction is finished".into()))?),
+        }
+    }
 }
 
 impl PostgresRepository {
-    /// Connects to `url` and applies every pending migration.
+    /// Connects to `url`, retries briefly so the service survives starting
+    /// alongside PostgreSQL, then applies every pending migration.
     pub async fn connect(url: &str) -> Result<Self, RepositoryError> {
-        let pool = PgPoolOptions::new()
-            .max_connections(8)
-            .connect(url)
-            .await
-            .map_err(storage)?;
+        let mut options = PgConnectOptions::from_str(url).map_err(storage)?;
+        options = options.options([
+            ("statement_timeout", "15s"),
+            ("idle_in_transaction_session_timeout", "30s"),
+        ]);
+        let mut attempt = 0;
+        let pool = loop {
+            attempt += 1;
+            match PgPoolOptions::new()
+                .max_connections(8)
+                .min_connections(1)
+                .acquire_timeout(Duration::from_secs(5))
+                .idle_timeout(Duration::from_secs(300))
+                .max_lifetime(Duration::from_secs(1800))
+                .connect_with(options.clone())
+                .await
+            {
+                Ok(pool) => break pool,
+                Err(error) if attempt < 10 => {
+                    tracing::warn!(?error, attempt, "postgres connect failed; retrying");
+                    tokio::time::sleep(Duration::from_secs(3)).await;
+                }
+                Err(error) => return Err(storage(error)),
+            }
+        };
         sqlx::migrate!("./migrations")
             .run(&pool)
             .await
             .map_err(|error| RepositoryError::Storage(error.to_string()))?;
-        Ok(Self { pool })
+        Ok(Self {
+            conn: Conn::Pool(pool),
+        })
+    }
+
+    /// The connection this repository view is bound to: a pooled checkout or
+    /// the shared unit-of-work transaction. `ConnGuard` derefs to
+    /// `&mut PgConnection` for the ops functions.
+    async fn conn(&self) -> Result<ConnGuard<'_>, RepositoryError> {
+        match &self.conn {
+            Conn::Pool(pool) => Ok(ConnGuard::Owned(pool.acquire().await.map_err(storage)?)),
+            Conn::Tx(state) => Ok(ConnGuard::Tx(state.lock().await)),
+        }
     }
 
     /// The underlying pool — used by tests for fixture inserts.
+    #[cfg(feature = "testing")]
     pub fn pool(&self) -> &PgPool {
-        &self.pool
+        match &self.conn {
+            Conn::Pool(pool) => pool,
+            Conn::Tx(_) => panic!("pool() is unavailable inside a transaction"),
+        }
     }
 
-    /// Creates an isolated `fsp_test_<uuid>` database against the admin
-    /// connection string `admin_url` (for example
-    /// `postgres://postgres:postgres@127.0.0.1:5432/postgres`). Idle test
+    /// Creates an isolated `fsp_test_<ts>_<uuid>` database against the admin
+    /// connection string `admin_url` (`FSP_TEST_DATABASE_URL`; the compose
+    /// `db` service default is documented in `.env.example`). Idle test
     /// databases left behind by earlier runs are reaped first; live tests keep
     /// at least one pooled connection so their database is never reaped.
     #[cfg(feature = "testing")]
@@ -57,7 +133,7 @@ impl PostgresRepository {
             .expect("test admin database accepts connections");
         let stale: Vec<String> = sqlx::query_scalar(
             "SELECT datname FROM pg_database d \
-             WHERE datname LIKE 'fsp_test_%' \
+             WHERE datname ~ '^fsp_test_[0-9]+_[0-9a-f]{32}$' \
              AND NOT EXISTS (SELECT 1 FROM pg_stat_activity a WHERE a.datname = d.datname)",
         )
         .fetch_all(&admin)
@@ -73,13 +149,14 @@ impl PostgresRepository {
             .expect("system clock")
             .as_secs() as i64;
         for stale_name in stale {
-            let created_at = stale_name
-                .strip_prefix("fsp_test_")
-                .and_then(|rest| rest.split('_').next())
-                .and_then(|ts| ts.parse::<i64>().ok());
-            match created_at {
-                Some(ts) if now - ts < STALE_SECS => continue,
-                _ => {}
+            let Some(rest) = stale_name.strip_prefix("fsp_test_") else {
+                continue;
+            };
+            let Ok(created_at) = rest.split('_').next().unwrap_or_default().parse::<i64>() else {
+                continue;
+            };
+            if now - created_at < STALE_SECS {
+                continue;
             }
             sqlx::query(&format!(
                 "DROP DATABASE IF EXISTS \"{stale_name}\" WITH (FORCE)"
@@ -109,7 +186,9 @@ impl PostgresRepository {
             .await
             .expect("test database runs migrations");
         (
-            Self { pool },
+            Self {
+                conn: Conn::Pool(pool),
+            },
             TestDatabase {
                 name,
                 url,
@@ -141,34 +220,1455 @@ const ASSESSMENT_COLUMNS: &str = "id,candidate_id,specialization,grade,status,ta
 const SHORTLIST_COLUMNS: &str = "id,company_id,title,members_json,created_at,updated_at";
 const DISCLOSURE_COLUMNS: &str =
     "candidate_id,company_id,invitation_id,application_id,granted_at,name,email,source_links_json";
+const CANDIDATE_INDEX_SELECT: &str = "SELECT c.id,c.alias,c.email,c.name,c.specialization,c.selected_grade,c.stack_json,\
+     c.team_role,c.experience_months,c.experience,c.soft_skills_json,c.processing_consent,\
+     c.publication_consent,c.verified_grade,c.verified_specialization,c.grade_confirmed_at,\
+     c.revision,c.updated_at,\
+     i.work_modes_json,i.available_for_offers,i.skills_json,i.source_kinds_json,\
+     i.fsp_verified,i.last_signal_at,\
+     (SELECT a.email_verified FROM accounts a WHERE a.candidate_id=c.id LIMIT 1) \
+     AS account_email_verified \
+     FROM candidates c LEFT JOIN candidate_index i ON i.candidate_id=c.id";
 
 #[async_trait::async_trait]
 impl PlatformRepository for PostgresRepository {
+    async fn transaction(&self) -> Result<Box<dyn RepositoryTransaction>, RepositoryError> {
+        let Conn::Pool(pool) = &self.conn else {
+            return Err(RepositoryError::Storage(
+                "nested transactions are not supported".into(),
+            ));
+        };
+        let tx = pool.begin().await.map_err(storage)?;
+        let shared = Arc::new(Mutex::new(Some(tx)));
+        Ok(Box::new(TxRepository {
+            repo: PostgresRepository {
+                conn: Conn::Tx(Arc::clone(&shared)),
+            },
+            tx: shared,
+        }))
+    }
+
+    async fn candidate_index(
+        &self,
+        candidate_id: &str,
+    ) -> Result<Option<CandidateIndexRecord>, RepositoryError> {
+        let mut conn = self.conn().await?;
+        ops::load_candidate_index(conn.get()?, candidate_id).await
+    }
+
+    async fn task_response_for(
+        &self,
+        candidate_id: &str,
+        task_id: &str,
+    ) -> Result<Option<fsp_domain::TaskResponseRecord>, RepositoryError> {
+        let mut conn = self.conn().await?;
+        ops::task_response_for(conn.get()?, candidate_id, task_id).await
+    }
+
+    async fn review_task_response(
+        &self,
+        response: &fsp_domain::TaskResponseRecord,
+    ) -> Result<(), RepositoryError> {
+        let mut conn = self.conn().await?;
+        ops::review_task_response(conn.get()?, response).await
+    }
+
+    async fn save_candidate_guarded(
+        &self,
+        profile: &CandidateProfile,
+        expected_revision: u64,
+    ) -> Result<(), RepositoryError> {
+        let mut conn = self.conn().await?;
+        ops::save_candidate_guarded(conn.get()?, profile, expected_revision).await
+    }
+
+    async fn save_need_guarded(
+        &self,
+        need: &HiringNeedRecord,
+        expected_revision: u64,
+    ) -> Result<(), RepositoryError> {
+        let mut conn = self.conn().await?;
+        ops::save_need_guarded(conn.get()?, need, expected_revision).await
+    }
+
+    async fn save_invitation_guarded(
+        &self,
+        invitation: &fsp_domain::InvitationRecord,
+        expected_statuses: &[fsp_domain::InteractionStatus],
+    ) -> Result<(), RepositoryError> {
+        let mut conn = self.conn().await?;
+        ops::save_invitation_guarded(conn.get()?, invitation, expected_statuses).await
+    }
+
+    async fn save_application_guarded(
+        &self,
+        application: &fsp_domain::ApplicationRecord,
+        expected_statuses: &[fsp_domain::InteractionStatus],
+    ) -> Result<(), RepositoryError> {
+        let mut conn = self.conn().await?;
+        ops::save_application_guarded(conn.get()?, application, expected_statuses).await
+    }
+
+    async fn save_assessment_guarded(
+        &self,
+        assessment: &fsp_domain::AssessmentRecord,
+        expected_revision: u64,
+        expected_statuses: &[fsp_domain::AssessmentStatus],
+    ) -> Result<(), RepositoryError> {
+        let mut conn = self.conn().await?;
+        ops::save_assessment_guarded(
+            conn.get()?,
+            assessment,
+            expected_revision,
+            expected_statuses,
+        )
+        .await
+    }
+
+    async fn save_job_unconfirmed(&self, job: &JobRecord) -> Result<(), RepositoryError> {
+        let mut conn = self.conn().await?;
+        ops::save_job_unconfirmed(conn.get()?, job).await
+    }
+
+    async fn idempotency_claim(
+        &self,
+        scope: &str,
+        fingerprint: &str,
+    ) -> Result<IdempotencyClaim, RepositoryError> {
+        let mut conn = self.conn().await?;
+        ops::idempotency_claim(conn.get()?, scope, fingerprint).await
+    }
+
+    async fn idempotency_finish(
+        &self,
+        scope: &str,
+        status: u16,
+        body: &str,
+    ) -> Result<(), RepositoryError> {
+        let mut conn = self.conn().await?;
+        ops::idempotency_finish(conn.get()?, scope, status, body).await
+    }
+
+    async fn idempotency_abort(&self, scope: &str) -> Result<(), RepositoryError> {
+        let mut conn = self.conn().await?;
+        ops::idempotency_abort(conn.get()?, scope).await
+    }
+
+    async fn sweep_expired(&self, now: &str) -> Result<u64, RepositoryError> {
+        let mut conn = self.conn().await?;
+        ops::sweep_expired(conn.get()?, now).await
+    }
+
+    async fn seed_demo(&self, now: &str) -> Result<(), RepositoryError> {
+        let mut conn = self.conn().await?;
+        ops::seed_demo(conn.get()?, now).await
+    }
+
     async fn account_by_email(&self, email: &str) -> Result<Option<Account>, RepositoryError> {
+        let mut conn = self.conn().await?;
+        ops::account_by_email(conn.get()?, email).await
+    }
+
+    async fn create_account(&self, value: &Account, now: &str) -> Result<(), RepositoryError> {
+        let mut conn = self.conn().await?;
+        ops::create_account(conn.get()?, value, now).await
+    }
+
+    async fn create_candidate(&self, value: &CandidateProfile) -> Result<(), RepositoryError> {
+        let mut conn = self.conn().await?;
+        ops::create_candidate(conn.get()?, value).await
+    }
+
+    async fn create_company(&self, value: &Company) -> Result<(), RepositoryError> {
+        let mut conn = self.conn().await?;
+        ops::create_company(conn.get()?, value).await
+    }
+
+    async fn issue_challenge(&self, challenge: &PendingChallenge) -> Result<bool, RepositoryError> {
+        let mut conn = self.conn().await?;
+        ops::issue_challenge(conn.get()?, challenge).await
+    }
+
+    async fn mark_email_verified(&self, account_id: &str) -> Result<(), RepositoryError> {
+        let mut conn = self.conn().await?;
+        ops::mark_email_verified(conn.get()?, account_id).await
+    }
+
+    async fn ping(&self) -> Result<(), RepositoryError> {
+        let mut conn = self.conn().await?;
+        ops::ping(conn.get()?).await
+    }
+
+    async fn consume_challenge(
+        &self,
+        id: &str,
+        code_hash: &str,
+        now: &str,
+    ) -> Result<(ConsumeChallenge, Option<PendingChallenge>), RepositoryError> {
+        let mut conn = self.conn().await?;
+        ops::consume_challenge(conn.get()?, id, code_hash, now).await
+    }
+
+    async fn create_session(
+        &self,
+        token_hash: &str,
+        account_id: &str,
+        expires_at: &str,
+    ) -> Result<(), RepositoryError> {
+        let mut conn = self.conn().await?;
+        ops::create_session(conn.get()?, token_hash, account_id, expires_at).await
+    }
+
+    async fn account_for_session(
+        &self,
+        token_hash: &str,
+        now: &str,
+    ) -> Result<Option<Account>, RepositoryError> {
+        let mut conn = self.conn().await?;
+        ops::account_for_session(conn.get()?, token_hash, now).await
+    }
+
+    async fn delete_session(&self, token_hash: &str) -> Result<(), RepositoryError> {
+        let mut conn = self.conn().await?;
+        ops::delete_session(conn.get()?, token_hash).await
+    }
+
+    async fn candidate(&self, id: &str) -> Result<Option<CandidateProfile>, RepositoryError> {
+        let mut conn = self.conn().await?;
+        ops::load_candidate(conn.get()?, id).await
+    }
+
+    async fn save_candidate(&self, value: &CandidateProfile) -> Result<(), RepositoryError> {
+        let mut conn = self.conn().await?;
+        ops::save_candidate(conn.get()?, value).await
+    }
+
+    async fn company(&self, id: &str) -> Result<Option<Company>, RepositoryError> {
+        let mut conn = self.conn().await?;
+        ops::company(conn.get()?, id).await
+    }
+
+    async fn save_company(&self, value: &Company) -> Result<(), RepositoryError> {
+        let mut conn = self.conn().await?;
+        ops::save_company(conn.get()?, value).await
+    }
+
+    async fn candidates(&self) -> Result<Vec<CandidateIndexRecord>, RepositoryError> {
+        let mut conn = self.conn().await?;
+        ops::candidates(conn.get()?).await
+    }
+
+    async fn needs(&self, company_id: &str) -> Result<Vec<HiringNeedRecord>, RepositoryError> {
+        let mut conn = self.conn().await?;
+        ops::needs(conn.get()?, company_id).await
+    }
+
+    async fn need(
+        &self,
+        company_id: &str,
+        need_id: &str,
+    ) -> Result<Option<HiringNeedRecord>, RepositoryError> {
+        let mut conn = self.conn().await?;
+        ops::need(conn.get()?, company_id, need_id).await
+    }
+
+    async fn save_need(&self, value: &HiringNeedRecord) -> Result<(), RepositoryError> {
+        let mut conn = self.conn().await?;
+        ops::save_need(conn.get()?, value).await
+    }
+
+    async fn delete_need(&self, company_id: &str, need_id: &str) -> Result<(), RepositoryError> {
+        let mut conn = self.conn().await?;
+        ops::delete_need(conn.get()?, company_id, need_id).await
+    }
+
+    async fn published_needs(&self) -> Result<Vec<HiringNeedRecord>, RepositoryError> {
+        let mut conn = self.conn().await?;
+        ops::published_needs(conn.get()?).await
+    }
+
+    async fn shortlists(
+        &self,
+        company_id: &str,
+    ) -> Result<Vec<fsp_domain::ShortlistRecord>, RepositoryError> {
+        let mut conn = self.conn().await?;
+        ops::shortlists(conn.get()?, company_id).await
+    }
+
+    async fn shortlist(
+        &self,
+        company_id: &str,
+        shortlist_id: &str,
+    ) -> Result<Option<fsp_domain::ShortlistRecord>, RepositoryError> {
+        let mut conn = self.conn().await?;
+        ops::shortlist(conn.get()?, company_id, shortlist_id).await
+    }
+
+    async fn save_shortlist(
+        &self,
+        value: &fsp_domain::ShortlistRecord,
+    ) -> Result<(), RepositoryError> {
+        let mut conn = self.conn().await?;
+        ops::save_shortlist(conn.get()?, value).await
+    }
+
+    async fn delete_shortlist(
+        &self,
+        company_id: &str,
+        shortlist_id: &str,
+    ) -> Result<(), RepositoryError> {
+        let mut conn = self.conn().await?;
+        ops::delete_shortlist(conn.get()?, company_id, shortlist_id).await
+    }
+
+    async fn invitations(
+        &self,
+        company_id: &str,
+    ) -> Result<Vec<fsp_domain::InvitationRecord>, RepositoryError> {
+        let mut conn = self.conn().await?;
+        ops::invitations(conn.get()?, company_id).await
+    }
+
+    async fn candidate_invitations(
+        &self,
+        candidate_id: &str,
+    ) -> Result<Vec<fsp_domain::InvitationRecord>, RepositoryError> {
+        let mut conn = self.conn().await?;
+        ops::candidate_invitations(conn.get()?, candidate_id).await
+    }
+
+    async fn invitation(
+        &self,
+        invitation_id: &str,
+    ) -> Result<Option<fsp_domain::InvitationRecord>, RepositoryError> {
+        let mut conn = self.conn().await?;
+        ops::invitation(conn.get()?, invitation_id).await
+    }
+
+    async fn save_invitation(
+        &self,
+        value: &fsp_domain::InvitationRecord,
+    ) -> Result<(), RepositoryError> {
+        let mut conn = self.conn().await?;
+        ops::save_invitation(conn.get()?, value).await
+    }
+
+    async fn disclosure(
+        &self,
+        company_id: &str,
+        candidate_id: &str,
+    ) -> Result<Option<fsp_domain::DisclosureRecord>, RepositoryError> {
+        let mut conn = self.conn().await?;
+        ops::disclosure(conn.get()?, company_id, candidate_id).await
+    }
+
+    async fn save_disclosure(
+        &self,
+        value: &fsp_domain::DisclosureRecord,
+    ) -> Result<(), RepositoryError> {
+        let mut conn = self.conn().await?;
+        ops::save_disclosure(conn.get()?, value).await
+    }
+
+    async fn delete_disclosure(
+        &self,
+        company_id: &str,
+        candidate_id: &str,
+    ) -> Result<(), RepositoryError> {
+        let mut conn = self.conn().await?;
+        ops::delete_disclosure(conn.get()?, company_id, candidate_id).await
+    }
+
+    async fn company_applications(
+        &self,
+        company_id: &str,
+    ) -> Result<Vec<fsp_domain::ApplicationRecord>, RepositoryError> {
+        let mut conn = self.conn().await?;
+        ops::company_applications(conn.get()?, company_id).await
+    }
+
+    async fn candidate_applications(
+        &self,
+        candidate_id: &str,
+    ) -> Result<Vec<fsp_domain::ApplicationRecord>, RepositoryError> {
+        let mut conn = self.conn().await?;
+        ops::candidate_applications(conn.get()?, candidate_id).await
+    }
+
+    async fn application(
+        &self,
+        application_id: &str,
+    ) -> Result<Option<fsp_domain::ApplicationRecord>, RepositoryError> {
+        let mut conn = self.conn().await?;
+        ops::application(conn.get()?, application_id).await
+    }
+
+    async fn save_application(
+        &self,
+        value: &fsp_domain::ApplicationRecord,
+    ) -> Result<(), RepositoryError> {
+        let mut conn = self.conn().await?;
+        ops::save_application(conn.get()?, value).await
+    }
+
+    async fn tasks(
+        &self,
+        company_id: &str,
+    ) -> Result<Vec<fsp_domain::TaskRecord>, RepositoryError> {
+        let mut conn = self.conn().await?;
+        ops::tasks(conn.get()?, company_id).await
+    }
+
+    async fn active_tasks(&self) -> Result<Vec<fsp_domain::TaskRecord>, RepositoryError> {
+        let mut conn = self.conn().await?;
+        ops::active_tasks(conn.get()?).await
+    }
+
+    async fn task(&self, task_id: &str) -> Result<Option<fsp_domain::TaskRecord>, RepositoryError> {
+        let mut conn = self.conn().await?;
+        ops::task(conn.get()?, task_id).await
+    }
+
+    async fn save_task(&self, value: &fsp_domain::TaskRecord) -> Result<(), RepositoryError> {
+        let mut conn = self.conn().await?;
+        ops::save_task(conn.get()?, value).await
+    }
+
+    async fn candidate_task_responses(
+        &self,
+        candidate_id: &str,
+    ) -> Result<Vec<fsp_domain::TaskResponseRecord>, RepositoryError> {
+        let mut conn = self.conn().await?;
+        ops::candidate_task_responses(conn.get()?, candidate_id).await
+    }
+
+    async fn company_task_responses(
+        &self,
+        company_id: &str,
+    ) -> Result<Vec<fsp_domain::TaskResponseRecord>, RepositoryError> {
+        let mut conn = self.conn().await?;
+        ops::company_task_responses(conn.get()?, company_id).await
+    }
+
+    async fn task_response(
+        &self,
+        response_id: &str,
+    ) -> Result<Option<fsp_domain::TaskResponseRecord>, RepositoryError> {
+        let mut conn = self.conn().await?;
+        ops::task_response(conn.get()?, response_id).await
+    }
+
+    async fn save_task_response(
+        &self,
+        value: &fsp_domain::TaskResponseRecord,
+    ) -> Result<(), RepositoryError> {
+        let mut conn = self.conn().await?;
+        ops::save_task_response(conn.get()?, value).await
+    }
+
+    async fn save_candidate_index(
+        &self,
+        record: &CandidateIndexRecord,
+    ) -> Result<(), RepositoryError> {
+        let mut conn = self.conn().await?;
+        ops::save_candidate_index(conn.get()?, record).await
+    }
+
+    async fn candidate_assessments(
+        &self,
+        candidate_id: &str,
+    ) -> Result<Vec<fsp_domain::AssessmentRecord>, RepositoryError> {
+        let mut conn = self.conn().await?;
+        ops::candidate_assessments(conn.get()?, candidate_id).await
+    }
+
+    async fn assessment(
+        &self,
+        assessment_id: &str,
+    ) -> Result<Option<fsp_domain::AssessmentRecord>, RepositoryError> {
+        let mut conn = self.conn().await?;
+        ops::assessment(conn.get()?, assessment_id).await
+    }
+
+    async fn save_assessment(
+        &self,
+        value: &fsp_domain::AssessmentRecord,
+    ) -> Result<(), RepositoryError> {
+        let mut conn = self.conn().await?;
+        ops::save_assessment(conn.get()?, value).await
+    }
+
+    async fn save_oauth_state(
+        &self,
+        candidate_id: &str,
+        state: &str,
+        expires_at: &str,
+    ) -> Result<(), RepositoryError> {
+        let mut conn = self.conn().await?;
+        ops::save_oauth_state(conn.get()?, candidate_id, state, expires_at).await
+    }
+
+    async fn consume_oauth_state(
+        &self,
+        candidate_id: &str,
+        state: &str,
+        now: &str,
+    ) -> Result<bool, RepositoryError> {
+        let mut conn = self.conn().await?;
+        ops::consume_oauth_state(conn.get()?, candidate_id, state, now).await
+    }
+
+    async fn save_github_token(
+        &self,
+        candidate_id: &str,
+        token: &str,
+    ) -> Result<(), RepositoryError> {
+        let mut conn = self.conn().await?;
+        ops::save_github_token(conn.get()?, candidate_id, token).await
+    }
+
+    async fn github_token(&self, candidate_id: &str) -> Result<Option<String>, RepositoryError> {
+        let mut conn = self.conn().await?;
+        ops::github_token(conn.get()?, candidate_id).await
+    }
+
+    async fn sources(&self, candidate_id: &str) -> Result<Vec<SourceRecord>, RepositoryError> {
+        let mut conn = self.conn().await?;
+        ops::sources(conn.get()?, candidate_id).await
+    }
+
+    async fn save_source(&self, source: &SourceRecord) -> Result<(), RepositoryError> {
+        let mut conn = self.conn().await?;
+        ops::save_source(conn.get()?, source).await
+    }
+
+    async fn save_job(&self, job: &JobRecord) -> Result<(), RepositoryError> {
+        let mut conn = self.conn().await?;
+        ops::save_job(conn.get()?, job).await
+    }
+
+    async fn job(
+        &self,
+        owner_id: &str,
+        job_id: &str,
+    ) -> Result<Option<JobRecord>, RepositoryError> {
+        let mut conn = self.conn().await?;
+        ops::job(conn.get()?, owner_id, job_id).await
+    }
+}
+
+#[async_trait::async_trait]
+impl PlatformRepository for TxRepository {
+    async fn transaction(&self) -> Result<Box<dyn RepositoryTransaction>, RepositoryError> {
+        Err(RepositoryError::Storage(
+            "nested transactions are not supported".into(),
+        ))
+    }
+
+    async fn candidate_index(
+        &self,
+        candidate_id: &str,
+    ) -> Result<Option<CandidateIndexRecord>, RepositoryError> {
+        self.repo.candidate_index(candidate_id).await
+    }
+
+    async fn task_response_for(
+        &self,
+        candidate_id: &str,
+        task_id: &str,
+    ) -> Result<Option<fsp_domain::TaskResponseRecord>, RepositoryError> {
+        self.repo.task_response_for(candidate_id, task_id).await
+    }
+
+    async fn review_task_response(
+        &self,
+        response: &fsp_domain::TaskResponseRecord,
+    ) -> Result<(), RepositoryError> {
+        self.repo.review_task_response(response).await
+    }
+
+    async fn save_candidate_guarded(
+        &self,
+        profile: &CandidateProfile,
+        expected_revision: u64,
+    ) -> Result<(), RepositoryError> {
+        self.repo
+            .save_candidate_guarded(profile, expected_revision)
+            .await
+    }
+
+    async fn save_need_guarded(
+        &self,
+        need: &HiringNeedRecord,
+        expected_revision: u64,
+    ) -> Result<(), RepositoryError> {
+        self.repo.save_need_guarded(need, expected_revision).await
+    }
+
+    async fn save_invitation_guarded(
+        &self,
+        invitation: &fsp_domain::InvitationRecord,
+        expected_statuses: &[fsp_domain::InteractionStatus],
+    ) -> Result<(), RepositoryError> {
+        self.repo
+            .save_invitation_guarded(invitation, expected_statuses)
+            .await
+    }
+
+    async fn save_application_guarded(
+        &self,
+        application: &fsp_domain::ApplicationRecord,
+        expected_statuses: &[fsp_domain::InteractionStatus],
+    ) -> Result<(), RepositoryError> {
+        self.repo
+            .save_application_guarded(application, expected_statuses)
+            .await
+    }
+
+    async fn save_assessment_guarded(
+        &self,
+        assessment: &fsp_domain::AssessmentRecord,
+        expected_revision: u64,
+        expected_statuses: &[fsp_domain::AssessmentStatus],
+    ) -> Result<(), RepositoryError> {
+        self.repo
+            .save_assessment_guarded(assessment, expected_revision, expected_statuses)
+            .await
+    }
+
+    async fn save_job_unconfirmed(&self, job: &JobRecord) -> Result<(), RepositoryError> {
+        self.repo.save_job_unconfirmed(job).await
+    }
+
+    async fn idempotency_claim(
+        &self,
+        scope: &str,
+        fingerprint: &str,
+    ) -> Result<IdempotencyClaim, RepositoryError> {
+        self.repo.idempotency_claim(scope, fingerprint).await
+    }
+
+    async fn idempotency_finish(
+        &self,
+        scope: &str,
+        status: u16,
+        body: &str,
+    ) -> Result<(), RepositoryError> {
+        self.repo.idempotency_finish(scope, status, body).await
+    }
+
+    async fn idempotency_abort(&self, scope: &str) -> Result<(), RepositoryError> {
+        self.repo.idempotency_abort(scope).await
+    }
+
+    async fn sweep_expired(&self, now: &str) -> Result<u64, RepositoryError> {
+        self.repo.sweep_expired(now).await
+    }
+
+    async fn seed_demo(&self, now: &str) -> Result<(), RepositoryError> {
+        self.repo.seed_demo(now).await
+    }
+
+    async fn account_by_email(&self, email: &str) -> Result<Option<Account>, RepositoryError> {
+        self.repo.account_by_email(email).await
+    }
+
+    async fn create_account(&self, value: &Account, now: &str) -> Result<(), RepositoryError> {
+        self.repo.create_account(value, now).await
+    }
+
+    async fn create_candidate(&self, value: &CandidateProfile) -> Result<(), RepositoryError> {
+        self.repo.create_candidate(value).await
+    }
+
+    async fn create_company(&self, value: &Company) -> Result<(), RepositoryError> {
+        self.repo.create_company(value).await
+    }
+
+    async fn issue_challenge(&self, challenge: &PendingChallenge) -> Result<bool, RepositoryError> {
+        self.repo.issue_challenge(challenge).await
+    }
+
+    async fn mark_email_verified(&self, account_id: &str) -> Result<(), RepositoryError> {
+        self.repo.mark_email_verified(account_id).await
+    }
+
+    async fn ping(&self) -> Result<(), RepositoryError> {
+        self.repo.ping().await
+    }
+
+    async fn consume_challenge(
+        &self,
+        id: &str,
+        code_hash: &str,
+        now: &str,
+    ) -> Result<(ConsumeChallenge, Option<PendingChallenge>), RepositoryError> {
+        self.repo.consume_challenge(id, code_hash, now).await
+    }
+
+    async fn create_session(
+        &self,
+        token_hash: &str,
+        account_id: &str,
+        expires_at: &str,
+    ) -> Result<(), RepositoryError> {
+        self.repo
+            .create_session(token_hash, account_id, expires_at)
+            .await
+    }
+
+    async fn account_for_session(
+        &self,
+        token_hash: &str,
+        now: &str,
+    ) -> Result<Option<Account>, RepositoryError> {
+        self.repo.account_for_session(token_hash, now).await
+    }
+
+    async fn delete_session(&self, token_hash: &str) -> Result<(), RepositoryError> {
+        self.repo.delete_session(token_hash).await
+    }
+
+    async fn candidate(&self, id: &str) -> Result<Option<CandidateProfile>, RepositoryError> {
+        self.repo.candidate(id).await
+    }
+
+    async fn save_candidate(&self, value: &CandidateProfile) -> Result<(), RepositoryError> {
+        self.repo.save_candidate(value).await
+    }
+
+    async fn company(&self, id: &str) -> Result<Option<Company>, RepositoryError> {
+        self.repo.company(id).await
+    }
+
+    async fn save_company(&self, value: &Company) -> Result<(), RepositoryError> {
+        self.repo.save_company(value).await
+    }
+
+    async fn candidates(&self) -> Result<Vec<CandidateIndexRecord>, RepositoryError> {
+        self.repo.candidates().await
+    }
+
+    async fn needs(&self, company_id: &str) -> Result<Vec<HiringNeedRecord>, RepositoryError> {
+        self.repo.needs(company_id).await
+    }
+
+    async fn need(
+        &self,
+        company_id: &str,
+        need_id: &str,
+    ) -> Result<Option<HiringNeedRecord>, RepositoryError> {
+        self.repo.need(company_id, need_id).await
+    }
+
+    async fn save_need(&self, value: &HiringNeedRecord) -> Result<(), RepositoryError> {
+        self.repo.save_need(value).await
+    }
+
+    async fn delete_need(&self, company_id: &str, need_id: &str) -> Result<(), RepositoryError> {
+        self.repo.delete_need(company_id, need_id).await
+    }
+
+    async fn published_needs(&self) -> Result<Vec<HiringNeedRecord>, RepositoryError> {
+        self.repo.published_needs().await
+    }
+
+    async fn shortlists(
+        &self,
+        company_id: &str,
+    ) -> Result<Vec<fsp_domain::ShortlistRecord>, RepositoryError> {
+        self.repo.shortlists(company_id).await
+    }
+
+    async fn shortlist(
+        &self,
+        company_id: &str,
+        shortlist_id: &str,
+    ) -> Result<Option<fsp_domain::ShortlistRecord>, RepositoryError> {
+        self.repo.shortlist(company_id, shortlist_id).await
+    }
+
+    async fn save_shortlist(
+        &self,
+        value: &fsp_domain::ShortlistRecord,
+    ) -> Result<(), RepositoryError> {
+        self.repo.save_shortlist(value).await
+    }
+
+    async fn delete_shortlist(
+        &self,
+        company_id: &str,
+        shortlist_id: &str,
+    ) -> Result<(), RepositoryError> {
+        self.repo.delete_shortlist(company_id, shortlist_id).await
+    }
+
+    async fn invitations(
+        &self,
+        company_id: &str,
+    ) -> Result<Vec<fsp_domain::InvitationRecord>, RepositoryError> {
+        self.repo.invitations(company_id).await
+    }
+
+    async fn candidate_invitations(
+        &self,
+        candidate_id: &str,
+    ) -> Result<Vec<fsp_domain::InvitationRecord>, RepositoryError> {
+        self.repo.candidate_invitations(candidate_id).await
+    }
+
+    async fn invitation(
+        &self,
+        invitation_id: &str,
+    ) -> Result<Option<fsp_domain::InvitationRecord>, RepositoryError> {
+        self.repo.invitation(invitation_id).await
+    }
+
+    async fn save_invitation(
+        &self,
+        value: &fsp_domain::InvitationRecord,
+    ) -> Result<(), RepositoryError> {
+        self.repo.save_invitation(value).await
+    }
+
+    async fn disclosure(
+        &self,
+        company_id: &str,
+        candidate_id: &str,
+    ) -> Result<Option<fsp_domain::DisclosureRecord>, RepositoryError> {
+        self.repo.disclosure(company_id, candidate_id).await
+    }
+
+    async fn save_disclosure(
+        &self,
+        value: &fsp_domain::DisclosureRecord,
+    ) -> Result<(), RepositoryError> {
+        self.repo.save_disclosure(value).await
+    }
+
+    async fn delete_disclosure(
+        &self,
+        company_id: &str,
+        candidate_id: &str,
+    ) -> Result<(), RepositoryError> {
+        self.repo.delete_disclosure(company_id, candidate_id).await
+    }
+
+    async fn company_applications(
+        &self,
+        company_id: &str,
+    ) -> Result<Vec<fsp_domain::ApplicationRecord>, RepositoryError> {
+        self.repo.company_applications(company_id).await
+    }
+
+    async fn candidate_applications(
+        &self,
+        candidate_id: &str,
+    ) -> Result<Vec<fsp_domain::ApplicationRecord>, RepositoryError> {
+        self.repo.candidate_applications(candidate_id).await
+    }
+
+    async fn application(
+        &self,
+        application_id: &str,
+    ) -> Result<Option<fsp_domain::ApplicationRecord>, RepositoryError> {
+        self.repo.application(application_id).await
+    }
+
+    async fn save_application(
+        &self,
+        value: &fsp_domain::ApplicationRecord,
+    ) -> Result<(), RepositoryError> {
+        self.repo.save_application(value).await
+    }
+
+    async fn tasks(
+        &self,
+        company_id: &str,
+    ) -> Result<Vec<fsp_domain::TaskRecord>, RepositoryError> {
+        self.repo.tasks(company_id).await
+    }
+
+    async fn active_tasks(&self) -> Result<Vec<fsp_domain::TaskRecord>, RepositoryError> {
+        self.repo.active_tasks().await
+    }
+
+    async fn task(&self, task_id: &str) -> Result<Option<fsp_domain::TaskRecord>, RepositoryError> {
+        self.repo.task(task_id).await
+    }
+
+    async fn save_task(&self, value: &fsp_domain::TaskRecord) -> Result<(), RepositoryError> {
+        self.repo.save_task(value).await
+    }
+
+    async fn candidate_task_responses(
+        &self,
+        candidate_id: &str,
+    ) -> Result<Vec<fsp_domain::TaskResponseRecord>, RepositoryError> {
+        self.repo.candidate_task_responses(candidate_id).await
+    }
+
+    async fn company_task_responses(
+        &self,
+        company_id: &str,
+    ) -> Result<Vec<fsp_domain::TaskResponseRecord>, RepositoryError> {
+        self.repo.company_task_responses(company_id).await
+    }
+
+    async fn task_response(
+        &self,
+        response_id: &str,
+    ) -> Result<Option<fsp_domain::TaskResponseRecord>, RepositoryError> {
+        self.repo.task_response(response_id).await
+    }
+
+    async fn save_task_response(
+        &self,
+        value: &fsp_domain::TaskResponseRecord,
+    ) -> Result<(), RepositoryError> {
+        self.repo.save_task_response(value).await
+    }
+
+    async fn save_candidate_index(
+        &self,
+        record: &CandidateIndexRecord,
+    ) -> Result<(), RepositoryError> {
+        self.repo.save_candidate_index(record).await
+    }
+
+    async fn candidate_assessments(
+        &self,
+        candidate_id: &str,
+    ) -> Result<Vec<fsp_domain::AssessmentRecord>, RepositoryError> {
+        self.repo.candidate_assessments(candidate_id).await
+    }
+
+    async fn assessment(
+        &self,
+        assessment_id: &str,
+    ) -> Result<Option<fsp_domain::AssessmentRecord>, RepositoryError> {
+        self.repo.assessment(assessment_id).await
+    }
+
+    async fn save_assessment(
+        &self,
+        value: &fsp_domain::AssessmentRecord,
+    ) -> Result<(), RepositoryError> {
+        self.repo.save_assessment(value).await
+    }
+
+    async fn save_oauth_state(
+        &self,
+        candidate_id: &str,
+        state: &str,
+        expires_at: &str,
+    ) -> Result<(), RepositoryError> {
+        self.repo
+            .save_oauth_state(candidate_id, state, expires_at)
+            .await
+    }
+
+    async fn consume_oauth_state(
+        &self,
+        candidate_id: &str,
+        state: &str,
+        now: &str,
+    ) -> Result<bool, RepositoryError> {
+        self.repo
+            .consume_oauth_state(candidate_id, state, now)
+            .await
+    }
+
+    async fn save_github_token(
+        &self,
+        candidate_id: &str,
+        token: &str,
+    ) -> Result<(), RepositoryError> {
+        self.repo.save_github_token(candidate_id, token).await
+    }
+
+    async fn github_token(&self, candidate_id: &str) -> Result<Option<String>, RepositoryError> {
+        self.repo.github_token(candidate_id).await
+    }
+
+    async fn sources(&self, candidate_id: &str) -> Result<Vec<SourceRecord>, RepositoryError> {
+        self.repo.sources(candidate_id).await
+    }
+
+    async fn save_source(&self, source: &SourceRecord) -> Result<(), RepositoryError> {
+        self.repo.save_source(source).await
+    }
+
+    async fn save_job(&self, job: &JobRecord) -> Result<(), RepositoryError> {
+        self.repo.save_job(job).await
+    }
+
+    async fn job(
+        &self,
+        owner_id: &str,
+        job_id: &str,
+    ) -> Result<Option<JobRecord>, RepositoryError> {
+        self.repo.job(owner_id, job_id).await
+    }
+}
+
+#[async_trait::async_trait]
+impl RepositoryTransaction for TxRepository {
+    async fn commit(self: Box<Self>) -> Result<(), RepositoryError> {
+        let tx = self
+            .tx
+            .lock()
+            .await
+            .take()
+            .ok_or_else(|| RepositoryError::Storage("transaction is finished".into()))?;
+        tx.commit().await.map_err(storage)
+    }
+}
+
+mod ops {
+    use super::*;
+
+    /// Atomically claims an idempotency scope. Inserts a `running` row; when the
+    /// scope exists, returns the stored response (`done`), `InFlight` for a fresh
+    /// concurrent claim, or reclaims a `running` row abandoned for two minutes —
+    /// the window in which a crashed worker's marker is safe to take over.
+    pub(super) async fn idempotency_claim(
+        conn: &mut PgConnection,
+        scope: &str,
+        fingerprint: &str,
+    ) -> Result<IdempotencyClaim, RepositoryError> {
+        let claimed = sqlx::query(
+            "INSERT INTO idempotency_keys(scope,fingerprint,state,created_at) \
+         VALUES($1,$2,'running',now()) ON CONFLICT(scope) DO NOTHING RETURNING scope",
+        )
+        .bind(scope)
+        .bind(fingerprint)
+        .fetch_optional(&mut *conn)
+        .await
+        .map_err(storage)?;
+        if claimed.is_some() {
+            return Ok(IdempotencyClaim::Execute);
+        }
+        let row = sqlx::query(
+            "SELECT fingerprint,status,body_json,state,\
+         created_at < now() - interval '120 seconds' AS stale \
+         FROM idempotency_keys WHERE scope=$1",
+        )
+        .bind(scope)
+        .fetch_optional(&mut *conn)
+        .await
+        .map_err(storage)?;
+        let Some(row) = row else {
+            // The loser of a delete-reclaim race: the row vanished between the
+            // conflicted insert and this read, so take the scope ourselves.
+            return Ok(IdempotencyClaim::Execute);
+        };
+        let state: String = row.try_get("state").map_err(storage)?;
+        if state == "done" {
+            return Ok(IdempotencyClaim::Stored(Box::new(
+                StoredIdempotentResponse {
+                    fingerprint: row
+                        .try_get::<Option<String>, _>("fingerprint")
+                        .map_err(storage)?
+                        .unwrap_or_default(),
+                    status: row
+                        .try_get::<Option<i32>, _>("status")
+                        .map_err(storage)?
+                        .unwrap_or_default()
+                        .try_into()
+                        .map_err(|_| RepositoryError::Storage("invalid status".into()))?,
+                    body: row
+                        .try_get::<Option<String>, _>("body_json")
+                        .map_err(storage)?
+                        .unwrap_or_default(),
+                },
+            )));
+        }
+        if row.try_get::<bool, _>("stale").map_err(storage)? {
+            let reclaimed = sqlx::query(
+                "DELETE FROM idempotency_keys WHERE scope=$1 AND state='running' \
+             AND created_at < now() - interval '120 seconds'",
+            )
+            .bind(scope)
+            .execute(&mut *conn)
+            .await
+            .map_err(storage)?
+            .rows_affected();
+            if reclaimed == 1 {
+                let claimed = sqlx::query(
+                    "INSERT INTO idempotency_keys(scope,fingerprint,state,created_at) \
+                 VALUES($1,$2,'running',now()) ON CONFLICT(scope) DO NOTHING RETURNING scope",
+                )
+                .bind(scope)
+                .bind(fingerprint)
+                .fetch_optional(&mut *conn)
+                .await
+                .map_err(storage)?;
+                if claimed.is_some() {
+                    return Ok(IdempotencyClaim::Execute);
+                }
+            }
+        }
+        Ok(IdempotencyClaim::InFlight)
+    }
+
+    pub(super) async fn idempotency_finish(
+        conn: &mut PgConnection,
+        scope: &str,
+        status: u16,
+        body: &str,
+    ) -> Result<(), RepositoryError> {
+        sqlx::query(
+            "UPDATE idempotency_keys SET state='done',status=$2,body_json=$3 WHERE scope=$1",
+        )
+        .bind(scope)
+        .bind(i32::from(status))
+        .bind(body)
+        .execute(&mut *conn)
+        .await
+        .map_err(storage)?;
+        Ok(())
+    }
+
+    pub(super) async fn idempotency_abort(
+        conn: &mut PgConnection,
+        scope: &str,
+    ) -> Result<(), RepositoryError> {
+        sqlx::query("DELETE FROM idempotency_keys WHERE scope=$1 AND state='running'")
+            .bind(scope)
+            .execute(&mut *conn)
+            .await
+            .map_err(storage)?;
+        Ok(())
+    }
+
+    /// Seeds the demo fixture once. A transaction-scoped advisory lock serializes
+    /// concurrent startups: the second caller waits, then sees the committed
+    /// accounts and skips seeding.
+    pub(super) async fn seed_demo(
+        conn: &mut PgConnection,
+        now: &str,
+    ) -> Result<(), RepositoryError> {
+        let mut tx = conn.begin().await.map_err(storage)?;
+        sqlx::query("SELECT pg_advisory_xact_lock(hashtext('fsp_demo_seed'))")
+            .execute(&mut *tx)
+            .await
+            .map_err(storage)?;
+        let exists: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM accounts)")
+            .fetch_one(&mut *tx)
+            .await
+            .map_err(storage)?;
+        if exists {
+            tx.commit().await.map_err(storage)?;
+            return Ok(());
+        }
+        seed::seed(&mut tx, now).await?;
+        tx.commit().await.map_err(storage)
+    }
+
+    /// Single-candidate index read sharing `candidates()`' projection.
+    pub(super) async fn load_candidate_index(
+        conn: &mut PgConnection,
+        candidate_id: &str,
+    ) -> Result<Option<CandidateIndexRecord>, RepositoryError> {
+        sqlx::query(&format!("{CANDIDATE_INDEX_SELECT} WHERE c.id=$1"))
+            .bind(candidate_id)
+            .fetch_optional(&mut *conn)
+            .await
+            .map_err(storage)?
+            .map(|row| candidate_index(&row))
+            .transpose()
+    }
+
+    /// The submit-time dedup read: the candidate's response for one task.
+    pub(super) async fn task_response_for(
+        conn: &mut PgConnection,
+        candidate_id: &str,
+        task_id: &str,
+    ) -> Result<Option<fsp_domain::TaskResponseRecord>, RepositoryError> {
+        sqlx::query(&format!(
+        "SELECT {TASK_RESPONSE_COLUMNS} FROM task_responses WHERE candidate_id=$1 AND task_id=$2"
+    ))
+    .bind(candidate_id)
+    .bind(task_id)
+    .fetch_optional(&mut *conn)
+    .await
+    .map_err(storage)?
+    .map(|row| task_response_record(&row))
+    .transpose()
+    }
+
+    /// Review transition guarded on the row still awaiting review.
+    pub(super) async fn review_task_response(
+        conn: &mut PgConnection,
+        response: &fsp_domain::TaskResponseRecord,
+    ) -> Result<(), RepositoryError> {
+        let changed = sqlx::query(
+            "UPDATE task_responses SET status=$1,feedback=$2,reviewed_at=$3 \
+         WHERE id=$4 AND status='submitted'",
+        )
+        .bind(response.status.as_str())
+        .bind(&response.feedback)
+        .bind(ts_opt(&response.reviewed_at)?)
+        .bind(&response.id)
+        .execute(&mut *conn)
+        .await
+        .map_err(storage)?
+        .rows_affected();
+        if changed == 0 {
+            return Err(RepositoryError::NotFound);
+        }
+        Ok(())
+    }
+
+    /// Candidate write guarded by the expected revision (optimistic concurrency).
+    pub(super) async fn save_candidate_guarded(
+        conn: &mut PgConnection,
+        value: &CandidateProfile,
+        expected_revision: u64,
+    ) -> Result<(), RepositoryError> {
+        let changed = sqlx::query(
+        "UPDATE candidates SET alias=$1,email=$2,name=$3,specialization=$4,selected_grade=$5,stack_json=$6,team_role=$7,experience_months=$8,experience=$9,soft_skills_json=$10,processing_consent=$11,publication_consent=$12,verified_grade=$13,verified_specialization=$14,grade_confirmed_at=$15,revision=$16,updated_at=$17 WHERE id=$18 AND revision=$19",
+    )
+    .bind(&value.alias)
+    .bind(&value.email)
+    .bind(&value.name)
+    .bind(specialization(value.specialization))
+    .bind(grade(value.selected_grade))
+    .bind(serde_json::to_string(&value.stack).map_err(json_storage)?)
+    .bind(&value.team_role)
+    .bind(value.experience_months.map(|v| v as i32))
+    .bind(&value.experience)
+    .bind(serde_json::to_string(&value.soft_skills).map_err(json_storage)?)
+    .bind(value.consents.processing)
+    .bind(value.consents.publication)
+    .bind(value.verified_grade.map(grade))
+    .bind(value.verified_specialization.map(specialization))
+    .bind(ts_opt(&value.grade_confirmed_at)?)
+    .bind(value.revision as i64)
+    .bind(ts(&value.updated_at)?)
+    .bind(&value.id)
+    .bind(expected_revision as i64)
+    .execute(&mut *conn)
+    .await
+    .map_err(storage)?
+    .rows_affected();
+        if changed == 0 {
+            return Err(RepositoryError::NotFound);
+        }
+        Ok(())
+    }
+
+    /// Need write guarded by the expected revision and the owning company.
+    pub(super) async fn save_need_guarded(
+        conn: &mut PgConnection,
+        value: &HiringNeedRecord,
+        expected_revision: u64,
+    ) -> Result<(), RepositoryError> {
+        let changed = sqlx::query(
+        "UPDATE needs SET title=$1,specialization=$2,grade=$3,work_mode=$4,salary_from=$5,salary_to=$6,description=$7,requirements_json=$8,published=$9,published_at=$10,updated_at=$11,revision=$12 WHERE id=$13 AND company_id=$14 AND revision=$15",
+    )
+    .bind(&value.title)
+    .bind(specialization(value.need.specialization))
+    .bind(grade(value.need.grade))
+    .bind(&value.work_mode)
+    .bind(value.salary_from as i64)
+    .bind(value.salary_to as i64)
+    .bind(&value.description)
+    .bind(serde_json::to_string(&value.need.requirements).map_err(json_storage)?)
+    .bind(value.published)
+    .bind(ts_opt(&value.published_at)?)
+    .bind(ts(&value.updated_at)?)
+    .bind(value.revision as i64)
+    .bind(&value.id)
+    .bind(&value.company_id)
+    .bind(expected_revision as i64)
+    .execute(&mut *conn)
+    .await
+    .map_err(storage)?
+    .rows_affected();
+        if changed == 0 {
+            return Err(RepositoryError::NotFound);
+        }
+        Ok(())
+    }
+
+    /// Invitation transition guarded on the stored status.
+    pub(super) async fn save_invitation_guarded(
+        conn: &mut PgConnection,
+        value: &fsp_domain::InvitationRecord,
+        expected_statuses: &[fsp_domain::InteractionStatus],
+    ) -> Result<(), RepositoryError> {
+        let statuses: Vec<&str> = expected_statuses.iter().map(|s| s.as_str()).collect();
+        let changed = sqlx::query(
+            "UPDATE invitations SET status=$1,viewed_at=$2,responded_at=$3,disclosure_json=$4 \
+         WHERE id=$5 AND status = ANY($6)",
+        )
+        .bind(value.status.as_str())
+        .bind(ts_opt(&value.viewed_at)?)
+        .bind(ts_opt(&value.responded_at)?)
+        .bind(serde_json::to_string(&value.disclosure_fields).map_err(json_storage)?)
+        .bind(&value.id)
+        .bind(statuses)
+        .execute(&mut *conn)
+        .await
+        .map_err(storage)?
+        .rows_affected();
+        if changed == 0 {
+            return Err(RepositoryError::NotFound);
+        }
+        Ok(())
+    }
+
+    /// Application transition guarded on the stored status.
+    pub(super) async fn save_application_guarded(
+        conn: &mut PgConnection,
+        value: &fsp_domain::ApplicationRecord,
+        expected_statuses: &[fsp_domain::InteractionStatus],
+    ) -> Result<(), RepositoryError> {
+        let statuses: Vec<&str> = expected_statuses.iter().map(|s| s.as_str()).collect();
+        let changed = sqlx::query(
+            "UPDATE applications SET status=$1,viewed_at=$2,responded_at=$3,disclosure_json=$4 \
+         WHERE id=$5 AND status = ANY($6)",
+        )
+        .bind(value.status.as_str())
+        .bind(ts_opt(&value.viewed_at)?)
+        .bind(ts_opt(&value.responded_at)?)
+        .bind(serde_json::to_string(&value.disclosure_fields).map_err(json_storage)?)
+        .bind(&value.id)
+        .bind(statuses)
+        .execute(&mut *conn)
+        .await
+        .map_err(storage)?
+        .rows_affected();
+        if changed == 0 {
+            return Err(RepositoryError::NotFound);
+        }
+        Ok(())
+    }
+
+    /// Assessment write guarded on both revision and the editable status set.
+    pub(super) async fn save_assessment_guarded(
+        conn: &mut PgConnection,
+        value: &fsp_domain::AssessmentRecord,
+        expected_revision: u64,
+        expected_statuses: &[fsp_domain::AssessmentStatus],
+    ) -> Result<(), RepositoryError> {
+        let statuses: Vec<&str> = expected_statuses.iter().map(|s| s.as_str()).collect();
+        let changed = sqlx::query(
+        "UPDATE assessments SET specialization=$1,grade=$2,status=$3,task_json=$4,answer_json=$5,checks_json=$6,result_json=$7,updated_at=$8,revision=$9 \
+         WHERE id=$10 AND revision=$11 AND status = ANY($12)",
+    )
+    .bind(specialization(value.specialization))
+    .bind(grade(value.grade))
+    .bind(value.status.as_str())
+    .bind(serde_json::to_string(&value.task).map_err(json_storage)?)
+    .bind(serde_json::to_string(&value.answer).map_err(json_storage)?)
+    .bind(serde_json::to_string(&value.checks).map_err(json_storage)?)
+    .bind(value.result.as_ref().map(serde_json::to_string).transpose().map_err(json_storage)?)
+    .bind(ts(&value.updated_at)?)
+    .bind(value.revision as i64)
+    .bind(&value.id)
+    .bind(expected_revision as i64)
+    .bind(statuses)
+    .execute(&mut *conn)
+    .await
+    .map_err(storage)?
+    .rows_affected();
+        if changed == 0 {
+            return Err(RepositoryError::NotFound);
+        }
+        Ok(())
+    }
+
+    /// Job write that lands only while the import is still unconfirmed.
+    pub(super) async fn save_job_unconfirmed(
+        conn: &mut PgConnection,
+        job: &JobRecord,
+    ) -> Result<(), RepositoryError> {
+        let changed = sqlx::query(
+        "INSERT INTO jobs(id,owner_id,kind,status,created_at,updated_at,candidate_id,assessment_id,input_revision,result_json,confirmed,result_source_id,error_code,error_message) \
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) \
+         ON CONFLICT(id) DO UPDATE SET kind=excluded.kind,status=excluded.status,updated_at=excluded.updated_at,candidate_id=excluded.candidate_id,assessment_id=excluded.assessment_id,input_revision=excluded.input_revision,result_json=excluded.result_json,confirmed=excluded.confirmed,result_source_id=excluded.result_source_id,error_code=excluded.error_code,error_message=excluded.error_message \
+         WHERE jobs.confirmed=FALSE",
+    )
+    .bind(&job.id)
+    .bind(&job.owner_id)
+    .bind(&job.kind)
+    .bind(&job.status)
+    .bind(ts(&job.created_at)?)
+    .bind(ts(&job.updated_at)?)
+    .bind(&job.candidate_id)
+    .bind(&job.assessment_id)
+    .bind(job.input_revision.map(|value| value as i64))
+    .bind(&job.result_json)
+    .bind(job.confirmed)
+    .bind(&job.result_source_id)
+    .bind(&job.error_code)
+    .bind(&job.error_message)
+    .execute(&mut *conn)
+    .await
+    .map_err(storage)?
+    .rows_affected();
+        if changed == 0 {
+            return Err(RepositoryError::NotFound);
+        }
+        Ok(())
+    }
+
+    /// Deletes expired sessions, challenges and OAuth states plus finished or
+    /// abandoned idempotency rows; returns the number of rows removed.
+    pub(super) async fn sweep_expired(
+        conn: &mut PgConnection,
+        now: &str,
+    ) -> Result<u64, RepositoryError> {
+        let now_ts = ts(now)?;
+        let mut removed = 0u64;
+        for statement in [
+            "DELETE FROM sessions WHERE expires_at<=$1",
+            "DELETE FROM challenges WHERE expires_at<=$1",
+            "DELETE FROM oauth_states WHERE expires_at<=$1",
+            "DELETE FROM idempotency_keys WHERE \
+         (state='done' AND created_at < $1 - interval '1 day') OR \
+         (state='running' AND created_at < $1 - interval '2 minutes')",
+        ] {
+            removed += sqlx::query(statement)
+                .bind(now_ts)
+                .execute(&mut *conn)
+                .await
+                .map_err(storage)?
+                .rows_affected();
+        }
+        Ok(removed)
+    }
+
+    pub(super) async fn ping(conn: &mut PgConnection) -> Result<(), RepositoryError> {
+        sqlx::query("SELECT 1")
+            .execute(&mut *conn)
+            .await
+            .map_err(storage)?;
+        Ok(())
+    }
+    pub(super) async fn account_by_email(
+        conn: &mut PgConnection,
+        email: &str,
+    ) -> Result<Option<Account>, RepositoryError> {
         sqlx::query(&format!(
             "SELECT {ACCOUNT_COLUMNS} FROM accounts WHERE email=$1"
         ))
         .bind(email)
-        .fetch_optional(&self.pool)
+        .fetch_optional(&mut *conn)
         .await
         .map_err(storage)?
         .map(|row| account(&row))
         .transpose()
     }
 
-    async fn account_by_id(&self, id: &str) -> Result<Option<Account>, RepositoryError> {
-        sqlx::query(&format!(
-            "SELECT {ACCOUNT_COLUMNS} FROM accounts WHERE id=$1"
-        ))
-        .bind(id)
-        .fetch_optional(&self.pool)
-        .await
-        .map_err(storage)?
-        .map(|row| account(&row))
-        .transpose()
-    }
-
-    async fn create_account(&self, value: &Account, now: &str) -> Result<(), RepositoryError> {
+    pub(super) async fn create_account(
+        conn: &mut PgConnection,
+        value: &Account,
+        now: &str,
+    ) -> Result<(), RepositoryError> {
         sqlx::query(
             "INSERT INTO accounts(id,email,role,candidate_id,company_id,email_verified,created_at) VALUES($1,$2,$3,$4,$5,$6,$7)",
         )
@@ -178,18 +1678,24 @@ impl PlatformRepository for PostgresRepository {
         .bind(&value.candidate_id)
         .bind(&value.company_id)
         .bind(value.email_verified)
-        .bind(now)
-        .execute(&self.pool)
+        .bind(ts(now)?)
+        .execute(&mut *conn)
         .await
         .map_err(conflict)?;
         Ok(())
     }
 
-    async fn create_candidate(&self, value: &CandidateProfile) -> Result<(), RepositoryError> {
-        insert_candidate(&self.pool, value).await
+    pub(super) async fn create_candidate(
+        conn: &mut PgConnection,
+        value: &CandidateProfile,
+    ) -> Result<(), RepositoryError> {
+        insert_candidate(conn, value).await
     }
 
-    async fn create_company(&self, value: &Company) -> Result<(), RepositoryError> {
+    pub(super) async fn create_company(
+        conn: &mut PgConnection,
+        value: &Company,
+    ) -> Result<(), RepositoryError> {
         sqlx::query(
             "INSERT INTO companies(id,display_name,business_area,description,contact_email,website) VALUES($1,$2,$3,$4,$5,$6)",
         )
@@ -199,52 +1705,41 @@ impl PlatformRepository for PostgresRepository {
         .bind(&value.description)
         .bind(&value.contact_email)
         .bind(&value.website)
-        .execute(&self.pool)
+        .execute(&mut *conn)
         .await
         .map_err(conflict)?;
         Ok(())
     }
 
-    async fn save_challenge(&self, value: &PendingChallenge) -> Result<(), RepositoryError> {
-        sqlx::query(
-            "INSERT INTO challenges(id,account_id,code_hash,expires_at,attempts,used) VALUES($1,$2,$3,$4,$5,$6)",
-        )
-        .bind(&value.id)
-        .bind(&value.account_id)
-        .bind(&value.code_hash)
-        .bind(&value.expires_at)
-        .bind(i32::from(value.attempts))
-        .bind(value.used)
-        .execute(&self.pool)
-        .await
-        .map_err(storage)?;
-        Ok(())
-    }
-
-    async fn consume_challenge(
-        &self,
+    /// Consumes a challenge under `FOR UPDATE`: the mock's verify order —
+    /// expired, used, locked, then code — with the wrong-code attempt counted
+    /// inside the same transaction. `Locked` only applies to a challenge that was
+    /// already at five attempts on entry; the fifth wrong code still reports
+    /// `WrongCode` and locks on the next try.
+    pub(super) async fn consume_challenge(
+        conn: &mut PgConnection,
         id: &str,
         code_hash: &str,
         now: &str,
-    ) -> Result<(ConsumeChallenge, Option<Account>), RepositoryError> {
-        let mut transaction = self.pool.begin().await.map_err(storage)?;
+    ) -> Result<(ConsumeChallenge, Option<PendingChallenge>), RepositoryError> {
+        let mut transaction = conn.begin().await.map_err(storage)?;
         let challenge = sqlx::query(
-            "SELECT account_id,code_hash,expires_at,attempts,used FROM challenges WHERE id=$1 FOR UPDATE",
-        )
-        .bind(id)
-        .fetch_optional(&mut *transaction)
-        .await
-        .map_err(storage)?;
-        let Some(challenge) = challenge else {
+        "SELECT email,role,code_hash,expires_at,attempts,used FROM challenges WHERE id=$1 FOR UPDATE",
+    )
+    .bind(id)
+    .fetch_optional(&mut *transaction)
+    .await
+    .map_err(storage)?;
+        let Some(row) = challenge else {
             return Ok((ConsumeChallenge::Missing, None));
         };
-        let account_id: String = challenge.try_get("account_id").map_err(storage)?;
-        let expected: String = challenge.try_get("code_hash").map_err(storage)?;
-        let expires_at: String = challenge.try_get("expires_at").map_err(storage)?;
-        let attempts: i32 = challenge.try_get("attempts").map_err(storage)?;
-        let used: bool = challenge.try_get("used").map_err(storage)?;
-        // The mock checks expiry before consumption so a stale code reports expired.
-        if expires_at.as_str() <= now {
+        let email: String = row.try_get("email").map_err(storage)?;
+        let role = parse_role(&row.try_get::<String, _>("role").map_err(storage)?)?;
+        let expected: String = row.try_get("code_hash").map_err(storage)?;
+        let expires_at: DateTime<Utc> = row.try_get("expires_at").map_err(storage)?;
+        let attempts: i32 = row.try_get("attempts").map_err(storage)?;
+        let used: bool = row.try_get("used").map_err(storage)?;
+        if expires_at <= ts(now)? {
             return Ok((ConsumeChallenge::Expired, None));
         }
         if used {
@@ -260,40 +1755,83 @@ impl PlatformRepository for PostgresRepository {
                 .await
                 .map_err(storage)?;
             transaction.commit().await.map_err(storage)?;
-            return Ok((
-                if attempts + 1 >= 5 {
-                    ConsumeChallenge::Locked
-                } else {
-                    ConsumeChallenge::WrongCode
-                },
-                None,
-            ));
+            return Ok((ConsumeChallenge::WrongCode, None));
         }
         sqlx::query("UPDATE challenges SET used=TRUE WHERE id=$1")
             .bind(id)
             .execute(&mut *transaction)
             .await
             .map_err(storage)?;
-        sqlx::query("UPDATE accounts SET email_verified=TRUE WHERE id=$1")
-            .bind(&account_id)
-            .execute(&mut *transaction)
-            .await
-            .map_err(storage)?;
-        let account = sqlx::query(&format!(
-            "SELECT {ACCOUNT_COLUMNS} FROM accounts WHERE id=$1"
-        ))
-        .bind(&account_id)
-        .fetch_optional(&mut *transaction)
-        .await
-        .map_err(storage)?
-        .map(|row| account(&row))
-        .transpose()?;
         transaction.commit().await.map_err(storage)?;
-        Ok((ConsumeChallenge::Consumed, account))
+        Ok((
+            ConsumeChallenge::Consumed,
+            Some(PendingChallenge {
+                id: id.to_string(),
+                email,
+                role,
+                code_hash: expected,
+                expires_at: expires_at.to_rfc3339_opts(SecondsFormat::Millis, true),
+                attempts: attempts as u8,
+                used: true,
+            }),
+        ))
     }
 
-    async fn create_session(
-        &self,
+    /// Issues a challenge under a cumulative lockout: the running sum of attempts
+    /// across the email's live challenges must stay under five, so reissuing a
+    /// code never resets the brute-force budget.
+    pub(super) async fn issue_challenge(
+        conn: &mut PgConnection,
+        value: &PendingChallenge,
+    ) -> Result<bool, RepositoryError> {
+        let mut transaction = conn.begin().await.map_err(storage)?;
+        let spent: i64 = sqlx::query_scalar(
+            "SELECT COALESCE(SUM(attempts),0) FROM challenges \
+         WHERE email=$1 AND used=FALSE AND expires_at > now() - interval '15 minutes'",
+        )
+        .bind(&value.email)
+        .fetch_one(&mut *transaction)
+        .await
+        .map_err(storage)?;
+        if spent >= 5 {
+            transaction.commit().await.map_err(storage)?;
+            return Ok(false);
+        }
+        sqlx::query(
+        "INSERT INTO challenges(id,email,role,code_hash,expires_at,attempts,used) VALUES($1,$2,$3,$4,$5,$6,$7)",
+    )
+    .bind(&value.id)
+    .bind(&value.email)
+    .bind(crate::role(value.role))
+    .bind(&value.code_hash)
+    .bind(ts(&value.expires_at)?)
+    .bind(i32::from(value.attempts))
+    .bind(value.used)
+    .execute(&mut *transaction)
+    .await
+    .map_err(storage)?;
+        transaction.commit().await.map_err(storage)?;
+        Ok(true)
+    }
+
+    pub(super) async fn mark_email_verified(
+        conn: &mut PgConnection,
+        account_id: &str,
+    ) -> Result<(), RepositoryError> {
+        let changed = sqlx::query("UPDATE accounts SET email_verified=TRUE WHERE id=$1")
+            .bind(account_id)
+            .execute(&mut *conn)
+            .await
+            .map_err(storage)?
+            .rows_affected();
+        if changed == 0 {
+            return Err(RepositoryError::NotFound);
+        }
+        Ok(())
+    }
+
+    pub(super) async fn create_session(
+        conn: &mut PgConnection,
         token_hash: &str,
         account_id: &str,
         expires_at: &str,
@@ -301,15 +1839,15 @@ impl PlatformRepository for PostgresRepository {
         sqlx::query("INSERT INTO sessions(token_hash,account_id,expires_at) VALUES($1,$2,$3)")
             .bind(token_hash)
             .bind(account_id)
-            .bind(expires_at)
-            .execute(&self.pool)
+            .bind(ts(expires_at)?)
+            .execute(&mut *conn)
             .await
             .map_err(storage)?;
         Ok(())
     }
 
-    async fn account_for_session(
-        &self,
+    pub(super) async fn account_for_session(
+        conn: &mut PgConnection,
         token_hash: &str,
         now: &str,
     ) -> Result<Option<Account>, RepositoryError> {
@@ -317,45 +1855,57 @@ impl PlatformRepository for PostgresRepository {
             "SELECT {ACCOUNT_COLUMNS} FROM sessions s JOIN accounts a ON a.id=s.account_id WHERE s.token_hash=$1 AND s.expires_at>$2"
         ))
         .bind(token_hash)
-        .bind(now)
-        .fetch_optional(&self.pool)
+        .bind(ts(now)?)
+        .fetch_optional(&mut *conn)
         .await
         .map_err(storage)?
         .map(|row| account(&row))
         .transpose()
     }
 
-    async fn delete_session(&self, token_hash: &str) -> Result<(), RepositoryError> {
+    pub(super) async fn delete_session(
+        conn: &mut PgConnection,
+        token_hash: &str,
+    ) -> Result<(), RepositoryError> {
         sqlx::query("DELETE FROM sessions WHERE token_hash=$1")
             .bind(token_hash)
-            .execute(&self.pool)
+            .execute(&mut *conn)
             .await
             .map_err(storage)?;
         Ok(())
     }
 
-    async fn candidate(&self, id: &str) -> Result<Option<CandidateProfile>, RepositoryError> {
+    pub(super) async fn load_candidate(
+        conn: &mut PgConnection,
+        id: &str,
+    ) -> Result<Option<CandidateProfile>, RepositoryError> {
         sqlx::query(&format!(
             "SELECT {CANDIDATE_COLUMNS} FROM candidates WHERE id=$1"
         ))
         .bind(id)
-        .fetch_optional(&self.pool)
+        .fetch_optional(&mut *conn)
         .await
         .map_err(storage)?
         .map(|row| candidate(&row))
         .transpose()
     }
 
-    async fn save_candidate(&self, value: &CandidateProfile) -> Result<(), RepositoryError> {
-        update_candidate(&self.pool, value).await
+    pub(super) async fn save_candidate(
+        conn: &mut PgConnection,
+        value: &CandidateProfile,
+    ) -> Result<(), RepositoryError> {
+        update_candidate(conn, value).await
     }
 
-    async fn company(&self, id: &str) -> Result<Option<Company>, RepositoryError> {
+    pub(super) async fn company(
+        conn: &mut PgConnection,
+        id: &str,
+    ) -> Result<Option<Company>, RepositoryError> {
         sqlx::query(
             "SELECT id,display_name,business_area,description,contact_email,website FROM companies WHERE id=$1",
         )
         .bind(id)
-        .fetch_optional(&self.pool)
+        .fetch_optional(&mut *conn)
         .await
         .map_err(storage)?
         .map(|row| {
@@ -371,7 +1921,10 @@ impl PlatformRepository for PostgresRepository {
         .transpose()
     }
 
-    async fn save_company(&self, value: &Company) -> Result<(), RepositoryError> {
+    pub(super) async fn save_company(
+        conn: &mut PgConnection,
+        value: &Company,
+    ) -> Result<(), RepositoryError> {
         sqlx::query(
             "UPDATE companies SET display_name=$1,business_area=$2,description=$3,contact_email=$4,website=$5 WHERE id=$6",
         )
@@ -381,13 +1934,15 @@ impl PlatformRepository for PostgresRepository {
         .bind(&value.contact_email)
         .bind(&value.website)
         .bind(&value.id)
-        .execute(&self.pool)
+        .execute(&mut *conn)
         .await
         .map_err(storage)?;
         Ok(())
     }
 
-    async fn candidates(&self) -> Result<Vec<CandidateIndexRecord>, RepositoryError> {
+    pub(super) async fn candidates(
+        conn: &mut PgConnection,
+    ) -> Result<Vec<CandidateIndexRecord>, RepositoryError> {
         let rows = sqlx::query(
             "SELECT c.id,c.alias,c.email,c.name,c.specialization,c.selected_grade,c.stack_json,\
              c.team_role,c.experience_months,c.experience,c.soft_skills_json,c.processing_consent,\
@@ -399,18 +1954,21 @@ impl PlatformRepository for PostgresRepository {
              AS account_email_verified \
              FROM candidates c LEFT JOIN candidate_index i ON i.candidate_id=c.id",
         )
-        .fetch_all(&self.pool)
+        .fetch_all(&mut *conn)
         .await
         .map_err(storage)?;
         rows.iter().map(candidate_index).collect()
     }
 
-    async fn needs(&self, company_id: &str) -> Result<Vec<HiringNeedRecord>, RepositoryError> {
+    pub(super) async fn needs(
+        conn: &mut PgConnection,
+        company_id: &str,
+    ) -> Result<Vec<HiringNeedRecord>, RepositoryError> {
         sqlx::query(&format!(
             "SELECT {NEED_COLUMNS} FROM needs WHERE company_id=$1 ORDER BY created_at,id"
         ))
         .bind(company_id)
-        .fetch_all(&self.pool)
+        .fetch_all(&mut *conn)
         .await
         .map_err(storage)?
         .iter()
@@ -418,8 +1976,8 @@ impl PlatformRepository for PostgresRepository {
         .collect()
     }
 
-    async fn need(
-        &self,
+    pub(super) async fn need(
+        conn: &mut PgConnection,
         company_id: &str,
         need_id: &str,
     ) -> Result<Option<HiringNeedRecord>, RepositoryError> {
@@ -428,14 +1986,17 @@ impl PlatformRepository for PostgresRepository {
         ))
         .bind(company_id)
         .bind(need_id)
-        .fetch_optional(&self.pool)
+        .fetch_optional(&mut *conn)
         .await
         .map_err(storage)?
         .map(|row| need_record(&row))
         .transpose()
     }
 
-    async fn save_need(&self, value: &HiringNeedRecord) -> Result<(), RepositoryError> {
+    pub(super) async fn save_need(
+        conn: &mut PgConnection,
+        value: &HiringNeedRecord,
+    ) -> Result<(), RepositoryError> {
         let requirements = serde_json::to_string(&value.need.requirements).map_err(json_storage)?;
         sqlx::query(
             "INSERT INTO needs(id,company_id,title,specialization,grade,work_mode,salary_from,salary_to,description,requirements_json,published,published_at,created_at,updated_at,revision) \
@@ -453,31 +2014,37 @@ impl PlatformRepository for PostgresRepository {
         .bind(&value.description)
         .bind(requirements)
         .bind(value.published)
-        .bind(&value.published_at)
-        .bind(&value.created_at)
-        .bind(&value.updated_at)
+        .bind(ts_opt(&value.published_at)?)
+        .bind(ts(&value.created_at)?)
+        .bind(ts(&value.updated_at)?)
         .bind(value.revision as i64)
-        .execute(&self.pool)
+        .execute(&mut *conn)
         .await
         .map_err(storage)?;
         Ok(())
     }
 
-    async fn delete_need(&self, company_id: &str, need_id: &str) -> Result<(), RepositoryError> {
+    pub(super) async fn delete_need(
+        conn: &mut PgConnection,
+        company_id: &str,
+        need_id: &str,
+    ) -> Result<(), RepositoryError> {
         sqlx::query("DELETE FROM needs WHERE id=$1 AND company_id=$2")
             .bind(need_id)
             .bind(company_id)
-            .execute(&self.pool)
+            .execute(&mut *conn)
             .await
             .map_err(storage)?;
         Ok(())
     }
 
-    async fn published_needs(&self) -> Result<Vec<HiringNeedRecord>, RepositoryError> {
+    pub(super) async fn published_needs(
+        conn: &mut PgConnection,
+    ) -> Result<Vec<HiringNeedRecord>, RepositoryError> {
         sqlx::query(&format!(
             "SELECT {NEED_COLUMNS} FROM needs WHERE published=TRUE ORDER BY created_at,id"
         ))
-        .fetch_all(&self.pool)
+        .fetch_all(&mut *conn)
         .await
         .map_err(storage)?
         .iter()
@@ -485,15 +2052,15 @@ impl PlatformRepository for PostgresRepository {
         .collect()
     }
 
-    async fn shortlists(
-        &self,
+    pub(super) async fn shortlists(
+        conn: &mut PgConnection,
         company_id: &str,
     ) -> Result<Vec<fsp_domain::ShortlistRecord>, RepositoryError> {
         sqlx::query(&format!(
             "SELECT {SHORTLIST_COLUMNS} FROM shortlists WHERE company_id=$1 ORDER BY seq"
         ))
         .bind(company_id)
-        .fetch_all(&self.pool)
+        .fetch_all(&mut *conn)
         .await
         .map_err(storage)?
         .iter()
@@ -501,8 +2068,8 @@ impl PlatformRepository for PostgresRepository {
         .collect()
     }
 
-    async fn shortlist(
-        &self,
+    pub(super) async fn shortlist(
+        conn: &mut PgConnection,
         company_id: &str,
         shortlist_id: &str,
     ) -> Result<Option<fsp_domain::ShortlistRecord>, RepositoryError> {
@@ -511,15 +2078,15 @@ impl PlatformRepository for PostgresRepository {
         ))
         .bind(company_id)
         .bind(shortlist_id)
-        .fetch_optional(&self.pool)
+        .fetch_optional(&mut *conn)
         .await
         .map_err(storage)?
         .map(|row| shortlist_record(&row))
         .transpose()
     }
 
-    async fn save_shortlist(
-        &self,
+    pub(super) async fn save_shortlist(
+        conn: &mut PgConnection,
         value: &fsp_domain::ShortlistRecord,
     ) -> Result<(), RepositoryError> {
         let members = serde_json::to_string(&value.member_ids).map_err(json_storage)?;
@@ -531,37 +2098,37 @@ impl PlatformRepository for PostgresRepository {
         .bind(&value.company_id)
         .bind(&value.title)
         .bind(members)
-        .bind(&value.created_at)
-        .bind(&value.updated_at)
-        .execute(&self.pool)
+        .bind(ts(&value.created_at)?)
+        .bind(ts(&value.updated_at)?)
+        .execute(&mut *conn)
         .await
         .map_err(storage)?;
         Ok(())
     }
 
-    async fn delete_shortlist(
-        &self,
+    pub(super) async fn delete_shortlist(
+        conn: &mut PgConnection,
         company_id: &str,
         shortlist_id: &str,
     ) -> Result<(), RepositoryError> {
         sqlx::query("DELETE FROM shortlists WHERE id=$1 AND company_id=$2")
             .bind(shortlist_id)
             .bind(company_id)
-            .execute(&self.pool)
+            .execute(&mut *conn)
             .await
             .map_err(storage)?;
         Ok(())
     }
 
-    async fn invitations(
-        &self,
+    pub(super) async fn invitations(
+        conn: &mut PgConnection,
         company_id: &str,
     ) -> Result<Vec<fsp_domain::InvitationRecord>, RepositoryError> {
         sqlx::query(&format!(
             "SELECT {INVITATION_COLUMNS} FROM invitations WHERE company_id=$1 ORDER BY seq"
         ))
         .bind(company_id)
-        .fetch_all(&self.pool)
+        .fetch_all(&mut *conn)
         .await
         .map_err(storage)?
         .iter()
@@ -569,15 +2136,15 @@ impl PlatformRepository for PostgresRepository {
         .collect()
     }
 
-    async fn candidate_invitations(
-        &self,
+    pub(super) async fn candidate_invitations(
+        conn: &mut PgConnection,
         candidate_id: &str,
     ) -> Result<Vec<fsp_domain::InvitationRecord>, RepositoryError> {
         sqlx::query(&format!(
             "SELECT {INVITATION_COLUMNS} FROM invitations WHERE candidate_id=$1 ORDER BY seq"
         ))
         .bind(candidate_id)
-        .fetch_all(&self.pool)
+        .fetch_all(&mut *conn)
         .await
         .map_err(storage)?
         .iter()
@@ -585,29 +2152,29 @@ impl PlatformRepository for PostgresRepository {
         .collect()
     }
 
-    async fn invitation(
-        &self,
+    pub(super) async fn invitation(
+        conn: &mut PgConnection,
         invitation_id: &str,
     ) -> Result<Option<fsp_domain::InvitationRecord>, RepositoryError> {
         sqlx::query(&format!(
             "SELECT {INVITATION_COLUMNS} FROM invitations WHERE id=$1"
         ))
         .bind(invitation_id)
-        .fetch_optional(&self.pool)
+        .fetch_optional(&mut *conn)
         .await
         .map_err(storage)?
         .map(|row| invitation_record(&row))
         .transpose()
     }
 
-    async fn save_invitation(
-        &self,
+    pub(super) async fn save_invitation(
+        conn: &mut PgConnection,
         value: &fsp_domain::InvitationRecord,
     ) -> Result<(), RepositoryError> {
         sqlx::query(
-            "INSERT INTO invitations(id,company_id,candidate_id,candidate_alias,company_json,need_json,need_definition_json,message,status,created_at,viewed_at,responded_at,disclosure_json) \
-             VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) \
-             ON CONFLICT(id) DO UPDATE SET company_id=excluded.company_id,candidate_id=excluded.candidate_id,candidate_alias=excluded.candidate_alias,company_json=excluded.company_json,need_json=excluded.need_json,need_definition_json=excluded.need_definition_json,message=excluded.message,status=excluded.status,created_at=excluded.created_at,viewed_at=excluded.viewed_at,responded_at=excluded.responded_at,disclosure_json=excluded.disclosure_json",
+            "INSERT INTO invitations(id,company_id,candidate_id,need_id,candidate_alias,company_json,need_json,need_definition_json,message,status,created_at,viewed_at,responded_at,disclosure_json) \
+             VALUES($1,$2,$3,$14,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) \
+             ON CONFLICT(id) DO UPDATE SET company_id=excluded.company_id,candidate_id=excluded.candidate_id,need_id=excluded.need_id,candidate_alias=excluded.candidate_alias,company_json=excluded.company_json,need_json=excluded.need_json,need_definition_json=excluded.need_definition_json,message=excluded.message,status=excluded.status,created_at=excluded.created_at,viewed_at=excluded.viewed_at,responded_at=excluded.responded_at,disclosure_json=excluded.disclosure_json",
         )
         .bind(&value.id)
         .bind(&value.company_id)
@@ -618,18 +2185,19 @@ impl PlatformRepository for PostgresRepository {
         .bind(serde_json::to_string(&value.need_definition).map_err(json_storage)?)
         .bind(&value.message)
         .bind(value.status.as_str())
-        .bind(&value.created_at)
-        .bind(&value.viewed_at)
-        .bind(&value.responded_at)
+        .bind(ts(&value.created_at)?)
+        .bind(ts_opt(&value.viewed_at)?)
+        .bind(ts_opt(&value.responded_at)?)
         .bind(serde_json::to_string(&value.disclosure_fields).map_err(json_storage)?)
-        .execute(&self.pool)
+        .bind(&value.need.id)
+        .execute(&mut *conn)
         .await
         .map_err(storage)?;
         Ok(())
     }
 
-    async fn disclosure(
-        &self,
+    pub(super) async fn disclosure(
+        conn: &mut PgConnection,
         company_id: &str,
         candidate_id: &str,
     ) -> Result<Option<fsp_domain::DisclosureRecord>, RepositoryError> {
@@ -638,15 +2206,15 @@ impl PlatformRepository for PostgresRepository {
         ))
         .bind(company_id)
         .bind(candidate_id)
-        .fetch_optional(&self.pool)
+        .fetch_optional(&mut *conn)
         .await
         .map_err(storage)?
         .map(|row| disclosure_record(&row))
         .transpose()
     }
 
-    async fn save_disclosure(
-        &self,
+    pub(super) async fn save_disclosure(
+        conn: &mut PgConnection,
         value: &fsp_domain::DisclosureRecord,
     ) -> Result<(), RepositoryError> {
         sqlx::query(
@@ -658,39 +2226,39 @@ impl PlatformRepository for PostgresRepository {
         .bind(&value.candidate_id)
         .bind(&value.invitation_id)
         .bind(&value.application_id)
-        .bind(&value.granted_at)
+        .bind(ts_opt(&value.granted_at)?)
         .bind(&value.name)
         .bind(&value.email)
         .bind(serde_json::to_string(&value.source_links).map_err(json_storage)?)
-        .execute(&self.pool)
+        .execute(&mut *conn)
         .await
         .map_err(storage)?;
         Ok(())
     }
 
-    async fn delete_disclosure(
-        &self,
+    pub(super) async fn delete_disclosure(
+        conn: &mut PgConnection,
         company_id: &str,
         candidate_id: &str,
     ) -> Result<(), RepositoryError> {
         sqlx::query("DELETE FROM disclosures WHERE company_id=$1 AND candidate_id=$2")
             .bind(company_id)
             .bind(candidate_id)
-            .execute(&self.pool)
+            .execute(&mut *conn)
             .await
             .map_err(storage)?;
         Ok(())
     }
 
-    async fn company_applications(
-        &self,
+    pub(super) async fn company_applications(
+        conn: &mut PgConnection,
         company_id: &str,
     ) -> Result<Vec<fsp_domain::ApplicationRecord>, RepositoryError> {
         sqlx::query(&format!(
             "SELECT {APPLICATION_COLUMNS} FROM applications WHERE company_id=$1 ORDER BY seq"
         ))
         .bind(company_id)
-        .fetch_all(&self.pool)
+        .fetch_all(&mut *conn)
         .await
         .map_err(storage)?
         .iter()
@@ -698,15 +2266,15 @@ impl PlatformRepository for PostgresRepository {
         .collect()
     }
 
-    async fn candidate_applications(
-        &self,
+    pub(super) async fn candidate_applications(
+        conn: &mut PgConnection,
         candidate_id: &str,
     ) -> Result<Vec<fsp_domain::ApplicationRecord>, RepositoryError> {
         sqlx::query(&format!(
             "SELECT {APPLICATION_COLUMNS} FROM applications WHERE candidate_id=$1 ORDER BY seq"
         ))
         .bind(candidate_id)
-        .fetch_all(&self.pool)
+        .fetch_all(&mut *conn)
         .await
         .map_err(storage)?
         .iter()
@@ -714,29 +2282,29 @@ impl PlatformRepository for PostgresRepository {
         .collect()
     }
 
-    async fn application(
-        &self,
+    pub(super) async fn application(
+        conn: &mut PgConnection,
         application_id: &str,
     ) -> Result<Option<fsp_domain::ApplicationRecord>, RepositoryError> {
         sqlx::query(&format!(
             "SELECT {APPLICATION_COLUMNS} FROM applications WHERE id=$1"
         ))
         .bind(application_id)
-        .fetch_optional(&self.pool)
+        .fetch_optional(&mut *conn)
         .await
         .map_err(storage)?
         .map(|row| application_record(&row))
         .transpose()
     }
 
-    async fn save_application(
-        &self,
+    pub(super) async fn save_application(
+        conn: &mut PgConnection,
         value: &fsp_domain::ApplicationRecord,
     ) -> Result<(), RepositoryError> {
         sqlx::query(
-            "INSERT INTO applications(id,company_id,candidate_id,candidate_alias,company_json,vacancy_json,need_definition_json,message,status,created_at,viewed_at,responded_at,disclosure_json) \
-             VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) \
-             ON CONFLICT(id) DO UPDATE SET company_id=excluded.company_id,candidate_id=excluded.candidate_id,candidate_alias=excluded.candidate_alias,company_json=excluded.company_json,vacancy_json=excluded.vacancy_json,need_definition_json=excluded.need_definition_json,message=excluded.message,status=excluded.status,created_at=excluded.created_at,viewed_at=excluded.viewed_at,responded_at=excluded.responded_at,disclosure_json=excluded.disclosure_json",
+            "INSERT INTO applications(id,company_id,candidate_id,need_id,candidate_alias,company_json,vacancy_json,need_definition_json,message,status,created_at,viewed_at,responded_at,disclosure_json) \
+             VALUES($1,$2,$3,$14,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) \
+             ON CONFLICT(id) DO UPDATE SET company_id=excluded.company_id,candidate_id=excluded.candidate_id,need_id=excluded.need_id,candidate_alias=excluded.candidate_alias,company_json=excluded.company_json,vacancy_json=excluded.vacancy_json,need_definition_json=excluded.need_definition_json,message=excluded.message,status=excluded.status,created_at=excluded.created_at,viewed_at=excluded.viewed_at,responded_at=excluded.responded_at,disclosure_json=excluded.disclosure_json",
         )
         .bind(&value.id)
         .bind(&value.company_id)
@@ -747,25 +2315,26 @@ impl PlatformRepository for PostgresRepository {
         .bind(serde_json::to_string(&value.need_definition).map_err(json_storage)?)
         .bind(&value.message)
         .bind(value.status.as_str())
-        .bind(&value.created_at)
-        .bind(&value.viewed_at)
-        .bind(&value.responded_at)
+        .bind(ts(&value.created_at)?)
+        .bind(ts_opt(&value.viewed_at)?)
+        .bind(ts_opt(&value.responded_at)?)
         .bind(serde_json::to_string(&value.disclosure_fields).map_err(json_storage)?)
-        .execute(&self.pool)
+        .bind(&value.vacancy.id)
+        .execute(&mut *conn)
         .await
         .map_err(storage)?;
         Ok(())
     }
 
-    async fn tasks(
-        &self,
+    pub(super) async fn tasks(
+        conn: &mut PgConnection,
         company_id: &str,
     ) -> Result<Vec<fsp_domain::TaskRecord>, RepositoryError> {
         sqlx::query(&format!(
             "SELECT {TASK_COLUMNS} FROM tasks WHERE company_id=$1 ORDER BY created_at,id"
         ))
         .bind(company_id)
-        .fetch_all(&self.pool)
+        .fetch_all(&mut *conn)
         .await
         .map_err(storage)?
         .iter()
@@ -773,11 +2342,13 @@ impl PlatformRepository for PostgresRepository {
         .collect()
     }
 
-    async fn active_tasks(&self) -> Result<Vec<fsp_domain::TaskRecord>, RepositoryError> {
+    pub(super) async fn active_tasks(
+        conn: &mut PgConnection,
+    ) -> Result<Vec<fsp_domain::TaskRecord>, RepositoryError> {
         sqlx::query(&format!(
             "SELECT {TASK_COLUMNS} FROM tasks WHERE status='active' ORDER BY created_at,id"
         ))
-        .fetch_all(&self.pool)
+        .fetch_all(&mut *conn)
         .await
         .map_err(storage)?
         .iter()
@@ -785,17 +2356,23 @@ impl PlatformRepository for PostgresRepository {
         .collect()
     }
 
-    async fn task(&self, task_id: &str) -> Result<Option<fsp_domain::TaskRecord>, RepositoryError> {
+    pub(super) async fn task(
+        conn: &mut PgConnection,
+        task_id: &str,
+    ) -> Result<Option<fsp_domain::TaskRecord>, RepositoryError> {
         sqlx::query(&format!("SELECT {TASK_COLUMNS} FROM tasks WHERE id=$1"))
             .bind(task_id)
-            .fetch_optional(&self.pool)
+            .fetch_optional(&mut *conn)
             .await
             .map_err(storage)?
             .map(|row| task_record(&row))
             .transpose()
     }
 
-    async fn save_task(&self, value: &fsp_domain::TaskRecord) -> Result<(), RepositoryError> {
+    pub(super) async fn save_task(
+        conn: &mut PgConnection,
+        value: &fsp_domain::TaskRecord,
+    ) -> Result<(), RepositoryError> {
         sqlx::query(
             "INSERT INTO tasks(id,company_id,title,prompt,skill_id,grade,estimate_minutes,status,created_at) \
              VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) \
@@ -809,22 +2386,22 @@ impl PlatformRepository for PostgresRepository {
         .bind(grade(value.grade))
         .bind(value.estimate_minutes as i32)
         .bind(value.status.as_str())
-        .bind(&value.created_at)
-        .execute(&self.pool)
+        .bind(ts(&value.created_at)?)
+        .execute(&mut *conn)
         .await
         .map_err(storage)?;
         Ok(())
     }
 
-    async fn candidate_task_responses(
-        &self,
+    pub(super) async fn candidate_task_responses(
+        conn: &mut PgConnection,
         candidate_id: &str,
     ) -> Result<Vec<fsp_domain::TaskResponseRecord>, RepositoryError> {
         sqlx::query(&format!(
             "SELECT {TASK_RESPONSE_COLUMNS} FROM task_responses WHERE candidate_id=$1 ORDER BY seq"
         ))
         .bind(candidate_id)
-        .fetch_all(&self.pool)
+        .fetch_all(&mut *conn)
         .await
         .map_err(storage)?
         .iter()
@@ -832,15 +2409,15 @@ impl PlatformRepository for PostgresRepository {
         .collect()
     }
 
-    async fn company_task_responses(
-        &self,
+    pub(super) async fn company_task_responses(
+        conn: &mut PgConnection,
         company_id: &str,
     ) -> Result<Vec<fsp_domain::TaskResponseRecord>, RepositoryError> {
         sqlx::query(&format!(
             "SELECT {TASK_RESPONSE_COLUMNS} FROM task_responses WHERE company_id=$1 ORDER BY seq"
         ))
         .bind(company_id)
-        .fetch_all(&self.pool)
+        .fetch_all(&mut *conn)
         .await
         .map_err(storage)?
         .iter()
@@ -848,29 +2425,29 @@ impl PlatformRepository for PostgresRepository {
         .collect()
     }
 
-    async fn task_response(
-        &self,
+    pub(super) async fn task_response(
+        conn: &mut PgConnection,
         response_id: &str,
     ) -> Result<Option<fsp_domain::TaskResponseRecord>, RepositoryError> {
         sqlx::query(&format!(
             "SELECT {TASK_RESPONSE_COLUMNS} FROM task_responses WHERE id=$1"
         ))
         .bind(response_id)
-        .fetch_optional(&self.pool)
+        .fetch_optional(&mut *conn)
         .await
         .map_err(storage)?
         .map(|row| task_response_record(&row))
         .transpose()
     }
 
-    async fn save_task_response(
-        &self,
+    pub(super) async fn save_task_response(
+        conn: &mut PgConnection,
         value: &fsp_domain::TaskResponseRecord,
     ) -> Result<(), RepositoryError> {
         sqlx::query(
-            "INSERT INTO task_responses(id,candidate_id,company_id,candidate_alias,task_json,mode,answer,status,feedback,submitted_at,reviewed_at) \
-             VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) \
-             ON CONFLICT(id) DO UPDATE SET candidate_id=excluded.candidate_id,company_id=excluded.company_id,candidate_alias=excluded.candidate_alias,task_json=excluded.task_json,mode=excluded.mode,answer=excluded.answer,status=excluded.status,feedback=excluded.feedback,submitted_at=excluded.submitted_at,reviewed_at=excluded.reviewed_at",
+            "INSERT INTO task_responses(id,candidate_id,company_id,task_id,candidate_alias,task_json,mode,answer,status,feedback,submitted_at,reviewed_at) \
+             VALUES($1,$2,$3,$12,$4,$5,$6,$7,$8,$9,$10,$11) \
+             ON CONFLICT(id) DO UPDATE SET candidate_id=excluded.candidate_id,company_id=excluded.company_id,task_id=excluded.task_id,candidate_alias=excluded.candidate_alias,task_json=excluded.task_json,mode=excluded.mode,answer=excluded.answer,status=excluded.status,feedback=excluded.feedback,submitted_at=excluded.submitted_at,reviewed_at=excluded.reviewed_at",
         )
         .bind(&value.id)
         .bind(&value.candidate_id)
@@ -881,16 +2458,17 @@ impl PlatformRepository for PostgresRepository {
         .bind(&value.answer)
         .bind(value.status.as_str())
         .bind(&value.feedback)
-        .bind(&value.submitted_at)
-        .bind(&value.reviewed_at)
-        .execute(&self.pool)
+        .bind(ts(&value.submitted_at)?)
+        .bind(ts_opt(&value.reviewed_at)?)
+        .bind(&value.task.id)
+        .execute(&mut *conn)
         .await
         .map_err(storage)?;
         Ok(())
     }
 
-    async fn save_candidate_index(
-        &self,
+    pub(super) async fn save_candidate_index(
+        conn: &mut PgConnection,
         record: &CandidateIndexRecord,
     ) -> Result<(), RepositoryError> {
         sqlx::query(
@@ -904,22 +2482,22 @@ impl PlatformRepository for PostgresRepository {
         .bind(serde_json::to_string(&record.skills).map_err(json_storage)?)
         .bind(serde_json::to_string(&record.source_kinds).map_err(json_storage)?)
         .bind(record.fsp_verified)
-        .bind(&record.last_signal_at)
-        .execute(&self.pool)
+        .bind(ts_opt(&record.last_signal_at)?)
+        .execute(&mut *conn)
         .await
         .map_err(storage)?;
         Ok(())
     }
 
-    async fn candidate_assessments(
-        &self,
+    pub(super) async fn candidate_assessments(
+        conn: &mut PgConnection,
         candidate_id: &str,
     ) -> Result<Vec<fsp_domain::AssessmentRecord>, RepositoryError> {
         sqlx::query(&format!(
             "SELECT {ASSESSMENT_COLUMNS} FROM assessments WHERE candidate_id=$1 ORDER BY created_at,id"
         ))
         .bind(candidate_id)
-        .fetch_all(&self.pool)
+        .fetch_all(&mut *conn)
         .await
         .map_err(storage)?
         .iter()
@@ -927,23 +2505,23 @@ impl PlatformRepository for PostgresRepository {
         .collect()
     }
 
-    async fn assessment(
-        &self,
+    pub(super) async fn assessment(
+        conn: &mut PgConnection,
         assessment_id: &str,
     ) -> Result<Option<fsp_domain::AssessmentRecord>, RepositoryError> {
         sqlx::query(&format!(
             "SELECT {ASSESSMENT_COLUMNS} FROM assessments WHERE id=$1"
         ))
         .bind(assessment_id)
-        .fetch_optional(&self.pool)
+        .fetch_optional(&mut *conn)
         .await
         .map_err(storage)?
         .map(|row| assessment_record(&row))
         .transpose()
     }
 
-    async fn save_assessment(
-        &self,
+    pub(super) async fn save_assessment(
+        conn: &mut PgConnection,
         value: &fsp_domain::AssessmentRecord,
     ) -> Result<(), RepositoryError> {
         sqlx::query(
@@ -960,17 +2538,17 @@ impl PlatformRepository for PostgresRepository {
         .bind(serde_json::to_string(&value.answer).map_err(json_storage)?)
         .bind(serde_json::to_string(&value.checks).map_err(json_storage)?)
         .bind(value.result.as_ref().map(serde_json::to_string).transpose().map_err(json_storage)?)
-        .bind(&value.created_at)
-        .bind(&value.updated_at)
+        .bind(ts(&value.created_at)?)
+        .bind(ts(&value.updated_at)?)
         .bind(value.revision as i64)
-        .execute(&self.pool)
+        .execute(&mut *conn)
         .await
         .map_err(storage)?;
         Ok(())
     }
 
-    async fn save_oauth_state(
-        &self,
+    pub(super) async fn save_oauth_state(
+        conn: &mut PgConnection,
         candidate_id: &str,
         state: &str,
         expires_at: &str,
@@ -980,15 +2558,15 @@ impl PlatformRepository for PostgresRepository {
         )
         .bind(state)
         .bind(candidate_id)
-        .bind(expires_at)
-        .execute(&self.pool)
+        .bind(ts(expires_at)?)
+        .execute(&mut *conn)
         .await
         .map_err(storage)?;
         Ok(())
     }
 
-    async fn consume_oauth_state(
-        &self,
+    pub(super) async fn consume_oauth_state(
+        conn: &mut PgConnection,
         candidate_id: &str,
         state: &str,
         now: &str,
@@ -998,16 +2576,16 @@ impl PlatformRepository for PostgresRepository {
         )
         .bind(state)
         .bind(candidate_id)
-        .bind(now)
-        .execute(&self.pool)
+        .bind(ts(now)?)
+        .execute(&mut *conn)
         .await
         .map_err(storage)?
         .rows_affected();
         Ok(changed == 1)
     }
 
-    async fn save_github_token(
-        &self,
+    pub(super) async fn save_github_token(
+        conn: &mut PgConnection,
         candidate_id: &str,
         token: &str,
     ) -> Result<(), RepositoryError> {
@@ -1017,28 +2595,34 @@ impl PlatformRepository for PostgresRepository {
         )
         .bind(candidate_id)
         .bind(token)
-        .execute(&self.pool)
+        .execute(&mut *conn)
         .await
         .map_err(storage)?;
         Ok(())
     }
 
-    async fn github_token(&self, candidate_id: &str) -> Result<Option<String>, RepositoryError> {
+    pub(super) async fn github_token(
+        conn: &mut PgConnection,
+        candidate_id: &str,
+    ) -> Result<Option<String>, RepositoryError> {
         sqlx::query("SELECT access_token FROM github_credentials WHERE candidate_id=$1")
             .bind(candidate_id)
-            .fetch_optional(&self.pool)
+            .fetch_optional(&mut *conn)
             .await
             .map_err(storage)?
             .map(|row| row.try_get::<String, _>(0).map_err(storage))
             .transpose()
     }
 
-    async fn sources(&self, candidate_id: &str) -> Result<Vec<SourceRecord>, RepositoryError> {
+    pub(super) async fn sources(
+        conn: &mut PgConnection,
+        candidate_id: &str,
+    ) -> Result<Vec<SourceRecord>, RepositoryError> {
         sqlx::query(&format!(
             "SELECT {SOURCE_COLUMNS} FROM sources WHERE candidate_id=$1 ORDER BY id"
         ))
         .bind(candidate_id)
-        .fetch_all(&self.pool)
+        .fetch_all(&mut *conn)
         .await
         .map_err(storage)?
         .iter()
@@ -1046,7 +2630,10 @@ impl PlatformRepository for PostgresRepository {
         .collect()
     }
 
-    async fn save_source(&self, source: &SourceRecord) -> Result<(), RepositoryError> {
+    pub(super) async fn save_source(
+        conn: &mut PgConnection,
+        source: &SourceRecord,
+    ) -> Result<(), RepositoryError> {
         sqlx::query(
             "INSERT INTO sources(id,candidate_id,provider,synthetic,active_job_id,account_label,last_synced_at,analysis_json,verified_participation,competition_ids_json) \
              VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) \
@@ -1058,17 +2645,20 @@ impl PlatformRepository for PostgresRepository {
         .bind(source.synthetic)
         .bind(&source.active_job_id)
         .bind(&source.account_label)
-        .bind(&source.last_synced_at)
+        .bind(ts_opt(&source.last_synced_at)?)
         .bind(source.analysis.as_ref().map(serde_json::to_string).transpose().map_err(json_storage)?)
         .bind(source.verified_participation)
         .bind(serde_json::to_string(&source.competition_ids).map_err(json_storage)?)
-        .execute(&self.pool)
+        .execute(&mut *conn)
         .await
         .map_err(storage)?;
         Ok(())
     }
 
-    async fn save_job(&self, job: &JobRecord) -> Result<(), RepositoryError> {
+    pub(super) async fn save_job(
+        conn: &mut PgConnection,
+        job: &JobRecord,
+    ) -> Result<(), RepositoryError> {
         sqlx::query(
             "INSERT INTO jobs(id,owner_id,kind,status,created_at,updated_at,candidate_id,assessment_id,input_revision,result_json,confirmed,result_source_id,error_code,error_message) \
              VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) \
@@ -1078,8 +2668,8 @@ impl PlatformRepository for PostgresRepository {
         .bind(&job.owner_id)
         .bind(&job.kind)
         .bind(&job.status)
-        .bind(&job.created_at)
-        .bind(&job.updated_at)
+        .bind(ts(&job.created_at)?)
+        .bind(ts(&job.updated_at)?)
         .bind(&job.candidate_id)
         .bind(&job.assessment_id)
         .bind(job.input_revision.map(|value| value as i64))
@@ -1088,14 +2678,14 @@ impl PlatformRepository for PostgresRepository {
         .bind(&job.result_source_id)
         .bind(&job.error_code)
         .bind(&job.error_message)
-        .execute(&self.pool)
+        .execute(&mut *conn)
         .await
         .map_err(storage)?;
         Ok(())
     }
 
-    async fn job(
-        &self,
+    pub(super) async fn job(
+        conn: &mut PgConnection,
         owner_id: &str,
         job_id: &str,
     ) -> Result<Option<JobRecord>, RepositoryError> {
@@ -1104,7 +2694,7 @@ impl PlatformRepository for PostgresRepository {
         ))
         .bind(owner_id)
         .bind(job_id)
-        .fetch_optional(&self.pool)
+        .fetch_optional(&mut *conn)
         .await
         .map_err(storage)?
         .map(|row| {
@@ -1113,8 +2703,8 @@ impl PlatformRepository for PostgresRepository {
                 owner_id: row.try_get("owner_id").map_err(storage)?,
                 kind: row.try_get("kind").map_err(storage)?,
                 status: row.try_get("status").map_err(storage)?,
-                created_at: row.try_get("created_at").map_err(storage)?,
-                updated_at: row.try_get("updated_at").map_err(storage)?,
+                created_at: row_ts(&row, "created_at")?,
+                updated_at: row_ts(&row, "updated_at")?,
                 candidate_id: row.try_get("candidate_id").map_err(storage)?,
                 assessment_id: row.try_get("assessment_id").map_err(storage)?,
                 input_revision: row
@@ -1130,67 +2720,10 @@ impl PlatformRepository for PostgresRepository {
         })
         .transpose()
     }
-
-    async fn idempotency_get(
-        &self,
-        scope: &str,
-    ) -> Result<Option<StoredIdempotentResponse>, RepositoryError> {
-        sqlx::query("SELECT fingerprint,status,body_json FROM idempotency_keys WHERE scope=$1")
-            .bind(scope)
-            .fetch_optional(&self.pool)
-            .await
-            .map_err(storage)?
-            .map(|row| {
-                Ok(StoredIdempotentResponse {
-                    fingerprint: row.try_get("fingerprint").map_err(storage)?,
-                    status: row
-                        .try_get::<i32, _>("status")
-                        .map_err(storage)?
-                        .try_into()
-                        .map_err(|_| RepositoryError::Storage("invalid status".into()))?,
-                    body: row.try_get("body_json").map_err(storage)?,
-                })
-            })
-            .transpose()
-    }
-
-    async fn idempotency_put(
-        &self,
-        scope: &str,
-        fingerprint: &str,
-        status: u16,
-        body: &str,
-        now: &str,
-    ) -> Result<(), RepositoryError> {
-        // ON CONFLICT DO NOTHING keeps the first response when retries race.
-        sqlx::query(
-            "INSERT INTO idempotency_keys(scope,fingerprint,status,body_json,created_at) VALUES($1,$2,$3,$4,$5) ON CONFLICT(scope) DO NOTHING",
-        )
-        .bind(scope)
-        .bind(fingerprint)
-        .bind(i32::from(status))
-        .bind(body)
-        .bind(now)
-        .execute(&self.pool)
-        .await
-        .map_err(storage)?;
-        Ok(())
-    }
-
-    async fn seed_demo(&self, now: &str) -> Result<(), RepositoryError> {
-        let exists: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM accounts)")
-            .fetch_one(&self.pool)
-            .await
-            .map_err(storage)?;
-        if exists {
-            return Ok(());
-        }
-        seed::seed(&self.pool, now).await
-    }
 }
 
 pub(crate) async fn insert_candidate(
-    pool: &PgPool,
+    conn: &mut PgConnection,
     value: &CandidateProfile,
 ) -> Result<(), RepositoryError> {
     sqlx::query(
@@ -1212,17 +2745,17 @@ pub(crate) async fn insert_candidate(
     .bind(value.consents.publication)
     .bind(value.verified_grade.map(grade))
     .bind(value.verified_specialization.map(specialization))
-    .bind(&value.grade_confirmed_at)
+    .bind(ts_opt(&value.grade_confirmed_at)?)
     .bind(value.revision as i64)
-    .bind(&value.updated_at)
-    .execute(pool)
+    .bind(ts(&value.updated_at)?)
+    .execute(&mut *conn)
     .await
     .map_err(conflict)?;
     Ok(())
 }
 
 pub(crate) async fn update_candidate(
-    pool: &PgPool,
+    conn: &mut PgConnection,
     value: &CandidateProfile,
 ) -> Result<(), RepositoryError> {
     let changed = sqlx::query(
@@ -1242,16 +2775,16 @@ pub(crate) async fn update_candidate(
     .bind(value.consents.publication)
     .bind(value.verified_grade.map(grade))
     .bind(value.verified_specialization.map(specialization))
-    .bind(&value.grade_confirmed_at)
+    .bind(ts_opt(&value.grade_confirmed_at)?)
     .bind(value.revision as i64)
-    .bind(&value.updated_at)
+    .bind(ts(&value.updated_at)?)
     .bind(&value.id)
-    .execute(pool)
+    .execute(&mut *conn)
     .await
     .map_err(storage)?
     .rows_affected();
     if changed == 0 {
-        return Err(RepositoryError::Storage("candidate not found".into()));
+        return Err(RepositoryError::NotFound);
     }
     Ok(())
 }
@@ -1302,7 +2835,7 @@ fn candidate_index(row: &PgRow) -> Result<CandidateIndexRecord, RepositoryError>
             .try_get::<Option<bool>, _>("fsp_verified")
             .map_err(storage)?
             .unwrap_or(false),
-        last_signal_at: row.try_get("last_signal_at").map_err(storage)?,
+        last_signal_at: row_ts_opt(row, "last_signal_at")?,
         profile,
     })
 }
@@ -1316,13 +2849,12 @@ fn candidate_prefixed(row: &PgRow) -> Result<CandidateProfile, RepositoryError> 
         specialization: parse_specialization(
             &row.try_get::<String, _>("specialization")
                 .map_err(storage)?,
-        ),
+        )?,
         selected_grade: parse_grade(
             &row.try_get::<String, _>("selected_grade")
                 .map_err(storage)?,
-        ),
-        stack: serde_json::from_str(&row.try_get::<String, _>("stack_json").map_err(storage)?)
-            .unwrap_or_default(),
+        )?,
+        stack: parse_json(&row.try_get::<String, _>("stack_json").map_err(storage)?)?,
         team_role: row.try_get("team_role").map_err(storage)?,
         experience_months: row
             .try_get::<Option<i32>, _>("experience_months")
@@ -1342,15 +2874,17 @@ fn candidate_prefixed(row: &PgRow) -> Result<CandidateProfile, RepositoryError> 
             .try_get::<Option<String>, _>("verified_grade")
             .map_err(storage)?
             .as_deref()
-            .map(parse_grade),
+            .map(parse_grade)
+            .transpose()?,
         verified_specialization: row
             .try_get::<Option<String>, _>("verified_specialization")
             .map_err(storage)?
             .as_deref()
-            .map(parse_specialization),
-        grade_confirmed_at: row.try_get("grade_confirmed_at").map_err(storage)?,
+            .map(parse_specialization)
+            .transpose()?,
+        grade_confirmed_at: row_ts_opt(row, "grade_confirmed_at")?,
         revision: row.try_get::<i64, _>("revision").map_err(storage)? as u64,
-        updated_at: row.try_get("updated_at").map_err(storage)?,
+        updated_at: row_ts(row, "updated_at")?,
     })
 }
 
@@ -1362,7 +2896,7 @@ fn account(row: &PgRow) -> Result<Account, RepositoryError> {
     Ok(Account {
         id: row.try_get("id").map_err(storage)?,
         email: row.try_get("email").map_err(storage)?,
-        role: parse_role(row.try_get::<String, _>("role").map_err(storage)?.as_str()),
+        role: parse_role(row.try_get::<String, _>("role").map_err(storage)?.as_str())?,
         candidate_id: row.try_get("candidate_id").map_err(storage)?,
         company_id: row.try_get("company_id").map_err(storage)?,
         email_verified: row.try_get("email_verified").map_err(storage)?,
@@ -1378,8 +2912,8 @@ fn need_record(row: &PgRow) -> Result<HiringNeedRecord, RepositoryError> {
             specialization: parse_specialization(
                 &row.try_get::<String, _>("specialization")
                     .map_err(storage)?,
-            ),
-            grade: parse_grade(&row.try_get::<String, _>("grade").map_err(storage)?),
+            )?,
+            grade: parse_grade(&row.try_get::<String, _>("grade").map_err(storage)?)?,
             requirements: parse_json(
                 &row.try_get::<String, _>("requirements_json")
                     .map_err(storage)?,
@@ -1390,9 +2924,9 @@ fn need_record(row: &PgRow) -> Result<HiringNeedRecord, RepositoryError> {
         salary_to: row.try_get::<i64, _>("salary_to").map_err(storage)? as u64,
         description: row.try_get("description").map_err(storage)?,
         published: row.try_get("published").map_err(storage)?,
-        published_at: row.try_get("published_at").map_err(storage)?,
-        created_at: row.try_get("created_at").map_err(storage)?,
-        updated_at: row.try_get("updated_at").map_err(storage)?,
+        published_at: row_ts_opt(row, "published_at")?,
+        created_at: row_ts(row, "created_at")?,
+        updated_at: row_ts(row, "updated_at")?,
         revision: row.try_get::<i64, _>("revision").map_err(storage)? as u64,
     })
 }
@@ -1403,8 +2937,8 @@ fn shortlist_record(row: &PgRow) -> Result<fsp_domain::ShortlistRecord, Reposito
         company_id: row.try_get("company_id").map_err(storage)?,
         title: row.try_get("title").map_err(storage)?,
         member_ids: parse_json(&row.try_get::<String, _>("members_json").map_err(storage)?)?,
-        created_at: row.try_get("created_at").map_err(storage)?,
-        updated_at: row.try_get("updated_at").map_err(storage)?,
+        created_at: row_ts(row, "created_at")?,
+        updated_at: row_ts(row, "updated_at")?,
     })
 }
 
@@ -1425,9 +2959,9 @@ fn invitation_record(row: &PgRow) -> Result<fsp_domain::InvitationRecord, Reposi
         status: fsp_domain::InteractionStatus::parse(&status).ok_or_else(|| {
             RepositoryError::Storage(format!("unknown invitation status {status}"))
         })?,
-        created_at: row.try_get("created_at").map_err(storage)?,
-        viewed_at: row.try_get("viewed_at").map_err(storage)?,
-        responded_at: row.try_get("responded_at").map_err(storage)?,
+        created_at: row_ts(row, "created_at")?,
+        viewed_at: row_ts_opt(row, "viewed_at")?,
+        responded_at: row_ts_opt(row, "responded_at")?,
         disclosure_fields: parse_json(
             &row.try_get::<String, _>("disclosure_json")
                 .map_err(storage)?,
@@ -1452,9 +2986,9 @@ fn application_record(row: &PgRow) -> Result<fsp_domain::ApplicationRecord, Repo
         status: fsp_domain::InteractionStatus::parse(&status).ok_or_else(|| {
             RepositoryError::Storage(format!("unknown application status {status}"))
         })?,
-        created_at: row.try_get("created_at").map_err(storage)?,
-        viewed_at: row.try_get("viewed_at").map_err(storage)?,
-        responded_at: row.try_get("responded_at").map_err(storage)?,
+        created_at: row_ts(row, "created_at")?,
+        viewed_at: row_ts_opt(row, "viewed_at")?,
+        responded_at: row_ts_opt(row, "responded_at")?,
         disclosure_fields: parse_json(
             &row.try_get::<String, _>("disclosure_json")
                 .map_err(storage)?,
@@ -1468,7 +3002,7 @@ fn disclosure_record(row: &PgRow) -> Result<fsp_domain::DisclosureRecord, Reposi
         company_id: row.try_get("company_id").map_err(storage)?,
         invitation_id: row.try_get("invitation_id").map_err(storage)?,
         application_id: row.try_get("application_id").map_err(storage)?,
-        granted_at: row.try_get("granted_at").map_err(storage)?,
+        granted_at: row_ts_opt(row, "granted_at")?,
         name: row.try_get("name").map_err(storage)?,
         email: row.try_get("email").map_err(storage)?,
         source_links: parse_json(
@@ -1486,11 +3020,11 @@ fn task_record(row: &PgRow) -> Result<fsp_domain::TaskRecord, RepositoryError> {
         title: row.try_get("title").map_err(storage)?,
         prompt: row.try_get("prompt").map_err(storage)?,
         skill_id: row.try_get("skill_id").map_err(storage)?,
-        grade: parse_grade(&row.try_get::<String, _>("grade").map_err(storage)?),
+        grade: parse_grade(&row.try_get::<String, _>("grade").map_err(storage)?)?,
         estimate_minutes: row.try_get::<i32, _>("estimate_minutes").map_err(storage)? as u32,
         status: fsp_domain::TaskStatus::parse(&status)
             .ok_or_else(|| RepositoryError::Storage(format!("unknown task status {status}")))?,
-        created_at: row.try_get("created_at").map_err(storage)?,
+        created_at: row_ts(row, "created_at")?,
     })
 }
 
@@ -1509,8 +3043,8 @@ fn task_response_record(row: &PgRow) -> Result<fsp_domain::TaskResponseRecord, R
             RepositoryError::Storage(format!("unknown task response status {status}"))
         })?,
         feedback: row.try_get("feedback").map_err(storage)?,
-        submitted_at: row.try_get("submitted_at").map_err(storage)?,
-        reviewed_at: row.try_get("reviewed_at").map_err(storage)?,
+        submitted_at: row_ts(row, "submitted_at")?,
+        reviewed_at: row_ts_opt(row, "reviewed_at")?,
     })
 }
 
@@ -1522,8 +3056,8 @@ fn assessment_record(row: &PgRow) -> Result<fsp_domain::AssessmentRecord, Reposi
         specialization: parse_specialization(
             &row.try_get::<String, _>("specialization")
                 .map_err(storage)?,
-        ),
-        grade: parse_grade(&row.try_get::<String, _>("grade").map_err(storage)?),
+        )?,
+        grade: parse_grade(&row.try_get::<String, _>("grade").map_err(storage)?)?,
         status: fsp_domain::AssessmentStatus::parse(&status).ok_or_else(|| {
             RepositoryError::Storage(format!("unknown assessment status {status}"))
         })?,
@@ -1535,8 +3069,8 @@ fn assessment_record(row: &PgRow) -> Result<fsp_domain::AssessmentRecord, Reposi
             .map_err(storage)?
             .map(|json| parse_json(&json))
             .transpose()?,
-        created_at: row.try_get("created_at").map_err(storage)?,
-        updated_at: row.try_get("updated_at").map_err(storage)?,
+        created_at: row_ts(row, "created_at")?,
+        updated_at: row_ts(row, "updated_at")?,
         revision: row.try_get::<i64, _>("revision").map_err(storage)? as u64,
     })
 }
@@ -1545,11 +3079,11 @@ fn source_record(row: &PgRow) -> Result<SourceRecord, RepositoryError> {
     Ok(SourceRecord {
         id: row.try_get("id").map_err(storage)?,
         candidate_id: row.try_get("candidate_id").map_err(storage)?,
-        provider: parse_source_provider(&row.try_get::<String, _>("provider").map_err(storage)?),
+        provider: parse_source_provider(&row.try_get::<String, _>("provider").map_err(storage)?)?,
         synthetic: row.try_get("synthetic").map_err(storage)?,
         active_job_id: row.try_get("active_job_id").map_err(storage)?,
         account_label: row.try_get("account_label").map_err(storage)?,
-        last_synced_at: row.try_get("last_synced_at").map_err(storage)?,
+        last_synced_at: row_ts_opt(row, "last_synced_at")?,
         analysis: row
             .try_get::<Option<String>, _>("analysis_json")
             .map_err(storage)?
@@ -1578,11 +3112,11 @@ fn role(value: Role) -> &'static str {
         Role::Employer => "employer",
     }
 }
-fn parse_role(value: &str) -> Role {
-    if value == "employer" {
-        Role::Employer
-    } else {
-        Role::Candidate
+fn parse_role(value: &str) -> Result<Role, RepositoryError> {
+    match value {
+        "candidate" => Ok(Role::Candidate),
+        "employer" => Ok(Role::Employer),
+        _ => Err(RepositoryError::Storage(format!("unknown role: {value}"))),
     }
 }
 fn grade(value: Grade) -> &'static str {
@@ -1592,11 +3126,12 @@ fn grade(value: Grade) -> &'static str {
         Grade::Senior => "senior",
     }
 }
-fn parse_grade(value: &str) -> Grade {
+fn parse_grade(value: &str) -> Result<Grade, RepositoryError> {
     match value {
-        "middle" => Grade::Middle,
-        "senior" => Grade::Senior,
-        _ => Grade::Junior,
+        "junior" => Ok(Grade::Junior),
+        "middle" => Ok(Grade::Middle),
+        "senior" => Ok(Grade::Senior),
+        _ => Err(RepositoryError::Storage(format!("unknown grade: {value}"))),
     }
 }
 fn specialization(value: Specialization) -> &'static str {
@@ -1606,11 +3141,14 @@ fn specialization(value: Specialization) -> &'static str {
         Specialization::Fullstack => "fullstack",
     }
 }
-fn parse_specialization(value: &str) -> Specialization {
+fn parse_specialization(value: &str) -> Result<Specialization, RepositoryError> {
     match value {
-        "frontend" => Specialization::Frontend,
-        "fullstack" => Specialization::Fullstack,
-        _ => Specialization::Backend,
+        "backend" => Ok(Specialization::Backend),
+        "frontend" => Ok(Specialization::Frontend),
+        "fullstack" => Ok(Specialization::Fullstack),
+        _ => Err(RepositoryError::Storage(format!(
+            "unknown specialization: {value}"
+        ))),
     }
 }
 fn source_provider(value: fsp_domain::SourceProvider) -> &'static str {
@@ -1619,23 +3157,60 @@ fn source_provider(value: fsp_domain::SourceProvider) -> &'static str {
         fsp_domain::SourceProvider::Fsp => "fsp",
     }
 }
-fn parse_source_provider(value: &str) -> fsp_domain::SourceProvider {
-    if value == "fsp" {
-        fsp_domain::SourceProvider::Fsp
-    } else {
-        fsp_domain::SourceProvider::Github
+fn parse_source_provider(value: &str) -> Result<fsp_domain::SourceProvider, RepositoryError> {
+    match value {
+        "github" => Ok(fsp_domain::SourceProvider::Github),
+        "fsp" => Ok(fsp_domain::SourceProvider::Fsp),
+        _ => Err(RepositoryError::Storage(format!(
+            "unknown source provider: {value}"
+        ))),
     }
+}
+
+/// Binds an RFC3339 domain timestamp into a `timestamptz` parameter.
+fn ts(value: &str) -> Result<DateTime<Utc>, RepositoryError> {
+    DateTime::parse_from_rfc3339(value)
+        .map(|parsed| parsed.with_timezone(&Utc))
+        .map_err(|error| {
+            RepositoryError::Storage(format!("timestamp is not RFC3339: {value}: {error}"))
+        })
+}
+
+fn ts_opt(value: &Option<String>) -> Result<Option<DateTime<Utc>>, RepositoryError> {
+    value.as_deref().map(ts).transpose()
+}
+
+/// Reads a `timestamptz` column back into the domain's RFC3339 string form.
+fn row_ts(row: &PgRow, column: &str) -> Result<String, RepositoryError> {
+    Ok(row
+        .try_get::<DateTime<Utc>, _>(column)
+        .map_err(storage)?
+        .to_rfc3339_opts(SecondsFormat::Millis, true))
+}
+
+fn row_ts_opt(row: &PgRow, column: &str) -> Result<Option<String>, RepositoryError> {
+    row.try_get::<Option<DateTime<Utc>>, _>(column)
+        .map_err(storage)?
+        .map(|value| value.to_rfc3339_opts(SecondsFormat::Millis, true))
+        .map_or(Ok(None), |value| Ok(Some(value)))
 }
 
 fn storage(error: sqlx::Error) -> RepositoryError {
-    RepositoryError::Storage(error.to_string())
+    match error {
+        sqlx::Error::Database(ref inner) => match inner.code().as_deref() {
+            Some("23505") => RepositoryError::Conflict,
+            Some("23503") | Some("23502") => RepositoryError::NotFound,
+            // Serialization failure / deadlock: safe to retry.
+            Some("40001") | Some("40P01") => RepositoryError::Unavailable,
+            _ => RepositoryError::Storage(inner.to_string()),
+        },
+        sqlx::Error::PoolTimedOut | sqlx::Error::PoolClosed | sqlx::Error::Io(_) => {
+            RepositoryError::Unavailable
+        }
+        other => RepositoryError::Storage(other.to_string()),
+    }
 }
 
 fn conflict(error: sqlx::Error) -> RepositoryError {
-    match error {
-        sqlx::Error::Database(ref inner) if inner.code().as_deref() == Some("23505") => {
-            RepositoryError::Conflict
-        }
-        other => storage(other),
-    }
+    storage(error)
 }

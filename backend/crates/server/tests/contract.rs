@@ -23,12 +23,17 @@ fn test_admin_url() -> String {
 
 struct FixedDelivery;
 
+#[async_trait::async_trait]
 impl VerificationDelivery for FixedDelivery {
     fn code_for(&self) -> String {
         "123456".into()
     }
 
-    fn deliver(&self, _email: &str, _code: &str) -> Result<(), String> {
+    async fn deliver(
+        &self,
+        _email: &str,
+        _code: &str,
+    ) -> Result<(), fsp_application::IntegrationError> {
         Ok(())
     }
 
