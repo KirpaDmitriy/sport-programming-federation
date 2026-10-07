@@ -593,6 +593,97 @@ async fn needs_write_side_and_vacancy_projection() {
 }
 
 #[tokio::test]
+async fn concurrent_shortlist_edits_preserve_members_and_company_scope() {
+    let app = test_app().await;
+    let employer = login(&app, EMPLOYER, "employer").await;
+    let (status, shortlist) = send(
+        &app,
+        "POST",
+        "/api/v1/shortlists",
+        Some(&employer),
+        json!({"title":"Кандидаты"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let path = format!("/api/v1/shortlists/{}", shortlist["id"].as_str().unwrap());
+    let first = format!("{path}/members/candidate018");
+    let second = format!("{path}/members/candidate031");
+    let (a, b, c) = tokio::join!(
+        call(&app, request("PUT", &first, Some(&employer), None)),
+        call(&app, request("PUT", &second, Some(&employer), None)),
+        send(
+            &app,
+            "PATCH",
+            &path,
+            Some(&employer),
+            json!({"title":"Основной список"})
+        ),
+    );
+    assert_eq!(a.0, StatusCode::OK, "{}", a.2);
+    assert_eq!(b.0, StatusCode::OK, "{}", b.2);
+    assert_eq!(c.0, StatusCode::OK, "{}", c.1);
+    let (_, current) = get(&app, &path, Some(&employer)).await;
+    assert_eq!(current["title"], "Основной список");
+    assert_eq!(current["members"].as_array().unwrap().len(), 2);
+    let outsider = login(&app, "other-company@example.com", "employer").await;
+    assert_eq!(
+        get(&app, &path, Some(&outsider)).await.0,
+        StatusCode::NOT_FOUND
+    );
+    let (deleted, added) = tokio::join!(
+        call(&app, request("DELETE", &path, Some(&employer), None)),
+        call(&app, request("PUT", &first, Some(&employer), None)),
+    );
+    assert_eq!(deleted.0, StatusCode::NO_CONTENT);
+    assert!([StatusCode::OK, StatusCode::NOT_FOUND].contains(&added.0));
+    assert_eq!(
+        get(&app, &path, Some(&employer)).await.0,
+        StatusCode::NOT_FOUND
+    );
+}
+
+#[tokio::test]
+async fn parallel_withdrawals_revoke_the_last_disclosure_grants() {
+    let app = test_app().await;
+    let employer = login(&app, EMPLOYER, "employer").await;
+    let candidate = login(&app, CANDIDATE_JUNIOR, "candidate").await;
+    let (status, published) = post(&app, "/api/v1/needs/need-001/publish", Some(&employer)).await;
+    assert_eq!(status, StatusCode::OK, "{published}");
+    let (_, session) = get(&app, "/api/v1/session", Some(&candidate)).await;
+    let disclosure_path = format!(
+        "/api/v1/candidates/{}/disclosure",
+        session["candidateId"].as_str().unwrap()
+    );
+    let mut paths = Vec::new();
+    for (need, field) in [("need-001", "name"), ("need-002", "email")] {
+        let (status, body) = send_keyed(
+            &app,
+            "POST",
+            "/api/v1/me/applications",
+            Some(&candidate),
+            &format!("withdraw-{need}"),
+            json!({"vacancyId":need,"message":"Отклик","disclose":[field]}),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED, "{body}");
+        paths.push(format!(
+            "/api/v1/me/applications/{}/withdraw",
+            body["id"].as_str().unwrap()
+        ));
+    }
+    let (_, disclosure) = get(&app, &disclosure_path, Some(&employer)).await;
+    assert_eq!(disclosure["granted"], true);
+    let (a, b) = tokio::join!(
+        post(&app, &paths[0], Some(&candidate)),
+        post(&app, &paths[1], Some(&candidate))
+    );
+    assert_eq!(a.0, StatusCode::OK, "{}", a.1);
+    assert_eq!(b.0, StatusCode::OK, "{}", b.1);
+    let (_, disclosure) = get(&app, &disclosure_path, Some(&employer)).await;
+    assert_eq!(disclosure["granted"], false, "{disclosure}");
+}
+
+#[tokio::test]
 async fn invitations_freeze_terms_and_disclose_on_accept() {
     let app = test_app().await;
     let employer = login(&app, EMPLOYER, "employer").await;
@@ -632,15 +723,27 @@ async fn invitations_freeze_terms_and_disclose_on_accept() {
             .iter()
             .any(|item| item["id"] == invitation_id || item["need"]["id"] == "need-001")
     );
-    let (status, body) = send(
+    let view_path = format!("/api/v1/me/invitations/{invitation_id}/view");
+    let accept_path = format!("/api/v1/me/invitations/{invitation_id}/accept");
+    let ((view_status, _), (status, body)) = tokio::join!(
+        post(&app, &view_path, Some(&candidate)),
+        send(
+            &app,
+            "POST",
+            &accept_path,
+            Some(&candidate),
+            json!({"disclose": ["name", "email", "sourceLinks"]}),
+        )
+    );
+    assert_eq!(view_status, StatusCode::OK);
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let (_, current) = get(
         &app,
-        "POST",
-        &format!("/api/v1/me/invitations/{invitation_id}/accept"),
+        &format!("/api/v1/me/invitations/{invitation_id}"),
         Some(&candidate),
-        json!({"disclose": ["name", "email", "sourceLinks"]}),
     )
     .await;
-    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(current["status"], "accepted");
     // The company now sees the candidate's disclosure.
     let (status, disclosure) = get(
         &app,
@@ -776,17 +879,27 @@ async fn assessments_full_flow_and_grade_change() {
     .await;
     assert_eq!(status, StatusCode::OK, "{answer}");
     // Submit is bodyless but keyed; it resolves synchronously in the demo.
-    let (status, _, submit) = call(
-        &app,
-        keyed_request(
-            "POST",
-            &format!("/api/v1/me/assessments/{assessment_id}/submit"),
-            Some(&candidate),
-            "submit-key-00001",
-            None,
+    let submit_path = format!("/api/v1/me/assessments/{assessment_id}/submit");
+    let ((status, _, submit), (patch_status, patch_result)) = tokio::join!(
+        call(
+            &app,
+            keyed_request(
+                "POST",
+                &submit_path,
+                Some(&candidate),
+                "submit-key-00001",
+                None,
+            ),
         ),
-    )
-    .await;
+        send(
+            &app,
+            "PATCH",
+            "/api/v1/me/profile",
+            Some(&candidate),
+            json!({"name":"Обновлённое имя"})
+        )
+    );
+    assert_eq!(patch_status, StatusCode::OK, "{patch_result}");
     assert_eq!(status, StatusCode::ACCEPTED, "{submit}");
     let (status, job) = get(
         &app,
@@ -800,6 +913,7 @@ async fn assessments_full_flow_and_grade_change() {
     assert_eq!(job["result"]["assessment"]["status"], "passed");
     let (_, profile) = get(&app, "/api/v1/me/profile", Some(&candidate)).await;
     assert_eq!(profile["verifiedGrade"], "middle");
+    assert_eq!(profile["name"], "Обновлённое имя");
 }
 
 #[tokio::test]

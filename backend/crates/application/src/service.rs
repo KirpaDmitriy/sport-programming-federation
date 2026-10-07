@@ -414,11 +414,23 @@ impl PlatformService {
         session: &SessionView,
         patch: CompanyPatch,
     ) -> Result<CompanyView, ApplicationError> {
+        let tx = self
+            .repository
+            .transaction()
+            .await
+            .map_err(ApplicationError::storage)?;
+        tx.lock_scope(&format!("company:{}", employer_company_id(session)?))
+            .await
+            .map_err(ApplicationError::storage)?;
+        let scoped = Self {
+            repository: tx.share(),
+            ..self.clone()
+        };
         validate_company_patch(&patch)?;
         let id = session.company_id.as_deref().ok_or_else(|| {
             ApplicationError::new(403, "role_forbidden", "Действие доступно работодателю")
         })?;
-        let mut company = self
+        let mut company = scoped
             .repository
             .company(id)
             .await
@@ -439,10 +451,12 @@ impl PlatformService {
         if let Some(value) = patch.website {
             company.website = value;
         }
-        self.repository
+        scoped
+            .repository
             .save_company(&company)
             .await
             .map_err(ApplicationError::storage)?;
+        tx.commit().await.map_err(ApplicationError::storage)?;
         Ok(company.into())
     }
 
@@ -1060,14 +1074,31 @@ impl PlatformService {
         shortlist_id: &str,
         input: ShortlistInput,
     ) -> Result<ShortlistView, ApplicationError> {
+        let tx = self
+            .repository
+            .transaction()
+            .await
+            .map_err(ApplicationError::storage)?;
+        tx.lock_scope(&format!(
+            "shortlist:{}:{shortlist_id}",
+            employer_company_id(session)?
+        ))
+        .await
+        .map_err(ApplicationError::storage)?;
+        let scoped = Self {
+            repository: tx.share(),
+            ..self.clone()
+        };
         Self::validate_shortlist_title(&input.title)?;
-        let mut record = self.own_shortlist(session, shortlist_id).await?;
+        let mut record = scoped.own_shortlist(session, shortlist_id).await?;
         record.title = input.title;
         record.updated_at = now();
-        self.repository
+        scoped
+            .repository
             .save_shortlist(&record)
             .await
             .map_err(ApplicationError::storage)?;
+        tx.commit().await.map_err(ApplicationError::storage)?;
         self.shortlist_detail(record).await
     }
 
@@ -1076,11 +1107,28 @@ impl PlatformService {
         session: &SessionView,
         shortlist_id: &str,
     ) -> Result<(), ApplicationError> {
-        let record = self.own_shortlist(session, shortlist_id).await?;
-        self.repository
+        let tx = self
+            .repository
+            .transaction()
+            .await
+            .map_err(ApplicationError::storage)?;
+        tx.lock_scope(&format!(
+            "shortlist:{}:{shortlist_id}",
+            employer_company_id(session)?
+        ))
+        .await
+        .map_err(ApplicationError::storage)?;
+        let scoped = Self {
+            repository: tx.share(),
+            ..self.clone()
+        };
+        let record = scoped.own_shortlist(session, shortlist_id).await?;
+        scoped
+            .repository
             .delete_shortlist(&record.company_id, &record.id)
             .await
-            .map_err(ApplicationError::storage)
+            .map_err(ApplicationError::storage)?;
+        tx.commit().await.map_err(ApplicationError::storage)
     }
 
     pub async fn add_shortlist_member(
@@ -1089,19 +1137,30 @@ impl PlatformService {
         shortlist_id: &str,
         candidate_id: &str,
     ) -> Result<ShortlistView, ApplicationError> {
-        let mut record = self.own_shortlist(session, shortlist_id).await?;
+        let tx = self
+            .repository
+            .transaction()
+            .await
+            .map_err(ApplicationError::storage)?;
+        tx.lock_scope(&format!(
+            "shortlist:{}:{shortlist_id}",
+            employer_company_id(session)?
+        ))
+        .await
+        .map_err(ApplicationError::storage)?;
+        let scoped = Self {
+            repository: tx.share(),
+            ..self.clone()
+        };
+        let mut record = scoped.own_shortlist(session, shortlist_id).await?;
         // The mock's `visibleCandidate`: only candidates visible to employers
         // can be shortlisted.
-        let visible = self
+        let visible = scoped
             .repository
-            .candidates()
+            .candidate_index(candidate_id)
             .await
             .map_err(ApplicationError::storage)?
-            .into_iter()
-            .any(|item| {
-                item.profile.id == candidate_id
-                    && item.profile.visible_to_employers(item.email_verified)
-            });
+            .is_some_and(|item| item.profile.visible_to_employers(item.email_verified));
         if !visible {
             return Err(ApplicationError::new(404, "not_found", "Ресурс не найден"));
         }
@@ -1109,10 +1168,12 @@ impl PlatformService {
             record.member_ids.push(candidate_id.to_owned());
         }
         record.updated_at = now();
-        self.repository
+        scoped
+            .repository
             .save_shortlist(&record)
             .await
             .map_err(ApplicationError::storage)?;
+        tx.commit().await.map_err(ApplicationError::storage)?;
         self.shortlist_detail(record).await
     }
 
@@ -1122,13 +1183,30 @@ impl PlatformService {
         shortlist_id: &str,
         candidate_id: &str,
     ) -> Result<ShortlistView, ApplicationError> {
-        let mut record = self.own_shortlist(session, shortlist_id).await?;
+        let tx = self
+            .repository
+            .transaction()
+            .await
+            .map_err(ApplicationError::storage)?;
+        tx.lock_scope(&format!(
+            "shortlist:{}:{shortlist_id}",
+            employer_company_id(session)?
+        ))
+        .await
+        .map_err(ApplicationError::storage)?;
+        let scoped = Self {
+            repository: tx.share(),
+            ..self.clone()
+        };
+        let mut record = scoped.own_shortlist(session, shortlist_id).await?;
         record.member_ids.retain(|id| id != candidate_id);
         record.updated_at = now();
-        self.repository
+        scoped
+            .repository
             .save_shortlist(&record)
             .await
             .map_err(ApplicationError::storage)?;
+        tx.commit().await.map_err(ApplicationError::storage)?;
         self.shortlist_detail(record).await
     }
 
@@ -1167,14 +1245,10 @@ impl PlatformService {
         candidate_id: &str,
     ) -> Result<CandidateIndexRecord, ApplicationError> {
         self.repository
-            .candidates()
+            .candidate_index(candidate_id)
             .await
             .map_err(ApplicationError::storage)?
-            .into_iter()
-            .find(|item| {
-                item.profile.id == candidate_id
-                    && item.profile.visible_to_employers(item.email_verified)
-            })
+            .filter(|item| item.profile.visible_to_employers(item.email_verified))
             .ok_or_else(|| ApplicationError::new(404, "not_found", "Ресурс не найден"))
     }
 
@@ -1299,10 +1373,17 @@ impl PlatformService {
         if record.status == InteractionStatus::Sent {
             record.status = InteractionStatus::Viewed;
             record.viewed_at = Some(now());
-            self.repository
-                .save_invitation(&record)
+            match self
+                .repository
+                .save_invitation_guarded(&record, &[InteractionStatus::Sent])
                 .await
-                .map_err(ApplicationError::storage)?;
+            {
+                Ok(()) => {}
+                Err(RepositoryError::NotFound) => {
+                    record = self.invitation_for(session, invitation_id).await?;
+                }
+                Err(error) => return Err(ApplicationError::storage(error)),
+            }
         }
         Ok(invitation_view(record))
     }
@@ -1409,6 +1490,9 @@ impl PlatformService {
         company_id: &str,
         candidate: &CandidateIndexRecord,
     ) -> Result<(), ApplicationError> {
+        repo.lock_scope(&format!("disclosure:{company_id}:{}", candidate.profile.id))
+            .await
+            .map_err(ApplicationError::storage)?;
         let invitations = repo
             .invitations(company_id)
             .await
@@ -1578,11 +1662,9 @@ impl PlatformService {
     ) -> Result<ApplicationView, ApplicationError> {
         let candidate = self
             .repository
-            .candidates()
+            .candidate_index(&record.candidate_id)
             .await
             .map_err(ApplicationError::storage)?
-            .into_iter()
-            .find(|item| item.profile.id == record.candidate_id)
             .ok_or_else(|| {
                 ApplicationError::new(500, "internal_error", "Сервис временно недоступен")
             })?;
@@ -1760,10 +1842,17 @@ impl PlatformService {
         if record.status == InteractionStatus::Sent {
             record.status = InteractionStatus::Viewed;
             record.viewed_at = Some(now());
-            self.repository
-                .save_application(&record)
+            match self
+                .repository
+                .save_application_guarded(&record, &[InteractionStatus::Sent])
                 .await
-                .map_err(ApplicationError::storage)?;
+            {
+                Ok(()) => {}
+                Err(RepositoryError::NotFound) => {
+                    record = self.application_for(session, application_id).await?;
+                }
+                Err(error) => return Err(ApplicationError::storage(error)),
+            }
         }
         self.application_view(record).await
     }
@@ -2317,7 +2406,14 @@ impl PlatformService {
         repo: &dyn PlatformRepository,
         record: &mut fsp_domain::AssessmentRecord,
     ) -> Result<(), ApplicationError> {
-        let mut candidate = self.candidate_index(&record.candidate_id).await?;
+        repo.lock_candidate(&record.candidate_id)
+            .await
+            .map_err(ApplicationError::storage)?;
+        let mut candidate = repo
+            .candidate_index(&record.candidate_id)
+            .await
+            .map_err(ApplicationError::storage)?
+            .ok_or_else(|| ApplicationError::new(404, "not_found", "Кандидат не найден"))?;
         let previous_grade = candidate.profile.verified_grade;
         let grade_changed = candidate.profile.verified_grade != Some(record.grade)
             || candidate.profile.verified_specialization != Some(record.specialization);
@@ -2517,14 +2613,10 @@ impl PlatformService {
                 item.candidate_id == candidate_id && item.status != InteractionStatus::Withdrawn
             });
         self.repository
-            .candidates()
+            .candidate_index(candidate_id)
             .await
             .map_err(ApplicationError::storage)?
-            .into_iter()
-            .find(|item| {
-                item.profile.id == candidate_id
-                    && (applied || item.profile.visible_to_employers(item.email_verified))
-            })
+            .filter(|item| applied || item.profile.visible_to_employers(item.email_verified))
             .ok_or_else(|| ApplicationError::new(404, "not_found", "Ресурс не найден"))
     }
 
@@ -2777,14 +2869,10 @@ impl PlatformService {
         };
         let candidate = self
             .repository
-            .candidates()
+            .candidate_index(candidate_id)
             .await
             .map_err(ApplicationError::storage)?
-            .into_iter()
-            .find(|item| {
-                item.profile.id == candidate_id
-                    && item.profile.visible_to_employers(item.email_verified)
-            })
+            .filter(|item| item.profile.visible_to_employers(item.email_verified))
             .ok_or_else(|| ApplicationError::new(404, "not_found", "Кандидат не найден"))?;
         let signals = self
             .freshness_signals(

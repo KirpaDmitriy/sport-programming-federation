@@ -250,6 +250,37 @@ impl PlatformRepository for PostgresRepository {
         }))
     }
 
+    async fn lock_scope(&self, scope: &str) -> Result<(), RepositoryError> {
+        if !matches!(self.conn, Conn::Tx(_)) {
+            return Err(RepositoryError::Storage(
+                "aggregate lock requires a transaction".into(),
+            ));
+        }
+        let mut conn = self.conn().await?;
+        sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended('aggregate:' || $1, 0))")
+            .bind(scope)
+            .execute(conn.get()?)
+            .await
+            .map_err(storage)?;
+        Ok(())
+    }
+
+    async fn lock_candidate(&self, candidate_id: &str) -> Result<(), RepositoryError> {
+        if !matches!(self.conn, Conn::Tx(_)) {
+            return Err(RepositoryError::Storage(
+                "candidate lock requires a transaction".into(),
+            ));
+        }
+        let mut conn = self.conn().await?;
+        sqlx::query("SELECT id FROM candidates WHERE id=$1 FOR UPDATE")
+            .bind(candidate_id)
+            .fetch_optional(conn.get()?)
+            .await
+            .map_err(storage)?
+            .ok_or(RepositoryError::NotFound)?;
+        Ok(())
+    }
+
     async fn candidate_index(
         &self,
         candidate_id: &str,
@@ -770,6 +801,14 @@ impl PlatformRepository for TxRepository {
         Err(RepositoryError::Storage(
             "nested transactions are not supported".into(),
         ))
+    }
+
+    async fn lock_scope(&self, scope: &str) -> Result<(), RepositoryError> {
+        self.repo.lock_scope(scope).await
+    }
+
+    async fn lock_candidate(&self, candidate_id: &str) -> Result<(), RepositoryError> {
+        self.repo.lock_candidate(candidate_id).await
     }
 
     async fn candidate_index(
@@ -1454,7 +1493,7 @@ mod ops {
     ) -> Result<(), RepositoryError> {
         let statuses: Vec<&str> = expected_statuses.iter().map(|s| s.as_str()).collect();
         let changed = sqlx::query(
-            "UPDATE invitations SET status=$1,viewed_at=$2,responded_at=$3,disclosure_json=$4 \
+            "UPDATE invitations SET status=$1,viewed_at=COALESCE($2,viewed_at),responded_at=$3,disclosure_json=$4 \
          WHERE id=$5 AND status = ANY($6)",
         )
         .bind(value.status.as_str())
@@ -1481,7 +1520,7 @@ mod ops {
     ) -> Result<(), RepositoryError> {
         let statuses: Vec<&str> = expected_statuses.iter().map(|s| s.as_str()).collect();
         let changed = sqlx::query(
-            "UPDATE applications SET status=$1,viewed_at=$2,responded_at=$3,disclosure_json=$4 \
+            "UPDATE applications SET status=$1,viewed_at=COALESCE($2,viewed_at),responded_at=$3,disclosure_json=$4 \
          WHERE id=$5 AND status = ANY($6)",
         )
         .bind(value.status.as_str())

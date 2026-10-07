@@ -52,6 +52,11 @@ pub trait PlatformRepository: Send + Sync {
     /// Calling `transaction()` on a transaction returns an error.
     async fn transaction(&self) -> Result<Box<dyn RepositoryTransaction>, RepositoryError>;
 
+    /// Serialize a logical aggregate for the lifetime of this transaction.
+    async fn lock_scope(&self, scope: &str) -> Result<(), RepositoryError>;
+    /// Lock the candidate row before reading a profile/index that will be changed.
+    async fn lock_candidate(&self, candidate_id: &str) -> Result<(), RepositoryError>;
+
     async fn account_by_email(&self, email: &str) -> Result<Option<Account>, RepositoryError>;
     async fn create_account(&self, account: &Account, now: &str) -> Result<(), RepositoryError>;
     async fn create_candidate(&self, profile: &CandidateProfile) -> Result<(), RepositoryError>;

@@ -1888,6 +1888,13 @@ mod tests {
     struct EmptyRepository;
     #[async_trait::async_trait]
     impl PlatformRepository for EmptyRepository {
+        async fn lock_scope(&self, _: &str) -> Result<(), RepositoryError> {
+            unreachable!()
+        }
+        async fn lock_candidate(&self, _: &str) -> Result<(), RepositoryError> {
+            unreachable!()
+        }
+
         async fn transaction(&self) -> Result<Box<dyn RepositoryTransaction>, RepositoryError> {
             Err(RepositoryError::Storage("test stub".into()))
         }
