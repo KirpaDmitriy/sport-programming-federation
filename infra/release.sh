@@ -1,79 +1,148 @@
 #!/usr/bin/env bash
-# Runs on the host: builds an extracted release, switches /opt/fsp/current atomically and restarts.
-# Which API implementation serves :4010 is selected by /etc/fsp/api-backend (mock|rust; default mock).
-set -euo pipefail
+# Build an immutable release, then activate it with rollback on any activation failure.
+set -Eeuo pipefail
 
-SHA="${1:?usage: release.sh <sha>}"
-DIR="/opt/fsp/releases/$SHA"
-IMPL="$(cat /etc/fsp/api-backend 2>/dev/null || echo mock)"
-set -a
-# shellcheck disable=SC1091
-[ -f /etc/fsp/frontend-build.env ] && . /etc/fsp/frontend-build.env
-set +a
+SHA="${1:?usage: release.sh <sha> [staged-directory]}"
+[[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || { echo 'Expected a full commit SHA' >&2; exit 1; }
+ROOT="${FSP_RELEASE_ROOT:-/opt/fsp}"
+SYSTEM_ROOT="${FSP_SYSTEM_ROOT:-}"
+CONFIG="$SYSTEM_ROOT/etc/fsp"
+DIR="$ROOT/releases/$SHA"
+STAGE="${2:-$DIR}"
+[[ -d "$STAGE" && ! -L "$STAGE" ]] || { echo 'Missing release directory' >&2; exit 1; }
 
-(cd "$DIR/mock-server" && bun install --frozen-lockfile --production)
-(cd "$DIR/frontend" && bun install --frozen-lockfile && bun run build && bun scripts/check-bundle.ts)
-
-# The Rust backend builds on the host once provision.sh installs the toolchain. The build is
-# required (and the deploy fails) only while the rust implementation is selected; under mock it
-# runs opportunistically so the binary is ready for the cutover.
-CARGO_BIN="$(ls -1d /opt/rustup/toolchains/*/bin/cargo 2>/dev/null | head -1 || true)"
-if [ "$IMPL" = rust ] && [ -z "$CARGO_BIN" ]; then
-  echo "api-backend=rust but no Rust toolchain under /opt/rustup — run provision.sh first" >&2
-  exit 1
-fi
-if [ -n "$CARGO_BIN" ]; then
-  # rustc must sit next to cargo on PATH when invoking the toolchain binary directly.
-  RUST_BIN_DIR="$(dirname "$CARGO_BIN")"
-  (cd "$DIR/backend" && PATH="$RUST_BIN_DIR:$PATH" RUSTUP_HOME=/opt/rustup \
-    CARGO_TARGET_DIR=/opt/fsp/target-cache "$CARGO_BIN" build --release --locked -p fsp-server)
-  install -D -m 755 /opt/fsp/target-cache/release/fsp-career-api "$DIR/bin/fsp-career-api"
-fi
-
-PREV="$(readlink -f /opt/fsp/current 2>/dev/null || true)"
-PREV_ACTIVE=fsp-mock-api
-systemctl is-active --quiet fsp-api && PREV_ACTIVE=fsp-api
-ln -sfn "$DIR" /opt/fsp/current.next
-mv -Tf /opt/fsp/current.next /opt/fsp/current
-# The units follow the release so path changes ship with the code.
-install -m 644 "$DIR/infra/fsp-mock-api.service" /etc/systemd/system/fsp-mock-api.service
-install -m 644 "$DIR/infra/fsp-api.service" /etc/systemd/system/fsp-api.service
-install -m 644 "$DIR/infra/fsp-cliproxy.service" /etc/systemd/system/fsp-cliproxy.service
-install -m 644 "$DIR/infra/fsp-bifrost.service" /etc/systemd/system/fsp-bifrost.service
-systemctl daemon-reload
-
+# Shared by CI, manual deployments and rollbacks through build and health verification.
+exec 9>"$ROOT/deploy.lock"
+flock -w 1800 9
+IMPL="$(cat "$CONFIG/api-backend" 2>/dev/null || echo mock)"
 case "$IMPL" in
   rust) active=fsp-api; inactive=fsp-mock-api ;;
-  *)    active=fsp-mock-api; inactive=fsp-api ;;
+  mock) active=fsp-mock-api; inactive=fsp-api ;;
+  *) echo "Invalid api-backend: $IMPL" >&2; exit 1 ;;
 esac
-# Only the active implementation may come up after a reboot: both services bind :4010.
-systemctl disable --now "$inactive" >/dev/null 2>&1 || true
-systemctl enable --now "$active" >/dev/null 2>&1 || true
+
+healthy() {
+  curl --max-time 5 -fsS http://127.0.0.1:4010/health >/dev/null 2>&1 \
+    && curl --max-time 5 -fsSk -o /dev/null https://127.0.0.1/
+}
+
+PREV="$(readlink -f "$ROOT/current" 2>/dev/null || true)"
+if [[ "$PREV" == "$DIR" ]]; then
+  healthy || { echo 'Current release is unhealthy; investigate or roll back' >&2; exit 1; }
+  echo "Already active and healthy: $SHA"
+  exit 0
+fi
+
+if [[ ! -d "$DIR" ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  [[ ! -f "$CONFIG/frontend-build.env" ]] || . "$CONFIG/frontend-build.env"
+  set +a
+  (cd "$STAGE/mock-server" && bun install --frozen-lockfile --production)
+  (cd "$STAGE/frontend" && bun install --frozen-lockfile && bun run build && bun scripts/check-bundle.ts)
+
+  # Select the pinned toolchain, never the first installed version.
+  toolchain="$(sed -n 's/^channel = "\([^"]*\)"/\1/p' "$STAGE/backend/rust-toolchain.toml")"
+  [[ "$toolchain" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'Invalid Rust pin' >&2; exit 1; }
+  rust_bin="${FSP_RUSTUP_ROOT:-/opt/rustup}/toolchains/$toolchain-x86_64-unknown-linux-gnu/bin"
+  if [[ "$IMPL" == rust || -x "$rust_bin/cargo" ]]; then
+    [[ -x "$rust_bin/cargo" ]] || { echo "Missing Rust $toolchain; run provisioning" >&2; exit 1; }
+    (cd "$STAGE/backend" && PATH="$rust_bin:$PATH" RUSTUP_HOME="${FSP_RUSTUP_ROOT:-/opt/rustup}" \
+      CARGO_TARGET_DIR="$ROOT/target-cache" "$rust_bin/cargo" build --release --locked -p fsp-server)
+    install -D -m 755 "$ROOT/target-cache/release/fsp-career-api" "$STAGE/bin/fsp-career-api"
+  fi
+  mv "$STAGE" "$DIR"
+fi
+[[ -f "$DIR/frontend/dist/index.html" ]] || { echo 'Release has no frontend' >&2; exit 1; }
+[[ "$IMPL" != rust || -x "$DIR/bin/fsp-career-api" ]] || { echo 'Release has no API binary' >&2; exit 1; }
+
+PREV_ACTIVE=fsp-mock-api
+if systemctl is-active --quiet fsp-api; then PREV_ACTIVE=fsp-api; fi
+backup="$(mktemp -d "$ROOT/.activation-XXXXXXXX")"
+config_files=(
+  etc/systemd/system/fsp-mock-api.service etc/systemd/system/fsp-api.service
+  etc/systemd/system/fsp-cliproxy.service etc/systemd/system/fsp-bifrost.service
+  etc/nginx/sites-available/fsp-demo.conf etc/nginx/snippets/fsp-security-headers.conf
+)
+for file in "${config_files[@]}"; do
+  if [[ -f "$SYSTEM_ROOT/$file" ]]; then
+    install -D -m 644 "$SYSTEM_ROOT/$file" "$backup/$file"
+  fi
+done
+
+switch_link() {
+  ln -sfn "$1" "$ROOT/current.next"
+  mv -Tf "$ROOT/current.next" "$ROOT/current"
+}
+
+rollback() {
+  local status="$?"
+  trap - ERR HUP INT TERM
+  set +e
+  echo "Activation failed for $SHA; restoring previous release" >&2
+  for file in "${config_files[@]}"; do
+    if [[ -f "$backup/$file" ]]; then
+      install -D -m 644 "$backup/$file" "$SYSTEM_ROOT/$file"
+    else
+      rm -f "$SYSTEM_ROOT/$file"
+    fi
+  done
+  if [[ -n "$PREV" && -d "$PREV" ]]; then
+    switch_link "$PREV"
+    systemctl daemon-reload
+    if [[ "$PREV_ACTIVE" == fsp-api ]]; then
+      echo rust > "$CONFIG/api-backend"
+      systemctl disable --now fsp-mock-api
+    else
+      echo mock > "$CONFIG/api-backend"
+      systemctl disable --now fsp-api
+    fi
+    systemctl enable "$PREV_ACTIVE"
+    systemctl restart "$PREV_ACTIVE"
+    nginx -t && systemctl reload nginx
+    if healthy; then echo "Restored ${PREV##*/}" >&2; else echo 'Rollback health check failed' >&2; fi
+  else
+    systemctl stop "$active"
+    rm -f "$ROOT/current"
+    echo 'No previous release available' >&2
+  fi
+  rm -rf "$backup"
+  exit "$((status == 0 ? 1 : status))"
+}
+trap rollback ERR HUP INT TERM
+
+for unit in fsp-api fsp-mock-api fsp-cliproxy fsp-bifrost; do
+  install -m 644 "$DIR/infra/$unit.service" "$SYSTEM_ROOT/etc/systemd/system/$unit.service"
+done
+public_ip="$(sed -n 's|^FSP_PUBLIC_WEB_URL=https://||p' "$CONFIG/rust-api.env")"
+[[ "$public_ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]
+sed "s/__PUBLIC_IP__/$public_ip/g" "$DIR/infra/nginx/fsp-demo.conf" \
+  > "$SYSTEM_ROOT/etc/nginx/sites-available/fsp-demo.conf"
+install -m 644 "$DIR/infra/nginx/fsp-security-headers.conf" "$SYSTEM_ROOT/etc/nginx/snippets/fsp-security-headers.conf"
+nginx -t
+switch_link "$DIR"
+systemctl daemon-reload
+systemctl disable --now "$inactive"
+systemctl enable "$active"
 systemctl restart "$active"
 systemctl reload nginx
 
-healthy=""
-for _ in $(seq 1 60); do
-  if curl -fsS http://127.0.0.1:4010/health > /dev/null 2>&1 \
-    && curl -fsSk -o /dev/null https://127.0.0.1/; then
-    healthy=1
-    break
-  fi
+ready=0
+for _ in {1..60}; do
+  if healthy; then ready=1; break; fi
   sleep 0.5
 done
-if [ -z "$healthy" ]; then
-  echo "release $SHA failed health checks on $active" >&2
-  if [ -n "$PREV" ] && [ -d "$PREV" ]; then
-    ln -sfn "$PREV" /opt/fsp/current.next
-    mv -Tf /opt/fsp/current.next /opt/fsp/current
-    systemctl restart "$PREV_ACTIVE" || true
-    systemctl reload nginx || true
-    echo "rolled back to ${PREV##*/} on $PREV_ACTIVE" >&2
+[[ "$ready" == 1 ]]
+trap - ERR HUP INT TERM
+rm -rf "$backup"
+
+# Keep the current and previous releases even when rolling back to an older SHA.
+kept=0
+while IFS= read -r release; do
+  [[ "${release##*/}" =~ ^[0-9a-f]{40}$ ]] || continue
+  kept=$((kept + 1))
+  if [[ "$kept" -gt 5 && "$release" != "$DIR" && "$release" != "$PREV" ]]; then
+    rm -rf "$release"
   fi
-  exit 1
-fi
-curl -fsS http://127.0.0.1:4010/health
-echo
-# Keep the five most recent releases for rollback.
-ls -1dt /opt/fsp/releases/* | tail -n +6 | xargs -r rm -rf
+done < <(find "$ROOT/releases" -mindepth 1 -maxdepth 1 -type d -printf '%T@ %p\n' | sort -nr | cut -d ' ' -f 2-)
 echo "Active release: $SHA (api: $IMPL)"

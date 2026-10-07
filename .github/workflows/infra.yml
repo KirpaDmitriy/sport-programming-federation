@@ -1,0 +1,29 @@
+name: infra
+
+on:
+  push:
+    paths:
+      - infra/**
+      - .github/workflows/infra.yml
+  pull_request:
+    paths:
+      - infra/**
+      - .github/workflows/infra.yml
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  release-safety:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - name: Shell syntax and deployment fault recovery
+        run: |
+          bash -n infra/deploy.sh
+          bash -n infra/release.sh
+          bash infra/tests/release.sh
+      - name: Check deployment scripts
+        run: shellcheck infra/deploy.sh infra/release.sh infra/tests/release.sh
