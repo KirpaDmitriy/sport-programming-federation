@@ -31,14 +31,14 @@ impl VerificationDelivery for FixedDelivery {
     }
 }
 
-fn test_app() -> axum::Router {
+async fn test_app() -> axum::Router {
     let path =
         std::env::temp_dir().join(format!("fsp-contract-{}.sqlite3", Uuid::new_v4().simple()));
     let repository = Arc::new(SqliteRepository::open(path).expect("temp database"));
     let service = Arc::new(
         PlatformService::new(repository, Arc::new(FixedDelivery)).with_fsp(Arc::new(SyntheticFsp)),
     );
-    service.initialize().expect("seeded demo data");
+    service.initialize().await.expect("seeded demo data");
     router(
         HttpConfig {
             allowed_origins: vec!["http://localhost:5173".into()],
@@ -180,7 +180,7 @@ const CANDIDATE_JUNIOR: &str = "alexey@example.com";
 
 #[tokio::test]
 async fn transport_envelope_and_boundaries() {
-    let app = test_app();
+    let app = test_app().await;
     // Unknown path returns the contract envelope, not a bare 404.
     let (status, body) = get(&app, "/api/v1/nowhere", None).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
@@ -223,7 +223,7 @@ async fn transport_envelope_and_boundaries() {
 
 #[tokio::test]
 async fn session_and_role_boundaries() {
-    let app = test_app();
+    let app = test_app().await;
     let (status, body) = get(&app, "/api/v1/me/profile", None).await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
     assert_eq!(code(&body), "unauthenticated");
@@ -250,7 +250,7 @@ async fn session_and_role_boundaries() {
 
 #[tokio::test]
 async fn email_challenge_lifecycle() {
-    let app = test_app();
+    let app = test_app().await;
     // A wrong code does not consume the challenge and reports invalid_code.
     let (_, body) = send(
         &app,
@@ -291,7 +291,7 @@ async fn email_challenge_lifecycle() {
 
 #[tokio::test]
 async fn consent_gates_sensitive_operations() {
-    let app = test_app();
+    let app = test_app().await;
     // A fresh candidate has no processing consent: profile import refuses.
     let cookie = login(&app, "fresh@example.com", "candidate").await;
     let boundary = "----fsp-test";
@@ -323,7 +323,7 @@ async fn consent_gates_sensitive_operations() {
 
 #[tokio::test]
 async fn needs_write_side_and_vacancy_projection() {
-    let app = test_app();
+    let app = test_app().await;
     let employer = login(&app, EMPLOYER, "employer").await;
     // Invalid salary range is a validation error.
     let (status, body) = send(
@@ -405,7 +405,7 @@ async fn needs_write_side_and_vacancy_projection() {
 
 #[tokio::test]
 async fn invitations_freeze_terms_and_disclose_on_accept() {
-    let app = test_app();
+    let app = test_app().await;
     let employer = login(&app, EMPLOYER, "employer").await;
     let candidate = login(&app, CANDIDATE, "candidate").await;
     // Idempotent create: the same key replays the stored response.
@@ -465,7 +465,7 @@ async fn invitations_freeze_terms_and_disclose_on_accept() {
 
 #[tokio::test]
 async fn applications_flow_both_sides() {
-    let app = test_app();
+    let app = test_app().await;
     let employer = login(&app, EMPLOYER, "employer").await;
     let candidate = login(&app, CANDIDATE_JUNIOR, "candidate").await;
     // The published vacancy is reachable and reports eligibility.
@@ -521,7 +521,7 @@ async fn applications_flow_both_sides() {
 
 #[tokio::test]
 async fn assessments_full_flow_and_grade_change() {
-    let app = test_app();
+    let app = test_app().await;
     let candidate = login(&app, CANDIDATE_JUNIOR, "candidate").await;
     // candidate-024 is junior-verified since June — a middle attempt is legal.
     let (status, assessment) = send_keyed(
@@ -615,7 +615,7 @@ async fn assessments_full_flow_and_grade_change() {
 
 #[tokio::test]
 async fn assessment_guards_cooldown_and_downgrade() {
-    let app = test_app();
+    let app = test_app().await;
     let senior = login(&app, CANDIDATE, "candidate").await;
     // candidate031 is senior-verified: a lower-grade attempt is a downgrade.
     let (status, body) = send_keyed(
@@ -645,7 +645,7 @@ async fn assessment_guards_cooldown_and_downgrade() {
 
 #[tokio::test]
 async fn idempotency_replays_and_conflicts() {
-    let app = test_app();
+    let app = test_app().await;
     let employer = login(&app, EMPLOYER, "employer").await;
     // createInvitation is one of the five idempotent commands.
     let body = json!({
@@ -704,7 +704,7 @@ async fn idempotency_replays_and_conflicts() {
 
 #[tokio::test]
 async fn gap_plans_and_reachability() {
-    let app = test_app();
+    let app = test_app().await;
     let employer = login(&app, EMPLOYER, "employer").await;
     // Reachable public candidate against the company's need.
     let (status, plan) = get(
@@ -743,7 +743,7 @@ async fn gap_plans_and_reachability() {
 
 #[tokio::test]
 async fn vacancy_search_pagination() {
-    let app = test_app();
+    let app = test_app().await;
     let candidate = login(&app, CANDIDATE_JUNIOR, "candidate").await;
     let (status, page) = get(
         &app,
@@ -765,7 +765,7 @@ async fn vacancy_search_pagination() {
 
 #[tokio::test]
 async fn tasks_offer_and_response() {
-    let app = test_app();
+    let app = test_app().await;
     let candidate = login(&app, CANDIDATE, "candidate").await;
     let employer = login(&app, EMPLOYER, "employer").await;
     // MyTasks is the weekly-offer envelope: period, current, history, freshness.
@@ -791,7 +791,7 @@ async fn tasks_offer_and_response() {
 
 #[tokio::test]
 async fn profile_import_confirm_and_pdf_export() {
-    let app = test_app();
+    let app = test_app().await;
     let candidate = login(&app, CANDIDATE_JUNIOR, "candidate").await;
     // A valid-shaped PDF upload produces a succeeded profile_import job.
     let boundary = "----fsp-test";
@@ -870,7 +870,7 @@ async fn profile_import_confirm_and_pdf_export() {
 
 #[tokio::test]
 async fn candidate_bank_anonymous_and_sorted() {
-    let app = test_app();
+    let app = test_app().await;
     let employer = login(&app, EMPLOYER, "employer").await;
     let (status, page) = get(
         &app,

@@ -84,7 +84,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         platform = platform.with_llm(Arc::new(bifrost));
     }
     let service = Arc::new(platform);
-    service.initialize().map_err(|error| error.message)?;
+    service.initialize().await.map_err(|error| error.message)?;
     let secure_cookie = env::var("FSP_SECURE_COOKIE").is_ok_and(|value| value == "1");
     let public_web_url =
         env::var("FSP_PUBLIC_WEB_URL").unwrap_or_else(|_| "http://127.0.0.1:5173".into());

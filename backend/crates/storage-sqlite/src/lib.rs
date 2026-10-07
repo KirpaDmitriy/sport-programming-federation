@@ -61,22 +61,23 @@ fn migrate(connection: &Connection) -> Result<(), RepositoryError> {
     Ok(())
 }
 
+#[async_trait::async_trait]
 impl PlatformRepository for SqliteRepository {
-    fn account_by_email(&self, email: &str) -> Result<Option<Account>, RepositoryError> {
+    async fn account_by_email(&self, email: &str) -> Result<Option<Account>, RepositoryError> {
         self.connection()?
             .query_row(ACCOUNT_BY_EMAIL, [email], account)
             .optional()
             .map_err(storage)
     }
 
-    fn account_by_id(&self, id: &str) -> Result<Option<Account>, RepositoryError> {
+    async fn account_by_id(&self, id: &str) -> Result<Option<Account>, RepositoryError> {
         self.connection()?
             .query_row(ACCOUNT_BY_ID, [id], account)
             .optional()
             .map_err(storage)
     }
 
-    fn create_account(&self, value: &Account, now: &str) -> Result<(), RepositoryError> {
+    async fn create_account(&self, value: &Account, now: &str) -> Result<(), RepositoryError> {
         self.connection()?.execute(
             "INSERT INTO accounts(id,email,role,candidate_id,company_id,email_verified,created_at) VALUES(?,?,?,?,?,?,?)",
             params![value.id, value.email, role(value.role), value.candidate_id, value.company_id, value.email_verified, now],
@@ -84,12 +85,12 @@ impl PlatformRepository for SqliteRepository {
         Ok(())
     }
 
-    fn create_candidate(&self, value: &CandidateProfile) -> Result<(), RepositoryError> {
+    async fn create_candidate(&self, value: &CandidateProfile) -> Result<(), RepositoryError> {
         let connection = self.connection()?;
         save_candidate(&connection, value, true)
     }
 
-    fn create_company(&self, value: &Company) -> Result<(), RepositoryError> {
+    async fn create_company(&self, value: &Company) -> Result<(), RepositoryError> {
         self.connection()?.execute(
             "INSERT INTO companies(id,display_name,business_area,description,contact_email,website) VALUES(?,?,?,?,?,?)",
             params![value.id, value.display_name, value.business_area, value.description, value.contact_email, value.website],
@@ -97,7 +98,7 @@ impl PlatformRepository for SqliteRepository {
         Ok(())
     }
 
-    fn save_challenge(&self, value: &PendingChallenge) -> Result<(), RepositoryError> {
+    async fn save_challenge(&self, value: &PendingChallenge) -> Result<(), RepositoryError> {
         self.connection()?.execute(
             "INSERT INTO challenges(id,account_id,code_hash,expires_at,attempts,used) VALUES(?,?,?,?,?,?)",
             params![value.id, value.account_id, value.code_hash, value.expires_at, value.attempts, value.used],
@@ -105,7 +106,7 @@ impl PlatformRepository for SqliteRepository {
         Ok(())
     }
 
-    fn consume_challenge(
+    async fn consume_challenge(
         &self,
         id: &str,
         code_hash: &str,
@@ -173,7 +174,7 @@ impl PlatformRepository for SqliteRepository {
         Ok((ConsumeChallenge::Consumed, account))
     }
 
-    fn create_session(
+    async fn create_session(
         &self,
         token_hash: &str,
         account_id: &str,
@@ -188,7 +189,7 @@ impl PlatformRepository for SqliteRepository {
         Ok(())
     }
 
-    fn account_for_session(
+    async fn account_for_session(
         &self,
         token_hash: &str,
         now: &str,
@@ -199,32 +200,32 @@ impl PlatformRepository for SqliteRepository {
         ).optional().map_err(storage)
     }
 
-    fn delete_session(&self, token_hash: &str) -> Result<(), RepositoryError> {
+    async fn delete_session(&self, token_hash: &str) -> Result<(), RepositoryError> {
         self.connection()?
             .execute("DELETE FROM sessions WHERE token_hash=?", [token_hash])
             .map_err(storage)?;
         Ok(())
     }
 
-    fn candidate(&self, id: &str) -> Result<Option<CandidateProfile>, RepositoryError> {
+    async fn candidate(&self, id: &str) -> Result<Option<CandidateProfile>, RepositoryError> {
         self.connection()?.query_row("SELECT id,alias,email,name,specialization,selected_grade,stack_json,team_role,experience_months,experience,soft_skills_json,processing_consent,publication_consent,verified_grade,verified_specialization,grade_confirmed_at,revision,updated_at FROM candidates WHERE id=?", [id], candidate).optional().map_err(storage)
     }
 
-    fn save_candidate(&self, value: &CandidateProfile) -> Result<(), RepositoryError> {
+    async fn save_candidate(&self, value: &CandidateProfile) -> Result<(), RepositoryError> {
         let connection = self.connection()?;
         save_candidate(&connection, value, false)
     }
 
-    fn company(&self, id: &str) -> Result<Option<Company>, RepositoryError> {
+    async fn company(&self, id: &str) -> Result<Option<Company>, RepositoryError> {
         self.connection()?.query_row("SELECT id,display_name,business_area,description,contact_email,website FROM companies WHERE id=?", [id], |row| Ok(Company { id: row.get(0)?, display_name: row.get(1)?, business_area: row.get(2)?, description: row.get(3)?, contact_email: row.get(4)?, website: row.get(5)? })).optional().map_err(storage)
     }
 
-    fn save_company(&self, value: &Company) -> Result<(), RepositoryError> {
+    async fn save_company(&self, value: &Company) -> Result<(), RepositoryError> {
         self.connection()?.execute("UPDATE companies SET display_name=?,business_area=?,description=?,contact_email=?,website=? WHERE id=?", params![value.display_name,value.business_area,value.description,value.contact_email,value.website,value.id]).map_err(storage)?;
         Ok(())
     }
 
-    fn candidates(&self) -> Result<Vec<CandidateIndexRecord>, RepositoryError> {
+    async fn candidates(&self) -> Result<Vec<CandidateIndexRecord>, RepositoryError> {
         let connection = self.connection()?;
         let mut statement = connection
             .prepare("SELECT id,alias,email,name,specialization,selected_grade,stack_json,team_role,experience_months,experience,soft_skills_json,processing_consent,publication_consent,verified_grade,verified_specialization,grade_confirmed_at,revision,updated_at FROM candidates")
@@ -240,7 +241,7 @@ impl PlatformRepository for SqliteRepository {
             .collect()
     }
 
-    fn needs(&self, company_id: &str) -> Result<Vec<HiringNeedRecord>, RepositoryError> {
+    async fn needs(&self, company_id: &str) -> Result<Vec<HiringNeedRecord>, RepositoryError> {
         let connection = self.connection()?;
         let mut statement = connection.prepare(NEED_SELECT).map_err(storage)?;
         statement
@@ -250,7 +251,7 @@ impl PlatformRepository for SqliteRepository {
             .map_err(storage)
     }
 
-    fn need(
+    async fn need(
         &self,
         company_id: &str,
         need_id: &str,
@@ -265,7 +266,7 @@ impl PlatformRepository for SqliteRepository {
             .map_err(storage)
     }
 
-    fn save_need(&self, value: &HiringNeedRecord) -> Result<(), RepositoryError> {
+    async fn save_need(&self, value: &HiringNeedRecord) -> Result<(), RepositoryError> {
         let requirements = serde_json::to_string(&value.need.requirements).map_err(json_storage)?;
         self.connection()?
             .execute(
@@ -292,7 +293,7 @@ impl PlatformRepository for SqliteRepository {
         Ok(())
     }
 
-    fn delete_need(&self, company_id: &str, need_id: &str) -> Result<(), RepositoryError> {
+    async fn delete_need(&self, company_id: &str, need_id: &str) -> Result<(), RepositoryError> {
         self.connection()?
             .execute(
                 "DELETE FROM needs WHERE id=? AND company_id=?",
@@ -302,7 +303,7 @@ impl PlatformRepository for SqliteRepository {
         Ok(())
     }
 
-    fn published_needs(&self) -> Result<Vec<HiringNeedRecord>, RepositoryError> {
+    async fn published_needs(&self) -> Result<Vec<HiringNeedRecord>, RepositoryError> {
         let connection = self.connection()?;
         connection
             .prepare("SELECT id,company_id,title,specialization,grade,work_mode,salary_from,salary_to,description,requirements_json,published,published_at,created_at,updated_at,revision FROM needs WHERE published=1")
@@ -313,7 +314,7 @@ impl PlatformRepository for SqliteRepository {
             .map_err(storage)
     }
 
-    fn shortlists(
+    async fn shortlists(
         &self,
         company_id: &str,
     ) -> Result<Vec<fsp_domain::ShortlistRecord>, RepositoryError> {
@@ -329,7 +330,7 @@ impl PlatformRepository for SqliteRepository {
             .map_err(storage)
     }
 
-    fn shortlist(
+    async fn shortlist(
         &self,
         company_id: &str,
         shortlist_id: &str,
@@ -344,7 +345,10 @@ impl PlatformRepository for SqliteRepository {
             .map_err(storage)
     }
 
-    fn save_shortlist(&self, value: &fsp_domain::ShortlistRecord) -> Result<(), RepositoryError> {
+    async fn save_shortlist(
+        &self,
+        value: &fsp_domain::ShortlistRecord,
+    ) -> Result<(), RepositoryError> {
         let members = serde_json::to_string(&value.member_ids).map_err(json_storage)?;
         self.connection()?
             .execute(
@@ -362,7 +366,7 @@ impl PlatformRepository for SqliteRepository {
         Ok(())
     }
 
-    fn delete_shortlist(
+    async fn delete_shortlist(
         &self,
         company_id: &str,
         shortlist_id: &str,
@@ -376,7 +380,7 @@ impl PlatformRepository for SqliteRepository {
         Ok(())
     }
 
-    fn invitations(
+    async fn invitations(
         &self,
         company_id: &str,
     ) -> Result<Vec<fsp_domain::InvitationRecord>, RepositoryError> {
@@ -390,7 +394,7 @@ impl PlatformRepository for SqliteRepository {
             .map_err(storage)
     }
 
-    fn candidate_invitations(
+    async fn candidate_invitations(
         &self,
         candidate_id: &str,
     ) -> Result<Vec<fsp_domain::InvitationRecord>, RepositoryError> {
@@ -404,7 +408,7 @@ impl PlatformRepository for SqliteRepository {
             .map_err(storage)
     }
 
-    fn invitation(
+    async fn invitation(
         &self,
         invitation_id: &str,
     ) -> Result<Option<fsp_domain::InvitationRecord>, RepositoryError> {
@@ -418,7 +422,10 @@ impl PlatformRepository for SqliteRepository {
             .map_err(storage)
     }
 
-    fn save_invitation(&self, value: &fsp_domain::InvitationRecord) -> Result<(), RepositoryError> {
+    async fn save_invitation(
+        &self,
+        value: &fsp_domain::InvitationRecord,
+    ) -> Result<(), RepositoryError> {
         self.connection()?
             .execute(
                 "INSERT OR REPLACE INTO invitations(id,company_id,candidate_id,candidate_alias,company_json,need_json,need_definition_json,message,status,created_at,viewed_at,responded_at,disclosure_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
@@ -442,7 +449,7 @@ impl PlatformRepository for SqliteRepository {
         Ok(())
     }
 
-    fn disclosure(
+    async fn disclosure(
         &self,
         company_id: &str,
         candidate_id: &str,
@@ -457,7 +464,10 @@ impl PlatformRepository for SqliteRepository {
             .map_err(storage)
     }
 
-    fn save_disclosure(&self, value: &fsp_domain::DisclosureRecord) -> Result<(), RepositoryError> {
+    async fn save_disclosure(
+        &self,
+        value: &fsp_domain::DisclosureRecord,
+    ) -> Result<(), RepositoryError> {
         self.connection()?
             .execute(
                 "INSERT OR REPLACE INTO disclosures(company_id,candidate_id,invitation_id,application_id,granted_at,name,email,source_links_json) VALUES(?,?,?,?,?,?,?,?)",
@@ -476,7 +486,7 @@ impl PlatformRepository for SqliteRepository {
         Ok(())
     }
 
-    fn delete_disclosure(
+    async fn delete_disclosure(
         &self,
         company_id: &str,
         candidate_id: &str,
@@ -490,7 +500,7 @@ impl PlatformRepository for SqliteRepository {
         Ok(())
     }
 
-    fn company_applications(
+    async fn company_applications(
         &self,
         company_id: &str,
     ) -> Result<Vec<fsp_domain::ApplicationRecord>, RepositoryError> {
@@ -504,7 +514,7 @@ impl PlatformRepository for SqliteRepository {
             .map_err(storage)
     }
 
-    fn candidate_applications(
+    async fn candidate_applications(
         &self,
         candidate_id: &str,
     ) -> Result<Vec<fsp_domain::ApplicationRecord>, RepositoryError> {
@@ -518,7 +528,7 @@ impl PlatformRepository for SqliteRepository {
             .map_err(storage)
     }
 
-    fn application(
+    async fn application(
         &self,
         application_id: &str,
     ) -> Result<Option<fsp_domain::ApplicationRecord>, RepositoryError> {
@@ -532,7 +542,7 @@ impl PlatformRepository for SqliteRepository {
             .map_err(storage)
     }
 
-    fn save_application(
+    async fn save_application(
         &self,
         value: &fsp_domain::ApplicationRecord,
     ) -> Result<(), RepositoryError> {
@@ -559,7 +569,10 @@ impl PlatformRepository for SqliteRepository {
         Ok(())
     }
 
-    fn tasks(&self, company_id: &str) -> Result<Vec<fsp_domain::TaskRecord>, RepositoryError> {
+    async fn tasks(
+        &self,
+        company_id: &str,
+    ) -> Result<Vec<fsp_domain::TaskRecord>, RepositoryError> {
         let connection = self.connection()?;
         connection
             .prepare("SELECT * FROM tasks WHERE company_id=?")
@@ -570,7 +583,7 @@ impl PlatformRepository for SqliteRepository {
             .map_err(storage)
     }
 
-    fn active_tasks(&self) -> Result<Vec<fsp_domain::TaskRecord>, RepositoryError> {
+    async fn active_tasks(&self) -> Result<Vec<fsp_domain::TaskRecord>, RepositoryError> {
         let connection = self.connection()?;
         connection
             .prepare("SELECT * FROM tasks WHERE status='active'")
@@ -581,7 +594,7 @@ impl PlatformRepository for SqliteRepository {
             .map_err(storage)
     }
 
-    fn task(&self, task_id: &str) -> Result<Option<fsp_domain::TaskRecord>, RepositoryError> {
+    async fn task(&self, task_id: &str) -> Result<Option<fsp_domain::TaskRecord>, RepositoryError> {
         self.connection()?
             .query_row(
                 "SELECT * FROM tasks WHERE id=?",
@@ -592,7 +605,7 @@ impl PlatformRepository for SqliteRepository {
             .map_err(storage)
     }
 
-    fn save_task(&self, value: &fsp_domain::TaskRecord) -> Result<(), RepositoryError> {
+    async fn save_task(&self, value: &fsp_domain::TaskRecord) -> Result<(), RepositoryError> {
         self.connection()?
             .execute(
                 "INSERT OR REPLACE INTO tasks(id,company_id,title,prompt,skill_id,grade,estimate_minutes,status,created_at) VALUES(?,?,?,?,?,?,?,?,?)",
@@ -612,7 +625,7 @@ impl PlatformRepository for SqliteRepository {
         Ok(())
     }
 
-    fn candidate_task_responses(
+    async fn candidate_task_responses(
         &self,
         candidate_id: &str,
     ) -> Result<Vec<fsp_domain::TaskResponseRecord>, RepositoryError> {
@@ -626,7 +639,7 @@ impl PlatformRepository for SqliteRepository {
             .map_err(storage)
     }
 
-    fn company_task_responses(
+    async fn company_task_responses(
         &self,
         company_id: &str,
     ) -> Result<Vec<fsp_domain::TaskResponseRecord>, RepositoryError> {
@@ -640,7 +653,7 @@ impl PlatformRepository for SqliteRepository {
             .map_err(storage)
     }
 
-    fn task_response(
+    async fn task_response(
         &self,
         response_id: &str,
     ) -> Result<Option<fsp_domain::TaskResponseRecord>, RepositoryError> {
@@ -654,7 +667,7 @@ impl PlatformRepository for SqliteRepository {
             .map_err(storage)
     }
 
-    fn save_task_response(
+    async fn save_task_response(
         &self,
         value: &fsp_domain::TaskResponseRecord,
     ) -> Result<(), RepositoryError> {
@@ -679,7 +692,10 @@ impl PlatformRepository for SqliteRepository {
         Ok(())
     }
 
-    fn save_candidate_index(&self, record: &CandidateIndexRecord) -> Result<(), RepositoryError> {
+    async fn save_candidate_index(
+        &self,
+        record: &CandidateIndexRecord,
+    ) -> Result<(), RepositoryError> {
         self.connection()?
             .execute(
                 "INSERT INTO candidate_index(candidate_id,work_modes_json,available_for_offers,skills_json,source_kinds_json,fsp_verified,last_signal_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(candidate_id) DO UPDATE SET work_modes_json=excluded.work_modes_json,available_for_offers=excluded.available_for_offers,skills_json=excluded.skills_json,source_kinds_json=excluded.source_kinds_json,fsp_verified=excluded.fsp_verified,last_signal_at=excluded.last_signal_at",
@@ -697,7 +713,7 @@ impl PlatformRepository for SqliteRepository {
         Ok(())
     }
 
-    fn candidate_assessments(
+    async fn candidate_assessments(
         &self,
         candidate_id: &str,
     ) -> Result<Vec<fsp_domain::AssessmentRecord>, RepositoryError> {
@@ -711,7 +727,7 @@ impl PlatformRepository for SqliteRepository {
             .map_err(storage)
     }
 
-    fn assessment(
+    async fn assessment(
         &self,
         assessment_id: &str,
     ) -> Result<Option<fsp_domain::AssessmentRecord>, RepositoryError> {
@@ -725,7 +741,10 @@ impl PlatformRepository for SqliteRepository {
             .map_err(storage)
     }
 
-    fn save_assessment(&self, value: &fsp_domain::AssessmentRecord) -> Result<(), RepositoryError> {
+    async fn save_assessment(
+        &self,
+        value: &fsp_domain::AssessmentRecord,
+    ) -> Result<(), RepositoryError> {
         self.connection()?
             .execute(
                 "INSERT OR REPLACE INTO assessments(id,candidate_id,specialization,grade,status,task_json,answer_json,checks_json,result_json,created_at,updated_at,revision) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
@@ -753,7 +772,7 @@ impl PlatformRepository for SqliteRepository {
         Ok(())
     }
 
-    fn save_oauth_state(
+    async fn save_oauth_state(
         &self,
         candidate_id: &str,
         state: &str,
@@ -768,7 +787,7 @@ impl PlatformRepository for SqliteRepository {
         Ok(())
     }
 
-    fn consume_oauth_state(
+    async fn consume_oauth_state(
         &self,
         candidate_id: &str,
         state: &str,
@@ -784,7 +803,11 @@ impl PlatformRepository for SqliteRepository {
         Ok(changed == 1)
     }
 
-    fn save_github_token(&self, candidate_id: &str, token: &str) -> Result<(), RepositoryError> {
+    async fn save_github_token(
+        &self,
+        candidate_id: &str,
+        token: &str,
+    ) -> Result<(), RepositoryError> {
         self.connection()?
             .execute(
                 "INSERT INTO github_credentials(candidate_id,access_token) VALUES(?,?) ON CONFLICT(candidate_id) DO UPDATE SET access_token=excluded.access_token",
@@ -794,7 +817,7 @@ impl PlatformRepository for SqliteRepository {
         Ok(())
     }
 
-    fn github_token(&self, candidate_id: &str) -> Result<Option<String>, RepositoryError> {
+    async fn github_token(&self, candidate_id: &str) -> Result<Option<String>, RepositoryError> {
         self.connection()?
             .query_row(
                 "SELECT access_token FROM github_credentials WHERE candidate_id=?",
@@ -805,7 +828,7 @@ impl PlatformRepository for SqliteRepository {
             .map_err(storage)
     }
 
-    fn sources(&self, candidate_id: &str) -> Result<Vec<SourceRecord>, RepositoryError> {
+    async fn sources(&self, candidate_id: &str) -> Result<Vec<SourceRecord>, RepositoryError> {
         let connection = self.connection()?;
         let mut statement = connection
             .prepare("SELECT id,candidate_id,provider,synthetic,active_job_id,account_label,last_synced_at,analysis_json,verified_participation,competition_ids_json FROM sources WHERE candidate_id=?")
@@ -817,7 +840,7 @@ impl PlatformRepository for SqliteRepository {
             .map_err(storage)
     }
 
-    fn save_source(&self, source: &SourceRecord) -> Result<(), RepositoryError> {
+    async fn save_source(&self, source: &SourceRecord) -> Result<(), RepositoryError> {
         self.connection()?
             .execute(
                 "INSERT INTO sources(id,candidate_id,provider,synthetic,active_job_id,account_label,last_synced_at,analysis_json,verified_participation,competition_ids_json) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET active_job_id=excluded.active_job_id,account_label=excluded.account_label,last_synced_at=excluded.last_synced_at,analysis_json=excluded.analysis_json,verified_participation=excluded.verified_participation,competition_ids_json=excluded.competition_ids_json",
@@ -838,7 +861,7 @@ impl PlatformRepository for SqliteRepository {
         Ok(())
     }
 
-    fn save_job(&self, job: &JobRecord) -> Result<(), RepositoryError> {
+    async fn save_job(&self, job: &JobRecord) -> Result<(), RepositoryError> {
         self.connection()?
             .execute(
                 "INSERT INTO jobs(id,owner_id,kind,status,created_at,updated_at,candidate_id,assessment_id,input_revision,result_json,confirmed,result_source_id,error_code,error_message) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET kind=excluded.kind,status=excluded.status,updated_at=excluded.updated_at,candidate_id=excluded.candidate_id,assessment_id=excluded.assessment_id,input_revision=excluded.input_revision,result_json=excluded.result_json,confirmed=excluded.confirmed,result_source_id=excluded.result_source_id,error_code=excluded.error_code,error_message=excluded.error_message",
@@ -848,7 +871,11 @@ impl PlatformRepository for SqliteRepository {
         Ok(())
     }
 
-    fn job(&self, owner_id: &str, job_id: &str) -> Result<Option<JobRecord>, RepositoryError> {
+    async fn job(
+        &self,
+        owner_id: &str,
+        job_id: &str,
+    ) -> Result<Option<JobRecord>, RepositoryError> {
         self.connection()?
             .query_row(
                 "SELECT id,owner_id,kind,status,created_at,updated_at,candidate_id,assessment_id,input_revision,result_json,confirmed,result_source_id,error_code,error_message FROM jobs WHERE owner_id=? AND id=?",
@@ -876,7 +903,7 @@ impl PlatformRepository for SqliteRepository {
             .map_err(storage)
     }
 
-    fn idempotency_get(
+    async fn idempotency_get(
         &self,
         scope: &str,
     ) -> Result<Option<StoredIdempotentResponse>, RepositoryError> {
@@ -896,7 +923,7 @@ impl PlatformRepository for SqliteRepository {
             .map_err(storage)
     }
 
-    fn idempotency_put(
+    async fn idempotency_put(
         &self,
         scope: &str,
         fingerprint: &str,
@@ -914,7 +941,7 @@ impl PlatformRepository for SqliteRepository {
         Ok(())
     }
 
-    fn seed_demo(&self, now: &str) -> Result<(), RepositoryError> {
+    async fn seed_demo(&self, now: &str) -> Result<(), RepositoryError> {
         let connection = self.connection()?;
         if connection
             .query_row("SELECT EXISTS(SELECT 1 FROM accounts)", [], |row| {
@@ -1940,8 +1967,8 @@ mod tests {
         }
     }
 
-    #[test]
-    fn login_session_and_profile_survive_database_reopen() {
+    #[tokio::test(flavor = "current_thread")]
+    async fn login_session_and_profile_survive_database_reopen() {
         let nonce = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("system clock must be after Unix epoch")
@@ -1957,12 +1984,14 @@ mod tests {
                 email: "New.Candidate@example.com".into(),
                 role: Role::Candidate,
             })
+            .await
             .expect("challenge is created");
         let wrong = service
             .verify_email(EmailVerifyInput {
                 challenge_id: challenge.challenge_id.clone(),
                 code: "000000".into(),
             })
+            .await
             .expect_err("wrong code is rejected");
         assert_eq!(wrong.code, "invalid_code");
 
@@ -1971,6 +2000,7 @@ mod tests {
                 challenge_id: challenge.challenge_id.clone(),
                 code: "123456".into(),
             })
+            .await
             .expect("correct code creates a session");
         assert_eq!(session.role, Role::Candidate);
         assert!(session.email_verified);
@@ -1979,6 +2009,7 @@ mod tests {
                 challenge_id: challenge.challenge_id,
                 code: "123456".into(),
             })
+            .await
             .expect_err("a challenge is one-time");
         assert_eq!(reused.code, "challenge_used");
         drop(service);
@@ -1987,8 +2018,8 @@ mod tests {
             Arc::new(SqliteRepository::open(&path).expect("database reopens")),
             Arc::new(FixedDelivery),
         );
-        let restored = reopened.session(&token).expect("session persists");
-        let profile = reopened.profile(&restored).expect("profile persists");
+        let restored = reopened.session(&token).await.expect("session persists");
+        let profile = reopened.profile(&restored).await.expect("profile persists");
         assert_eq!(profile.email, "new.candidate@example.com");
         let updated = reopened
             .update_profile(
@@ -1999,10 +2030,12 @@ mod tests {
                     ..ProfilePatch::default()
                 },
             )
+            .await
             .expect("frontend profile payload is accepted");
         assert_eq!(updated.name, "Мария Волкова");
         let empty_patch = reopened
             .update_profile(&restored, ProfilePatch::default())
+            .await
             .expect_err("empty profile patches violate the contract");
         assert_eq!(empty_patch.code, "validation_error");
 
@@ -2011,14 +2044,15 @@ mod tests {
                 email: "new.candidate@example.com".into(),
                 role: Role::Employer,
             })
+            .await
             .expect_err("an account cannot change role during login");
         assert_eq!(mismatch.code, "role_mismatch");
         drop(reopened);
         std::fs::remove_file(path).expect("temporary database is removed");
     }
 
-    #[test]
-    fn seeded_recommendations_use_the_recorded_deterministic_order() {
+    #[tokio::test(flavor = "current_thread")]
+    async fn seeded_recommendations_use_the_recorded_deterministic_order() {
         let nonce = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("system clock must be after Unix epoch")
@@ -2028,18 +2062,20 @@ mod tests {
             Arc::new(SqliteRepository::open(&path).expect("database opens")),
             Arc::new(FixedDelivery),
         );
-        service.initialize().expect("demo data is seeded");
+        service.initialize().await.expect("demo data is seeded");
         let challenge = service
             .request_challenge(EmailChallengeInput {
                 email: "hr@sever-tech.example".into(),
                 role: Role::Employer,
             })
+            .await
             .expect("employer challenge is created");
         let (session, _) = service
             .verify_email(EmailVerifyInput {
                 challenge_id: challenge.challenge_id,
                 code: "123456".into(),
             })
+            .await
             .expect("employer session is created");
         let page = service
             .candidate_search(
@@ -2052,6 +2088,7 @@ mod tests {
                     ..CandidateSearch::default()
                 },
             )
+            .await
             .expect("recommendations are available");
         let ids = page
             .items
@@ -2071,8 +2108,8 @@ mod tests {
         std::fs::remove_file(path).expect("temporary database is removed");
     }
 
-    #[test]
-    fn idempotency_keys_round_trip_and_keep_the_first_response() {
+    #[tokio::test(flavor = "current_thread")]
+    async fn idempotency_keys_round_trip_and_keep_the_first_response() {
         let nonce = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("system clock must be after Unix epoch")
@@ -2083,6 +2120,7 @@ mod tests {
         assert!(
             repository
                 .idempotency_get("actor:op:/path:key-0001")
+                .await
                 .expect("lookup works")
                 .is_none()
         );
@@ -2094,6 +2132,7 @@ mod tests {
                 "{\"id\":\"one\"}",
                 "2026-10-06T00:00:00Z",
             )
+            .await
             .expect("first response is stored");
         // A racing retry must not overwrite the stored response.
         repository
@@ -2104,9 +2143,11 @@ mod tests {
                 "{\"id\":\"two\"}",
                 "2026-10-06T00:00:01Z",
             )
+            .await
             .expect("conflicting inserts are ignored");
         let stored = repository
             .idempotency_get("actor:op:/path:key-0001")
+            .await
             .expect("lookup works")
             .expect("response is stored");
         assert_eq!(stored.fingerprint, "{\"a\":1}");
@@ -2116,8 +2157,8 @@ mod tests {
         std::fs::remove_file(path).expect("temporary database is removed");
     }
 
-    #[test]
-    fn shortlists_round_trip_and_stay_scoped_to_the_company() {
+    #[tokio::test(flavor = "current_thread")]
+    async fn shortlists_round_trip_and_stay_scoped_to_the_company() {
         let nonce = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("system clock must be after Unix epoch")
@@ -2141,22 +2182,26 @@ mod tests {
                 created_at: "2026-10-06T00:00:00Z".into(),
                 updated_at: "2026-10-06T00:00:00Z".into(),
             })
+            .await
             .expect("shortlist is stored");
 
         let stored = repository
             .shortlist("company-sever", "shortlist-test")
+            .await
             .expect("lookup works")
             .expect("shortlist exists");
         assert_eq!(stored.member_ids, ["candidate018"]);
         assert!(
             repository
                 .shortlist("company-other", "shortlist-test")
+                .await
                 .expect("lookup works")
                 .is_none()
         );
         assert_eq!(
             repository
                 .shortlists("company-sever")
+                .await
                 .expect("list works")
                 .len(),
             1
@@ -2164,10 +2209,12 @@ mod tests {
 
         repository
             .delete_shortlist("company-sever", "shortlist-test")
+            .await
             .expect("shortlist is removed");
         assert!(
             repository
                 .shortlists("company-sever")
+                .await
                 .expect("list works")
                 .is_empty()
         );
@@ -2175,8 +2222,8 @@ mod tests {
         std::fs::remove_file(path).expect("temporary database is removed");
     }
 
-    #[test]
-    fn invitations_and_disclosures_round_trip() {
+    #[tokio::test(flavor = "current_thread")]
+    async fn invitations_and_disclosures_round_trip() {
         let nonce = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("system clock must be after Unix epoch")
@@ -2228,19 +2275,25 @@ mod tests {
         };
         repository
             .save_invitation(&record)
+            .await
             .expect("invitation is stored");
 
         let stored = repository
             .invitation("invitation-test")
+            .await
             .expect("lookup works")
             .expect("invitation exists");
         assert_eq!(stored.status, fsp_domain::InteractionStatus::Sent);
         assert_eq!(stored.need.id, "need-test");
         assert_eq!(stored.need_definition.id, "need-test");
-        assert_eq!(repository.invitations("company-sever").unwrap().len(), 1);
+        assert_eq!(
+            repository.invitations("company-sever").await.unwrap().len(),
+            1
+        );
         assert_eq!(
             repository
                 .candidate_invitations("candidate018")
+                .await
                 .unwrap()
                 .len(),
             1
@@ -2248,6 +2301,7 @@ mod tests {
         assert!(
             repository
                 .candidate_invitations("candidate031")
+                .await
                 .unwrap()
                 .is_empty()
         );
@@ -2263,9 +2317,11 @@ mod tests {
                 email: None,
                 source_links: vec!["https://github.com/example".into()],
             })
+            .await
             .expect("disclosure is stored");
         let grant = repository
             .disclosure("company-sever", "candidate018")
+            .await
             .expect("lookup works")
             .expect("grant exists");
         assert_eq!(grant.name.as_deref(), Some("Илья Соколов"));
@@ -2274,10 +2330,12 @@ mod tests {
 
         repository
             .delete_disclosure("company-sever", "candidate018")
+            .await
             .expect("disclosure is removed");
         assert!(
             repository
                 .disclosure("company-sever", "candidate018")
+                .await
                 .expect("lookup works")
                 .is_none()
         );
@@ -2285,8 +2343,8 @@ mod tests {
         std::fs::remove_file(path).expect("temporary database is removed");
     }
 
-    #[test]
-    fn tasks_and_responses_round_trip_and_stay_scoped() {
+    #[tokio::test(flavor = "current_thread")]
+    async fn tasks_and_responses_round_trip_and_stay_scoped() {
         let nonce = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("system clock must be after Unix epoch")
@@ -2314,15 +2372,21 @@ mod tests {
                 status: fsp_domain::TaskStatus::Active,
                 created_at: "2026-10-06T00:00:00Z".into(),
             })
+            .await
             .expect("task is stored");
         let stored = repository
             .task("task-test")
+            .await
             .expect("lookup works")
             .expect("task exists");
         assert_eq!(stored.status, fsp_domain::TaskStatus::Active);
         assert_eq!(stored.grade, Grade::Middle);
         assert_eq!(
-            repository.active_tasks().expect("active list works").len(),
+            repository
+                .active_tasks()
+                .await
+                .expect("active list works")
+                .len(),
             1
         );
 
@@ -2348,9 +2412,11 @@ mod tests {
                 submitted_at: "2026-10-06T12:00:00Z".into(),
                 reviewed_at: None,
             })
+            .await
             .expect("response is stored");
         let response = repository
             .task_response("task-response-test")
+            .await
             .expect("lookup works")
             .expect("response exists");
         assert_eq!(response.task.id, "task-test");
@@ -2358,6 +2424,7 @@ mod tests {
         assert_eq!(
             repository
                 .candidate_task_responses("candidate018")
+                .await
                 .expect("candidate list works")
                 .len(),
             1
@@ -2365,6 +2432,7 @@ mod tests {
         assert_eq!(
             repository
                 .company_task_responses("company-sever")
+                .await
                 .expect("company list works")
                 .len(),
             1
@@ -2372,6 +2440,7 @@ mod tests {
         assert!(
             repository
                 .company_task_responses("company-other")
+                .await
                 .expect("other company list works")
                 .is_empty()
         );
@@ -2379,8 +2448,8 @@ mod tests {
         std::fs::remove_file(path).expect("temporary database is removed");
     }
 
-    #[test]
-    fn assessments_and_jobs_round_trip_with_persisted_results() {
+    #[tokio::test(flavor = "current_thread")]
+    async fn assessments_and_jobs_round_trip_with_persisted_results() {
         let nonce = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("system clock must be after Unix epoch")
@@ -2430,9 +2499,11 @@ mod tests {
                 updated_at: "2026-10-06T01:00:00Z".into(),
                 revision: 3,
             })
+            .await
             .expect("assessment is stored");
         let stored = repository
             .assessment("assessment-test")
+            .await
             .expect("lookup works")
             .expect("assessment exists");
         assert_eq!(stored.status, fsp_domain::AssessmentStatus::InProgress);
@@ -2442,6 +2513,7 @@ mod tests {
         assert_eq!(
             repository
                 .candidate_assessments("candidate-024")
+                .await
                 .expect("candidate list works")
                 .len(),
             1
@@ -2449,6 +2521,7 @@ mod tests {
         assert!(
             repository
                 .candidate_assessments("candidate-999")
+                .await
                 .expect("other candidate list works")
                 .is_empty()
         );
@@ -2470,9 +2543,11 @@ mod tests {
                 error_code: None,
                 error_message: None,
             })
+            .await
             .expect("job is stored");
         let job = repository
             .job("candidate-024", "job-assessment")
+            .await
             .expect("lookup works")
             .expect("job exists");
         assert_eq!(job.kind, "assessment");

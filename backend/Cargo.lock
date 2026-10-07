@@ -417,6 +417,7 @@ dependencies = [
 name = "fsp-http"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "axum",
  "chrono",
  "form_urlencoded",
@@ -489,11 +490,13 @@ dependencies = [
 name = "fsp-storage-sqlite"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "fsp-application",
  "fsp-domain",
  "rusqlite",
  "serde",
  "serde_json",
+ "tokio",
 ]
 
 [[package]]
