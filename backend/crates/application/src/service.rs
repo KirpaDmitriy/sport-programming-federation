@@ -3448,16 +3448,41 @@ fn graph_from_extracted(
     audience: &'static str,
     graph: fsp_domain::ExtractedGraph,
 ) -> Result<GraphView, ApplicationError> {
-    let valid_nodes = graph.nodes.iter().all(|node| {
-        ["role", "skill", "evidence"].contains(&node.kind.as_str())
-            && node.status.as_deref().is_none_or(|status| {
+    // Models return free-form casing and often omit `kind`; normalize before
+    // validating so a well-formed intent is not rejected on cosmetics.
+    let normalized_nodes: Vec<(String, Option<String>, fsp_domain::ExtractedGraphNode)> = graph
+        .nodes
+        .into_iter()
+        .map(|node| {
+            let kind = if node.kind.is_empty() {
+                if node.skill_id.is_some() || node.status.is_some() {
+                    "skill".to_string()
+                } else if node.evidence_references.is_empty() {
+                    "role".to_string()
+                } else {
+                    "evidence".to_string()
+                }
+            } else {
+                node.kind.to_lowercase()
+            };
+            let status = node.status.as_deref().map(str::to_lowercase);
+            (kind, status, node)
+        })
+        .collect();
+    let normalized_edges: Vec<(String, fsp_domain::ExtractedGraphEdge)> = graph
+        .edges
+        .into_iter()
+        .map(|edge| (edge.relation.to_lowercase(), edge))
+        .collect();
+    let valid_nodes = normalized_nodes.iter().all(|(kind, status, _)| {
+        ["role", "skill", "evidence"].contains(&kind.as_str())
+            && status.as_deref().is_none_or(|status| {
                 ["confirmed", "evidence", "observed", "insufficient"].contains(&status)
             })
     });
-    let valid_edges = graph
-        .edges
+    let valid_edges = normalized_edges
         .iter()
-        .all(|edge| ["requires", "supports", "uses"].contains(&edge.relation.as_str()));
+        .all(|(relation, _)| ["requires", "supports", "uses"].contains(&relation.as_str()));
     if !valid_nodes || !valid_edges {
         return Err(ApplicationError::new(
             502,
@@ -3467,25 +3492,23 @@ fn graph_from_extracted(
     }
     Ok(GraphView {
         audience,
-        nodes: graph
-            .nodes
+        nodes: normalized_nodes
             .into_iter()
-            .map(|node| GraphNodeView {
+            .map(|(kind, status, node)| GraphNodeView {
                 id: node.id,
-                kind: node.kind,
+                kind,
                 label: node.label,
                 skill_id: node.skill_id,
-                status: node.status,
+                status,
             })
             .collect(),
-        edges: graph
-            .edges
+        edges: normalized_edges
             .into_iter()
-            .map(|edge| GraphEdgeView {
+            .map(|(relation, edge)| GraphEdgeView {
                 id: edge.id,
                 from: edge.from,
                 to: edge.to,
-                relation: edge.relation,
+                relation,
             })
             .collect(),
         simulation: false,

@@ -81,7 +81,15 @@ impl LlmGateway for BifrostGateway {
         request: &GraphExtractionRequest,
     ) -> Result<ExtractedGraph, IntegrationError> {
         self.complete(
-            "Return a JSON competence prerequisite graph. Every node and edge must cite evidenceReferences from the input. Do not infer facts without evidence.",
+            "Return a JSON competence prerequisite graph with exactly this shape: \
+             {\"nodes\":[{\"id\":string,\"kind\":\"role\"|\"skill\"|\"evidence\",\"label\":string,\
+             \"skillId\":string|null,\"status\":\"confirmed\"|\"evidence\"|\"observed\"|\"insufficient\"|null,\
+             \"evidenceReferences\":[string]}],\
+             \"edges\":[{\"id\":string,\"from\":string,\"to\":string,\
+             \"relation\":\"requires\"|\"supports\"|\"uses\",\"evidenceReferences\":[string]}]}. \
+             Include one \"role\" node as the root, one \"skill\" node per evidenced skill, and \
+             \"evidence\" nodes for the supporting references. Every node and edge must cite \
+             evidenceReferences from the input. Do not infer facts without evidence.",
             request,
         )
         .await
