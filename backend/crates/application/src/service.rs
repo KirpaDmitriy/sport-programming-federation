@@ -1,3 +1,8 @@
+mod commands;
+mod graphs;
+mod sources;
+pub use commands::Commands;
+
 use std::sync::Arc;
 
 use chrono::{Duration, Utc};
@@ -69,6 +74,7 @@ pub struct IdempotencyContext<'a> {
     pub status: u16,
 }
 
+#[derive(Clone)]
 pub struct PlatformService {
     repository: Arc<dyn PlatformRepository>,
     delivery: Arc<dyn VerificationDelivery>,
@@ -152,7 +158,7 @@ impl PlatformService {
         input: EmailChallengeInput,
     ) -> Result<EmailChallengeView, ApplicationError> {
         let email = input.email.trim().to_lowercase();
-        if !email.contains('@') || email.len() > 254 {
+        if !valid_email(&input.email) {
             return Err(ApplicationError::new(
                 400,
                 "validation_error",
@@ -263,6 +269,9 @@ impl PlatformService {
                 ));
             }
             ConsumeChallenge::WrongCode => {
+                // A rejected code is still a durable security event. Returning
+                // without committing would restore the attempt budget.
+                tx.commit().await.map_err(ApplicationError::storage)?;
                 return Err(ApplicationError::new(400, "invalid_code", "Неверный код"));
             }
         };
@@ -407,11 +416,23 @@ impl PlatformService {
         session: &SessionView,
         patch: CompanyPatch,
     ) -> Result<CompanyView, ApplicationError> {
+        let tx = self
+            .repository
+            .transaction()
+            .await
+            .map_err(ApplicationError::storage)?;
+        tx.lock_scope(&format!("company:{}", employer_company_id(session)?))
+            .await
+            .map_err(ApplicationError::storage)?;
+        let scoped = Self {
+            repository: tx.share(),
+            ..self.clone()
+        };
         validate_company_patch(&patch)?;
         let id = session.company_id.as_deref().ok_or_else(|| {
             ApplicationError::new(403, "role_forbidden", "Действие доступно работодателю")
         })?;
-        let mut company = self
+        let mut company = scoped
             .repository
             .company(id)
             .await
@@ -432,10 +453,12 @@ impl PlatformService {
         if let Some(value) = patch.website {
             company.website = value;
         }
-        self.repository
+        scoped
+            .repository
             .save_company(&company)
             .await
             .map_err(ApplicationError::storage)?;
+        tx.commit().await.map_err(ApplicationError::storage)?;
         Ok(company.into())
     }
 
@@ -1053,14 +1076,31 @@ impl PlatformService {
         shortlist_id: &str,
         input: ShortlistInput,
     ) -> Result<ShortlistView, ApplicationError> {
+        let tx = self
+            .repository
+            .transaction()
+            .await
+            .map_err(ApplicationError::storage)?;
+        tx.lock_scope(&format!(
+            "shortlist:{}:{shortlist_id}",
+            employer_company_id(session)?
+        ))
+        .await
+        .map_err(ApplicationError::storage)?;
+        let scoped = Self {
+            repository: tx.share(),
+            ..self.clone()
+        };
         Self::validate_shortlist_title(&input.title)?;
-        let mut record = self.own_shortlist(session, shortlist_id).await?;
+        let mut record = scoped.own_shortlist(session, shortlist_id).await?;
         record.title = input.title;
         record.updated_at = now();
-        self.repository
+        scoped
+            .repository
             .save_shortlist(&record)
             .await
             .map_err(ApplicationError::storage)?;
+        tx.commit().await.map_err(ApplicationError::storage)?;
         self.shortlist_detail(record).await
     }
 
@@ -1069,11 +1109,28 @@ impl PlatformService {
         session: &SessionView,
         shortlist_id: &str,
     ) -> Result<(), ApplicationError> {
-        let record = self.own_shortlist(session, shortlist_id).await?;
-        self.repository
+        let tx = self
+            .repository
+            .transaction()
+            .await
+            .map_err(ApplicationError::storage)?;
+        tx.lock_scope(&format!(
+            "shortlist:{}:{shortlist_id}",
+            employer_company_id(session)?
+        ))
+        .await
+        .map_err(ApplicationError::storage)?;
+        let scoped = Self {
+            repository: tx.share(),
+            ..self.clone()
+        };
+        let record = scoped.own_shortlist(session, shortlist_id).await?;
+        scoped
+            .repository
             .delete_shortlist(&record.company_id, &record.id)
             .await
-            .map_err(ApplicationError::storage)
+            .map_err(ApplicationError::storage)?;
+        tx.commit().await.map_err(ApplicationError::storage)
     }
 
     pub async fn add_shortlist_member(
@@ -1082,19 +1139,30 @@ impl PlatformService {
         shortlist_id: &str,
         candidate_id: &str,
     ) -> Result<ShortlistView, ApplicationError> {
-        let mut record = self.own_shortlist(session, shortlist_id).await?;
+        let tx = self
+            .repository
+            .transaction()
+            .await
+            .map_err(ApplicationError::storage)?;
+        tx.lock_scope(&format!(
+            "shortlist:{}:{shortlist_id}",
+            employer_company_id(session)?
+        ))
+        .await
+        .map_err(ApplicationError::storage)?;
+        let scoped = Self {
+            repository: tx.share(),
+            ..self.clone()
+        };
+        let mut record = scoped.own_shortlist(session, shortlist_id).await?;
         // The mock's `visibleCandidate`: only candidates visible to employers
         // can be shortlisted.
-        let visible = self
+        let visible = scoped
             .repository
-            .candidates()
+            .candidate_index(candidate_id)
             .await
             .map_err(ApplicationError::storage)?
-            .into_iter()
-            .any(|item| {
-                item.profile.id == candidate_id
-                    && item.profile.visible_to_employers(item.email_verified)
-            });
+            .is_some_and(|item| item.profile.visible_to_employers(item.email_verified));
         if !visible {
             return Err(ApplicationError::new(404, "not_found", "Ресурс не найден"));
         }
@@ -1102,10 +1170,12 @@ impl PlatformService {
             record.member_ids.push(candidate_id.to_owned());
         }
         record.updated_at = now();
-        self.repository
+        scoped
+            .repository
             .save_shortlist(&record)
             .await
             .map_err(ApplicationError::storage)?;
+        tx.commit().await.map_err(ApplicationError::storage)?;
         self.shortlist_detail(record).await
     }
 
@@ -1115,13 +1185,30 @@ impl PlatformService {
         shortlist_id: &str,
         candidate_id: &str,
     ) -> Result<ShortlistView, ApplicationError> {
-        let mut record = self.own_shortlist(session, shortlist_id).await?;
+        let tx = self
+            .repository
+            .transaction()
+            .await
+            .map_err(ApplicationError::storage)?;
+        tx.lock_scope(&format!(
+            "shortlist:{}:{shortlist_id}",
+            employer_company_id(session)?
+        ))
+        .await
+        .map_err(ApplicationError::storage)?;
+        let scoped = Self {
+            repository: tx.share(),
+            ..self.clone()
+        };
+        let mut record = scoped.own_shortlist(session, shortlist_id).await?;
         record.member_ids.retain(|id| id != candidate_id);
         record.updated_at = now();
-        self.repository
+        scoped
+            .repository
             .save_shortlist(&record)
             .await
             .map_err(ApplicationError::storage)?;
+        tx.commit().await.map_err(ApplicationError::storage)?;
         self.shortlist_detail(record).await
     }
 
@@ -1160,14 +1247,10 @@ impl PlatformService {
         candidate_id: &str,
     ) -> Result<CandidateIndexRecord, ApplicationError> {
         self.repository
-            .candidates()
+            .candidate_index(candidate_id)
             .await
             .map_err(ApplicationError::storage)?
-            .into_iter()
-            .find(|item| {
-                item.profile.id == candidate_id
-                    && item.profile.visible_to_employers(item.email_verified)
-            })
+            .filter(|item| item.profile.visible_to_employers(item.email_verified))
             .ok_or_else(|| ApplicationError::new(404, "not_found", "Ресурс не найден"))
     }
 
@@ -1218,87 +1301,6 @@ impl PlatformService {
             .map(invitation_view)
             .collect();
         Ok(InvitationsView { items })
-    }
-
-    /// The mock's `createInvitation`, run inside `idempotent` by the caller.
-    pub async fn create_invitation(
-        &self,
-        session: &SessionView,
-        input: InvitationInput,
-    ) -> Result<InvitationView, ApplicationError> {
-        if !(1..=4000).contains(&input.message.chars().count()) {
-            return Err(validation("Запрос не соответствует контракту"));
-        }
-        let company = self.require_invitable_employer(session).await?;
-        let need = self.own_need(session, &input.need_id).await?;
-        validate_need_rules(need.salary_from, need.salary_to, &need.need.requirements)?;
-        let candidate = self.visible_candidate(&input.candidate_id).await?;
-        let duplicate = self
-            .repository
-            .invitations(&company.id)
-            .await
-            .map_err(ApplicationError::storage)?
-            .into_iter()
-            .any(|item| {
-                item.candidate_id == candidate.profile.id
-                    && item.need.id == need.id
-                    && matches!(
-                        item.status,
-                        InteractionStatus::Sent
-                            | InteractionStatus::Viewed
-                            | InteractionStatus::Accepted
-                    )
-            });
-        if duplicate {
-            return Err(ApplicationError::new(
-                409,
-                "invitation_exists",
-                "Приглашение по этой потребности уже существует",
-            ));
-        }
-        let timestamp = now();
-        let record = fsp_domain::InvitationRecord {
-            id: format!("invitation-{}", Uuid::new_v4().simple()),
-            company_id: company.id.clone(),
-            candidate_id: candidate.profile.id.clone(),
-            candidate_alias: candidate.profile.alias.clone(),
-            company: fsp_domain::CompanyCard {
-                id: company.id,
-                display_name: company.display_name,
-                business_area: company.business_area,
-                description: company.description,
-                contact_email: company.contact_email,
-            },
-            need: fsp_domain::NeedSnapshot {
-                id: need.id.clone(),
-                title: need.title.clone(),
-                work_mode: need.work_mode.clone(),
-                salary_from: need.salary_from,
-                salary_to: need.salary_to,
-                description: need.description.clone(),
-            },
-            need_definition: need,
-            message: input.message,
-            status: InteractionStatus::Sent,
-            created_at: timestamp,
-            viewed_at: None,
-            responded_at: None,
-            disclosure_fields: Vec::new(),
-        };
-        self.repository
-            .save_invitation(&record)
-            .await
-            .map_err(|error| match error {
-                // The partial unique index fires when the duplicate check above
-                // lost a race with a concurrent create.
-                RepositoryError::Conflict => ApplicationError::new(
-                    409,
-                    "invitation_exists",
-                    "Приглашение по этой потребности уже существует",
-                ),
-                other => ApplicationError::storage(other),
-            })?;
-        Ok(invitation_view(record))
     }
 
     pub async fn get_invitation(
@@ -1371,10 +1373,17 @@ impl PlatformService {
         if record.status == InteractionStatus::Sent {
             record.status = InteractionStatus::Viewed;
             record.viewed_at = Some(now());
-            self.repository
-                .save_invitation(&record)
+            match self
+                .repository
+                .save_invitation_guarded(&record, &[InteractionStatus::Sent])
                 .await
-                .map_err(ApplicationError::storage)?;
+            {
+                Ok(()) => {}
+                Err(RepositoryError::NotFound) => {
+                    record = self.invitation_for(session, invitation_id).await?;
+                }
+                Err(error) => return Err(ApplicationError::storage(error)),
+            }
         }
         Ok(invitation_view(record))
     }
@@ -1481,6 +1490,9 @@ impl PlatformService {
         company_id: &str,
         candidate: &CandidateIndexRecord,
     ) -> Result<(), ApplicationError> {
+        repo.lock_scope(&format!("disclosure:{company_id}:{}", candidate.profile.id))
+            .await
+            .map_err(ApplicationError::storage)?;
         let invitations = repo
             .invitations(company_id)
             .await
@@ -1650,11 +1662,9 @@ impl PlatformService {
     ) -> Result<ApplicationView, ApplicationError> {
         let candidate = self
             .repository
-            .candidates()
+            .candidate_index(&record.candidate_id)
             .await
             .map_err(ApplicationError::storage)?
-            .into_iter()
-            .find(|item| item.profile.id == record.candidate_id)
             .ok_or_else(|| {
                 ApplicationError::new(500, "internal_error", "Сервис временно недоступен")
             })?;
@@ -1736,108 +1746,6 @@ impl PlatformService {
             items.push(self.application_view(record).await?);
         }
         Ok(ApplicationsView { items })
-    }
-
-    /// The mock's `createApplication`, run inside `idempotent` by the caller.
-    pub async fn create_application(
-        &self,
-        session: &SessionView,
-        input: ApplicationInput,
-    ) -> Result<ApplicationView, ApplicationError> {
-        if !(1..=4000).contains(&input.message.chars().count()) {
-            return Err(validation("Запрос не соответствует контракту"));
-        }
-        validate_disclose(&input.disclose)?;
-        let candidate = self.candidate_index(candidate_id(session)?).await?;
-        self.require_processing_consent(&candidate.profile.id)
-            .await?;
-        let need = self.published_need(&input.vacancy_id).await?;
-        let eligibility = self.application_eligibility(&candidate, &need.id).await?;
-        if let Some(reason) = eligibility.reason {
-            let (code, message) = match reason {
-                "application_exists" => {
-                    ("application_exists", "Вы уже откликнулись на эту вакансию")
-                }
-                "email" => (
-                    "application_not_eligible",
-                    "Подтвердите почту, чтобы откликаться на вакансии",
-                ),
-                "questionnaire" => (
-                    "application_not_eligible",
-                    "Заполните анкету, чтобы откликаться на вакансии",
-                ),
-                "assessment" => (
-                    "application_not_eligible",
-                    "Подтвердите грейд практической проверкой, чтобы откликаться на вакансии",
-                ),
-                _ => (
-                    "application_not_eligible",
-                    "Для отклика необходимо согласие на обработку данных",
-                ),
-            };
-            return Err(ApplicationError::new(409, code, message));
-        }
-        let company = self
-            .repository
-            .company(&need.company_id)
-            .await
-            .map_err(ApplicationError::storage)?
-            .ok_or_else(|| {
-                ApplicationError::new(500, "internal_error", "Сервис временно недоступен")
-            })?;
-        let mut disclose = input.disclose;
-        disclose.sort();
-        let record = fsp_domain::ApplicationRecord {
-            id: format!("application-{}", Uuid::new_v4().simple()),
-            company_id: company.id.clone(),
-            candidate_id: candidate.profile.id.clone(),
-            candidate_alias: candidate.profile.alias.clone(),
-            company: fsp_domain::CompanyCard {
-                id: company.id,
-                display_name: company.display_name,
-                business_area: company.business_area,
-                description: company.description,
-                contact_email: company.contact_email,
-            },
-            vacancy: fsp_domain::VacancySnapshot {
-                id: need.id.clone(),
-                title: need.title.clone(),
-                specialization: need.need.specialization,
-                grade: need.need.grade,
-                work_mode: need.work_mode.clone(),
-                salary_from: need.salary_from,
-                salary_to: need.salary_to,
-                description: need.description.clone(),
-            },
-            need_definition: need,
-            message: input.message,
-            status: InteractionStatus::Sent,
-            created_at: now(),
-            viewed_at: None,
-            responded_at: None,
-            disclosure_fields: disclose,
-        };
-        let tx = self
-            .repository
-            .transaction()
-            .await
-            .map_err(ApplicationError::storage)?;
-        tx.save_application(&record)
-            .await
-            .map_err(|error| match error {
-                // Partial unique index: a concurrent create on the same
-                // vacancy won the race after the eligibility check.
-                RepositoryError::Conflict => ApplicationError::new(
-                    409,
-                    "application_exists",
-                    "Вы уже откликнулись на эту вакансию",
-                ),
-                other => ApplicationError::storage(other),
-            })?;
-        self.refresh_disclosure(&*tx, &record.company_id.clone(), &candidate)
-            .await?;
-        tx.commit().await.map_err(ApplicationError::storage)?;
-        self.application_view(record).await
     }
 
     pub async fn get_my_application(
@@ -1932,10 +1840,17 @@ impl PlatformService {
         if record.status == InteractionStatus::Sent {
             record.status = InteractionStatus::Viewed;
             record.viewed_at = Some(now());
-            self.repository
-                .save_application(&record)
+            match self
+                .repository
+                .save_application_guarded(&record, &[InteractionStatus::Sent])
                 .await
-                .map_err(ApplicationError::storage)?;
+            {
+                Ok(()) => {}
+                Err(RepositoryError::NotFound) => {
+                    record = self.application_for(session, application_id).await?;
+                }
+                Err(error) => return Err(ApplicationError::storage(error)),
+            }
         }
         self.application_view(record).await
     }
@@ -2024,62 +1939,6 @@ impl PlatformService {
             history: responses.iter().map(task_response_view).collect(),
             freshness: freshness_view(&signals),
         })
-    }
-
-    /// The mock's `respondToTask`, run inside `idempotent` by the caller.
-    pub async fn respond_to_task(
-        &self,
-        session: &SessionView,
-        task_id: &str,
-        input: TaskResponseInput,
-    ) -> Result<TaskResponseView, ApplicationError> {
-        if !(1..=10000).contains(&input.answer.chars().count()) {
-            return Err(validation("Запрос не соответствует контракту"));
-        }
-        let candidate_id = candidate_id(session)?;
-        let candidate = self.candidate_index(candidate_id).await?;
-        self.require_processing_consent(candidate_id).await?;
-        let responses = self.sorted_task_responses(candidate_id).await?;
-        let offer = self.task_offer(&candidate, &responses).await?;
-        if offer.current_response.is_some() {
-            return Err(ApplicationError::new(
-                409,
-                "task_response_exists",
-                "Ответ на задание этой недели уже отправлен",
-            ));
-        }
-        let current = offer
-            .current
-            .filter(|task| task.id == task_id)
-            .ok_or_else(|| {
-                ApplicationError::new(409, "task_not_offered", "Это задание сейчас не предложено")
-            })?;
-        let record = fsp_domain::TaskResponseRecord {
-            id: format!("task-response-{}", Uuid::new_v4().simple()),
-            candidate_id: candidate.profile.id.clone(),
-            candidate_alias: candidate.profile.alias.clone(),
-            task: current,
-            mode: input.mode,
-            answer: input.answer,
-            status: fsp_domain::TaskResponseStatus::Submitted,
-            feedback: None,
-            submitted_at: now(),
-            reviewed_at: None,
-        };
-        self.repository
-            .save_task_response(&record)
-            .await
-            .map_err(|error| match error {
-                // One response per (candidate, task): the offer check above lost
-                // the race with a concurrent submission.
-                RepositoryError::Conflict => ApplicationError::new(
-                    409,
-                    "task_response_exists",
-                    "Ответ на задание этой недели уже отправлен",
-                ),
-                other => ApplicationError::storage(other),
-            })?;
-        Ok(task_response_view(&record))
     }
 
     /// The mock's `taskOffer`: this week's answered response wins; otherwise
@@ -2403,102 +2262,6 @@ impl PlatformService {
         })
     }
 
-    /// The mock's `startAssessment`, run inside `idempotent` by the caller:
-    /// consent, onboarding, backend-only scope, one active attempt,
-    /// no same-scope downgrade and the grade-change cooldown, in this order.
-    pub async fn start_assessment(
-        &self,
-        session: &SessionView,
-        input: AssessmentStartInput,
-    ) -> Result<AssessmentView, ApplicationError> {
-        let candidate_id = candidate_id(session)?;
-        let candidate = self.candidate_index(candidate_id).await?;
-        self.require_processing_consent(candidate_id).await?;
-        if !candidate.email_verified || !candidate.profile.questionnaire_complete() {
-            return Err(ApplicationError::new(
-                409,
-                "onboarding_incomplete",
-                "Подтвердите почту и заполните анкету",
-            ));
-        }
-        if input.specialization != Specialization::Backend {
-            return Err(ApplicationError::new(
-                422,
-                "assessment_scope_unavailable",
-                "Демонстрационные задания доступны только для бэкенда",
-            ));
-        }
-        let running = self
-            .repository
-            .candidate_assessments(candidate_id)
-            .await
-            .map_err(ApplicationError::storage)?
-            .iter()
-            .any(|item| item.status.active());
-        if running {
-            return Err(ApplicationError::new(
-                409,
-                "assessment_active",
-                "Сначала завершите текущую проверку",
-            ));
-        }
-        if candidate.profile.verified_specialization == Some(input.specialization)
-            && candidate
-                .profile
-                .verified_grade
-                .is_some_and(|grade| input.grade < grade)
-        {
-            return Err(ApplicationError::new(
-                422,
-                "grade_downgrade_forbidden",
-                "Проверка не должна понижать подтверждённый грейд",
-            ));
-        }
-        let changing = candidate.profile.verified_grade.is_some()
-            && (candidate.profile.verified_grade != Some(input.grade)
-                || candidate.profile.verified_specialization != Some(input.specialization));
-        let cooling_off = candidate
-            .profile
-            .grade_confirmed_at
-            .as_deref()
-            .and_then(timestamp_at)
-            .is_some_and(|at| {
-                at + Duration::days(i64::from(self.grade_cooldown_days)) > Utc::now()
-            });
-        if changing && cooling_off {
-            return Err(ApplicationError::new(
-                409,
-                "grade_change_cooldown",
-                "Изменить грейд можно после nextEligibleAt в профиле",
-            ));
-        }
-        let task = assessment_task(input.grade);
-        let timestamp = now();
-        let record = fsp_domain::AssessmentRecord {
-            id: format!("assessment-{}", Uuid::new_v4().simple()),
-            candidate_id: candidate_id.to_string(),
-            specialization: input.specialization,
-            grade: input.grade,
-            status: fsp_domain::AssessmentStatus::Draft,
-            answer: fsp_domain::AssessmentAnswer {
-                code: task.starter_code.clone(),
-                explanation: String::new(),
-                external_ai_used: false,
-            },
-            checks: assessment_checks("preview"),
-            task,
-            result: None,
-            created_at: timestamp.clone(),
-            updated_at: timestamp,
-            revision: 1,
-        };
-        self.repository
-            .save_assessment(&record)
-            .await
-            .map_err(ApplicationError::storage)?;
-        Ok(assessment_view(&record))
-    }
-
     pub async fn get_assessment(
         &self,
         session: &SessionView,
@@ -2623,74 +2386,6 @@ impl PlatformService {
         })
     }
 
-    /// The mock's `submitAssessment`, run inside `idempotent` by the caller:
-    /// guards, then the submitted attempt completes inline.
-    pub async fn submit_assessment(
-        &self,
-        session: &SessionView,
-        assessment_id: &str,
-    ) -> Result<JobView, ApplicationError> {
-        let candidate_id = candidate_id(session)?;
-        self.require_processing_consent(candidate_id).await?;
-        let mut record = self.assessment_for(session, assessment_id).await?;
-        mutable_assessment(&record)?;
-        if record.answer.code.trim().is_empty() || record.answer.explanation.trim().is_empty() {
-            return Err(ApplicationError::new(
-                422,
-                "answer_incomplete",
-                "Сохраните решение и его объяснение",
-            ));
-        }
-        record.status = fsp_domain::AssessmentStatus::Submitted;
-        record.updated_at = now();
-        let base_revision = record.revision;
-        record.revision += 1;
-        // Submission, the grade/profile write inside `complete_assessment`, the
-        // result and the job row share one transaction.
-        let tx = self
-            .repository
-            .transaction()
-            .await
-            .map_err(ApplicationError::storage)?;
-        tx.save_assessment_guarded(
-            &record,
-            base_revision,
-            &[
-                fsp_domain::AssessmentStatus::Draft,
-                fsp_domain::AssessmentStatus::InProgress,
-            ],
-        )
-        .await
-        .map_err(|error| match error {
-            RepositoryError::NotFound => ApplicationError::new(
-                409,
-                "assessment_not_editable",
-                "Проверка уже отправлена или завершена",
-            ),
-            other => ApplicationError::storage(other),
-        })?;
-        let mut job = self.new_job(&record.candidate_id, "assessment", Some(&record.id), None);
-        self.complete_assessment(&*tx, &mut record).await?;
-        tx.save_assessment(&record)
-            .await
-            .map_err(ApplicationError::storage)?;
-        job.status = if record.status == fsp_domain::AssessmentStatus::ServiceError {
-            job.error_code = Some("assessment_service_unavailable".into());
-            job.error_message = Some("Симулированная ошибка оценивания".into());
-            "failed"
-        } else {
-            "succeeded"
-        }
-        .into();
-        job.updated_at = now();
-        job.result_json = Some(self.job_result(&JobResultView::Assessment {
-            assessment: assessment_view(&record),
-        })?);
-        tx.save_job(&job).await.map_err(ApplicationError::storage)?;
-        tx.commit().await.map_err(ApplicationError::storage)?;
-        Ok(job_view(job, None))
-    }
-
     /// The mock's `completeAssessment` happy path: confirm or raise the
     /// verified grade, refresh the two demo skills and build the result.
     /// Writes go through the caller's repository handle so the grade change and
@@ -2700,7 +2395,14 @@ impl PlatformService {
         repo: &dyn PlatformRepository,
         record: &mut fsp_domain::AssessmentRecord,
     ) -> Result<(), ApplicationError> {
-        let mut candidate = self.candidate_index(&record.candidate_id).await?;
+        repo.lock_candidate(&record.candidate_id)
+            .await
+            .map_err(ApplicationError::storage)?;
+        let mut candidate = repo
+            .candidate_index(&record.candidate_id)
+            .await
+            .map_err(ApplicationError::storage)?
+            .ok_or_else(|| ApplicationError::new(404, "not_found", "Кандидат не найден"))?;
         let previous_grade = candidate.profile.verified_grade;
         let grade_changed = candidate.profile.verified_grade != Some(record.grade)
             || candidate.profile.verified_specialization != Some(record.specialization);
@@ -2900,14 +2602,10 @@ impl PlatformService {
                 item.candidate_id == candidate_id && item.status != InteractionStatus::Withdrawn
             });
         self.repository
-            .candidates()
+            .candidate_index(candidate_id)
             .await
             .map_err(ApplicationError::storage)?
-            .into_iter()
-            .find(|item| {
-                item.profile.id == candidate_id
-                    && (applied || item.profile.visible_to_employers(item.email_verified))
-            })
+            .filter(|item| applied || item.profile.visible_to_employers(item.email_verified))
             .ok_or_else(|| ApplicationError::new(404, "not_found", "Ресурс не найден"))
     }
 
@@ -3160,14 +2858,10 @@ impl PlatformService {
         };
         let candidate = self
             .repository
-            .candidates()
+            .candidate_index(candidate_id)
             .await
             .map_err(ApplicationError::storage)?
-            .into_iter()
-            .find(|item| {
-                item.profile.id == candidate_id
-                    && item.profile.visible_to_employers(item.email_verified)
-            })
+            .filter(|item| item.profile.visible_to_employers(item.email_verified))
             .ok_or_else(|| ApplicationError::new(404, "not_found", "Кандидат не найден"))?;
         let signals = self
             .freshness_signals(
@@ -3305,114 +2999,6 @@ impl PlatformService {
         })
     }
 
-    pub async fn my_graph(&self, session: &SessionView) -> Result<GraphView, ApplicationError> {
-        let candidate_id = candidate_id(session)?;
-        let record = self.candidate_index(candidate_id).await?;
-        self.graph_from_skills("self", &record.profile.team_role, &record.skills)
-            .await
-    }
-
-    pub async fn candidate_graph(
-        &self,
-        session: &SessionView,
-        requested_candidate_id: &str,
-    ) -> Result<GraphView, ApplicationError> {
-        employer_company_id(session)?;
-        let record = self.candidate_index(requested_candidate_id).await?;
-        if !record.profile.visible_to_employers(record.email_verified) {
-            return Err(ApplicationError::new(
-                404,
-                "not_found",
-                "Кандидат не найден",
-            ));
-        }
-        self.graph_from_skills("employer", &record.profile.team_role, &record.skills)
-            .await
-    }
-
-    async fn graph_from_skills(
-        &self,
-        audience: &'static str,
-        subject: &str,
-        skills: &[fsp_domain::SkillEvidence],
-    ) -> Result<GraphView, ApplicationError> {
-        if let Some(llm) = &self.llm {
-            let extracted = llm
-                .extract_graph(&fsp_domain::GraphExtractionRequest {
-                    schema_version: "competence-graph-v1",
-                    subject: subject.into(),
-                    evidence: skills
-                        .iter()
-                        .map(|skill| fsp_domain::LlmEvidence {
-                            reference: format!("skill:{}", skill.skill_id),
-                            text: format!(
-                                "{}; status={:?}; grade={:?}; sources={:?}",
-                                skill.skill_id, skill.status, skill.evidence_grade, skill.sources
-                            ),
-                        })
-                        .collect(),
-                })
-                .await
-                .map_err(integration_error)?;
-            return graph_from_extracted(audience, extracted);
-        }
-        let root = GraphNodeView {
-            id: "role-main".into(),
-            kind: "role".into(),
-            label: if subject.trim().is_empty() {
-                "Профиль компетенций".into()
-            } else {
-                subject.into()
-            },
-            skill_id: None,
-            status: None,
-        };
-        let mut nodes = vec![root];
-        let mut edges = Vec::new();
-        for skill in skills {
-            let id = format!("skill-{}", skill.skill_id);
-            nodes.push(GraphNodeView {
-                id: id.clone(),
-                kind: "skill".into(),
-                label: skill_label(&skill.skill_id).into(),
-                skill_id: Some(skill.skill_id.clone()),
-                status: Some(evidence_status_name(skill.status).into()),
-            });
-            edges.push(GraphEdgeView {
-                id: format!("edge-role-{}", skill.skill_id),
-                from: "role-main".into(),
-                to: id.clone(),
-                relation: "uses".into(),
-            });
-            // Evidence nodes are disclosed only to the candidate, as in the
-            // mock's `graph(candidate, audience)`.
-            if audience == "self" {
-                for index in 0..skill.sources.len() {
-                    let evidence_id = format!("evidence-{}-{index}", skill.skill_id);
-                    nodes.push(GraphNodeView {
-                        id: evidence_id.clone(),
-                        kind: "evidence".into(),
-                        label: format!("Свидетельство: {}", skill_label(&skill.skill_id)),
-                        skill_id: None,
-                        status: None,
-                    });
-                    edges.push(GraphEdgeView {
-                        id: format!("edge-{evidence_id}"),
-                        from: evidence_id,
-                        to: id.clone(),
-                        relation: "supports".into(),
-                    });
-                }
-            }
-        }
-        Ok(GraphView {
-            audience,
-            nodes,
-            edges,
-            simulation: true,
-        })
-    }
-
     async fn candidate_index(&self, id: &str) -> Result<CandidateIndexRecord, ApplicationError> {
         self.repository
             .candidate_index(id)
@@ -3445,94 +3031,6 @@ impl PlatformService {
         Ok(signals)
     }
 
-    /// Mock-compatible `Idempotency-Key` handling for contract commands that
-    /// require it. The key is scoped by actor, operation and path; an
-    /// identical payload replays the stored response verbatim, a changed
-    /// payload conflicts, and only successful results are stored.
-    pub async fn idempotent<T, F, Fut>(
-        &self,
-        session: &SessionView,
-        context: IdempotencyContext<'_>,
-        run: F,
-    ) -> Result<Idempotent<T>, ApplicationError>
-    where
-        T: serde::Serialize,
-        F: FnOnce() -> Fut,
-        Fut: std::future::Future<Output = Result<T, ApplicationError>>,
-    {
-        let IdempotencyContext {
-            operation,
-            path,
-            key,
-            body,
-            status,
-        } = context;
-        let scope = format!("{}:{}:{}:{}", session.actor_id, operation, path, key);
-        // serde_json::Value serializes objects in sorted-key order, matching
-        // the mock's stableJson fingerprint.
-        let fingerprint = serde_json::to_string(body).map_err(|_| {
-            ApplicationError::new(500, "internal_error", "Сервис временно недоступен")
-        })?;
-        // Claim the scope before running: only the claim winner executes the
-        // command; concurrent same-key requests see `InFlight`, wait briefly
-        // and replay the stored response — concurrent double-execution is
-        // impossible. A `running` row abandoned by a crash is reclaimed after
-        // two minutes inside `idempotency_claim`.
-        for attempt in 0..20 {
-            match self
-                .repository
-                .idempotency_claim(&scope, &fingerprint)
-                .await
-                .map_err(ApplicationError::storage)?
-            {
-                IdempotencyClaim::Execute => {
-                    // A failed command releases the claim so a retried request
-                    // executes instead of waiting out the stale window; only
-                    // successful responses become replayable.
-                    let value = match run().await {
-                        Ok(value) => value,
-                        Err(error) => {
-                            let _ = self.repository.idempotency_abort(&scope).await;
-                            return Err(error);
-                        }
-                    };
-                    let stored_body = serde_json::to_string(&value).map_err(|_| {
-                        ApplicationError::new(500, "internal_error", "Сервис временно недоступен")
-                    })?;
-                    self.repository
-                        .idempotency_finish(&scope, status, &stored_body)
-                        .await
-                        .map_err(ApplicationError::storage)?;
-                    return Ok(Idempotent::Fresh(value));
-                }
-                IdempotencyClaim::Stored(stored) => {
-                    if stored.fingerprint != fingerprint {
-                        return Err(ApplicationError::new(
-                            409,
-                            "idempotency_conflict",
-                            "Ключ уже использован с другим запросом",
-                        ));
-                    }
-                    return Ok(Idempotent::Replayed {
-                        status: stored.status,
-                        body: stored.body,
-                    });
-                }
-                IdempotencyClaim::InFlight => {
-                    tokio::time::sleep(std::time::Duration::from_millis(
-                        75 + u64::from(attempt as u32) * 25,
-                    ))
-                    .await;
-                }
-            }
-        }
-        Err(ApplicationError::new(
-            500,
-            "internal_error",
-            "Сервис временно недоступен",
-        ))
-    }
-
     /// Mirrors the mock's `processing(candidate)` guard on data-processing
     /// operations (source connect/sync, assessments, task responses, …).
     async fn require_processing_consent(&self, candidate_id: &str) -> Result<(), ApplicationError> {
@@ -3550,209 +3048,6 @@ impl PlatformService {
             ));
         }
         Ok(())
-    }
-
-    pub async fn connect_source(
-        &self,
-        session: &SessionView,
-        provider: &str,
-        input: SourceConnectInput,
-    ) -> Result<SourceView, ApplicationError> {
-        let candidate_id = candidate_id(session)?;
-        self.require_processing_consent(candidate_id).await?;
-        let account = input.account.trim();
-        if account.is_empty() || account.len() > 100 {
-            return Err(validation("Проверьте идентификатор аккаунта"));
-        }
-        let record = match provider {
-            "github" => {
-                let token = self
-                    .repository
-                    .github_token(candidate_id)
-                    .await
-                    .map_err(ApplicationError::storage)?
-                    .ok_or_else(|| {
-                        ApplicationError::new(
-                            409,
-                            "github_authorization_required",
-                            "Сначала авторизуйте доступ к GitHub",
-                        )
-                    })?;
-                let analysis = self
-                    .github()?
-                    .analyze(account, &token)
-                    .await
-                    .map_err(integration_error)?;
-                fsp_domain::SourceRecord {
-                    id: format!("source-github-{candidate_id}"),
-                    candidate_id: candidate_id.into(),
-                    provider: fsp_domain::SourceProvider::Github,
-                    synthetic: false,
-                    active_job_id: None,
-                    account_label: Some(analysis.username.clone()),
-                    last_synced_at: Some(now()),
-                    analysis: Some(analysis),
-                    verified_participation: false,
-                    competition_ids: Vec::new(),
-                }
-            }
-            "fsp" => {
-                let participation = self
-                    .fsp
-                    .as_ref()
-                    .ok_or_else(|| {
-                        ApplicationError::new(503, "fsp_not_configured", "Источник ФСП недоступен")
-                    })?
-                    .participation(account)
-                    .await
-                    .map_err(integration_error)?;
-                fsp_domain::SourceRecord {
-                    id: format!("source-fsp-{candidate_id}"),
-                    candidate_id: candidate_id.into(),
-                    provider: fsp_domain::SourceProvider::Fsp,
-                    synthetic: true,
-                    active_job_id: None,
-                    account_label: Some(participation.account_label),
-                    last_synced_at: Some(now()),
-                    analysis: None,
-                    verified_participation: participation.verified,
-                    competition_ids: participation.competition_ids,
-                }
-            }
-            _ => {
-                return Err(ApplicationError::new(
-                    404,
-                    "not_found",
-                    "Источник не найден",
-                ));
-            }
-        };
-        self.repository
-            .save_source(&record)
-            .await
-            .map_err(ApplicationError::storage)?;
-        Ok(source_view(record))
-    }
-
-    pub async fn sync_source(
-        &self,
-        session: &SessionView,
-        source_id: &str,
-    ) -> Result<JobView, ApplicationError> {
-        let candidate_id = candidate_id(session)?;
-        self.require_processing_consent(candidate_id).await?;
-        let source = self
-            .repository
-            .sources(candidate_id)
-            .await
-            .map_err(ApplicationError::storage)?
-            .into_iter()
-            .find(|source| source.id == source_id)
-            .ok_or_else(|| ApplicationError::new(404, "not_found", "Источник не найден"))?;
-        // A source already being synced returns its running job, like the mock.
-        if let Some(active_job_id) = &source.active_job_id
-            && let Some(active) = self
-                .repository
-                .job(candidate_id, active_job_id)
-                .await
-                .map_err(ApplicationError::storage)?
-            && active.status != "succeeded"
-            && active.status != "failed"
-        {
-            return Ok(job_view(active, Some(source_view(source))));
-        }
-        let created_at = now();
-        let mut job = fsp_domain::JobRecord {
-            id: format!("job-{}", Uuid::new_v4().simple()),
-            owner_id: candidate_id.into(),
-            kind: "source_sync".into(),
-            status: "running".into(),
-            candidate_id: Some(candidate_id.into()),
-            assessment_id: None,
-            input_revision: None,
-            result_json: None,
-            confirmed: false,
-            created_at: created_at.clone(),
-            updated_at: created_at,
-            result_source_id: None,
-            error_code: None,
-            error_message: None,
-        };
-        let result = match source.provider {
-            fsp_domain::SourceProvider::Github => {
-                let token = self
-                    .repository
-                    .github_token(candidate_id)
-                    .await
-                    .map_err(ApplicationError::storage)?
-                    .ok_or_else(|| {
-                        ApplicationError::new(
-                            409,
-                            "github_authorization_required",
-                            "Авторизуйте GitHub повторно",
-                        )
-                    })?;
-                let username = source.account_label.as_deref().ok_or_else(|| {
-                    ApplicationError::new(
-                        409,
-                        "source_not_connected",
-                        "Сначала подключите источник",
-                    )
-                })?;
-                self.github()?
-                    .analyze(username, &token)
-                    .await
-                    .map(|analysis| fsp_domain::SourceRecord {
-                        analysis: Some(analysis),
-                        last_synced_at: Some(now()),
-                        active_job_id: None,
-                        ..source
-                    })
-            }
-            fsp_domain::SourceProvider::Fsp => Ok(fsp_domain::SourceRecord {
-                last_synced_at: Some(now()),
-                active_job_id: None,
-                ..source
-            }),
-        };
-        match result {
-            Ok(updated) => {
-                // The refreshed source and the succeeded job commit together.
-                let tx = self
-                    .repository
-                    .transaction()
-                    .await
-                    .map_err(ApplicationError::storage)?;
-                tx.save_source(&updated)
-                    .await
-                    .map_err(ApplicationError::storage)?;
-                job.status = "succeeded".into();
-                job.updated_at = now();
-                job.result_source_id = Some(updated.id.clone());
-                job.result_json = Some(
-                    serde_json::to_string(&JobResultView::SourceSync {
-                        source: source_view(updated.clone()),
-                    })
-                    .map_err(|error| {
-                        ApplicationError::new(500, "internal_error", error.to_string())
-                    })?,
-                );
-                tx.save_job(&job).await.map_err(ApplicationError::storage)?;
-                tx.commit().await.map_err(ApplicationError::storage)?;
-                Ok(job_view(job, Some(source_view(updated))))
-            }
-            Err(error) => {
-                job.status = "failed".into();
-                job.updated_at = now();
-                job.error_code = Some(error.code.into());
-                job.error_message = Some(error.message);
-                self.repository
-                    .save_job(&job)
-                    .await
-                    .map_err(ApplicationError::storage)?;
-                Ok(job_view(job, None))
-            }
-        }
     }
 
     pub async fn job(
@@ -3925,77 +3220,6 @@ fn evidence_status_name(status: EvidenceStatus) -> &'static str {
         EvidenceStatus::Observed => "observed",
         EvidenceStatus::Insufficient => "insufficient",
     }
-}
-
-fn graph_from_extracted(
-    audience: &'static str,
-    graph: fsp_domain::ExtractedGraph,
-) -> Result<GraphView, ApplicationError> {
-    // Models return free-form casing and often omit `kind`; normalize before
-    // validating so a well-formed intent is not rejected on cosmetics.
-    let normalized_nodes: Vec<(String, Option<String>, fsp_domain::ExtractedGraphNode)> = graph
-        .nodes
-        .into_iter()
-        .map(|node| {
-            let kind = if node.kind.is_empty() {
-                if node.skill_id.is_some() || node.status.is_some() {
-                    "skill".to_string()
-                } else if node.evidence_references.is_empty() {
-                    "role".to_string()
-                } else {
-                    "evidence".to_string()
-                }
-            } else {
-                node.kind.to_lowercase()
-            };
-            let status = node.status.as_deref().map(str::to_lowercase);
-            (kind, status, node)
-        })
-        .collect();
-    let normalized_edges: Vec<(String, fsp_domain::ExtractedGraphEdge)> = graph
-        .edges
-        .into_iter()
-        .map(|edge| (edge.relation.to_lowercase(), edge))
-        .collect();
-    let valid_nodes = normalized_nodes.iter().all(|(kind, status, _)| {
-        ["role", "skill", "evidence"].contains(&kind.as_str())
-            && status.as_deref().is_none_or(|status| {
-                ["confirmed", "evidence", "observed", "insufficient"].contains(&status)
-            })
-    });
-    let valid_edges = normalized_edges
-        .iter()
-        .all(|(relation, _)| ["requires", "supports", "uses"].contains(&relation.as_str()));
-    if !valid_nodes || !valid_edges {
-        return Err(ApplicationError::new(
-            502,
-            "bifrost_invalid_response",
-            "Модель вернула граф неподдерживаемого формата",
-        ));
-    }
-    Ok(GraphView {
-        audience,
-        nodes: normalized_nodes
-            .into_iter()
-            .map(|(kind, status, node)| GraphNodeView {
-                id: node.id,
-                kind,
-                label: node.label,
-                skill_id: node.skill_id,
-                status,
-            })
-            .collect(),
-        edges: normalized_edges
-            .into_iter()
-            .map(|(relation, edge)| GraphEdgeView {
-                id: edge.id,
-                from: edge.from,
-                to: edge.to,
-                relation,
-            })
-            .collect(),
-        simulation: false,
-    })
 }
 
 fn need_view(record: HiringNeedRecord) -> NeedView {
@@ -4731,7 +3955,66 @@ fn validate_company_patch(patch: &CompanyPatch) -> Result<(), ApplicationError> 
     if !has_property {
         return Err(validation("Передайте хотя бы одно поле компании"));
     }
+    if patch
+        .display_name
+        .as_ref()
+        .is_some_and(|value| value.is_empty() || value.chars().count() > 120)
+        || patch
+            .business_area
+            .as_ref()
+            .is_some_and(|value| value.chars().count() > 200)
+        || patch
+            .description
+            .as_ref()
+            .is_some_and(|value| value.chars().count() > 4000)
+    {
+        return Err(validation("Проверьте длину полей компании"));
+    }
+    if patch
+        .contact_email
+        .as_deref()
+        .is_some_and(|value| !valid_email(value))
+    {
+        return Err(validation("Проверьте адрес электронной почты"));
+    }
+    if let Some(Some(value)) = &patch.website {
+        let valid = value.len() <= 2048
+            && (value.starts_with("https://") || value.starts_with("http://"))
+            && !value
+                .chars()
+                .any(|ch| ch.is_whitespace() || ch.is_control())
+            && value
+                .split_once("://")
+                .is_some_and(|(_, authority)| !authority.starts_with('/'))
+            && url::Url::parse(value).is_ok_and(|url| url.has_host());
+        if !valid {
+            return Err(validation("Укажите корректный HTTP(S)-адрес сайта"));
+        }
+    }
     Ok(())
+}
+
+// Matches the ASCII dot-atom address format used by the contract's Ajv validator.
+fn valid_email(value: &str) -> bool {
+    let Some((local, domain)) = value.split_once('@') else {
+        return false;
+    };
+    value.len() <= 254
+        && local.split('.').all(|atom| {
+            !atom.is_empty()
+                && atom
+                    .bytes()
+                    .all(|ch| ch.is_ascii_alphanumeric() || b"!#$%&'*+/=?^_`{|}~-".contains(&ch))
+        })
+        && domain.contains('.')
+        && domain.split('.').all(|label| {
+            !label.is_empty()
+                && label.as_bytes()[0].is_ascii_alphanumeric()
+                && label.as_bytes()[label.len() - 1].is_ascii_alphanumeric()
+                && label
+                    .bytes()
+                    .all(|ch| ch.is_ascii_alphanumeric() || ch == b'-')
+        })
 }
 
 fn unique_count(values: &[String]) -> usize {

@@ -1,53 +1,39 @@
-# Rust backend implementation checklist
+# Backend implementation status
 
-This file records the requirements agreed with the product owner on 2026-10-06. It is the working checklist for
-the backend cutover and must stay aligned with the delivered behavior.
+Current implementation, verified during the [October 8 stability audit](stability-audit.md).
+Historical cutover commands for another contributor's server are not operating instructions for this stand.
 
-## Boundaries
+## Implemented
 
-- [x] Implement the production backend in Rust using hexagonal architecture.
-- [x] Preserve the current frontend structure and visual behavior.
-- [x] Change frontend code only where its data source must move from mock-only endpoints or fixtures to `/api/v1`.
-- [x] Keep synthetic demo users and FSP responses in backend adapters, clearly marked as synthetic.
-- [x] Provide real registration, login, session, profile editing and persisted user data alongside demo data.
-- [x] Replace the Bun mock server on the deployed stand with the Rust backend.
-- [x] Build the public stand with `VITE_DEMO_STAND=1` and `VITE_DEMO_EMAIL_CODE=123456` so the seeded accounts and verification code remain visible.
-- [x] Deploy to `93.77.179.211`; use `gh` for repository operations and SSH as `dima` with `/Users/dima/Downloads/stars-repo/vopstchage/.ssh/codex_yacloud_ed25519`.
-- [x] Preserve MetroGuard, its files, service, nginx configuration, certificates and port 8000.
+- Rust hexagonal architecture: domain/application ports, axum transport, PostgreSQL and outbound adapters.
+- All 74 application operations plus `/health`; no production `/__mock__` controls.
+- Persisted accounts, sessions, profiles, consents, needs, vacancies, invitations, applications, shortlists,
+  tasks, assessments, sources and jobs. Roles and tenant boundaries are enforced by the API.
+- Atomic idempotent commands and response replay; shared email attempt budgets; guarded terminal decisions;
+  serialized disclosure and shortlist mutations; profile/assessment/source concurrency protection.
+- Candidate visibility, deterministic ranking, filters, server-returned pagination and anonymous projections.
+- GitHub OAuth identity binding, bounded repository analysis and evidence updates that preserve verified grades.
+- Optional Bifrost graph extraction with structural/reference validation and safe employer projection.
+- Real PDF export, explicit import preview confirmation, source/job privacy and capability flags.
+- Rustfmt, clippy, unit tests and PostgreSQL HTTP/storage regressions; workflow gates cover every PR.
 
-## Contract and product behavior
+## Explicit demo limits
 
-- [x] Implement the existing OpenAPI operations used by the frontend; do not redesign the frontend around a smaller API.
-- [x] Persist candidate and employer profiles, consents, needs, vacancies, applications, invitations, shortlists, tasks and assessments.
-- [x] Enforce role, ownership, contact disclosure and visibility rules on the server.
-- [x] Implement server-side pagination, filters and every sort exposed by the frontend.
-- [x] Implement deterministic recommendations and explainable candidate ordering.
-- [x] Serve candidate profile data from the backend; seeded profiles remain available as backend data.
-- [x] Keep competence graphs as explicit placeholder data until an LLM provider is configured.
+- Email uses the public fixed code; this is not proof of ownership of a real mailbox.
+- FSP uses a synthetic adapter. No official API, authentication or dataset was supplied.
+- Assessment code is stored but never executed. Valid Rust demo submissions pass a simulated evaluation;
+  the mock additionally exercises failure and service-error scenarios. Assistant replies are prepared.
+- PDF import returns a disclosed fixture preview. It does not extract the uploaded document.
+- Jobs complete inline in Rust; there is no durable background worker.
+- Repository/competition matching has an adapter port but no product workflow. Graph relations are model
+  suggestions, not independently verified qualification evidence.
+- Search still ranks complete lists in memory. No distributed scaling or measured capacity claim is made.
 
-## GitHub source
+## Delivery evidence
 
-- [x] Require an authenticated product session before connecting GitHub.
-- [x] Support GitHub OAuth and store tokens outside domain entities.
-- [x] Accept a GitHub username only after the account connection flow.
-- [x] Download repository metadata through the GitHub API with bounded pagination and timeouts.
-- [x] Calculate reproducible repository metrics without an LLM.
-- [x] Expose source processing as a job with visible status and errors.
+The authorized stand is `188.166.88.183`, managed by [`infra/`](../infra/README.md). Main is deployed through
+feature → personal → dev → main with successful checks. Release failure recovery and real backup restoration
+have automated probes. Public browser acceptance and exact stand/main SHA verification are recorded in the
+[audit execution log](stability-audit.md#execution-log); local tests alone do not imply successful deployment.
 
-## FSP and LLM foundations
-
-- [x] Provide a synthetic FSP adapter that implements the same application port as a future official adapter.
-- [x] Keep a clear place for official FSP authentication and transport without coupling it to use cases.
-- [x] Add a Bifrost outbound adapter for future repository analysis, competition matching and competence graph extraction.
-- [x] Keep Bifrost disabled when it is not configured; return placeholder graph results explicitly rather than silently inventing analysis.
-- [x] Define versioned structured LLM inputs and outputs with evidence references.
-
-## Quality and delivery
-
-- [x] Add domain, application, adapter and HTTP contract tests for implemented behavior.
-- [x] Preserve an offline CPU path for tests and the demo seed.
-- [x] Run `just backend-check`, relevant contract/frontend checks, Docker smoke and public stand smoke.
-- [x] Make granular commits on the named branch; merge through `dev`, then deploy `main`.
-- [x] Back up the old `/opt/kontur-talent` installation and database before cutover.
-- [x] Verify the public frontend against the Rust backend after deployment.
-- [ ] Review comments and user-facing copy for unnecessary implementation language or generated filler.
+Code and current verification results take precedence over a checked historical task.

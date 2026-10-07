@@ -24,6 +24,16 @@ implements and the frontend relies on; the backend has to keep it.
    `displayName`) or `401`.
 4. `DELETE /api/v1/auth/session` → `204`, the cookie is cleared.
 
+Five incorrect codes exhaust the email's shared budget across all unused, unexpired challenges.
+The fifth incorrect code returns `400 invalid_code`; later verification and issuance return
+`429 challenge_locked` until the relevant challenges expire. Reissuing a code does not reset the
+budget. Wrong attempts are persisted even though verification returns an error.
+
+The stand and Docker nginx apply an additional per-IP limit to challenge/verify endpoints: 5 requests per
+minute with a burst of 10. Excess requests return immediate `429 rate_limited`, the normal JSON error envelope
+and `Retry-After: 60`. Other routes, including logout, do not consume this budget. The development mock alone
+does not emulate the proxy limiter.
+
 The cookie is opaque, `HttpOnly`, `SameSite=Lax` (`Secure` behind TLS). The client sends it with
 `credentials: "include"` and never reads it. Identity, role and company always come from the session, never from
 request fields.
@@ -50,6 +60,10 @@ which is why nginx sends `Host: 127.0.0.1:4010`; that rule belongs to the mock.
 - The frontend sends only generated, typed requests (`openapi-fetch` with the generated `paths`); it never adds actor
   or company IDs as an authorization shortcut.
 
+Company websites accept only absolute HTTP/HTTPS URLs (up to 2,048 characters). Company display names,
+business areas and descriptions are bounded to 120, 200 and 4,000 characters. For PATCH, omission keeps
+a value; explicit `null` clears `website` and `experienceMonths`. Other patch properties reject `null`.
+
 ## Errors
 
 Every error body is `{ code, message, requestId, details }` and every response carries `X-Request-Id`. Behavior
@@ -65,7 +79,7 @@ branches on `code`; `message` is user-facing Russian text. Implemented codes are
 | `409` | Conflict: cooldown, active attempt, terminal invitation or application, existing invitation or application, application not allowed yet, task not offered or already answered or reviewed, idempotency conflict, stale import | Refetch and show the current state |
 | `413`, `415` | File too large or wrong media type | Explain the limit |
 | `422` | Business validation (salary range, evidence policy, incomplete company, unsupported scope, downgrade) | Show the message next to the form |
-| `429` | Too many wrong codes | Ask for a new code |
+| `429` | Verification budget or proxy request limit | Follow the error message and Retry-After hint |
 | `5xx` | Service failure | «Сервис временно недоступен» with retry; the request ID stays visible |
 
 Queries retry once on transport errors and `5xx` (job polling twice), never on `4xx`; mutations never retry
@@ -81,13 +95,21 @@ scopes a key to actor, operation and path: the same key with the same body repla
 key per intended command, reuses it when the same command is retried after a transport failure, and drops it once
 the server has answered.
 
-## Background jobs
+In Rust, the claim, command effects and serialized response commit in the same PostgreSQL transaction.
+Concurrent requests wait for the same scope and then replay or conflict. A failed command rolls back its
+claim and effects. Completed responses are retained for one day; an unresolved claim left by an older
+release fails closed and requires investigation rather than automatic execution based on its age.
+
+## Jobs
 
 PDF import, source sync, assessment checks and submission answer `202` with a `Job`
 (`id`, `kind`, `status`, `result`, `error`, `pollAfterMs`, `simulation`). The client polls `GET /api/v1/jobs/{jobId}`
 no faster than every 250 ms, follows `pollAfterMs`, stops at `succeeded` or `failed`, and then refetches what the job
-changes (sources, skills, graph, profile, the assessment). A source's `activeJobId` lets polling resume after a
-reload. A job belongs to the actor who started it; a failure carries `{ code, message, retryable }`.
+changes (sources, skills, graph, profile, the assessment). The mock publishes `activeJobId` for timer jobs.
+Rust completes work inline and may return an already-terminal job with no active marker; clients must also
+follow the job returned by the command. Rust jobs persist in PostgreSQL. A job belongs to the initiating
+candidate; a failure carries `{ code, message, retryable }`. A source changed during synchronization yields
+`stale_input`, and revoked processing consent yields `processing_consent_revoked` without applying the result.
 
 ## Pagination
 
@@ -154,9 +176,9 @@ The candidate shell also reads `listMyInvitations` for the new-invitation badge,
 `listApplications` for the new-application badge. `getNeedGraph` and the employer's
 `getInvitation` are in the contract but not used by the current screens.
 
-## Backend cutover checklist
+## Backend compatibility checklist
 
-Before the stand switches from the mock to the backend, the backend must show the same behavior for: every request
+The Rust stand and development mock must preserve the shared behavior for: every request
 and response shape and the error envelope; cookie attributes, origin checks and role/tenant scoping (`404` for
 foreign records); anonymous projections and per-company disclosure; idempotent commands and terminal conflicts;
 job states and `pollAfterMs`; UTC timestamps, nullable fields and stable search order; and truthful `mode`,

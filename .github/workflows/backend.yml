@@ -2,13 +2,7 @@ name: backend
 
 on:
   push:
-    paths:
-      - backend/**
-      - .github/workflows/backend.yml
   pull_request:
-    paths:
-      - backend/**
-      - .github/workflows/backend.yml
   # Called by deploy.yml as the Rust gate before a stand release.
   workflow_call:
 

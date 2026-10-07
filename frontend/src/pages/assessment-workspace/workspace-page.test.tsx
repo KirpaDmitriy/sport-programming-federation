@@ -1,4 +1,4 @@
-import { fireEvent, screen } from '@testing-library/react';
+import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { HttpResponse, http } from 'msw';
 import { describe, expect, it } from 'vitest';
 import { type AssessmentAnswer, assessmentKey } from '@/entities/assessment';
@@ -16,6 +16,35 @@ function renderWorkspace() {
 }
 
 describe('assessment draft persistence', () => {
+  it('serializes slow saves so an older response cannot overwrite the latest draft', async () => {
+    const received: AssessmentAnswer[] = [];
+    let releaseFirst: () => void = () => {};
+    const firstResponse = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    server.use(
+      http.put(`${API}/api/v1/me/assessments/assessment-001/answer`, async ({ request }) => {
+        const answer = (await request.json()) as AssessmentAnswer;
+        received.push(answer);
+        if (received.length === 1) await firstResponse;
+        return HttpResponse.json(assessment({ status: 'in_progress', answer, revision: received.length + 1 }));
+      }),
+    );
+    await renderWorkspace();
+    fireEvent.change(screen.getByLabelText('Код решения на Rust'), { target: { value: 'first draft' } });
+    await waitFor(() => expect(received).toHaveLength(1), { timeout: 4000 });
+    fireEvent.change(screen.getByLabelText('Код решения на Rust'), { target: { value: 'latest draft' } });
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 1400));
+      expect(received).toHaveLength(1);
+    } finally {
+      releaseFirst();
+    }
+    await waitFor(() => expect(received).toHaveLength(2));
+    expect(received[1]?.code).toBe('latest draft');
+    expect(await screen.findByText(/Черновик сохранён в/)).toBeTruthy();
+  });
+
   it('reports a saved draft only after the server acknowledges it', async () => {
     let saved: AssessmentAnswer | null = null;
     server.use(

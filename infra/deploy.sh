@@ -5,17 +5,23 @@
 set -euo pipefail
 
 REF="${1:-main}"
-HOST="${FSP_DEPLOY_HOST:-fsp-demo}"
+DEPLOY_HOST="${FSP_DEPLOY_HOST:-fsp-demo}"
 cd "$(git rev-parse --show-toplevel)"
 SSH_CONFIG="${FSP_SSH_CONFIG:-.fsp-infra/ssh/config}"
 SHA="$(git rev-parse --verify "$REF^{commit}")"
 ARCHIVE="$(mktemp --suffix=.tar.gz)"
+REMOTE_ARCHIVE="/tmp/fsp-$SHA-${ARCHIVE##*/}"
 trap 'rm -f "$ARCHIVE"' EXIT
 
 git archive --format=tar.gz -o "$ARCHIVE" "$SHA" frontend mock-server backend infra
-scp -q -F "$SSH_CONFIG" "$ARCHIVE" "$HOST:/tmp/fsp-$SHA.tar.gz"
-ssh -F "$SSH_CONFIG" "$HOST" "set -euo pipefail
-  dir=/opt/fsp/releases/$SHA
-  rm -rf \"\$dir\" && mkdir -p \"\$dir\"
-  tar -xzf /tmp/fsp-$SHA.tar.gz -C \"\$dir\" && rm -f /tmp/fsp-$SHA.tar.gz
-  bash \"\$dir/infra/release.sh\" $SHA"
+scp -q -F "$SSH_CONFIG" "$ARCHIVE" "$DEPLOY_HOST:$REMOTE_ARCHIVE"
+ssh -F "$SSH_CONFIG" "$DEPLOY_HOST" bash -s -- "$SHA" "$REMOTE_ARCHIVE" <<'REMOTE'
+set -euo pipefail
+sha="$1"
+archive="$2"
+stage="$(mktemp -d /opt/fsp/releases/.staging-XXXXXXXX)"
+trap 'rm -f "$archive"; rm -rf "$stage"' EXIT
+chmod 755 "$stage"
+tar -xzf "$archive" -C "$stage"
+bash "$stage/infra/release.sh" "$sha" "$stage"
+REMOTE

@@ -1,10 +1,8 @@
 # Business rules
 
-The rules the platform implements today. The domain logic lives in the mock API
-([`mock-server/src/domain.ts`](../../mock-server/src/domain.ts), seed data in
-[`data.ts`](../../mock-server/src/data.ts)); the frontend renders its decisions and never re-computes grades,
-eligibility, matching or access. The Rust backend must reproduce these rules
-([`backend/README.md`](../../backend/README.md)). Wire fields and enums are defined in
+The rules implemented by the Rust [application/domain](../../backend/README.md) and the development mock
+([`domain.ts`](../../mock-server/src/domain.ts)). The frontend renders server decisions and does not recompute
+grades, eligibility, matching or access. Differences in simulation and execution are stated explicitly below. Wire fields and enums are defined in
 [`contracts/openapi.json`](../../contracts/openapi.json); transport rules (session, errors, idempotency, jobs) are in
 [`contracts/API_INTEGRATION.md`](../../contracts/API_INTEGRATION.md). Russian interface labels are quoted where they
 name a state.
@@ -18,7 +16,7 @@ name a state.
   with the alias «Кандидат №NNN» and no consents; an employer gets a new, empty company whose contact e-mail is the
   sign-in address.
 - A code is valid for 15 minutes of server time, works once (`409 challenge_used`) and locks after five wrong
-  attempts (`429 challenge_locked`); a wrong or expired code is `400 invalid_code` / `400 challenge_expired`.
+  attempts shared across unused live challenges for that email (`429 challenge_locked`); a wrong or expired code is `400 invalid_code` / `400 challenge_expired`.
 - The session is an opaque `HttpOnly`, `SameSite=Lax` cookie. Without it every protected call is `401`.
 - A candidate reaches only their own profile, sources, skills, assessments, jobs and invitations; an employer only
   their own company, needs, shortlists and invitations. Someone else's record answers `404`, so its existence is not
@@ -55,8 +53,8 @@ ones and the UI lists them on the overview, profile and settings pages:
 
 - **Processing** («Согласен на обработку данных») is required for PDF import and its confirmation, connecting and
   syncing sources, and for starting, saving, checking, submitting and discussing assessments
-  (`403 processing_consent_required`). Revoking it makes unfinished jobs fail with `processing_consent_revoked`
-  (retryable) without applying their result; an attempt that was being evaluated ends as `service_error`.
+  (`403 processing_consent_required`). The mock cancels unfinished timer jobs with `processing_consent_revoked`; Rust rechecks consent before
+  applying external source-sync results. Rust assessment/import work completes inline.
 - **Publication** («Показывать профиль работодателям») only controls appearance in search. The two consents are
   independent and saved separately; the UI shows a change only after the server confirms it.
 
@@ -64,14 +62,17 @@ ones and the UI lists them on the overview, profile and settings pages:
 
 - Two providers, GitHub and FSP. In the mock both are synthetic (`synthetic: true`, links under
   `example.com/fixtures`), and the UI labels them «Демо-источник».
-- Connecting a source (an account label) requires processing consent and starts a `source_sync` job at once; there
+- Connecting a source requires processing consent. The mock starts a `source_sync` timer job at once;
+  Rust performs bounded provider I/O and commits connected data inline. In both implementations there
   is no manual repository selection. A connected source can be synced again (`409 source_not_connected` otherwise);
-  while a sync runs, another request returns the same job. Disconnecting is not supported.
+  the mock returns the same running job for overlapping syncs. Rust detects a source changed during its
+  provider call and returns a failed `stale_input` job instead of overwriting newer data. Disconnecting is not supported.
 - GitHub reports `found` (total), `processed`, `queued` and `unavailable` repositories; a finished sync processes the
   queued ones, unavailable ones stay unavailable. Active days and the observation period are observations; there is
   no worked-hours value.
-- When a GitHub sync finishes for a candidate without skills, skills are derived from repositories as `evidence`,
-  `observed` or `insufficient`, never `confirmed`: a technology in a repository is not proof of personal skill or
+- Rust derives allowlisted GitHub technologies as `evidence` during connect/sync, preserves assessment
+  confirmations and removes superseded GitHub support. The mock uses synthetic evidence for empty profiles.
+  Sources never create a confirmed grade: a technology in a repository is not proof of personal skill or
   level.
 - FSP is optional. The demo IDs `FSP-DEMO-024` and `FSP-DEMO-031` yield verified participation in a synthetic
   competition; any other ID connects with no history, which is a valid state. Only verified participation counts
@@ -129,8 +130,9 @@ The cooldown is 90 days by default (`FSP_GRADE_CHANGE_COOLDOWN_DAYS`, 0–365) a
 
 ### Outcomes
 
-In the mock the outcome comes from the scenario (`baseline`/`qualified` pass, `assessment_failure` fails,
-`service_failure` is a service error), not from the submitted code.
+The mock chooses outcomes from scenarios (`baseline`/`qualified` pass, `assessment_failure` fails,
+`service_failure` is a service error). Rust completes a valid demo submission as passed. Neither evaluates
+the submitted program or demonstrates assessment validity.
 
 | Outcome | Effect |
 | --- | --- |
@@ -311,26 +313,30 @@ directly, and the company's contact was visible from the start.
 
 ## 13. PDF profile
 
-- **Export:** a real PDF of the current profile (PDFKit with an embedded Cyrillic font), file `fsp-profile.pdf`.
+- **Export:** a real PDF of the current profile (Krilla in Rust, PDFKit in the mock, embedded Cyrillic fonts),
+  file `fsp-profile.pdf`.
 - **Import:** one `application/pdf` file up to 2 MiB with a valid signature and end marker starts a `profile_import`
   job; its preview is edited by the candidate and applied once with a confirmation (`409 import_not_ready`,
-  `409 import_already_confirmed`). Import cannot change verified fields and needs processing consent. The mock does
-  not read the file and returns a fixed preview marked `parser: fixture_preview`, with unknown experience left empty.
+  `409 import_already_confirmed`). Import cannot change verified fields and needs processing consent. Both APIs return a fixed preview rather than extracting document contents marked `parser: fixture_preview`, with unknown experience left empty.
 
-## 14. Background jobs
+## 14. Jobs
 
-Four kinds: `profile_import`, `source_sync`, `checks`, `assessment`. A job is `queued`, then `running` after about
-300 ms and `succeeded` or `failed` after about one second; `pollAfterMs` tells clients when to ask again. A job is
-visible only to the actor who started it, and a failure carries `{ code, message, retryable }`. Jobs live in memory,
-so a restart clears them.
+Four kinds: `profile_import`, `source_sync`, `checks`, `assessment`. The mock progresses timer jobs from queued
+through running to a terminal result in about one second; restarting it clears them. Rust performs the bounded
+work inline and persists terminal jobs in PostgreSQL. Clients handle both immediate completion and polling,
+respect `pollAfterMs`, and invalidate the affected profile, skills, graph and sources. Jobs are private to the
+initiating candidate; failures carry `{ code, message, retryable }`. No background worker is deployed.
 
 ## 15. Capabilities and simulation
 
-`GET /api/v1/meta` reports `mode: mock` and the capabilities: e-mail verification, PDF profile, GitHub and FSP
-fixtures, matching, direct invitations, vacancy publication, self-application and recurring tasks are on; chat, real
-code execution and real LLM are off. The UI shows no controls for capabilities that are off, labels simulated data,
-and offers the «Демо» dialog while the server reports `mode: mock`.
+`GET /api/v1/meta` reports the configured capabilities. The mock reports `mode: mock`; Rust reports `mode: live`
+while still marking demo features as simulated. Real LLM and GitHub OAuth flags indicate configured adapters.
+The stand currently enables Bifrost and leaves GitHub OAuth unconfigured. Development demo controls are absent
+from production bundles. The `live` mode does not turn fixed-code email verification into proof of email ownership.
 
-Simulated today: e-mail delivery (fixed code `123456` in a demo mailbox), GitHub and FSP data, PDF parsing,
-assessment checks and evaluation, the assistant, and the candidate bank. Session and access rules are implemented in
-the mock but are not production security. Making these real is backend work.
+Both implementations simulate email delivery, FSP participation, PDF extraction, assessment checks/evaluation and
+assistant replies. Rust persists actual application records and sessions; its candidate bank starts with a
+synthetic seed. GitHub calls are real only when configured. Graph output is validated against input skills and
+references; public IDs/labels/states are canonical and evidence nodes are removed for employers. An LLM relation
+is a model suggestion, not a measured prerequisite or a qualification verdict. Production identity verification,
+external FSP access and real execution require separate product work.

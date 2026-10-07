@@ -87,8 +87,8 @@ The stand builds with `VITE_DEMO_STAND=1` and `VITE_DEMO_EMAIL_CODE=123456`
 
 ## Known limits
 
-- All data and outcomes come from the mock; nothing here measures real qualification, matching quality or GitHub
-  authorship.
+- Development uses the mock; the stand uses Rust/PostgreSQL. Assessment evaluation and PDF import remain
+  simulated. Configured GitHub/Bifrost integrations do not establish professional qualification or authorship.
 - The candidate's «Для работодателей» preview is assembled from the non-identifying fields of their own profile;
   the contract has no endpoint that returns a candidate's own anonymous projection.
 - Every protected navigation revalidates the session with one `GET /api/v1/session`.
