@@ -2,14 +2,35 @@
 name: fsp-career
 
 services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-fsp}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-fsp}
+      POSTGRES_DB: ${POSTGRES_DB:-fsp}
+    ports:
+      # localhost-only: local test/admin access via FSP_TEST_DATABASE_URL
+      - "127.0.0.1:5434:5432"
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
   api:
     build:
       context: .
       dockerfile: backend/Dockerfile
+    depends_on:
+      db:
+        condition: service_healthy
     environment:
       HOST: 127.0.0.1
       PORT: 4010
-      FSP_DATABASE: /var/lib/fsp/fsp.sqlite3
+      DATABASE_URL: postgres://${POSTGRES_USER:-fsp}:${POSTGRES_PASSWORD:-fsp}@db:5432/${POSTGRES_DB:-fsp}
       FSP_AUTH_MODE: ${FSP_AUTH_MODE:-demo}
       FSP_DEMO_EMAIL_CODE: ${FSP_DEMO_EMAIL_CODE:-123456}
       FSP_ALLOWED_ORIGINS: ${FSP_ALLOWED_ORIGINS:-http://localhost:${FSP_PORT:-8080},http://127.0.0.1:${FSP_PORT:-8080}}
@@ -27,8 +48,6 @@ services:
     ports:
       - "${FSP_PORT:-8080}:8080"
     read_only: true
-    volumes:
-      - fsp-data:/var/lib/fsp
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
     healthcheck:
@@ -58,4 +77,4 @@ services:
     restart: unless-stopped
 
 volumes:
-  fsp-data:
+  pg-data:

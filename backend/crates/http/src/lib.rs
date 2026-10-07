@@ -334,6 +334,7 @@ async fn create_email_challenge(
     state
         .service
         .request_challenge(input)
+        .await
         .map(|view| (StatusCode::CREATED, Json(view)))
         .map_err(api_error)
 }
@@ -342,7 +343,7 @@ async fn verify_email(
     State(state): State<AppState>,
     ContractJson(input): ContractJson<EmailVerifyInput>,
 ) -> Result<Response, ApiError> {
-    let (session, token) = state.service.verify_email(input).map_err(api_error)?;
+    let (session, token) = state.service.verify_email(input).await.map_err(api_error)?;
     let mut response = Json(session).into_response();
     let secure = if state.config.secure_cookie {
         "; Secure"
@@ -370,12 +371,17 @@ async fn session(
     headers: HeaderMap,
 ) -> Result<Json<SessionView>, ApiError> {
     let token = session_token(&headers)?;
-    state.service.session(token).map(Json).map_err(api_error)
+    state
+        .service
+        .session(token)
+        .await
+        .map(Json)
+        .map_err(api_error)
 }
 
 async fn logout(State(state): State<AppState>, headers: HeaderMap) -> Result<Response, ApiError> {
     if let Ok(token) = session_token(&headers) {
-        state.service.logout(token).map_err(api_error)?;
+        state.service.logout(token).await.map_err(api_error)?;
     }
     let mut response = StatusCode::NO_CONTENT.into_response();
     response.headers_mut().insert(
@@ -389,8 +395,13 @@ async fn get_profile(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Json<fsp_application::ProfileView>, ApiError> {
-    let session = authenticated(&state, &headers)?;
-    state.service.profile(&session).map(Json).map_err(api_error)
+    let session = authenticated(&state, &headers).await?;
+    state
+        .service
+        .profile(&session)
+        .await
+        .map(Json)
+        .map_err(api_error)
 }
 
 async fn update_profile(
@@ -398,10 +409,11 @@ async fn update_profile(
     headers: HeaderMap,
     ContractJson(patch): ContractJson<ProfilePatch>,
 ) -> Result<Json<fsp_application::ProfileView>, ApiError> {
-    let session = authenticated(&state, &headers)?;
+    let session = authenticated(&state, &headers).await?;
     state
         .service
         .update_profile(&session, patch)
+        .await
         .map(Json)
         .map_err(api_error)
 }
@@ -410,8 +422,13 @@ async fn get_company(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Json<fsp_application::CompanyView>, ApiError> {
-    let session = authenticated(&state, &headers)?;
-    state.service.company(&session).map(Json).map_err(api_error)
+    let session = authenticated(&state, &headers).await?;
+    state
+        .service
+        .company(&session)
+        .await
+        .map(Json)
+        .map_err(api_error)
 }
 
 async fn update_company(
@@ -419,10 +436,11 @@ async fn update_company(
     headers: HeaderMap,
     ContractJson(patch): ContractJson<CompanyPatch>,
 ) -> Result<Json<fsp_application::CompanyView>, ApiError> {
-    let session = authenticated(&state, &headers)?;
+    let session = authenticated(&state, &headers).await?;
     state
         .service
         .update_company(&session, patch)
+        .await
         .map(Json)
         .map_err(api_error)
 }
@@ -431,8 +449,13 @@ async fn get_needs(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Json<fsp_application::NeedsView>, ApiError> {
-    let session = authenticated(&state, &headers)?;
-    state.service.needs(&session).map(Json).map_err(api_error)
+    let session = authenticated(&state, &headers).await?;
+    state
+        .service
+        .needs(&session)
+        .await
+        .map(Json)
+        .map_err(api_error)
 }
 
 async fn create_need(
@@ -440,10 +463,11 @@ async fn create_need(
     headers: HeaderMap,
     ContractJson(input): ContractJson<fsp_application::NeedInput>,
 ) -> Result<(StatusCode, Json<fsp_application::NeedView>), ApiError> {
-    let session = authenticated(&state, &headers)?;
+    let session = authenticated(&state, &headers).await?;
     state
         .service
         .create_need(&session, input)
+        .await
         .map(|need| (StatusCode::CREATED, Json(need)))
         .map_err(api_error)
 }
@@ -453,10 +477,11 @@ async fn get_need(
     headers: HeaderMap,
     ContractPath(need_id): ContractPath<String>,
 ) -> Result<Json<fsp_application::NeedView>, ApiError> {
-    let session = authenticated(&state, &headers)?;
+    let session = authenticated(&state, &headers).await?;
     state
         .service
         .get_need(&session, &need_id)
+        .await
         .map(Json)
         .map_err(api_error)
 }
@@ -467,10 +492,11 @@ async fn update_need(
     ContractPath(need_id): ContractPath<String>,
     ContractJson(patch): ContractJson<fsp_application::NeedPatch>,
 ) -> Result<Json<fsp_application::NeedView>, ApiError> {
-    let session = authenticated(&state, &headers)?;
+    let session = authenticated(&state, &headers).await?;
     state
         .service
         .update_need(&session, &need_id, patch)
+        .await
         .map(Json)
         .map_err(api_error)
 }
@@ -480,10 +506,11 @@ async fn delete_need(
     headers: HeaderMap,
     ContractPath(need_id): ContractPath<String>,
 ) -> Result<StatusCode, ApiError> {
-    let session = authenticated(&state, &headers)?;
+    let session = authenticated(&state, &headers).await?;
     state
         .service
         .delete_need(&session, &need_id)
+        .await
         .map(|()| StatusCode::NO_CONTENT)
         .map_err(api_error)
 }
@@ -493,10 +520,11 @@ async fn publish_need(
     headers: HeaderMap,
     ContractPath(need_id): ContractPath<String>,
 ) -> Result<Json<fsp_application::NeedView>, ApiError> {
-    let session = authenticated(&state, &headers)?;
+    let session = authenticated(&state, &headers).await?;
     state
         .service
         .publish_need(&session, &need_id)
+        .await
         .map(Json)
         .map_err(api_error)
 }
@@ -506,10 +534,11 @@ async fn unpublish_need(
     headers: HeaderMap,
     ContractPath(need_id): ContractPath<String>,
 ) -> Result<Json<fsp_application::NeedView>, ApiError> {
-    let session = authenticated(&state, &headers)?;
+    let session = authenticated(&state, &headers).await?;
     state
         .service
         .unpublish_need(&session, &need_id)
+        .await
         .map(Json)
         .map_err(api_error)
 }
@@ -519,10 +548,11 @@ async fn need_graph(
     headers: HeaderMap,
     ContractPath(need_id): ContractPath<String>,
 ) -> Result<Json<fsp_application::GraphView>, ApiError> {
-    let session = authenticated(&state, &headers)?;
+    let session = authenticated(&state, &headers).await?;
     state
         .service
         .need_graph(&session, &need_id)
+        .await
         .map(Json)
         .map_err(api_error)
 }
@@ -543,7 +573,7 @@ async fn search_vacancies(
     headers: HeaderMap,
     ContractQuery(query): ContractQuery<VacancyQuery>,
 ) -> Result<Json<fsp_application::VacancyPageView>, ApiError> {
-    let session = authenticated(&state, &headers)?;
+    let session = authenticated(&state, &headers).await?;
     let page = query.page.unwrap_or(1);
     let page_size = query.page_size.unwrap_or(10);
     if page == 0 || page_size == 0 || page_size > 50 {
@@ -577,6 +607,7 @@ async fn search_vacancies(
                 page_size,
             },
         )
+        .await
         .map(Json)
         .map_err(api_error)
 }
@@ -586,10 +617,11 @@ async fn get_vacancy(
     headers: HeaderMap,
     ContractPath(vacancy_id): ContractPath<String>,
 ) -> Result<Json<fsp_application::VacancyView>, ApiError> {
-    let session = authenticated(&state, &headers)?;
+    let session = authenticated(&state, &headers).await?;
     state
         .service
         .get_vacancy(&session, &vacancy_id)
+        .await
         .map(Json)
         .map_err(api_error)
 }
@@ -612,7 +644,7 @@ async fn search_candidates(
     headers: HeaderMap,
     ContractQuery(query): ContractQuery<CandidateQuery>,
 ) -> Result<Json<fsp_application::CandidatePageView>, ApiError> {
-    let session = authenticated(&state, &headers)?;
+    let session = authenticated(&state, &headers).await?;
     let page = query.page.unwrap_or(1);
     let page_size = query.page_size.unwrap_or(10);
     if page == 0 || page_size == 0 || page_size > 50 {
@@ -652,6 +684,7 @@ async fn search_candidates(
                 page_size,
             },
         )
+        .await
         .map(Json)
         .map_err(api_error)
 }
@@ -668,10 +701,11 @@ async fn get_candidate(
     ContractPath(candidate_id): ContractPath<String>,
     ContractQuery(query): ContractQuery<CandidateDetailQuery>,
 ) -> Result<Json<fsp_application::AnonymousCandidateView>, ApiError> {
-    let session = authenticated(&state, &headers)?;
+    let session = authenticated(&state, &headers).await?;
     state
         .service
         .candidate(&session, &candidate_id, query.need_id.as_deref())
+        .await
         .map(Json)
         .map_err(api_error)
 }
@@ -686,10 +720,11 @@ async fn authorize_github(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Json<AuthorizationUrlView>, ApiError> {
-    let session = authenticated(&state, &headers)?;
+    let session = authenticated(&state, &headers).await?;
     state
         .service
         .github_authorization_url(&session, &state.config.github_callback_url)
+        .await
         .map(|authorization_url| Json(AuthorizationUrlView { authorization_url }))
         .map_err(api_error)
 }
@@ -705,7 +740,7 @@ async fn github_callback(
     headers: HeaderMap,
     ContractQuery(query): ContractQuery<OAuthCallbackQuery>,
 ) -> Result<Redirect, ApiError> {
-    let session = authenticated(&state, &headers)?;
+    let session = authenticated(&state, &headers).await?;
     state
         .service
         .complete_github_authorization(&session, &query.state, &query.code)
@@ -721,23 +756,33 @@ async fn get_sources(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Json<fsp_application::SourcesView>, ApiError> {
-    let session = authenticated(&state, &headers)?;
-    state.service.sources(&session).map(Json).map_err(api_error)
+    let session = authenticated(&state, &headers).await?;
+    state
+        .service
+        .sources(&session)
+        .await
+        .map(Json)
+        .map_err(api_error)
 }
 
 async fn get_skills(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Json<fsp_application::SkillsView>, ApiError> {
-    let session = authenticated(&state, &headers)?;
-    state.service.skills(&session).map(Json).map_err(api_error)
+    let session = authenticated(&state, &headers).await?;
+    state
+        .service
+        .skills(&session)
+        .await
+        .map(Json)
+        .map_err(api_error)
 }
 
 async fn get_my_graph(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Json<fsp_application::GraphView>, ApiError> {
-    let session = authenticated(&state, &headers)?;
+    let session = authenticated(&state, &headers).await?;
     state
         .service
         .my_graph(&session)
@@ -751,7 +796,7 @@ async fn get_candidate_graph(
     headers: HeaderMap,
     ContractPath(candidate_id): ContractPath<String>,
 ) -> Result<Json<fsp_application::GraphView>, ApiError> {
-    let session = authenticated(&state, &headers)?;
+    let session = authenticated(&state, &headers).await?;
     state
         .service
         .candidate_graph(&session, &candidate_id)
@@ -766,7 +811,7 @@ async fn connect_source(
     ContractPath(provider): ContractPath<String>,
     ContractJson(input): ContractJson<fsp_application::SourceConnectInput>,
 ) -> Result<Json<fsp_application::SourceView>, ApiError> {
-    let session = authenticated(&state, &headers)?;
+    let session = authenticated(&state, &headers).await?;
     state
         .service
         .connect_source(&session, &provider, input)
@@ -780,7 +825,7 @@ async fn sync_source(
     headers: HeaderMap,
     ContractPath(source_id): ContractPath<String>,
 ) -> Result<(StatusCode, Json<fsp_application::JobView>), ApiError> {
-    let session = authenticated(&state, &headers)?;
+    let session = authenticated(&state, &headers).await?;
     state
         .service
         .sync_source(&session, &source_id)
@@ -794,10 +839,11 @@ async fn get_job(
     headers: HeaderMap,
     ContractPath(job_id): ContractPath<String>,
 ) -> Result<Json<fsp_application::JobView>, ApiError> {
-    let session = authenticated(&state, &headers)?;
+    let session = authenticated(&state, &headers).await?;
     state
         .service
         .job(&session, &job_id)
+        .await
         .map(Json)
         .map_err(api_error)
 }
@@ -806,11 +852,12 @@ async fn get_shortlists(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Json<fsp_application::ShortlistsView>, ApiError> {
-    let session = authenticated(&state, &headers)?;
+    let session = authenticated(&state, &headers).await?;
     require_role(&session, "employer")?;
     state
         .service
         .shortlists(&session)
+        .await
         .map(Json)
         .map_err(api_error)
 }
@@ -820,10 +867,11 @@ async fn create_shortlist(
     headers: HeaderMap,
     ContractJson(input): ContractJson<fsp_application::ShortlistInput>,
 ) -> Result<(StatusCode, Json<fsp_application::ShortlistView>), ApiError> {
-    let session = authenticated(&state, &headers)?;
+    let session = authenticated(&state, &headers).await?;
     state
         .service
         .create_shortlist(&session, input)
+        .await
         .map(|shortlist| (StatusCode::CREATED, Json(shortlist)))
         .map_err(api_error)
 }
@@ -833,10 +881,11 @@ async fn get_shortlist(
     headers: HeaderMap,
     ContractPath(shortlist_id): ContractPath<String>,
 ) -> Result<Json<fsp_application::ShortlistView>, ApiError> {
-    let session = authenticated(&state, &headers)?;
+    let session = authenticated(&state, &headers).await?;
     state
         .service
         .get_shortlist(&session, &shortlist_id)
+        .await
         .map(Json)
         .map_err(api_error)
 }
@@ -847,10 +896,11 @@ async fn update_shortlist(
     ContractPath(shortlist_id): ContractPath<String>,
     ContractJson(input): ContractJson<fsp_application::ShortlistInput>,
 ) -> Result<Json<fsp_application::ShortlistView>, ApiError> {
-    let session = authenticated(&state, &headers)?;
+    let session = authenticated(&state, &headers).await?;
     state
         .service
         .update_shortlist(&session, &shortlist_id, input)
+        .await
         .map(Json)
         .map_err(api_error)
 }
@@ -860,10 +910,11 @@ async fn delete_shortlist(
     headers: HeaderMap,
     ContractPath(shortlist_id): ContractPath<String>,
 ) -> Result<StatusCode, ApiError> {
-    let session = authenticated(&state, &headers)?;
+    let session = authenticated(&state, &headers).await?;
     state
         .service
         .delete_shortlist(&session, &shortlist_id)
+        .await
         .map(|()| StatusCode::NO_CONTENT)
         .map_err(api_error)
 }
@@ -873,10 +924,11 @@ async fn add_shortlist_member(
     headers: HeaderMap,
     ContractPath((shortlist_id, candidate_id)): ContractPath<(String, String)>,
 ) -> Result<Json<fsp_application::ShortlistView>, ApiError> {
-    let session = authenticated(&state, &headers)?;
+    let session = authenticated(&state, &headers).await?;
     state
         .service
         .add_shortlist_member(&session, &shortlist_id, &candidate_id)
+        .await
         .map(Json)
         .map_err(api_error)
 }
@@ -886,10 +938,11 @@ async fn remove_shortlist_member(
     headers: HeaderMap,
     ContractPath((shortlist_id, candidate_id)): ContractPath<(String, String)>,
 ) -> Result<Json<fsp_application::ShortlistView>, ApiError> {
-    let session = authenticated(&state, &headers)?;
+    let session = authenticated(&state, &headers).await?;
     state
         .service
         .remove_shortlist_member(&session, &shortlist_id, &candidate_id)
+        .await
         .map(Json)
         .map_err(api_error)
 }
@@ -905,11 +958,12 @@ async fn list_applications(
     headers: HeaderMap,
     ContractQuery(query): ContractQuery<ApplicationsQuery>,
 ) -> Result<Json<fsp_application::ApplicationsView>, ApiError> {
-    let session = authenticated(&state, &headers)?;
+    let session = authenticated(&state, &headers).await?;
     require_role(&session, "employer")?;
     state
         .service
         .company_applications(&session, query.need_id.as_deref())
+        .await
         .map(Json)
         .map_err(api_error)
 }
@@ -919,11 +973,12 @@ async fn get_application(
     headers: HeaderMap,
     ContractPath(application_id): ContractPath<String>,
 ) -> Result<Json<fsp_application::ApplicationView>, ApiError> {
-    let session = authenticated(&state, &headers)?;
+    let session = authenticated(&state, &headers).await?;
     require_role(&session, "employer")?;
     state
         .service
         .get_application(&session, &application_id)
+        .await
         .map(Json)
         .map_err(api_error)
 }
@@ -933,11 +988,12 @@ async fn view_application(
     headers: HeaderMap,
     ContractPath(application_id): ContractPath<String>,
 ) -> Result<Json<fsp_application::ApplicationView>, ApiError> {
-    let session = authenticated(&state, &headers)?;
+    let session = authenticated(&state, &headers).await?;
     require_role(&session, "employer")?;
     state
         .service
         .view_application(&session, &application_id)
+        .await
         .map(Json)
         .map_err(api_error)
 }
@@ -947,11 +1003,12 @@ async fn accept_application(
     headers: HeaderMap,
     ContractPath(application_id): ContractPath<String>,
 ) -> Result<Json<fsp_application::ApplicationView>, ApiError> {
-    let session = authenticated(&state, &headers)?;
+    let session = authenticated(&state, &headers).await?;
     require_role(&session, "employer")?;
     state
         .service
         .accept_application(&session, &application_id)
+        .await
         .map(Json)
         .map_err(api_error)
 }
@@ -961,11 +1018,12 @@ async fn decline_application(
     headers: HeaderMap,
     ContractPath(application_id): ContractPath<String>,
 ) -> Result<Json<fsp_application::ApplicationView>, ApiError> {
-    let session = authenticated(&state, &headers)?;
+    let session = authenticated(&state, &headers).await?;
     require_role(&session, "employer")?;
     state
         .service
         .decline_application(&session, &application_id)
+        .await
         .map(Json)
         .map_err(api_error)
 }
@@ -974,11 +1032,12 @@ async fn get_my_applications(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Json<fsp_application::ApplicationsView>, ApiError> {
-    let session = authenticated(&state, &headers)?;
+    let session = authenticated(&state, &headers).await?;
     require_role(&session, "candidate")?;
     state
         .service
         .my_applications(&session)
+        .await
         .map(Json)
         .map_err(api_error)
 }
@@ -989,7 +1048,7 @@ async fn create_application(
     IdempotencyKey(key): IdempotencyKey,
     ContractJson(input): ContractJson<fsp_application::ApplicationInput>,
 ) -> Result<Response, ApiError> {
-    let session = authenticated(&state, &headers)?;
+    let session = authenticated(&state, &headers).await?;
     require_role(&session, "candidate")?;
     let body = serde_json::to_value(&input).map_err(|_| {
         ApiError::new(
@@ -1011,6 +1070,7 @@ async fn create_application(
             },
             || state.service.create_application(&session, input),
         )
+        .await
         .map_err(api_error)?;
     Ok(idempotent_response(StatusCode::CREATED, outcome))
 }
@@ -1020,11 +1080,12 @@ async fn get_my_application(
     headers: HeaderMap,
     ContractPath(application_id): ContractPath<String>,
 ) -> Result<Json<fsp_application::ApplicationView>, ApiError> {
-    let session = authenticated(&state, &headers)?;
+    let session = authenticated(&state, &headers).await?;
     require_role(&session, "candidate")?;
     state
         .service
         .get_my_application(&session, &application_id)
+        .await
         .map(Json)
         .map_err(api_error)
 }
@@ -1034,11 +1095,12 @@ async fn withdraw_my_application(
     headers: HeaderMap,
     ContractPath(application_id): ContractPath<String>,
 ) -> Result<Json<fsp_application::ApplicationView>, ApiError> {
-    let session = authenticated(&state, &headers)?;
+    let session = authenticated(&state, &headers).await?;
     require_role(&session, "candidate")?;
     state
         .service
         .withdraw_my_application(&session, &application_id)
+        .await
         .map(Json)
         .map_err(api_error)
 }
@@ -1047,11 +1109,12 @@ async fn get_my_tasks(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Json<fsp_application::MyTasksView>, ApiError> {
-    let session = authenticated(&state, &headers)?;
+    let session = authenticated(&state, &headers).await?;
     require_role(&session, "candidate")?;
     state
         .service
         .my_tasks(&session)
+        .await
         .map(Json)
         .map_err(api_error)
 }
@@ -1063,7 +1126,7 @@ async fn respond_to_task(
     ContractPath(task_id): ContractPath<String>,
     ContractJson(input): ContractJson<fsp_application::TaskResponseInput>,
 ) -> Result<Response, ApiError> {
-    let session = authenticated(&state, &headers)?;
+    let session = authenticated(&state, &headers).await?;
     require_role(&session, "candidate")?;
     let body = serde_json::to_value(&input).map_err(|_| {
         ApiError::new(
@@ -1086,6 +1149,7 @@ async fn respond_to_task(
             },
             || state.service.respond_to_task(&session, &task_id, input),
         )
+        .await
         .map_err(api_error)?;
     Ok(idempotent_response(StatusCode::CREATED, outcome))
 }
@@ -1094,11 +1158,12 @@ async fn get_my_assessments(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Json<fsp_application::AssessmentsView>, ApiError> {
-    let session = authenticated(&state, &headers)?;
+    let session = authenticated(&state, &headers).await?;
     require_role(&session, "candidate")?;
     state
         .service
         .my_assessments(&session)
+        .await
         .map(Json)
         .map_err(api_error)
 }
@@ -1109,7 +1174,7 @@ async fn start_assessment(
     IdempotencyKey(key): IdempotencyKey,
     ContractJson(input): ContractJson<fsp_application::AssessmentStartInput>,
 ) -> Result<Response, ApiError> {
-    let session = authenticated(&state, &headers)?;
+    let session = authenticated(&state, &headers).await?;
     require_role(&session, "candidate")?;
     let body = serde_json::to_value(&input).map_err(|_| {
         ApiError::new(
@@ -1131,6 +1196,7 @@ async fn start_assessment(
             },
             || state.service.start_assessment(&session, input),
         )
+        .await
         .map_err(api_error)?;
     Ok(idempotent_response(StatusCode::CREATED, outcome))
 }
@@ -1140,11 +1206,12 @@ async fn get_assessment(
     headers: HeaderMap,
     ContractPath(assessment_id): ContractPath<String>,
 ) -> Result<Json<fsp_application::AssessmentView>, ApiError> {
-    let session = authenticated(&state, &headers)?;
+    let session = authenticated(&state, &headers).await?;
     require_role(&session, "candidate")?;
     state
         .service
         .get_assessment(&session, &assessment_id)
+        .await
         .map(Json)
         .map_err(api_error)
 }
@@ -1155,11 +1222,12 @@ async fn save_assessment_answer(
     ContractPath(assessment_id): ContractPath<String>,
     ContractJson(input): ContractJson<fsp_domain::AssessmentAnswer>,
 ) -> Result<Json<fsp_application::AssessmentView>, ApiError> {
-    let session = authenticated(&state, &headers)?;
+    let session = authenticated(&state, &headers).await?;
     require_role(&session, "candidate")?;
     state
         .service
         .save_assessment_answer(&session, &assessment_id, input)
+        .await
         .map(Json)
         .map_err(api_error)
 }
@@ -1169,11 +1237,12 @@ async fn run_assessment_checks(
     headers: HeaderMap,
     ContractPath(assessment_id): ContractPath<String>,
 ) -> Result<Response, ApiError> {
-    let session = authenticated(&state, &headers)?;
+    let session = authenticated(&state, &headers).await?;
     require_role(&session, "candidate")?;
     state
         .service
         .run_assessment_checks(&session, &assessment_id)
+        .await
         .map(|view| (StatusCode::ACCEPTED, Json(view)).into_response())
         .map_err(api_error)
 }
@@ -1184,11 +1253,12 @@ async fn ask_assessment_assistant(
     ContractPath(assessment_id): ContractPath<String>,
     ContractJson(input): ContractJson<fsp_application::AssistantInput>,
 ) -> Result<Json<fsp_application::AssistantReplyView>, ApiError> {
-    let session = authenticated(&state, &headers)?;
+    let session = authenticated(&state, &headers).await?;
     require_role(&session, "candidate")?;
     state
         .service
         .ask_assessment_assistant(&session, &assessment_id, input)
+        .await
         .map(Json)
         .map_err(api_error)
 }
@@ -1199,7 +1269,7 @@ async fn submit_assessment(
     IdempotencyKey(key): IdempotencyKey,
     ContractPath(assessment_id): ContractPath<String>,
 ) -> Result<Response, ApiError> {
-    let session = authenticated(&state, &headers)?;
+    let session = authenticated(&state, &headers).await?;
     require_role(&session, "candidate")?;
     let path = format!("/api/v1/me/assessments/{assessment_id}/submit");
     let outcome = state
@@ -1215,6 +1285,7 @@ async fn submit_assessment(
             },
             || state.service.submit_assessment(&session, &assessment_id),
         )
+        .await
         .map_err(api_error)?;
     Ok(idempotent_response(StatusCode::ACCEPTED, outcome))
 }
@@ -1230,11 +1301,12 @@ async fn get_my_gap_plan(
     headers: HeaderMap,
     ContractQuery(query): ContractQuery<GapPlanQuery>,
 ) -> Result<Json<fsp_application::GapPlanView>, ApiError> {
-    let session = authenticated(&state, &headers)?;
+    let session = authenticated(&state, &headers).await?;
     require_role(&session, "candidate")?;
     state
         .service
         .my_gap_plan(&session, query.need_id.as_deref())
+        .await
         .map(Json)
         .map_err(api_error)
 }
@@ -1245,11 +1317,12 @@ async fn get_candidate_gap_plan(
     ContractPath(candidate_id): ContractPath<String>,
     ContractQuery(query): ContractQuery<GapPlanQuery>,
 ) -> Result<Json<fsp_application::GapPlanView>, ApiError> {
-    let session = authenticated(&state, &headers)?;
+    let session = authenticated(&state, &headers).await?;
     require_role(&session, "employer")?;
     state
         .service
         .candidate_gap_plan(&session, &candidate_id, query.need_id.as_deref())
+        .await
         .map(Json)
         .map_err(api_error)
 }
@@ -1262,7 +1335,7 @@ async fn import_profile(
     headers: HeaderMap,
     request: Request,
 ) -> Result<Response, ApiError> {
-    let session = authenticated(&state, &headers)?;
+    let session = authenticated(&state, &headers).await?;
     require_role(&session, "candidate")?;
     let content_type = headers
         .get(CONTENT_TYPE)
@@ -1335,6 +1408,7 @@ async fn import_profile(
     state
         .service
         .import_profile(&session)
+        .await
         .map(|view| (StatusCode::ACCEPTED, Json(view)).into_response())
         .map_err(api_error)
 }
@@ -1345,11 +1419,12 @@ async fn confirm_profile_import(
     ContractPath(job_id): ContractPath<String>,
     ContractJson(input): ContractJson<fsp_application::ImportConfirmInput>,
 ) -> Result<Json<fsp_application::ProfileView>, ApiError> {
-    let session = authenticated(&state, &headers)?;
+    let session = authenticated(&state, &headers).await?;
     require_role(&session, "candidate")?;
     state
         .service
         .confirm_profile_import(&session, &job_id, input)
+        .await
         .map(Json)
         .map_err(api_error)
 }
@@ -1359,9 +1434,13 @@ async fn export_profile(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Response, ApiError> {
-    let session = authenticated(&state, &headers)?;
+    let session = authenticated(&state, &headers).await?;
     require_role(&session, "candidate")?;
-    let profile = state.service.export_profile(&session).map_err(api_error)?;
+    let profile = state
+        .service
+        .export_profile(&session)
+        .await
+        .map_err(api_error)?;
     let bytes = pdf::profile_pdf(&profile).map_err(|error| {
         tracing::error!(error = %error, "profile PDF render failed");
         ApiError::new(
@@ -1387,9 +1466,14 @@ async fn list_tasks(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Json<fsp_application::TasksView>, ApiError> {
-    let session = authenticated(&state, &headers)?;
+    let session = authenticated(&state, &headers).await?;
     require_role(&session, "employer")?;
-    state.service.tasks(&session).map(Json).map_err(api_error)
+    state
+        .service
+        .tasks(&session)
+        .await
+        .map(Json)
+        .map_err(api_error)
 }
 
 async fn create_task(
@@ -1397,11 +1481,12 @@ async fn create_task(
     headers: HeaderMap,
     ContractJson(input): ContractJson<fsp_application::TaskInput>,
 ) -> Result<(StatusCode, Json<fsp_application::TaskView>), ApiError> {
-    let session = authenticated(&state, &headers)?;
+    let session = authenticated(&state, &headers).await?;
     require_role(&session, "employer")?;
     state
         .service
         .create_task(&session, input)
+        .await
         .map(|task| (StatusCode::CREATED, Json(task)))
         .map_err(api_error)
 }
@@ -1411,11 +1496,12 @@ async fn archive_task(
     headers: HeaderMap,
     ContractPath(task_id): ContractPath<String>,
 ) -> Result<Json<fsp_application::TaskView>, ApiError> {
-    let session = authenticated(&state, &headers)?;
+    let session = authenticated(&state, &headers).await?;
     require_role(&session, "employer")?;
     state
         .service
         .archive_task(&session, &task_id)
+        .await
         .map(Json)
         .map_err(api_error)
 }
@@ -1431,11 +1517,12 @@ async fn list_task_responses(
     headers: HeaderMap,
     ContractQuery(query): ContractQuery<TaskResponsesQuery>,
 ) -> Result<Json<fsp_application::TaskResponsesView>, ApiError> {
-    let session = authenticated(&state, &headers)?;
+    let session = authenticated(&state, &headers).await?;
     require_role(&session, "employer")?;
     state
         .service
         .task_responses(&session, query.task_id.as_deref())
+        .await
         .map(Json)
         .map_err(api_error)
 }
@@ -1446,11 +1533,12 @@ async fn review_task_response(
     ContractPath(response_id): ContractPath<String>,
     ContractJson(input): ContractJson<fsp_application::TaskReviewInput>,
 ) -> Result<Json<fsp_application::TaskResponseView>, ApiError> {
-    let session = authenticated(&state, &headers)?;
+    let session = authenticated(&state, &headers).await?;
     require_role(&session, "employer")?;
     state
         .service
         .review_task_response(&session, &response_id, input)
+        .await
         .map(Json)
         .map_err(api_error)
 }
@@ -1459,11 +1547,12 @@ async fn get_invitations(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Json<fsp_application::InvitationsView>, ApiError> {
-    let session = authenticated(&state, &headers)?;
+    let session = authenticated(&state, &headers).await?;
     require_role(&session, "employer")?;
     state
         .service
         .invitations(&session)
+        .await
         .map(Json)
         .map_err(api_error)
 }
@@ -1474,7 +1563,7 @@ async fn create_invitation(
     IdempotencyKey(key): IdempotencyKey,
     ContractJson(input): ContractJson<fsp_application::InvitationInput>,
 ) -> Result<Response, ApiError> {
-    let session = authenticated(&state, &headers)?;
+    let session = authenticated(&state, &headers).await?;
     require_role(&session, "employer")?;
     let body = serde_json::to_value(&input).map_err(|_| {
         ApiError::new(
@@ -1496,6 +1585,7 @@ async fn create_invitation(
             },
             || state.service.create_invitation(&session, input),
         )
+        .await
         .map_err(api_error)?;
     Ok(idempotent_response(StatusCode::CREATED, outcome))
 }
@@ -1505,11 +1595,12 @@ async fn get_invitation(
     headers: HeaderMap,
     ContractPath(invitation_id): ContractPath<String>,
 ) -> Result<Json<fsp_application::InvitationView>, ApiError> {
-    let session = authenticated(&state, &headers)?;
+    let session = authenticated(&state, &headers).await?;
     require_role(&session, "employer")?;
     state
         .service
         .get_invitation(&session, &invitation_id)
+        .await
         .map(Json)
         .map_err(api_error)
 }
@@ -1519,11 +1610,12 @@ async fn withdraw_invitation(
     headers: HeaderMap,
     ContractPath(invitation_id): ContractPath<String>,
 ) -> Result<Json<fsp_application::InvitationView>, ApiError> {
-    let session = authenticated(&state, &headers)?;
+    let session = authenticated(&state, &headers).await?;
     require_role(&session, "employer")?;
     state
         .service
         .withdraw_invitation(&session, &invitation_id)
+        .await
         .map(Json)
         .map_err(api_error)
 }
@@ -1532,11 +1624,12 @@ async fn get_my_invitations(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Json<fsp_application::InvitationsView>, ApiError> {
-    let session = authenticated(&state, &headers)?;
+    let session = authenticated(&state, &headers).await?;
     require_role(&session, "candidate")?;
     state
         .service
         .my_invitations(&session)
+        .await
         .map(Json)
         .map_err(api_error)
 }
@@ -1546,11 +1639,12 @@ async fn get_my_invitation(
     headers: HeaderMap,
     ContractPath(invitation_id): ContractPath<String>,
 ) -> Result<Json<fsp_application::InvitationView>, ApiError> {
-    let session = authenticated(&state, &headers)?;
+    let session = authenticated(&state, &headers).await?;
     require_role(&session, "candidate")?;
     state
         .service
         .get_invitation(&session, &invitation_id)
+        .await
         .map(Json)
         .map_err(api_error)
 }
@@ -1560,11 +1654,12 @@ async fn view_my_invitation(
     headers: HeaderMap,
     ContractPath(invitation_id): ContractPath<String>,
 ) -> Result<Json<fsp_application::InvitationView>, ApiError> {
-    let session = authenticated(&state, &headers)?;
+    let session = authenticated(&state, &headers).await?;
     require_role(&session, "candidate")?;
     state
         .service
         .view_my_invitation(&session, &invitation_id)
+        .await
         .map(Json)
         .map_err(api_error)
 }
@@ -1575,11 +1670,12 @@ async fn accept_my_invitation(
     ContractPath(invitation_id): ContractPath<String>,
     ContractJson(input): ContractJson<fsp_application::AcceptInvitationInput>,
 ) -> Result<Json<fsp_application::InvitationView>, ApiError> {
-    let session = authenticated(&state, &headers)?;
+    let session = authenticated(&state, &headers).await?;
     require_role(&session, "candidate")?;
     state
         .service
         .accept_my_invitation(&session, &invitation_id, input)
+        .await
         .map(Json)
         .map_err(api_error)
 }
@@ -1589,11 +1685,12 @@ async fn decline_my_invitation(
     headers: HeaderMap,
     ContractPath(invitation_id): ContractPath<String>,
 ) -> Result<Json<fsp_application::InvitationView>, ApiError> {
-    let session = authenticated(&state, &headers)?;
+    let session = authenticated(&state, &headers).await?;
     require_role(&session, "candidate")?;
     state
         .service
         .decline_my_invitation(&session, &invitation_id)
+        .await
         .map(Json)
         .map_err(api_error)
 }
@@ -1603,11 +1700,12 @@ async fn get_candidate_disclosure(
     headers: HeaderMap,
     ContractPath(candidate_id): ContractPath<String>,
 ) -> Result<Json<fsp_application::DisclosureView>, ApiError> {
-    let session = authenticated(&state, &headers)?;
+    let session = authenticated(&state, &headers).await?;
     require_role(&session, "employer")?;
     state
         .service
         .candidate_disclosure(&session, &candidate_id)
+        .await
         .map(Json)
         .map_err(api_error)
 }
@@ -1662,10 +1760,11 @@ async fn query_guard(request: Request, next: Next) -> Response {
     }
 }
 
-fn authenticated(state: &AppState, headers: &HeaderMap) -> Result<SessionView, ApiError> {
+async fn authenticated(state: &AppState, headers: &HeaderMap) -> Result<SessionView, ApiError> {
     state
         .service
         .session(session_token(headers)?)
+        .await
         .map_err(api_error)
 }
 
@@ -1737,26 +1836,27 @@ mod tests {
     };
 
     struct EmptyRepository;
+    #[async_trait::async_trait]
     impl PlatformRepository for EmptyRepository {
-        fn account_by_email(&self, _: &str) -> Result<Option<Account>, RepositoryError> {
+        async fn account_by_email(&self, _: &str) -> Result<Option<Account>, RepositoryError> {
             Ok(None)
         }
-        fn account_by_id(&self, _: &str) -> Result<Option<Account>, RepositoryError> {
+        async fn account_by_id(&self, _: &str) -> Result<Option<Account>, RepositoryError> {
             Ok(None)
         }
-        fn create_account(&self, _: &Account, _: &str) -> Result<(), RepositoryError> {
+        async fn create_account(&self, _: &Account, _: &str) -> Result<(), RepositoryError> {
             Ok(())
         }
-        fn create_candidate(&self, _: &CandidateProfile) -> Result<(), RepositoryError> {
+        async fn create_candidate(&self, _: &CandidateProfile) -> Result<(), RepositoryError> {
             Ok(())
         }
-        fn create_company(&self, _: &Company) -> Result<(), RepositoryError> {
+        async fn create_company(&self, _: &Company) -> Result<(), RepositoryError> {
             Ok(())
         }
-        fn save_challenge(&self, _: &PendingChallenge) -> Result<(), RepositoryError> {
+        async fn save_challenge(&self, _: &PendingChallenge) -> Result<(), RepositoryError> {
             Ok(())
         }
-        fn consume_challenge(
+        async fn consume_challenge(
             &self,
             _: &str,
             _: &str,
@@ -1764,208 +1864,235 @@ mod tests {
         ) -> Result<(ConsumeChallenge, Option<Account>), RepositoryError> {
             Ok((ConsumeChallenge::Missing, None))
         }
-        fn create_session(&self, _: &str, _: &str, _: &str) -> Result<(), RepositoryError> {
+        async fn create_session(&self, _: &str, _: &str, _: &str) -> Result<(), RepositoryError> {
             Ok(())
         }
-        fn account_for_session(
+        async fn account_for_session(
             &self,
             _: &str,
             _: &str,
         ) -> Result<Option<Account>, RepositoryError> {
             Ok(None)
         }
-        fn delete_session(&self, _: &str) -> Result<(), RepositoryError> {
+        async fn delete_session(&self, _: &str) -> Result<(), RepositoryError> {
             Ok(())
         }
-        fn candidate(&self, _: &str) -> Result<Option<CandidateProfile>, RepositoryError> {
+        async fn candidate(&self, _: &str) -> Result<Option<CandidateProfile>, RepositoryError> {
             Ok(None)
         }
-        fn save_candidate(&self, _: &CandidateProfile) -> Result<(), RepositoryError> {
+        async fn save_candidate(&self, _: &CandidateProfile) -> Result<(), RepositoryError> {
             Ok(())
         }
-        fn company(&self, _: &str) -> Result<Option<Company>, RepositoryError> {
+        async fn company(&self, _: &str) -> Result<Option<Company>, RepositoryError> {
             Ok(None)
         }
-        fn save_company(&self, _: &Company) -> Result<(), RepositoryError> {
+        async fn save_company(&self, _: &Company) -> Result<(), RepositoryError> {
             Ok(())
         }
-        fn candidates(&self) -> Result<Vec<CandidateIndexRecord>, RepositoryError> {
+        async fn candidates(&self) -> Result<Vec<CandidateIndexRecord>, RepositoryError> {
             Ok(Vec::new())
         }
-        fn needs(&self, _: &str) -> Result<Vec<HiringNeedRecord>, RepositoryError> {
+        async fn needs(&self, _: &str) -> Result<Vec<HiringNeedRecord>, RepositoryError> {
             Ok(Vec::new())
         }
-        fn need(&self, _: &str, _: &str) -> Result<Option<HiringNeedRecord>, RepositoryError> {
+        async fn need(
+            &self,
+            _: &str,
+            _: &str,
+        ) -> Result<Option<HiringNeedRecord>, RepositoryError> {
             Ok(None)
         }
-        fn save_need(&self, _: &HiringNeedRecord) -> Result<(), RepositoryError> {
+        async fn save_need(&self, _: &HiringNeedRecord) -> Result<(), RepositoryError> {
             Ok(())
         }
-        fn delete_need(&self, _: &str, _: &str) -> Result<(), RepositoryError> {
+        async fn delete_need(&self, _: &str, _: &str) -> Result<(), RepositoryError> {
             Ok(())
         }
-        fn published_needs(&self) -> Result<Vec<HiringNeedRecord>, RepositoryError> {
+        async fn published_needs(&self) -> Result<Vec<HiringNeedRecord>, RepositoryError> {
             Ok(Vec::new())
         }
-        fn shortlists(&self, _: &str) -> Result<Vec<fsp_domain::ShortlistRecord>, RepositoryError> {
+        async fn shortlists(
+            &self,
+            _: &str,
+        ) -> Result<Vec<fsp_domain::ShortlistRecord>, RepositoryError> {
             Ok(Vec::new())
         }
-        fn shortlist(
+        async fn shortlist(
             &self,
             _: &str,
             _: &str,
         ) -> Result<Option<fsp_domain::ShortlistRecord>, RepositoryError> {
             Ok(None)
         }
-        fn save_shortlist(&self, _: &fsp_domain::ShortlistRecord) -> Result<(), RepositoryError> {
+        async fn save_shortlist(
+            &self,
+            _: &fsp_domain::ShortlistRecord,
+        ) -> Result<(), RepositoryError> {
             Ok(())
         }
-        fn delete_shortlist(&self, _: &str, _: &str) -> Result<(), RepositoryError> {
+        async fn delete_shortlist(&self, _: &str, _: &str) -> Result<(), RepositoryError> {
             Ok(())
         }
-        fn invitations(
+        async fn invitations(
             &self,
             _: &str,
         ) -> Result<Vec<fsp_domain::InvitationRecord>, RepositoryError> {
             Ok(Vec::new())
         }
-        fn candidate_invitations(
+        async fn candidate_invitations(
             &self,
             _: &str,
         ) -> Result<Vec<fsp_domain::InvitationRecord>, RepositoryError> {
             Ok(Vec::new())
         }
-        fn invitation(
+        async fn invitation(
             &self,
             _: &str,
         ) -> Result<Option<fsp_domain::InvitationRecord>, RepositoryError> {
             Ok(None)
         }
-        fn save_invitation(&self, _: &fsp_domain::InvitationRecord) -> Result<(), RepositoryError> {
+        async fn save_invitation(
+            &self,
+            _: &fsp_domain::InvitationRecord,
+        ) -> Result<(), RepositoryError> {
             Ok(())
         }
-        fn disclosure(
+        async fn disclosure(
             &self,
             _: &str,
             _: &str,
         ) -> Result<Option<fsp_domain::DisclosureRecord>, RepositoryError> {
             Ok(None)
         }
-        fn save_disclosure(&self, _: &fsp_domain::DisclosureRecord) -> Result<(), RepositoryError> {
+        async fn save_disclosure(
+            &self,
+            _: &fsp_domain::DisclosureRecord,
+        ) -> Result<(), RepositoryError> {
             Ok(())
         }
-        fn delete_disclosure(&self, _: &str, _: &str) -> Result<(), RepositoryError> {
+        async fn delete_disclosure(&self, _: &str, _: &str) -> Result<(), RepositoryError> {
             Ok(())
         }
-        fn company_applications(
+        async fn company_applications(
             &self,
             _: &str,
         ) -> Result<Vec<fsp_domain::ApplicationRecord>, RepositoryError> {
             Ok(Vec::new())
         }
-        fn candidate_applications(
+        async fn candidate_applications(
             &self,
             _: &str,
         ) -> Result<Vec<fsp_domain::ApplicationRecord>, RepositoryError> {
             Ok(Vec::new())
         }
-        fn application(
+        async fn application(
             &self,
             _: &str,
         ) -> Result<Option<fsp_domain::ApplicationRecord>, RepositoryError> {
             Ok(None)
         }
-        fn save_application(
+        async fn save_application(
             &self,
             _: &fsp_domain::ApplicationRecord,
         ) -> Result<(), RepositoryError> {
             Ok(())
         }
-        fn tasks(&self, _: &str) -> Result<Vec<fsp_domain::TaskRecord>, RepositoryError> {
+        async fn tasks(&self, _: &str) -> Result<Vec<fsp_domain::TaskRecord>, RepositoryError> {
             Ok(Vec::new())
         }
-        fn active_tasks(&self) -> Result<Vec<fsp_domain::TaskRecord>, RepositoryError> {
+        async fn active_tasks(&self) -> Result<Vec<fsp_domain::TaskRecord>, RepositoryError> {
             Ok(Vec::new())
         }
-        fn task(&self, _: &str) -> Result<Option<fsp_domain::TaskRecord>, RepositoryError> {
+        async fn task(&self, _: &str) -> Result<Option<fsp_domain::TaskRecord>, RepositoryError> {
             Ok(None)
         }
-        fn save_task(&self, _: &fsp_domain::TaskRecord) -> Result<(), RepositoryError> {
+        async fn save_task(&self, _: &fsp_domain::TaskRecord) -> Result<(), RepositoryError> {
             Ok(())
         }
-        fn candidate_task_responses(
+        async fn candidate_task_responses(
             &self,
             _: &str,
         ) -> Result<Vec<fsp_domain::TaskResponseRecord>, RepositoryError> {
             Ok(Vec::new())
         }
-        fn company_task_responses(
+        async fn company_task_responses(
             &self,
             _: &str,
         ) -> Result<Vec<fsp_domain::TaskResponseRecord>, RepositoryError> {
             Ok(Vec::new())
         }
-        fn task_response(
+        async fn task_response(
             &self,
             _: &str,
         ) -> Result<Option<fsp_domain::TaskResponseRecord>, RepositoryError> {
             Ok(None)
         }
-        fn save_task_response(
+        async fn save_task_response(
             &self,
             _: &fsp_domain::TaskResponseRecord,
         ) -> Result<(), RepositoryError> {
             Ok(())
         }
-        fn candidate_assessments(
+        async fn candidate_assessments(
             &self,
             _: &str,
         ) -> Result<Vec<fsp_domain::AssessmentRecord>, RepositoryError> {
             Ok(Vec::new())
         }
-        fn assessment(
+        async fn assessment(
             &self,
             _: &str,
         ) -> Result<Option<fsp_domain::AssessmentRecord>, RepositoryError> {
             Ok(None)
         }
-        fn save_assessment(&self, _: &fsp_domain::AssessmentRecord) -> Result<(), RepositoryError> {
+        async fn save_assessment(
+            &self,
+            _: &fsp_domain::AssessmentRecord,
+        ) -> Result<(), RepositoryError> {
             Ok(())
         }
-        fn save_candidate_index(&self, _: &CandidateIndexRecord) -> Result<(), RepositoryError> {
+        async fn save_candidate_index(
+            &self,
+            _: &CandidateIndexRecord,
+        ) -> Result<(), RepositoryError> {
             Ok(())
         }
-        fn save_oauth_state(&self, _: &str, _: &str, _: &str) -> Result<(), RepositoryError> {
+        async fn save_oauth_state(&self, _: &str, _: &str, _: &str) -> Result<(), RepositoryError> {
             Ok(())
         }
-        fn consume_oauth_state(&self, _: &str, _: &str, _: &str) -> Result<bool, RepositoryError> {
+        async fn consume_oauth_state(
+            &self,
+            _: &str,
+            _: &str,
+            _: &str,
+        ) -> Result<bool, RepositoryError> {
             Ok(false)
         }
-        fn save_github_token(&self, _: &str, _: &str) -> Result<(), RepositoryError> {
+        async fn save_github_token(&self, _: &str, _: &str) -> Result<(), RepositoryError> {
             Ok(())
         }
-        fn github_token(&self, _: &str) -> Result<Option<String>, RepositoryError> {
+        async fn github_token(&self, _: &str) -> Result<Option<String>, RepositoryError> {
             Ok(None)
         }
-        fn sources(&self, _: &str) -> Result<Vec<SourceRecord>, RepositoryError> {
+        async fn sources(&self, _: &str) -> Result<Vec<SourceRecord>, RepositoryError> {
             Ok(Vec::new())
         }
-        fn save_source(&self, _: &SourceRecord) -> Result<(), RepositoryError> {
+        async fn save_source(&self, _: &SourceRecord) -> Result<(), RepositoryError> {
             Ok(())
         }
-        fn save_job(&self, _: &JobRecord) -> Result<(), RepositoryError> {
+        async fn save_job(&self, _: &JobRecord) -> Result<(), RepositoryError> {
             Ok(())
         }
-        fn job(&self, _: &str, _: &str) -> Result<Option<JobRecord>, RepositoryError> {
+        async fn job(&self, _: &str, _: &str) -> Result<Option<JobRecord>, RepositoryError> {
             Ok(None)
         }
-        fn idempotency_get(
+        async fn idempotency_get(
             &self,
             _: &str,
         ) -> Result<Option<fsp_application::StoredIdempotentResponse>, RepositoryError> {
             Ok(None)
         }
-        fn idempotency_put(
+        async fn idempotency_put(
             &self,
             _: &str,
             _: &str,
@@ -1975,7 +2102,7 @@ mod tests {
         ) -> Result<(), RepositoryError> {
             Ok(())
         }
-        fn seed_demo(&self, _: &str) -> Result<(), RepositoryError> {
+        async fn seed_demo(&self, _: &str) -> Result<(), RepositoryError> {
             Ok(())
         }
     }

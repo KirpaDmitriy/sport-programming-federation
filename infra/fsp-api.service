@@ -1,6 +1,6 @@
 [Unit]
 Description=FSP career API (Rust backend)
-After=network.target
+After=network.target postgresql.service
 
 [Service]
 Type=simple
@@ -9,6 +9,8 @@ Group=fsp
 Environment=HOST=127.0.0.1
 Environment=PORT=4010
 EnvironmentFile=-/etc/fsp/rust-api.env
+EnvironmentFile=-/etc/fsp/db.env
+EnvironmentFile=-/etc/fsp/llm.env
 StateDirectory=fsp
 ExecStart=/opt/fsp/current/bin/fsp-career-api
 Restart=on-failure

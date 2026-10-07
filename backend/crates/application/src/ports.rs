@@ -23,179 +23,195 @@ pub enum RepositoryError {
     Storage(String),
 }
 
+#[async_trait]
 pub trait PlatformRepository: Send + Sync {
-    fn account_by_email(&self, email: &str) -> Result<Option<Account>, RepositoryError>;
-    fn account_by_id(&self, account_id: &str) -> Result<Option<Account>, RepositoryError>;
-    fn create_account(&self, account: &Account, now: &str) -> Result<(), RepositoryError>;
-    fn create_candidate(&self, profile: &CandidateProfile) -> Result<(), RepositoryError>;
-    fn create_company(&self, company: &Company) -> Result<(), RepositoryError>;
-    fn save_challenge(&self, challenge: &PendingChallenge) -> Result<(), RepositoryError>;
-    fn consume_challenge(
+    async fn account_by_email(&self, email: &str) -> Result<Option<Account>, RepositoryError>;
+    async fn account_by_id(&self, account_id: &str) -> Result<Option<Account>, RepositoryError>;
+    async fn create_account(&self, account: &Account, now: &str) -> Result<(), RepositoryError>;
+    async fn create_candidate(&self, profile: &CandidateProfile) -> Result<(), RepositoryError>;
+    async fn create_company(&self, company: &Company) -> Result<(), RepositoryError>;
+    async fn save_challenge(&self, challenge: &PendingChallenge) -> Result<(), RepositoryError>;
+    async fn consume_challenge(
         &self,
         challenge_id: &str,
         code_hash: &str,
         now: &str,
     ) -> Result<(ConsumeChallenge, Option<Account>), RepositoryError>;
-    fn create_session(
+    async fn create_session(
         &self,
         token_hash: &str,
         account_id: &str,
         expires_at: &str,
     ) -> Result<(), RepositoryError>;
-    fn account_for_session(
+    async fn account_for_session(
         &self,
         token_hash: &str,
         now: &str,
     ) -> Result<Option<Account>, RepositoryError>;
-    fn delete_session(&self, token_hash: &str) -> Result<(), RepositoryError>;
-    fn candidate(&self, candidate_id: &str) -> Result<Option<CandidateProfile>, RepositoryError>;
-    fn save_candidate(&self, profile: &CandidateProfile) -> Result<(), RepositoryError>;
-    fn company(&self, company_id: &str) -> Result<Option<Company>, RepositoryError>;
-    fn save_company(&self, company: &Company) -> Result<(), RepositoryError>;
-    fn candidates(&self) -> Result<Vec<CandidateIndexRecord>, RepositoryError>;
+    async fn delete_session(&self, token_hash: &str) -> Result<(), RepositoryError>;
+    async fn candidate(
+        &self,
+        candidate_id: &str,
+    ) -> Result<Option<CandidateProfile>, RepositoryError>;
+    async fn save_candidate(&self, profile: &CandidateProfile) -> Result<(), RepositoryError>;
+    async fn company(&self, company_id: &str) -> Result<Option<Company>, RepositoryError>;
+    async fn save_company(&self, company: &Company) -> Result<(), RepositoryError>;
+    async fn candidates(&self) -> Result<Vec<CandidateIndexRecord>, RepositoryError>;
     /// Persists the derived candidate index (skills, visibility flags); the
     /// row is created on first save when seeding missed the candidate.
-    fn save_candidate_index(&self, record: &CandidateIndexRecord) -> Result<(), RepositoryError>;
-    fn needs(&self, company_id: &str) -> Result<Vec<HiringNeedRecord>, RepositoryError>;
-    fn need(
+    async fn save_candidate_index(
+        &self,
+        record: &CandidateIndexRecord,
+    ) -> Result<(), RepositoryError>;
+    async fn needs(&self, company_id: &str) -> Result<Vec<HiringNeedRecord>, RepositoryError>;
+    async fn need(
         &self,
         company_id: &str,
         need_id: &str,
     ) -> Result<Option<HiringNeedRecord>, RepositoryError>;
-    fn save_need(&self, need: &HiringNeedRecord) -> Result<(), RepositoryError>;
-    fn delete_need(&self, company_id: &str, need_id: &str) -> Result<(), RepositoryError>;
+    async fn save_need(&self, need: &HiringNeedRecord) -> Result<(), RepositoryError>;
+    async fn delete_need(&self, company_id: &str, need_id: &str) -> Result<(), RepositoryError>;
     /// Published needs across all companies, i.e. the vacancy projection.
-    fn published_needs(&self) -> Result<Vec<HiringNeedRecord>, RepositoryError>;
-    fn shortlists(
+    async fn published_needs(&self) -> Result<Vec<HiringNeedRecord>, RepositoryError>;
+    async fn shortlists(
         &self,
         company_id: &str,
     ) -> Result<Vec<fsp_domain::ShortlistRecord>, RepositoryError>;
-    fn shortlist(
+    async fn shortlist(
         &self,
         company_id: &str,
         shortlist_id: &str,
     ) -> Result<Option<fsp_domain::ShortlistRecord>, RepositoryError>;
-    fn save_shortlist(
+    async fn save_shortlist(
         &self,
         shortlist: &fsp_domain::ShortlistRecord,
     ) -> Result<(), RepositoryError>;
-    fn delete_shortlist(&self, company_id: &str, shortlist_id: &str)
-    -> Result<(), RepositoryError>;
+    async fn delete_shortlist(
+        &self,
+        company_id: &str,
+        shortlist_id: &str,
+    ) -> Result<(), RepositoryError>;
     /// Invitations sent by a company, in creation order.
-    fn invitations(
+    async fn invitations(
         &self,
         company_id: &str,
     ) -> Result<Vec<fsp_domain::InvitationRecord>, RepositoryError>;
     /// Invitations addressed to a candidate, in creation order.
-    fn candidate_invitations(
+    async fn candidate_invitations(
         &self,
         candidate_id: &str,
     ) -> Result<Vec<fsp_domain::InvitationRecord>, RepositoryError>;
     /// Unscoped lookup; the service applies the caller's tenancy rule.
-    fn invitation(
+    async fn invitation(
         &self,
         invitation_id: &str,
     ) -> Result<Option<fsp_domain::InvitationRecord>, RepositoryError>;
-    fn save_invitation(
+    async fn save_invitation(
         &self,
         invitation: &fsp_domain::InvitationRecord,
     ) -> Result<(), RepositoryError>;
-    fn disclosure(
+    async fn disclosure(
         &self,
         company_id: &str,
         candidate_id: &str,
     ) -> Result<Option<fsp_domain::DisclosureRecord>, RepositoryError>;
-    fn save_disclosure(
+    async fn save_disclosure(
         &self,
         disclosure: &fsp_domain::DisclosureRecord,
     ) -> Result<(), RepositoryError>;
-    fn delete_disclosure(
+    async fn delete_disclosure(
         &self,
         company_id: &str,
         candidate_id: &str,
     ) -> Result<(), RepositoryError>;
     /// Applications addressed to a company's needs.
-    fn company_applications(
+    async fn company_applications(
         &self,
         company_id: &str,
     ) -> Result<Vec<fsp_domain::ApplicationRecord>, RepositoryError>;
     /// Applications sent by a candidate.
-    fn candidate_applications(
+    async fn candidate_applications(
         &self,
         candidate_id: &str,
     ) -> Result<Vec<fsp_domain::ApplicationRecord>, RepositoryError>;
     /// Unscoped lookup; the service applies the caller's tenancy rule.
-    fn application(
+    async fn application(
         &self,
         application_id: &str,
     ) -> Result<Option<fsp_domain::ApplicationRecord>, RepositoryError>;
-    fn save_application(
+    async fn save_application(
         &self,
         application: &fsp_domain::ApplicationRecord,
     ) -> Result<(), RepositoryError>;
     /// Tasks owned by a company.
-    fn tasks(&self, company_id: &str) -> Result<Vec<fsp_domain::TaskRecord>, RepositoryError>;
+    async fn tasks(&self, company_id: &str)
+    -> Result<Vec<fsp_domain::TaskRecord>, RepositoryError>;
     /// All active tasks across companies, for the weekly offer pool.
-    fn active_tasks(&self) -> Result<Vec<fsp_domain::TaskRecord>, RepositoryError>;
+    async fn active_tasks(&self) -> Result<Vec<fsp_domain::TaskRecord>, RepositoryError>;
     /// Unscoped lookup; the service applies the caller's tenancy rule.
-    fn task(&self, task_id: &str) -> Result<Option<fsp_domain::TaskRecord>, RepositoryError>;
-    fn save_task(&self, task: &fsp_domain::TaskRecord) -> Result<(), RepositoryError>;
+    async fn task(&self, task_id: &str) -> Result<Option<fsp_domain::TaskRecord>, RepositoryError>;
+    async fn save_task(&self, task: &fsp_domain::TaskRecord) -> Result<(), RepositoryError>;
     /// Responses sent by a candidate, for offers, history and freshness.
-    fn candidate_task_responses(
+    async fn candidate_task_responses(
         &self,
         candidate_id: &str,
     ) -> Result<Vec<fsp_domain::TaskResponseRecord>, RepositoryError>;
     /// Responses addressed to a company's tasks.
-    fn company_task_responses(
+    async fn company_task_responses(
         &self,
         company_id: &str,
     ) -> Result<Vec<fsp_domain::TaskResponseRecord>, RepositoryError>;
     /// Unscoped lookup; the service applies the caller's tenancy rule.
-    fn task_response(
+    async fn task_response(
         &self,
         response_id: &str,
     ) -> Result<Option<fsp_domain::TaskResponseRecord>, RepositoryError>;
-    fn save_task_response(
+    async fn save_task_response(
         &self,
         response: &fsp_domain::TaskResponseRecord,
     ) -> Result<(), RepositoryError>;
     /// Assessments owned by a candidate.
-    fn candidate_assessments(
+    async fn candidate_assessments(
         &self,
         candidate_id: &str,
     ) -> Result<Vec<fsp_domain::AssessmentRecord>, RepositoryError>;
     /// Unscoped lookup; the service applies the caller's tenancy rule.
-    fn assessment(
+    async fn assessment(
         &self,
         assessment_id: &str,
     ) -> Result<Option<fsp_domain::AssessmentRecord>, RepositoryError>;
-    fn save_assessment(
+    async fn save_assessment(
         &self,
         assessment: &fsp_domain::AssessmentRecord,
     ) -> Result<(), RepositoryError>;
-    fn save_oauth_state(
+    async fn save_oauth_state(
         &self,
         candidate_id: &str,
         state: &str,
         expires_at: &str,
     ) -> Result<(), RepositoryError>;
-    fn consume_oauth_state(
+    async fn consume_oauth_state(
         &self,
         candidate_id: &str,
         state: &str,
         now: &str,
     ) -> Result<bool, RepositoryError>;
-    fn save_github_token(&self, candidate_id: &str, token: &str) -> Result<(), RepositoryError>;
-    fn github_token(&self, candidate_id: &str) -> Result<Option<String>, RepositoryError>;
-    fn sources(&self, candidate_id: &str) -> Result<Vec<SourceRecord>, RepositoryError>;
-    fn save_source(&self, source: &SourceRecord) -> Result<(), RepositoryError>;
-    fn save_job(&self, job: &JobRecord) -> Result<(), RepositoryError>;
-    fn job(&self, owner_id: &str, job_id: &str) -> Result<Option<JobRecord>, RepositoryError>;
-    fn idempotency_get(
+    async fn save_github_token(
+        &self,
+        candidate_id: &str,
+        token: &str,
+    ) -> Result<(), RepositoryError>;
+    async fn github_token(&self, candidate_id: &str) -> Result<Option<String>, RepositoryError>;
+    async fn sources(&self, candidate_id: &str) -> Result<Vec<SourceRecord>, RepositoryError>;
+    async fn save_source(&self, source: &SourceRecord) -> Result<(), RepositoryError>;
+    async fn save_job(&self, job: &JobRecord) -> Result<(), RepositoryError>;
+    async fn job(&self, owner_id: &str, job_id: &str)
+    -> Result<Option<JobRecord>, RepositoryError>;
+    async fn idempotency_get(
         &self,
         scope: &str,
     ) -> Result<Option<StoredIdempotentResponse>, RepositoryError>;
-    fn idempotency_put(
+    async fn idempotency_put(
         &self,
         scope: &str,
         fingerprint: &str,
@@ -203,7 +219,7 @@ pub trait PlatformRepository: Send + Sync {
         body: &str,
         now: &str,
     ) -> Result<(), RepositoryError>;
-    fn seed_demo(&self, now: &str) -> Result<(), RepositoryError>;
+    async fn seed_demo(&self, now: &str) -> Result<(), RepositoryError>;
 }
 
 /// A stored `Idempotency-Key` response: the request fingerprint plus the

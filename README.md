@@ -16,7 +16,7 @@
 | [`frontend/`](frontend/README.md) | React-приложение «ФСП / Карьера» |
 | [`contracts/`](contracts/README.md) | единый OpenAPI-контракт между фронтендом и бэкендом, коды ошибок, генератор типов |
 | [`mock-server/`](mock-server/README.md) | HTTP-мок контракта: среда разработки фронтенда и эталон бизнес-логики для бэкенда |
-| [`backend/`](backend/README.md) | гексагональный API на Rust, SQLite-хранилище и адаптеры GitHub, ФСП и Bifrost |
+| [`backend/`](backend/README.md) | гексагональный API на Rust, PostgreSQL-хранилище и адаптеры GitHub, ФСП и Bifrost |
 | [`infra/`](infra/README.md) | демо-стенд: подготовка сервера, деплой, nginx; конфигурация nginx для Docker |
 | [`docs/product/`](docs/product/BUSINESS_RULES.md) | бизнес-правила платформы, матрица требований и ТЗ организаторов |
 
@@ -28,13 +28,13 @@
 
 ```sh
 docker compose up --build        # затем http://localhost:8080, код из письма — 123456
-docker compose down -v           # сбросить демонстрационные данные (volume fsp-data) и собрать заново
+docker compose down -v           # сбросить демонстрационные данные (volume pg-data) и собрать заново
 docker compose down
 ```
 
 Контейнер `web` (nginx) отдаёт собранный фронтенд и проксирует `/api/v1` в Rust-контейнер `api`. API слушает
 только loopback своего сетевого пространства, которое делит с `web`, поэтому снаружи доступен лишь порт 8080. Другой
-порт задаётся `FSP_PORT=9090 docker compose up --build`. SQLite-данные сохраняются в Docker volume `fsp-data`.
+порт задаётся `FSP_PORT=9090 docker compose up --build`. Данные PostgreSQL сохраняются в Docker volume `pg-data`.
 
 ## Разработка
 
