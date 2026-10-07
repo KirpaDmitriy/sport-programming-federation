@@ -2,25 +2,7 @@ name: docker
 
 on:
   push:
-    paths:
-      - docker-compose.yml
-      - .dockerignore
-      - mock-server/**
-      - frontend/**
-      - backend/**
-      - infra/docker/**
-      - infra/nginx/fsp-security-headers.conf
-      - .github/workflows/docker.yml
   pull_request:
-    paths:
-      - docker-compose.yml
-      - .dockerignore
-      - mock-server/**
-      - frontend/**
-      - backend/**
-      - infra/docker/**
-      - infra/nginx/fsp-security-headers.conf
-      - .github/workflows/docker.yml
 
 jobs:
   compose:

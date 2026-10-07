@@ -2,13 +2,7 @@ name: infra
 
 on:
   push:
-    paths:
-      - infra/**
-      - .github/workflows/infra.yml
   pull_request:
-    paths:
-      - infra/**
-      - .github/workflows/infra.yml
   workflow_call:
 
 permissions:
@@ -37,8 +31,9 @@ jobs:
           bash -n infra/deploy.sh
           bash -n infra/release.sh
           bash infra/tests/release.sh
+          bash infra/tests/cascade.sh
       - name: Check deployment scripts
-        run: shellcheck infra/deploy.sh infra/release.sh infra/provision.sh infra/backup-db.sh infra/tests/*.sh
+        run: shellcheck infra/deploy.sh infra/release.sh infra/provision.sh infra/backup-db.sh infra/tests/*.sh .github/scripts/cascade.sh
       - name: Verify PostgreSQL backup and restore
         run: |
           container='${{ job.services.postgres.id }}'
