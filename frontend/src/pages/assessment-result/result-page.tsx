@@ -16,7 +16,7 @@ import { ExportProfileButton } from '@/features/profile-pdf';
 import { useStartAssessment } from '@/features/start-assessment';
 import { describeError } from '@/shared/api';
 import { formatDate, gradeLabel, initials, specializationLabel, useDocumentTitle } from '@/shared/lib';
-import { Avatar, Button, ButtonLink, Callout, Card, Icon, InlineStatus, StatusChip, TableWrap } from '@/shared/ui';
+import { Avatar, Button, ButtonLink, Callout, Card, Icon, InlineStatus, StatusChip } from '@/shared/ui';
 import styles from './result-page.module.css';
 
 function headline(assessment: Assessment) {
@@ -119,7 +119,7 @@ function EvidenceUpdated({ assessment }: { assessment: Assessment }) {
             </p>
           </div>
         ) : (
-          <InlineStatus>Обновляем навыки профиля…</InlineStatus>
+          <p className="muted">Результат сохранён в истории. Актуальные свидетельства доступны на странице навыков.</p>
         )}
       </Card>
       {gap && (
@@ -195,7 +195,8 @@ export function AssessmentResultPage({ assessmentId }: { assessmentId: string })
         <div>
           <h1 className={styles.title}>{head.title}</h1>
           <p className="muted" style={{ fontSize: '1.125rem' }}>
-            {specializationLabel[assessment.specialization]} · тест знаний{' '}
+            {specializationLabel[assessment.specialization]} ·{' '}
+            {assessment.task.execution === 'questionnaire' ? 'тест знаний' : 'архивная демонстрационная проверка'}{' '}
             {result ? `завершён ${formatDate(assessment.updatedAt)}` : 'ещё оценивается'}
           </p>
         </div>
@@ -262,30 +263,17 @@ export function AssessmentResultPage({ assessmentId }: { assessmentId: string })
             <div className="stack-lg">
               {result.rubric.length > 0 && (
                 <Card title="Результаты по критериям">
-                  <TableWrap label="Результаты по критериям">
-                    <table className="table">
-                      <thead>
-                        <tr>
-                          <th scope="col">Критерий</th>
-                          <th scope="col">Результат</th>
-                          <th scope="col">Основание</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {result.rubric.map((item) => (
-                          <tr key={item.criterionId}>
-                            <td>
-                              <strong>{item.label}</strong>
-                            </td>
-                            <td>
-                              <RubricOutcomeChip outcome={item.outcome} />
-                            </td>
-                            <td>{item.feedback}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </TableWrap>
+                  <ul className="stack" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+                    {result.rubric.map((item) => (
+                      <li key={item.criterionId} className="stack" style={{ gap: '0.5rem' }}>
+                        <div className="row">
+                          <strong>{item.label}</strong>
+                          <RubricOutcomeChip outcome={item.outcome} />
+                        </div>
+                        <p className="small muted">{item.feedback}</p>
+                      </li>
+                    ))}
+                  </ul>
                 </Card>
               )}
               {result.checks.length > 0 && (
@@ -320,7 +308,13 @@ export function AssessmentResultPage({ assessmentId }: { assessmentId: string })
             </div>
             <div className="stack-lg">
               {result.outcome === 'passed' ? (
-                <EvidenceUpdated assessment={assessment} />
+                assessment.task.execution === 'questionnaire' ? (
+                  <EvidenceUpdated assessment={assessment} />
+                ) : (
+                  <Callout tone="neutral">
+                    Архивный результат демонстрационной проверки. Знания по новому тесту здесь не оценивались.
+                  </Callout>
+                )
               ) : (
                 <NextActions assessment={assessment} />
               )}
