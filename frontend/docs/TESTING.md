@@ -8,7 +8,7 @@ are checked by `.github/workflows/infra.yml`.
 | --- | --- | --- | --- | --- |
 | Mock API | `bun test` | `mock-server/test/mock-api.test.ts` | 25 | `bun run --cwd ../mock-server test` |
 | Unit and component | Vitest 5 + Testing Library + MSW 3 (jsdom, on Node) | `src/**/*.test.ts(x)` | 34 in 8 files | `bun run test` |
-| Browser acceptance | Playwright 1.63 + axe, Chromium 1440×900 | `e2e/*.spec.ts` | 34 + 1 opt-in | `bun run e2e` |
+| Browser acceptance | Playwright 1.63 + axe, Chromium 1440×900 | `e2e/*.spec.ts` | 35 + 1 opt-in | `bun run e2e` |
 | Deployed stand | Playwright | `e2e/public/stand.spec.ts` | 2 | `FSP_PUBLIC_URL=https://188.166.88.183 bun run e2e:public` |
 
 `bun run verify` runs the codegen check, typecheck, Biome, the FSD layer check, the unit tests, the production build
@@ -53,8 +53,8 @@ acceptance cases they cover.
 | Spec | Cases |
 | --- | --- |
 | `auth.spec.ts` | Registration with a wrong and an expired code; role separation and deep links that return after sign-in; an expired session clears private data; logout |
-| `candidate.spec.ts` | A new candidate reaches a verified category without FSP; the draft survives a reload, an upgrade updates every view and the PDF is real; a failed upgrade keeps Джуниор; a service failure is retryable without penalty; the cooldown comes from the server; automatic source enrichment and empty FSP history; a verified FSP record; graph and list share selection with keyboard access; PDF import applies only on confirmation |
-| `employer.spec.ts` | Salary validation, read-only tax basis, saving without publication; filters in the URL with a shortlist that survives filtering and reload; required coverage, verification gaps and verified grade kept apart; publication only on the needs list and no chat or ATS controls; a search failure is an error with retry; an emptied bank keeps shortlist entries as unavailable |
+| `candidate.spec.ts` | A new candidate reaches a verified category without FSP; the draft survives a reload, an upgrade updates every view and the PDF is real; a failed upgrade keeps Джуниор; a service failure is retryable without penalty; the cooldown comes from the server; automatic source enrichment and empty FSP history; a verified FSP record; graph loads on demand and shares selection with the keyboard-accessible list; PDF import applies only on confirmation |
+| `employer.spec.ts` | Salary validation, read-only tax basis, saving without publication; filters in the URL with a shortlist that survives filtering and reload; required coverage, verification gaps and verified grade kept apart; publication only on the needs list and no chat or ATS controls; a search failure is an error with retry; an emptied bank keeps shortlist entries as unavailable; graph loading/failure/manual retry is explicit and list mode makes no graph request |
 | `invitations.spec.ts` | Anonymous until acceptance, then only the chosen fields and only for the inviting company; viewing changes only the status and declining grants nothing; a stale tab sees the canonical decision and a withdrawn offer cannot be accepted |
 | `vacancies.spec.ts` | Publishing and unpublishing a need, the candidate feed with filters, salary and fit; applying opens only the chosen contacts to that company, which views and accepts while the candidate follows the status; withdrawing takes the contacts back; a candidate without a verified grade is told why applying is unavailable |
 | `tasks.spec.ts` | The weekly task is answered once, reviewed by its company with a comment and makes the profile fresh for every company, while the answer stays with the author; companies add and archive tasks with validation; a candidate without a verified grade is told why there is no task |
@@ -84,3 +84,8 @@ FSP lookup or PDF extraction. GitHub OAuth must be configured before its live co
 
 They prove contract shapes, state transitions, access rules and the interface against synthetic data. They do not
 measure assessment validity, matching quality, real e-mail delivery or production security.
+
+The live browser pass also exposed an outer API timeout shorter than the gateway budget and hidden employer
+graph failures. [Issue #27](https://github.com/KirpaDmitriy/sport-programming-federation/issues/27) tracks the
+55-second API deadline, on-demand graph queries and manual retry. Its forced-error browser regression runs
+locally against an intercepted response; this is separate from the unmodified HTTPS stand evidence in #23.
