@@ -2,7 +2,8 @@
 
 Latest follow-up: [issue #23](https://github.com/KirpaDmitriy/sport-programming-federation/issues/23) records the real
 browser pass, corrected simulated-PDF wording and responsive card headers. Check its delivery status as well as
-the earlier audit ledger before resuming. Live screenshots and traces are private verification artifacts, not
+the earlier audit ledger before resuming. [Issue #27](https://github.com/KirpaDmitriy/sport-programming-federation/issues/27)
+tracks the subsequently discovered graph timeout, eager-query and hidden-error corrections. Live screenshots and traces are private verification artifacts, not
 the mock screenshot gallery.
 
 ## Current law
@@ -30,7 +31,7 @@ no-attribution preference. Work in a feature branch and follow personal → dev 
 
 Local gates passed: just verify (25 mock, 34 component tests), just backend-check (24 HTTP, 10 repository tests
 plus unit/adapter tests), seven release fault scenarios, cascade tests, actual nginx rate-limit probe and real
-PostgreSQL backup restore. Full browser suite has 34 cases plus one intentionally opt-in screenshot; a mailbox
+PostgreSQL backup restore. The follow-up browser suite has 35 cases plus one intentionally opt-in screenshot; a mailbox
 race discovered in a later local run was fixed and all five auth tests passed three repetitions (15/15).
 All gates, including the full browser suite, must pass on the final PR head.
 

@@ -11,6 +11,8 @@ application modules. GitHub tokens are bound to authenticated login; source evid
 Company/profile/need patches distinguish omitted fields from explicit null; only website and experienceMonths
 are nullable. Company fields follow contract bounds; websites require HTTP(S), and email format matches the mock.
 Graphs validate model output and derive public labels/status/IDs from known skills, with no employer evidence nodes.
+Bifrost and GitHub analysis retain 45-second integration ceilings, inside the 55-second API guard and
+60-second nginx deadlines. Virtual-time tests preserve successful/bounded-failure responses at 45 seconds.
 
 ## Known Gaps
 
@@ -22,4 +24,4 @@ capacity before introducing database ranking/caches. No production load or asses
 Assessment starts with different idempotency keys also serialize on the candidate row before reading eligibility
 and the active attempt; concurrent losers receive `409 assessment_active`, not a storage error.
 
-Last commit: 4c2e28a (implementation and regression snapshot).
+Last commit: 636d0fe (HTTP deadline correction from live browser issue #27).

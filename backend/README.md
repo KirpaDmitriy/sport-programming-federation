@@ -77,6 +77,11 @@ real when configured and checks `/user` before accepting repository evidence. Bi
 when configured; repository-to-competition matching is an adapter port without a product call path.
 `GET /api/v1/meta` reports configuration, not proof of a provider's availability or assessment validity.
 
+Request budgets are nested: GitHub analysis and Bifrost completion each have a 45-second ceiling;
+the HTTP handler has 55 seconds, inside both nginx proxies' 60-second read deadline. This leaves room
+for storage and the contract error envelope. A provider timeout remains a visible integration failure;
+graph requests do not fall back to synthetic data. HTTP timeout regressions use Tokio virtual time.
+
 Five idempotent commands live in `application/src/service/commands.rs`. The key, domain effects and serialized
 response share one transaction; failed work rolls back. Same-key callers serialize in PostgreSQL and replay the
 stored status/body. Finished responses expire after one day; legacy unresolved claims fail closed.

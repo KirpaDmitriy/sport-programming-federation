@@ -22,6 +22,8 @@ export const mySkillsQuery = (scope: Scope) =>
 export const myGraphQuery = (scope: Scope) =>
   queryOptions({
     queryKey: graphKey(scope),
+    // Retrying a slow inference doubles the wait; the graph offers an explicit retry.
+    retry: false,
     queryFn: async ({ signal }) => requireData(await api.GET('/api/v1/me/graph', { signal })),
   });
 
