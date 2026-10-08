@@ -24,13 +24,15 @@ the private fictional FSP provider and knowledge assessments stay in place.
    Test races, failed delivery, provider failures and production login over HTTP.
 5. Verify a sending subdomain in Resend using its actual DNS records; disable
    tracking, publish SPF/DKIM/DMARC, and install a domain-restricted sending key
-   outside git. Provider access is pending owner connection at plan creation.
+   outside git. Provider access is configured; the owner confirmed the first test message reached their inbox.
 6. Update the frontend's real-mail guidance and release acceptance. Automated
    production login must read a real delivered OTP through a dedicated test inbox;
    no public fixed codes, hidden login bypass or silent skipped release gate.
 7. Run relevant Rust, contract, frontend, browser and release-failure checks.
    Commit cohesive changes on `feat/38-domain-email`, PR into `danil`, let checked
-   cascades reach `main`, and deploy that exact commit. Retain rollback support.
+   integration PRs reach `main`, and deploy that exact commit. Retain rollback support.
+   Actions billing prevented jobs from starting, and runner registration requires unavailable admin rights.
+   Issue #40 replaces Actions with four real private-server gates and checked PR integration, as authorized.
 8. Activate domain/mail configuration, verify real delivery and browser login,
    expired/wrong/reused code behavior, cookies, origins and private API caching.
    Provider delivery proves recipient-server acceptance; inbox placement requires
@@ -48,3 +50,11 @@ the private fictional FSP provider and knowledge assessments stay in place.
 - [OWASP verification token guidance](https://cheatsheetseries.owasp.org/cheatsheets/Forgot_Password_Cheat_Sheet.html)
 
 This plan records intended work; completion requires the evidence described above.
+
+## Execution evidence
+
+Real Resend delivery to the owner reached the inbox. Local real-mail Rust/PostgreSQL browser acceptance
+passed the candidate and two-company journey, with authenticated received messages. Rust workspace checks
+and 67 tests passed; TypeScript/mock/component/build checks passed, and browser accessibility reruns passed
+after resolving host disk exhaustion. The external CI run and final public cutover are tracked in issues #38
+and #40; these implementation checks alone do not claim a completed public release.

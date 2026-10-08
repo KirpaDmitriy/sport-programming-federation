@@ -17,6 +17,9 @@ name a state.
   sign-in address.
 - A code is valid for 15 minutes of server time, works once (`409 challenge_used`) and locks after five wrong
   attempts shared across unused live challenges for that email (`429 challenge_locked`); a wrong or expired code is `400 invalid_code` / `400 challenge_expired`.
+- Real email mode sends through Resend and allows one issuance per minute, at most five in fifteen minutes
+  per normalized address, including provider failures. Verification codes use random digits and keyed,
+  challenge-specific hashes; session hashes have a separate namespace. Local mock/demo codes remain disclosed fixtures.
 - The session is an opaque `HttpOnly`, `SameSite=Lax` cookie. Without it every protected call is `401`.
 - A candidate reaches only their own profile, sources, skills, assessments, jobs and invitations; an employer only
   their own company, needs, shortlists and invitations. Someone else's record answers `404`, so its existence is not
