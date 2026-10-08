@@ -35,7 +35,7 @@ jobs:
     needs: [platform, backend, infra]
     environment:
       name: stand
-      url: https://188.166.88.183
+      url: ${{ vars.FSP_PUBLIC_URL || 'https://188.166.88.183' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -68,26 +68,22 @@ jobs:
           EOF
           infra/deploy.sh "$GITHUB_SHA"
       - name: Public smoke check
+        env:
+          FSP_PUBLIC_URL: ${{ vars.FSP_PUBLIC_URL || 'https://188.166.88.183' }}
         run: |
           set -euo pipefail
-          base=https://188.166.88.183
+          base="$FSP_PUBLIC_URL"
           curl -fsS -o /dev/null "$base/"
           meta="$(curl -fsS "$base/api/v1/meta")"
-          challenge="$(curl -fsS -X POST "$base/api/v1/auth/email/challenges" \
-            -H 'content-type: application/json' \
-            -d '{"email":"alexey@example.com","role":"candidate"}' \
-            | python3 -c 'import json,sys; print(json.load(sys.stdin)["challengeId"])')"
-          curl -fsS -c cookies.txt -X POST "$base/api/v1/auth/email/verify" \
-            -H 'content-type: application/json' \
-            -d "{\"challengeId\":\"$challenge\",\"code\":\"123456\"}" > /dev/null
-          curl -fsS -b cookies.txt -o /dev/null "$base/api/v1/session"
+          session_status="$(curl -sS -o /dev/null -w '%{http_code}' "$base/api/v1/session")"
+          [ "$session_status" = 401 ] || { echo 'Anonymous session unexpectedly accepted'; exit 1; }
           code="$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$base/__mock__/session")"
           [ "$code" = 404 ] || { echo "__mock__ answered $code publicly"; exit 1; }
           {
             echo "### Post-deploy smoke"
             echo "- HTTPS frontend: ok"
             echo "- /api/v1/meta served, realLlm=$(echo "$meta" | python3 -c 'import json,sys; print(json.load(sys.stdin)["capabilities"]["realLlm"])')"
-            echo "- Demo login and session round-trip: ok"
+            echo "- Anonymous session rejected; authenticated journey follows in browser acceptance"
             echo "- /__mock__ stays closed publicly (HTTP $code)"
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -97,7 +93,7 @@ jobs:
     needs: stand
     environment:
       name: stand
-      url: https://188.166.88.183
+      url: ${{ vars.FSP_PUBLIC_URL || 'https://188.166.88.183' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -109,7 +105,10 @@ jobs:
       - name: Browser acceptance tests against the deployed stand
         working-directory: frontend
         env:
-          FSP_PUBLIC_URL: https://188.166.88.183
+          FSP_PUBLIC_URL: ${{ vars.FSP_PUBLIC_URL || 'https://188.166.88.183' }}
+          FSP_AUTH_MODE: ${{ vars.FSP_AUTH_MODE || 'demo' }}
+          FSP_RESEND_ACCEPTANCE_KEY: ${{ secrets.FSP_RESEND_ACCEPTANCE_KEY }}
+          FSP_TEST_EMAIL_DOMAIN: auth.nddev.link
           FSP_DEMO_CODE: "123456"
         run: |
           bunx playwright install --with-deps chromium
