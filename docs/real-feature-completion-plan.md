@@ -50,3 +50,17 @@ examples do not replace this project's Rust hexagonal architecture. PDF parsing 
 
 - Source inspection and initial primary-source research complete.
 - User confirmed: FSP stays simulated through a realistic mock server; email and GitHub OAuth are deferred.
+- PDF/assistant wave committed; real local Rust/PostgreSQL + configured Bifrost browser checks passed
+  for a cited PDF preview, confirmed profile fields and a contextual assistant reply.
+- Knowledge-test wave implemented: 30 reviewed questions across three backend grades, deterministic scoring,
+  private API answer key, archived legacy attempts, atomic draft/submission/consent ordering and result review.
+  See [knowledge-tests.md](knowledge-tests.md) for thresholds, versioning and interpretation limits.
+- FSP design checked against the federation's [2026 student event announcement](https://fsp-russia.ru/press/news/studencheskie-sorevnovaniya-po-sportivnomu-programmirovaniyu/):
+  it distinguishes individual algorithmic/UAV events and product teams of 3–6 participants. This supports
+  representing scope and team size, not inferring individual expertise from a team placement.
+  Our HTTP schema is an invented demo boundary, not a discovered official federation API.
+  Planned service: loopback-only versioned participant-results resource, explicit synthetic marker, fictional
+  published/pending/empty records, bounded HTTP adapter and durable source snapshots. Only published records
+  count as participation; neither registration nor participation assigns a grade. Resync must actually call the
+  simulator rather than only update the timestamp. Additive storage plus deployment/rollback health checks
+  keep existing data and releases compatible.
