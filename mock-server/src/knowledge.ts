@@ -1,37 +1,100 @@
-import bank from '../../backend/crates/domain/data/knowledge-v1.json';
+import legacy from '../../backend/crates/domain/data/knowledge-v1.json';
+import additions from '../../backend/crates/domain/data/knowledge-v2-additions.json';
 import type { components } from './generated/schema.d.ts';
 
 type Schemas = components['schemas'];
 type Task = Schemas['AssessmentTask'];
 type Answer = Schemas['AssessmentAnswer'];
 type Grade = Schemas['Assessment']['grade'];
+type Specialization = Schemas['Assessment']['specialization'];
+type SkillId = Schemas['KnowledgeQuestion']['skillId'];
+type BankQuestion = {
+  id: string;
+  specialization: Specialization;
+  grade: Grade;
+  skillId: SkillId;
+  prompt: string;
+  options: { id: string; label: string }[];
+  correctOptionId: string;
+  explanation: string;
+  source: string;
+};
+type TopicPair = readonly [readonly [SkillId, string], readonly [SkillId, string]];
 
-// This module is server-only; the frontend receives public questions through the API.
-export function knowledgeTask(grade: Grade): Task {
+const topics: Partial<Record<Specialization, TopicPair>> = {
+  backend: [
+    ['rust', 'Rust'],
+    ['postgresql', 'PostgreSQL'],
+  ],
+  frontend: [
+    ['typescript', 'TypeScript'],
+    ['react', 'React'],
+  ],
+};
+
+const bank: BankQuestion[] = [
+  ...legacy.questions.map((question) => ({
+    ...question,
+    specialization: 'backend' as const,
+    grade: question.grade as Grade,
+    skillId: question.skillId as SkillId,
+  })),
+  ...additions.questions.map((question) => ({
+    ...question,
+    specialization: question.specialization as Specialization,
+    grade: question.grade as Grade,
+    skillId: question.skillId as SkillId,
+  })),
+];
+
+function stableHash(value: string): number {
+  let hash = 0x811c9dc5;
+  for (const byte of new TextEncoder().encode(value)) hash = Math.imul(hash ^ byte, 0x01000193);
+  return hash >>> 0;
+}
+
+export function knowledgeTask(specialization: Specialization, grade: Grade, variantKey: string): Task | null {
+  const selectedTopics = topics[specialization];
+  if (!selectedTopics) return null;
+  const questions = selectedTopics.flatMap(([skillId]) =>
+    bank
+      .filter(
+        (question) =>
+          question.specialization === specialization && question.grade === grade && question.skillId === skillId,
+      )
+      .sort(
+        (left, right) =>
+          stableHash(`${variantKey}:${skillId}:${left.id}`) - stableHash(`${variantKey}:${skillId}:${right.id}`),
+      )
+      .slice(0, 5),
+  );
+  if (questions.length !== 10) return null;
+  const fingerprint = questions.map((question) => question.id).join('.');
+  const specializationTitle = specialization === 'backend' ? 'Rust и PostgreSQL' : 'TypeScript и React';
   return {
-    id: `knowledge-${grade}-v1`,
-    family: 'backend-knowledge',
-    version: bank.version,
-    variantId: `backend-${grade}-v1`,
-    title: 'Тест знаний: Rust и PostgreSQL',
+    id: `knowledge-${specialization}-${grade}-knowledge-v2`,
+    family: `${specialization}-knowledge`,
+    version: 'knowledge-v2',
+    variantId: `${specialization}-${grade}-v2-${stableHash(fingerprint).toString(16)}`,
+    title: `Тест знаний: ${specializationTitle}`,
     prompt:
       'Выберите один ответ в каждом из 10 вопросов. Для зачёта нужны минимум 8 верных ответов из 10 и минимум 3 из 5 по каждой теме. ИИ и справочники разрешены. Результат показывает знания по этому тесту, а не опыт написания кода.',
-    language: 'rust',
+    language: specialization === 'backend' ? 'backend' : 'frontend',
     starterCode: '',
     execution: 'questionnaire',
     aiAllowed: true,
     externalAiAllowed: true,
-    acceptanceCriteria: ['Не менее 8 верных ответов из 10', 'Не менее 3 из 5 по Rust и 3 из 5 по PostgreSQL'],
-    rubric: [
-      { id: 'rust', label: 'Rust', weight: 5 },
-      { id: 'postgresql', label: 'PostgreSQL', weight: 5 },
+    acceptanceCriteria: [
+      'Не менее 8 верных ответов из 10',
+      `Не менее 3 из 5 по ${selectedTopics[0][1]} и 3 из 5 по ${selectedTopics[1][1]}`,
     ],
-    questions: bank.questions
-      .filter((q) => q.grade === grade)
-      .map((q) => {
-        if (q.skillId !== 'rust' && q.skillId !== 'postgresql') throw new Error('Invalid knowledge skill');
-        return { id: q.id, skillId: q.skillId, prompt: q.prompt, options: structuredClone(q.options) };
-      }),
+    rubric: selectedTopics.map(([id, label]) => ({ id, label, weight: 5 })),
+    questions: questions.map((question) => ({
+      id: question.id,
+      skillId: question.skillId,
+      prompt: question.prompt,
+      options: structuredClone(question.options),
+    })),
   };
 }
 
@@ -41,57 +104,74 @@ export function validKnowledgeAnswer(task: Task, answer: Answer): boolean {
     !answer.code &&
     !answer.explanation &&
     responses.length <= 10 &&
-    new Set(responses.map((r) => r.questionId)).size === responses.length &&
-    responses.every((r) =>
-      task.questions?.some((q) => q.id === r.questionId && q.options.some((o) => o.id === r.optionId)),
+    new Set(responses.map((response) => response.questionId)).size === responses.length &&
+    responses.every((response) =>
+      task.questions?.some(
+        (question) =>
+          question.id === response.questionId && question.options.some((option) => option.id === response.optionId),
+      ),
     )
   );
 }
 
 export function knowledgeCompletion(task: Task, answer: Answer): Schemas['Check'][] {
-  return (task.questions ?? []).map((q) => {
-    const chosen = answer.responses?.some((r) => r.questionId === q.id);
+  return (task.questions ?? []).map((question) => {
+    const chosen = answer.responses?.some((response) => response.questionId === question.id);
     return {
-      id: q.id,
-      label: q.prompt,
+      id: question.id,
+      label: question.prompt,
       status: chosen ? 'passed' : 'not_run',
       message: chosen ? 'Ответ выбран; правильность проверяется после отправки' : 'Выберите ответ',
     };
   });
 }
 
-export function scoreKnowledge(grade: Grade, task: Task, answer: Answer) {
-  if (task.version !== bank.version || !validKnowledgeAnswer(task, answer) || answer.responses?.length !== 10)
+export function scoreKnowledge(specialization: Specialization, grade: Grade, task: Task, answer: Answer) {
+  const selectedTopics = topics[specialization];
+  if (
+    !selectedTopics ||
+    task.version !== 'knowledge-v2' ||
+    !validKnowledgeAnswer(task, answer) ||
+    answer.responses?.length !== 10
+  )
     return null;
-  const counts = { rust: 0, postgresql: 0 };
-  const checks: Schemas['Check'][] = bank.questions
-    .filter((q) => q.grade === grade)
-    .map((q) => {
-      const correct = answer.responses?.some((r) => r.questionId === q.id && r.optionId === q.correctOptionId);
-      if (q.skillId !== 'rust' && q.skillId !== 'postgresql') throw new Error('Invalid knowledge skill');
-      if (correct) counts[q.skillId] += 1;
-      const label = q.options.find((o) => o.id === q.correctOptionId)?.label;
-      return {
-        id: q.id,
-        label: q.prompt,
-        status: correct ? 'passed' : 'failed',
-        message: `Верный ответ: ${label}. ${q.explanation} Источник: ${q.source}`,
-      };
-    });
-  const total = counts.rust + counts.postgresql;
-  const rubric: Schemas['RubricOutcome'][] = task.rubric.map((r) => {
-    const count = r.id === 'rust' ? counts.rust : counts.postgresql;
+  const selected = new Set(task.questions?.map((question) => question.id));
+  const questions = bank.filter(
+    (question) => question.specialization === specialization && question.grade === grade && selected.has(question.id),
+  );
+  if (
+    questions.length !== 10 ||
+    selectedTopics.some(([skillId]) => questions.filter((question) => question.skillId === skillId).length !== 5)
+  )
+    return null;
+  const counts = new Map(selectedTopics.map(([skillId]) => [skillId, 0]));
+  const checks: Schemas['Check'][] = questions.map((question) => {
+    const correct = answer.responses?.some(
+      (response) => response.questionId === question.id && response.optionId === question.correctOptionId,
+    );
+    if (correct) counts.set(question.skillId, (counts.get(question.skillId) ?? 0) + 1);
+    const label = question.options.find((option) => option.id === question.correctOptionId)?.label;
     return {
-      criterionId: r.id,
-      label: r.label,
-      outcome: count >= 3 ? 'met' : 'not_met',
-      feedback: `${count} из 5 верных ответов; порог по теме — 3.`,
+      id: question.id,
+      label: question.prompt,
+      status: correct ? 'passed' : 'failed',
+      message: `Верный ответ: ${label}. ${question.explanation} Источник: ${question.source}`,
     };
   });
+  const scores: [number, number] = [counts.get(selectedTopics[0][0]) ?? 0, counts.get(selectedTopics[1][0]) ?? 0];
+  const total = scores.reduce((sum, score) => sum + score, 0);
   return {
-    passed: total >= 8 && counts.rust >= 3 && counts.postgresql >= 3,
+    passed: total >= 8 && scores.every((score) => score >= 3),
     checks,
-    rubric,
-    feedback: `Верных ответов: ${total} из 10. Rust: ${counts.rust}/5; PostgreSQL: ${counts.postgresql}/5. Для зачёта нужны 8/10 и не менее 3/5 по каждой теме. Проверены знания по тесту версии ${bank.version}; практический опыт разработки не оценивался. ИИ и справочники разрешены.`,
+    rubric: selectedTopics.map(([skillId, label], index) => {
+      const score = scores[index] ?? 0;
+      return {
+        criterionId: skillId,
+        label,
+        outcome: score >= 3 ? ('met' as const) : ('not_met' as const),
+        feedback: `${score} из 5 верных ответов; порог по теме — 3.`,
+      };
+    }),
+    feedback: `Верных ответов: ${total} из 10. ${selectedTopics[0][1]}: ${scores[0]}/5; ${selectedTopics[1][1]}: ${scores[1]}/5. Для зачёта нужны 8/10 и не менее 3/5 по каждой теме. Проверены знания по тесту версии ${task.version}; практический опыт разработки не оценивался. ИИ и справочники разрешены.`,
   };
 }

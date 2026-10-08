@@ -223,7 +223,16 @@ fn repository(value: ApiRepository) -> AnalyzedRepository {
     }
     for topic in value.topics {
         let normalized = topic.to_lowercase();
-        if ["rust", "postgresql", "docker", "redis", "react"].contains(&normalized.as_str()) {
+        if [
+            "rust",
+            "postgresql",
+            "docker",
+            "redis",
+            "typescript",
+            "react",
+        ]
+        .contains(&normalized.as_str())
+        {
             technologies.insert(normalized);
         }
     }

@@ -22,7 +22,7 @@ const url = str({ format: 'uri', maxLength: 2048 });
 const companyUrl = str({ format: 'uri', maxLength: 2048, pattern: '^https?://[^/?#\\s]+(?:[/?#][^\\s]*)?$' });
 const grade = en('junior', 'middle', 'senior');
 const specialization = en('backend', 'frontend', 'fullstack');
-const skillId = en('rust', 'postgresql', 'docker', 'redis', 'react');
+const skillId = en('rust', 'postgresql', 'docker', 'redis', 'typescript', 'react');
 const skillStatus = en('confirmed', 'evidence', 'observed', 'insufficient');
 const provider = en('github', 'fsp');
 const sourceKind = en('github', 'fsp', 'assessment');
@@ -538,7 +538,7 @@ export const schemas = {
   KnowledgeResponse: obj({ questionId: id, optionId: id }),
   KnowledgeQuestion: obj({
     id,
-    skillId: en('rust', 'postgresql'),
+    skillId: en('rust', 'postgresql', 'typescript', 'react'),
     prompt: str(),
     options: arr(obj({ id, label: str() }), { minItems: 2, maxItems: 6 }),
   }),
@@ -562,7 +562,7 @@ export const schemas = {
       variantId: str(),
       title: str(),
       prompt: str(),
-      language: en('rust'),
+      language: en('rust', 'backend', 'frontend'),
       starterCode: str(),
       acceptanceCriteria: arr(str()),
       rubric: arr(ref('RubricCriterion')),
