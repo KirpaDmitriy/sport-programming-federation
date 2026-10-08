@@ -1,35 +1,27 @@
 # Platform behavior
 
-## Current Behavior
+Rust/PostgreSQL implements the stand; the HTTP mock is a development behavior reference. OpenAPI contains
+74 application operations, health and four mock-only controls. Update every contract consumer together.
+Commands and idempotency replay commit atomically. PostgreSQL serializes email budgets, profile/source/assessment,
+company/shortlist and disclosure changes. Viewed flags never replace terminal decisions. Nullable patches and
+bounded fields follow the contract. Candidate/company ownership and anonymous projections are server-enforced.
 
-Rust/PostgreSQL is the stand implementation; mock is the development behavior reference. OpenAPI includes
-74 application operations, health and four mock-only controls. Contract changes update every side together.
-Command effects and idempotency response replay commit in one transaction. PostgreSQL serializes per-email
-attempt budgets, candidate profile/source/assessment edits, company/shortlist edits and disclosure recomputation.
-Viewed flags cannot replace terminal decisions. Commands, graph projections and source ingestion have dedicated
-application modules. GitHub tokens are bound to authenticated login; source evidence preserves assessed grades.
-Company/profile/need patches distinguish omitted fields from explicit null; only website and experienceMonths
-are nullable. Company fields follow contract bounds; websites require HTTP(S), and email format matches the mock.
-Graphs validate model output and derive public labels/status/IDs from known skills, with no employer evidence nodes.
-Bifrost and GitHub analysis retain 45-second integration ceilings, inside the 55-second API guard and
-60-second nginx deadlines. Virtual-time tests preserve successful/bounded-failure responses at 45 seconds.
+Real email uses the Resend adapter in backend/crates/integration-email: random six-digit codes, 15-minute expiry,
+challenge-bound HMAC digests, separate session namespace, single use and five cumulative wrong attempts.
+Real-mail issuance allows one/minute and five/15 minutes per normalized address, including provider failures.
+Migration 0005 adds created_at/index; never edit earlier SQL. Mandatory production config is validated before
+migrations. Enabling/rotating FSP_AUTH_KEY invalidates old credentials without deleting accounts. Demo/mock delivery
+remains fixed and has no mailbox-ownership assurance. The realEmail capability describes configuration, not health.
 
-## Known Gaps
+Knowledge-v1 contains 10 questions per backend grade; deterministic passing requires 8/10 and 3/5 per skill.
+Responses/snapshots are immutable at completion; legacy code attempts are archived and never execute.
+Assessment start races serialize on the candidate row. Grades, consent and response submission are transactional.
+PDF import uses bounded bwrap/prlimit/Poppler extraction, page-cited Bifrost fields and revision-safe confirmation.
+The contextual assistant uses saved responses and never grades. Real extraction is a startup/pre-release probe.
+GitHub/Bifrost deadlines are 45 seconds inside the 55-second HTTP and 60-second nginx deadlines.
+FSP uses a private fictional HTTP provider. Published participation counts; team results never certify skills.
+Failed provider sync preserves snapshots. GitHub OAuth implementation exists but live setup remains deferred.
 
-Knowledge tests use immutable knowledge-v1 snapshots (10 questions per backend grade, five Rust/five PostgreSQL),
-server-held correct choices and deterministic thresholds: 8/10 and 3/5 each. Incorrect/incomplete/foreign answers
-cannot pass; legacy code attempts are archived read-only. Same-grade successes refresh profile evidence without
-resetting grade-change cooldown. Correct answers/explanations appear only in final result DTOs.
-PDF import uses bounded bwrap/prlimit/Poppler extraction, Bifrost fields validated against page excerpts, and
-revision/consent-checked atomic confirmation. Assistant calls Bifrost with actual saved responses; it never grades.
-FSP connect/sync uses a private HTTP simulator with fictional published/pending/disqualified/empty records.
-Only published participation counts; team results never confirm skills/grades. Failed sync preserves snapshots.
-Demo email is not real identity; email delivery and GitHub OAuth setup are explicitly deferred by the user.
-The public study bank has no demonstrated leak resistance or professional calibration. LLM suggestions never prove qualifications.
-Jobs finish inline; there is no durable worker. Candidate search ranks complete collections in memory; measure
-capacity before introducing database ranking/caches. No production load or assessment-quality claim is made.
-
-Assessment starts with different idempotency keys also serialize on the candidate row before reading eligibility
-and the active attempt; concurrent losers receive `409 assessment_active`, not a storage error.
-
-Last commit: 89f0a2b (knowledge/PDF/assistant/FSP implementation; delivery ledger is issue #31).
+Limits: public study bank lacks demonstrated leak resistance/professional calibration; model suggestions never
+prove qualifications. Jobs finish inline; search ranks collections in memory. No OCR, durable worker, measured
+large-bank capacity or production load claim. Latest release evidence: issues #38/#40; prior product completion #31.
