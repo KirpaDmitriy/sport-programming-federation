@@ -71,6 +71,15 @@ without `/__mock__`, and walks a new candidate and two companies through the who
 (`FSP_DEMO_CODE`, default `123456`). Candidate addresses are unique; test records persist in PostgreSQL.
 The suite does not reset or delete stand data. A mock restart has no effect on Rust data.
 
+The live exploratory pass on 2026-10-08 used Chromium against the HTTPS Rust/PostgreSQL stand with separate
+candidate and employer contexts, no interception and no mock controls. It covered registration, saved drafts,
+assessment submission, PDF download/import, real graphs, company/need forms, persistent shortlists, selective
+invitation disclosure, cross-company isolation, applications/withdrawal, weekly task review and mobile navigation.
+It found backend-specific PDF wording and cramped mobile card headings; the fixes and final deployed screenshots
+are tracked in [issue #23](https://github.com/KirpaDmitriy/sport-programming-federation/issues/23).
+Treat a live test of a simulated feature as UI/API integration evidence, not proof of real email, code execution,
+FSP lookup or PDF extraction. GitHub OAuth must be configured before its live connection can be tested.
+
 ## What the tests do not show
 
 They prove contract shapes, state transitions, access rules and the interface against synthetic data. They do not
