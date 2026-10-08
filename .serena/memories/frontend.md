@@ -1,25 +1,20 @@
 # Frontend behavior
 
-## Current Behavior
+React/strict TypeScript 7, FSD and generated contracts; Russian UI and server-owned grades/privacy/state.
+Assessment draft saves queue; submission waits for acknowledgment and locks editing. Knowledge workspace uses
+labelled radios and saved counts; failed tests preserve grades and final results explain knowledge-only scope.
+PDF previews show cited excerpts; profile changes invalidate stale confirmation. FSP cards identify fictional
+records and distinguish pending/empty/DQ/outage. Deferred GitHub OAuth has no active connect control.
+Graph generation runs only in graph view; failures show explicit retry without stale success/fallback graphs.
 
-React/strict TypeScript 7 with FSD and generated contract types. Russian UI; server-owned eligibility, grades,
-privacy and state transitions. Assessment saves run in a promise queue; submission waits for acknowledged drafts
-and disables editing. Source synchronization tracks the returned job even when it already finished inline,
-refreshes derived queries on success and shows failures. The deep-link login test waits for code delivery.
-Knowledge workspace uses labelled radio groups, saved response counts and submission confirmation, with no code
-editor. Failed tests retain grades; final results review choices and sources and state knowledge-only scope.
-PDF preview displays verified excerpts and editable fields; profile changes invalidate stale confirmations.
-FSP cards show fictional event/protocol/team details, pending/empty/DQ states and old snapshots beside sync errors.
-Unavailable GitHub OAuth is shown as deferred with no active connect control. Result headings/check rows wrap.
-The browser helper waits for all 30 radio inputs before selecting answers; a generic group may belong to the
-outgoing onboarding route.
-Graph generation runs only in graph view, has no automatic retry, and exposes loading/failure/manual retry
-in both roles. An errored graph does not remain visible as a stale success.
+Login uses capabilities.realEmail to hide seed-account/demo-code hints in Resend mode. It explains inbox/spam
+checks and resend timing. Real codes never appear in a public development mailbox. Demo behavior is local only.
+Required form labels include the required marker; browser tests locate their accessible role/name accordingly.
+The onboarding browser helper waits for all questionnaire radios before selecting answers.
 
-## Known Gaps
-
-Mock E2E validates disclosed fixtures; public E2E separately validates Rust integration. Documentation screenshots
-are opt-in (one skipped test in ordinary runs). Public tests create a unique candidate and use seeded companies;
-records persist and must not be reset. Real graph requests can fail and must retain visible retryable errors.
-
-Last commit: a8fc70a (readable result criteria, legacy distinction and evidence vocabulary; delivery in issue #31).
+Mock E2E covers disclosed fixtures. Public E2E creates a candidate and two fresh companies and proves actual
+Rust authentication, knowledge tests, PDF export, invitation acceptance and tenant privacy. Resend mode reads
+actual unique test inboxes and checks message authentication; it never bypasses verification. Public browser
+traces/screenshots are disabled to avoid retaining OTPs/cookies. Data persists; tests never reset the stand.
+Opt-in documentation screenshots are normally skipped. Five accessibility tests passed after local disk cleanup.
+Release execution and exact live SHA: issues #38/#40; earlier full product/browser evidence: closed issue #31.
