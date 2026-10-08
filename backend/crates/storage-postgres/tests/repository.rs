@@ -829,3 +829,68 @@ fn demo_need() -> HiringNeed {
         ],
     }
 }
+
+#[tokio::test]
+async fn rollback_accepts_future_additive_schema_but_rejects_corrupt_history() {
+    use sqlx::migrate::{Migrate, Migration, MigrationType};
+    use std::borrow::Cow;
+
+    let (repository, database) = repository().await;
+    let mut connection = repository.pool().acquire().await.unwrap();
+    let future = Migration::new(
+        9000,
+        Cow::Borrowed("future additive fixture"),
+        MigrationType::Simple,
+        Cow::Borrowed(
+            "CREATE TABLE future_release_data (value text NOT NULL); INSERT INTO future_release_data VALUES ('preserved');",
+        ),
+        false,
+    );
+    connection.apply(&future).await.unwrap();
+    drop(connection);
+    let reopened = PostgresRepository::connect(&database.url).await.unwrap();
+    let value: String = sqlx::query_scalar("SELECT value FROM future_release_data")
+        .fetch_one(reopened.pool())
+        .await
+        .unwrap();
+    assert_eq!(value, "preserved");
+    reopened.pool().close().await;
+
+    sqlx::query("UPDATE _sqlx_migrations SET success = false WHERE version = 9000")
+        .execute(repository.pool())
+        .await
+        .unwrap();
+    let error = PostgresRepository::connect(&database.url)
+        .await
+        .err()
+        .unwrap();
+    assert!(format!("{error:?}").contains("partially applied"));
+    sqlx::query("UPDATE _sqlx_migrations SET success = true WHERE version = 9000")
+        .execute(repository.pool())
+        .await
+        .unwrap();
+
+    // An unknown version within the binary's history must not be silently ignored.
+    sqlx::query("INSERT INTO _sqlx_migrations (version, description, success, checksum, execution_time) VALUES (0, 'unknown old migration', true, '\\x00', 0)")
+        .execute(repository.pool()).await.unwrap();
+    let error = PostgresRepository::connect(&database.url)
+        .await
+        .err()
+        .unwrap();
+    assert!(format!("{error:?}").contains("migration 0 was previously applied but is missing"));
+    sqlx::query("DELETE FROM _sqlx_migrations WHERE version = 0")
+        .execute(repository.pool())
+        .await
+        .unwrap();
+
+    sqlx::query("UPDATE _sqlx_migrations SET checksum = '\\x00' WHERE version = 1")
+        .execute(repository.pool())
+        .await
+        .unwrap();
+    let error = PostgresRepository::connect(&database.url)
+        .await
+        .err()
+        .unwrap();
+    assert!(format!("{error:?}").contains("modified"));
+    repository.pool().close().await;
+}
