@@ -16,5 +16,8 @@ Mock E2E covers disclosed fixtures. Public E2E creates a candidate and two fresh
 Rust authentication, knowledge tests, PDF export, invitation acceptance and tenant privacy. Resend mode reads
 actual unique test inboxes and checks message authentication; it never bypasses verification. Public browser
 traces/screenshots are disabled to avoid retaining OTPs/cookies. Data persists; tests never reset the stand.
-Opt-in documentation screenshots are normally skipped. Five accessibility tests passed after local disk cleanup.
+Opt-in documentation screenshots are normally skipped. All 36 ordinary browser tests passed in private CI.
+Both live domain scenarios and owner real-email login passed; independent read-only UI/log checks passed.
 Release execution and exact live SHA: issues #38/#40; earlier full product/browser evidence: closed issue #31.
+
+Last commit: 5c00c2f185849cdff8dba0bb8701420eab4eb44a (verified implementation); integrated release receipt: issues #38/#40.
