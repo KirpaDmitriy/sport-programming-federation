@@ -1,41 +1,40 @@
 # Project handoff
 
-Read AGENTS.md and the domain memories. Code and current release evidence override older transcripts.
-Backend work was explicitly coordinated with Dima. User authorized nddev.link, Resend, real email tests and
-existing private CI servers; do not ask again. English engineering text, Russian UI, strict pinned toolchains.
-Never expose secrets, reset production data, rewrite shared history or change unrelated server slots.
+Read AGENTS.md, docs/current-state.md and domain memories. Source and live evidence override old transcripts.
+Backend coordination with Dima, real domain/mail and existing private CI hosts are already authorized.
+English engineering text, Russian UI. Never expose secrets, reset production data or rewrite shared history.
 
 ## Current behavior
 
-https://nddev.link serves Rust/PostgreSQL behind Cloudflare Full (strict); the old IP redirects to it.
-Real Resend OTP authentication is active, with HMAC-protected random codes, durable limits and secure cookies.
-Migration 0005 is additive. Runtime configuration is private on the host and in original .fsp-infra/.
-Knowledge tests replace code execution. FSP is intentionally a private fictional HTTP provider.
-Digital-PDF extraction and contextual assistance are real Bifrost flows. GitHub OAuth remains deferred.
+nddev.link serves Rust/PostgreSQL behind Cloudflare Full (strict), with real Resend OTPs and secure sessions.
+The original IP redirects to the domain. Five additive migrations are applied. Runtime secrets stay on hosts
+and in the original ignored .fsp-infra/. FSP is a deliberately fictional private HTTP provider; knowledge tests
+replace arbitrary code execution. Digital-PDF extraction and Bifrost assistance are real. GitHub OAuth is deferred.
 
-## Delivery and evidence
+## Completed work and current evidence
 
-#31 is the completed earlier product audit; do not restart it. #38 records domain/email; #40 records private CI.
-PR #41 replaced #39 without rewriting history; the old scanner finding concerned a disposable test password.
-GitGuardian passed the corrected history. PR #44 fixed Node 26 JSON-import test collection, then #45/#46
-integrated it. Implementation commit 5c00c2f passed all four CI gates; 1e7a215 passed the initial full wave.
-Domain cutover on 488fa91 passed real owner email login and both public browser scenarios; independent
-read-only verification passed. Both certificate renewal dry runs passed; no demo auth remains on the stand.
-Use the issue ledgers for final integrated SHA/synchronization, never a stale transcript or an older deployment.
+#16, #23/#27 and #31 are completed earlier audit/product deliveries. #38/#40 completed domain/mail/private CI
+on cd44951: all four gates, both real-email browser scenarios, independent live verification, ref synchronization
+and actual off-host archive restore passed. Historical failure 488fa91 and superseded PR39 are retained as history.
 
-CI: server-gha-runner-2, /opt/fsp-ci, private /etc/fsp-ci, active fsp-ci.timer. Four fsp/* statuses gate changes;
-independent security checks still apply. Reviewed installed controller files are separate from PR code. Every
-installed-script change invalidates cached evidence. Trusted private maintainers only; Docker is root-equivalent.
-Feature -> personal -> dev -> main uses checked PRs. Main deployment includes real mail/browser acceptance;
-/var/lib/fsp-ci/deployed.json exists only for an accepted SHA/configuration. Inspect failed logs before retrying.
-First 488fa91 acceptance failed during test-module loading; that historical failure remains, never relabel it.
+#50 is the subsequent consistency review: live/frontend/backend docs, demo instructions, build helper and screenshot
+capture were reconciled against source. Read its final issue receipt and git log for the integrated SHA.
+The screenshot suite uses fictional mock data; it is not live-auth evidence. Public acceptance reads actual mail.
+Do not restart completed audits or revive the old IP/fixed-code/Actions instructions.
 
-## Resume safely
+## Delivery and recovery
 
-Compare canonical main, /opt/fsp/current and the CI accepted-release marker; read open #38/#40 items if any.
-Mirror/local permanent branches track their corresponding canonical refs individually, not a common reset SHA.
-Private logs, delivery proof and off-host archives are in original .fsp-infra/. Daily host backups retain 14 days;
-off-host copies are manual. Real isolated restore is tested. No OpenObserve is installed; inspect systemd/nginx.
-Full current limits are in product docs: no calibrated/leak-resistant exam, OCR, durable source queue or load claim.
-Domain memories: platform.md (auth/data/assessment), frontend.md (UI), operations.md (deployment/mail/CI/backups).
-Last commit: 5c00c2f185849cdff8dba0bb8701420eab4eb44a; exact final release and live proof: #38/#40.
+CI: server-gha-runner-2, /opt/fsp-ci, root-private /etc/fsp-ci, fsp-ci.timer. Four fsp/* gates plus independent
+security checks protect personal -> dev -> main PRs. Installed controller updates are reviewed separately and
+invalidate cached proof. Trusted private maintainers only; Docker is root-equivalent. No GitHub Actions dependency.
+Current main must match /opt/fsp/current and accepted /var/lib/fsp-ci/deployed.json; fsp/deployment succeeds only
+after real public browser acceptance. Compare local/canonical/mirror permanent branches individually; never reset
+them to a common SHA. Preserve compatible Rust rollback targets; never revert public auth to mock/demo.
+
+Daily local backups retain 14 days. Off-host copies are manual and real isolated restore has been verified.
+No OpenObserve or external alerting exists: inspect systemd/nginx and CI logs. Other explicit limits are in
+current-state.md: no calibrated/leak-resistant exam, OCR, durable source queue, high availability or load claim.
+No pending user permission is needed for the completed scope. Read current open issues for new work.
+
+Memory index: platform.md (auth/data/assessment), frontend.md (UI/proofs), operations.md (deployment/mail/CI/recovery).
+Last commit: cd449516828977dd2627dabb094a2ff43600c501 (accepted baseline); current verification ledger: #50.
