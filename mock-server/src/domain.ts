@@ -409,7 +409,7 @@ function gapPlan(candidate: Candidate, need: Need): Schemas['GapPlan'] {
           status: item.status,
           reason: item.reason,
           action: policy.acceptAssessments
-            ? 'Пройдите практическую проверку навыка нужного уровня.'
+            ? 'Пройдите тест знаний нужного уровня.'
             : 'Предоставьте свидетельство из источников, которые принимает работодатель.',
           acceptedCompetitionIds,
           assessmentAvailable: policy.acceptAssessments && need.specialization === 'backend',
@@ -499,7 +499,7 @@ const activeApplication = (s: State, candidateId: string, needId: string) =>
 const eligibilityMessage = {
   email: 'Подтвердите почту, чтобы откликаться на вакансии',
   questionnaire: 'Заполните анкету, чтобы откликаться на вакансии',
-  assessment: 'Подтвердите грейд практической проверкой, чтобы откликаться на вакансии',
+  assessment: 'Подтвердите грейд тестом знаний, чтобы откликаться на вакансии',
   processing_consent: 'Для отклика необходимо согласие на обработку данных',
   application_exists: 'Вы уже откликнулись на эту вакансию',
 } as const satisfies Record<NonNullable<Schemas['ApplicationEligibility']['reason']>, string>;

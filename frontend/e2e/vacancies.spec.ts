@@ -111,7 +111,5 @@ test('UI-30 a candidate without a verified grade sees why applying is unavailabl
   await page.goto('/candidate/vacancies/need-002');
   await expect(page.getByRole('heading', { name: 'Отклик пока недоступен' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Откликнуться и открыть контакты' })).toHaveCount(0);
-  await expect(
-    page.getByText('Соответствие появится после подтверждения грейда практической проверкой.'),
-  ).toBeVisible();
+  await expect(page.getByText('Соответствие появится после подтверждения грейда тестом знаний.')).toBeVisible();
 });

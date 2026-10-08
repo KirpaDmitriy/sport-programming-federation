@@ -295,7 +295,7 @@ export function evidenceFor(candidateId: string, skill: SkillId, status: SkillSt
 }
 
 const summaries: Record<SkillStatus, string> = {
-  confirmed: 'Подтверждено практической проверкой',
+  confirmed: 'Подтверждено проверкой платформы',
   evidence: 'Есть свидетельства использования; целевой уровень ещё не проверен',
   observed: 'Технология найдена в проекте; уровень не подтверждён',
   insufficient: 'Недостаточно свидетельств',

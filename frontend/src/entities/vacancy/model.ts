@@ -37,7 +37,7 @@ export const eligibilityView: Record<
     action: { label: 'Заполнить анкету', to: '/candidate/onboarding' },
   },
   assessment: {
-    text: 'Откликаться можно после подтверждения грейда практической проверкой: компания видит проверенный уровень, а не самоописание.',
+    text: 'Откликаться можно после подтверждения грейда тестом знаний. Результат не подтверждает практический опыт.',
     action: { label: 'Перейти к проверкам', to: '/candidate/assessments' },
   },
   processing_consent: {

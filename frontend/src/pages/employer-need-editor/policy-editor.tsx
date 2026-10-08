@@ -21,7 +21,7 @@ export function PolicyEditor({ policy, onChange, skillId }: Props) {
       <Checkbox
         checked={policy.acceptAssessments}
         onChange={(event) => update({ acceptAssessments: event.target.checked })}
-        label="Практические проверки платформы"
+        label="Тесты знаний платформы"
         description="Подтверждают навык на уровне пройденной проверки."
       />
       <Checkbox
