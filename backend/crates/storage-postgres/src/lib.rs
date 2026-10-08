@@ -5,6 +5,7 @@
 //! as text payloads because the SQL layer never inspects them; timestamps are
 //! real `timestamptz` columns exchanged with the domain as RFC3339 strings.
 
+mod migrations;
 mod seed;
 
 use std::str::FromStr;
@@ -93,8 +94,7 @@ impl PostgresRepository {
                 Err(error) => return Err(storage(error)),
             }
         };
-        sqlx::migrate!("./migrations")
-            .run(&pool)
+        migrations::run(&pool)
             .await
             .map_err(|error| RepositoryError::Storage(error.to_string()))?;
         Ok(Self {

@@ -19,9 +19,22 @@ ssh -F "$SSH_CONFIG" "$DEPLOY_HOST" bash -s -- "$SHA" "$REMOTE_ARCHIVE" <<'REMOT
 set -euo pipefail
 sha="$1"
 archive="$2"
-stage="$(mktemp -d /opt/fsp/releases/.staging-XXXXXXXX)"
+root="${FSP_RELEASE_ROOT:-/opt/fsp}"
+stage="$(mktemp -d "$root/releases/.staging-XXXXXXXX")"
 trap 'rm -f "$archive"; rm -rf "$stage"' EXIT
 chmod 755 "$stage"
 tar -xzf "$archive" -C "$stage"
+# Current deployment tooling never delegates to an unguarded legacy script, even
+# if another deployment changes current between this check and lock acquisition.
+if [[ "$(cat "$stage/backend/ROLLBACK_COMPATIBLE" 2>/dev/null)" != sqlx-forward-additive-v1 ]]; then
+  echo 'Schema compatibility: target predates forward-migration support; use a compatible release' >&2
+  exit 1
+fi
+# A historical archive may predate all release guards. Validate using the active
+# controller before handing control to the archive's script (which takes the lock).
+# This read-only early check is repeated under the lock by current release scripts.
+if [[ -f "$root/current/infra/check-schema-compatibility.sh" ]]; then
+  bash "$root/current/infra/check-schema-compatibility.sh" "$root/current" "$stage"
+fi
 bash "$stage/infra/release.sh" "$sha" "$stage"
 REMOTE

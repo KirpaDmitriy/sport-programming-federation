@@ -64,11 +64,11 @@ examples do not replace this project's Rust hexagonal architecture. PDF parsing 
   it distinguishes individual algorithmic/UAV events and product teams of 3–6 participants. This supports
   representing scope and team size, not inferring individual expertise from a team placement.
   Our HTTP schema is an invented demo boundary, not a discovered official federation API.
-  Planned service: loopback-only versioned participant-results resource, explicit synthetic marker, fictional
+  Implemented service: loopback-only versioned participant-results resource, explicit synthetic marker, fictional
   published/pending/empty records, bounded HTTP adapter and durable source snapshots. Only published records
   count as participation; neither registration nor participation assigns a grade. Resync must actually call the
-  simulator rather than only update the timestamp. Additive storage plus deployment/rollback health checks
-  keep existing data and releases compatible.
+  simulator rather than only update the timestamp. Additive storage preserves existing data. Actual rollback compatibility additionally requires the migration
+  policy and pre-activation guard documented in the infrastructure runbook.
 
 - FSP HTTP implementation complete: published/pending/empty/disqualified fixtures, bounded schema validation,
   durable snapshots, failure preservation and source UI. Real local browser outage/recovery verified.
@@ -78,3 +78,18 @@ examples do not replace this project's Rust hexagonal architecture. PDF parsing 
 - Deferred by explicit user decision: email delivery and GitHub OAuth configuration. No official FSP integration
   or arbitrary code runner is planned. Remaining quality limits are public-bank calibration/leak resistance,
   inline jobs, measured large-bank capacity and off-host backup automation; none is claimed implemented.
+
+## Runtime recovery follow-up
+
+The first main deployment exposed a real service-context PDF failure and an incompatible schema rollback.
+The PDF sandbox no longer mounts the unused `/proc`; startup and CI exercise successful PDF extraction under
+actual API unit restrictions. Runtime validation precedes schema changes. Release checks reject incompatible
+migration histories before activation, while the storage runner permits future additive versions under an
+explicit advisory lock. PostgreSQL tests prove future data survives reconnect and changed/unknown-old/dirty
+migration history still fails. Fault tests cover guard rejection, compatible additive rollback and PDF preflight
+failure leaving the running release untouched. Exact passing gates and final live recovery remain in issue #31.
+
+These choices were checked against [SQLx 0.8.6 Migrator documentation](https://docs.rs/sqlx/0.8.6/sqlx/migrate/struct.Migrator.html)
+and the [systemd v255 execution settings](https://github.com/systemd/systemd/blob/v255/man/systemd.exec.xml).
+The actual stand reproduction, rather than an assumption about developer-shell permissions, established the
+unneeded proc mount as the immediate PDF failure. No global kernel security restriction was disabled.

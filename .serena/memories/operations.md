@@ -15,9 +15,17 @@ Daily postgres backup timer at 02:30 UTC + up to 15 minutes, persistent catch-up
 under /var/backups/fsp, retained for 14 days after successful backup. Real restore was proved in an isolated DB.
 
 FSP releases install both Rust binaries and the private simulator unit, gate API activation on combined health,
-and restore previous units on failure. Legacy release rollback without the helper stops it. Migration 0004 is additive.
+and restore previous units on failure. Helper absence is supported only for schema-compatible rollback targets.
+Migration 0004 is additive. The forward-additive policy tolerates only newer applied versions, with advisory
+locking and known-checksum/dirty checks intact. Current deploy tooling rejects unmarked legacy archives;
+release activation rejects changed/divergent histories and adding migrations before the previous binary supports
+forward migration. All new SQL must preserve reads/writes by retained binaries; the marker alone cannot prove it.
 PDF opt-in FSP_PDF_IMPORT=1 needs Bifrost, bubblewrap/poppler and the Ubuntu executable AppArmor profile.
-Provisioning installs the profile; startup probes the actual isolated parser. Never disable global sandbox restrictions.
+Provisioning installs the profile; startup extracts a real embedded PDF before DB access. CI/release preflight
+uses the exact API unit restrictions, read from the unit. No /proc mount is needed. Never disable global sandbox restrictions.
+October 8 first release failed on a proc mount under systemd, then the old strict binary rejected migration 4.
+Recovery served the new binary with PDF temporarily disabled, without changing data or migration history.
+Fixes beb44d9/2f110cc add real runtime preflight and guarded rollback; final delivery state is in issue #31.
 Default Docker PDF import is off; no privileged container is required for the ordinary platform/FSP service.
 
 ## Known Gaps
@@ -28,4 +36,4 @@ handle SIGKILL/power loss and binary rollback does not reverse schema changes. A
 GitHub OAuth is disabled; LLM chain OAuth tokens can expire/rotate. Never print credentials or auth state.
 No OpenObserve deployment exists in this project; verification uses systemd/nginx logs and direct response bodies.
 
-Last commit: 6590b5a (FSP runtime and legacy rollback; exact release evidence is in issue #31).
+Last commit: 2f110cc (migration-safe deployment); PDF runtime fix beb44d9; runbook fa7d71e. Exact live SHA/status is in issue #31.

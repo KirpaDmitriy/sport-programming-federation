@@ -18,6 +18,8 @@ old transcripts. Active delivery ledger: [issue #31](https://github.com/KirpaDmi
 - 89f0a2b: browser helper waits for the questionnaire and result headings/checks wrap on mobile.
 - f1b4608: consistent knowledge-test vocabulary in candidate/employer evidence and vacancy flows.
 - a8fc70a: readable mobile criteria and truthful legacy-result presentation.
+- beb44d9: real successful PDF probe under exact systemd restrictions; no unused proc mount; runtime before migrations.
+- 2f110cc: future additive migration support with strict history validation; guarded activation and historical-archive rejection.
 - Documentation/knowledge follow-ups reconcile current rules, architecture, runbooks and screenshots.
 
 ## Verification and delivery
@@ -25,7 +27,13 @@ old transcripts. Active delivery ledger: [issue #31](https://github.com/KirpaDmi
 Local TypeScript/mock/component/build and Rust workspace gates passed. Browser review used the actual local
 Rust API, isolated PostgreSQL and configured live Bifrost: cited PDF confirmation, real assistance, passing and
 failing knowledge tests, draft reload, mobile results, FSP HTTP published/pending/empty and outage/recovery.
-Release fault tests cover simulator outage and rollback to older releases without it. Two final browser-test
+Release fault tests cover simulator outage, helper lifecycle, schema-compatible rollback, rejected old archives,
+staged-script relocation and PDF preflight failure. Rust workspace now passes 63 tests, fmt and clippy.
+A temporary fixed binary extracted a real PDF under exact stand systemd restrictions on October 8 at 03:47 UTC.
+The first deployment 954be581 had exposed a proc-mount failure plus SQLx rejection of a future migration during
+rollback; recovery retained all data and served 954be581 with PDF disabled. Do not mistake this historical
+recovery state for final verification. The follow-up release must enable PDF only after its exact binary probe;
+then repeat live browser proof and independent review before closing issue #31. Two final browser-test
 failures were traced to stale FSP copy and the helper matching an outgoing form, then corrected.
 
 Read issue #31 before resuming: it records final browser/CI results, PR/cascade/deployment SHA, independent live
