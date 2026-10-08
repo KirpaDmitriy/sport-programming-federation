@@ -117,7 +117,7 @@ async function createNeed(page: Page): Promise<string> {
   await page.goto('/employer/needs/new');
   await page.getByRole('textbox', { name: 'Название', exact: true }).fill('Проверка выпуска — Rust');
   await page.getByLabel('Краткое описание').fill('Синтетическая потребность для автоматической проверки.');
-  await page.getByLabel('Грейд', { exact: true }).selectOption('junior');
+  await page.getByRole('combobox', { name: 'Грейд', exact: true }).selectOption('junior');
   await page.getByLabel('От', { exact: true }).fill('80000');
   await page.getByLabel('До', { exact: true }).fill('120000');
   await page.getByLabel('Навык', { exact: true }).selectOption('rust');
