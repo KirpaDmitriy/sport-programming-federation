@@ -41,8 +41,6 @@ fn sandbox() -> Command {
             "--symlink",
             "usr/lib64",
             "/lib64",
-            "--proc",
-            "/proc",
             "--dev",
             "/dev",
             "--tmpfs",
@@ -72,10 +70,13 @@ fn sandbox() -> Command {
 
 impl SandboxedPdf {
     pub async fn probe(&self) -> Result<(), IntegrationError> {
-        let mut command = sandbox();
-        command.arg("-v");
-        match tokio::time::timeout(Duration::from_secs(5), command.status()).await {
-            Ok(Ok(status)) if status.success() => Ok(()),
+        // Exercise extraction, not just executable discovery, before migrations.
+        // Poppler does not need /proc; mounting it fails under ProtectKernelTunables.
+        match self
+            .extract(include_bytes!("../fixtures/runtime-probe.pdf"))
+            .await
+        {
+            Ok(pages) if pages.len() == 1 && pages[0].text == "FSP runtime probe" => Ok(()),
             _ => Err(error(
                 "pdf_parser_unavailable",
                 "Сервис разбора PDF недоступен",
@@ -206,6 +207,11 @@ mod tests {
         let pages = parse_text("Имя\x0cRust\x0c".as_bytes().to_vec()).unwrap();
         assert_eq!(pages.len(), 2);
         assert_eq!(pages[1].page, 2);
+    }
+
+    #[tokio::test]
+    async fn real_document_is_extracted_in_the_sandbox() {
+        SandboxedPdf::default().probe().await.unwrap();
     }
 
     #[tokio::test]
