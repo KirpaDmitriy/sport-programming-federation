@@ -83,8 +83,22 @@ are protected from retention even when rolling back to an older SHA. A process k
 power failure cannot run a shell rollback handler; inspect the current symlink and service health after recovery.
 
 Database migrations run when Rust starts and are forward-only. A binary rollback does not undo a migration;
-releases must retain compatibility with the previous schema. Take a backup before a schema change.
-`deploy.sh` ships the scripts of the requested ref; use the current release script for historical rollback.
+all new migrations must preserve reads/writes by every retained rollback binary. Take a backup before a schema change.
+`backend/ROLLBACK_COMPATIBLE` declares the `sqlx-forward-additive-v1` startup policy: only unknown versions
+newer than the embedded history are tolerated; known checksums and dirty state are still checked under SQLx's
+advisory lock. It is not proof that arbitrary DDL is backward compatible; review additive SQL and application
+semantics. Renames, drops and new mandatory columns require a separate compatibility/retention plan.
+
+The pre-activation guard rejects edited or divergent migration histories, adding migrations while the previous
+binary still has SQLx's strict legacy policy, and rollback to strict binaries after forward-compatible code has
+run. Ship migration compatibility separately before introducing the next schema change. Once this release is
+active, historical releases without the policy marker are deliberately unavailable for manual rollback.
+Never edit/delete applied migration records to force an old binary to start. The October 8 release incident
+exposed this failure: migration 0004 applied, the PDF probe failed and the older binary rejected migration 4.
+Recovery served the newer binary with PDF disabled; no schema or data was reverted.
+`deploy.sh` rejects every historical archive without the migration-policy marker before running its script,
+then validates against the active controller as well. Use current deployment tooling for rollback; directly
+running an archived pre-guard script is unsupported and bypasses these protections.
 
 `.github/workflows/deploy.yml` ships `main` as a gated pipeline on every push to the shared repository:
 
@@ -145,8 +159,9 @@ The only datastore. `provision.sh` installs the distro package, pins `listen_add
 `conf.d/fsp-localhost.conf` drop-in, creates a `fsp` login role and `fsp` database owned by it, and writes the
 generated URL to root-managed `/etc/fsp/db.env` (`640 root:fsp`). The file is created once — re-runs never
 rotate the password. `fsp-api.service` loads it through `EnvironmentFile=-/etc/fsp/db.env` and orders itself
-`After=postgresql.service`; migrations and the demo seed run inside `PostgresRepository::connect`, so a fresh
-database is ready on first start.
+`After=postgresql.service`; adapter configuration, PDF extraction and socket binding are checked before
+`PostgresRepository::connect` applies migrations. `PlatformService::initialize` then seeds the demo records,
+so a fresh database is ready on first start.
 
 | Task | Command |
 | --- | --- |
@@ -198,10 +213,17 @@ For digital PDF import, provisioning installs `bubblewrap`, `poppler-utils` and 
 Global unprivileged-userns restrictions stay enabled. The API unit permits `AF_NETLINK` for namespace setup;
 the parser still runs without host network/secrets, under process/time/output/concurrency limits.
 Set `FSP_PDF_IMPORT=1` in the private API environment and configure Bifrost. Startup probes the actual sandbox
-and fails closed if unavailable. There is no unsandboxed fallback. See [backend limits](../backend/README.md#pdf-import-runtime).
+using a real embedded one-page PDF before touching PostgreSQL and fails closed if unavailable.
+Poppler runs without a `/proc` mount: it is unnecessary and conflicts with `ProtectKernelTunables` on the stand.
+`sudo bash infra/tests/pdf-runtime.sh /absolute/path/to/fsp-career-api` checks real extraction with the restrictions
+read directly from `fsp-api.service`, without application environment, database or LLM access. CI runs it on
+Ubuntu/systemd, and release activation runs it before changing units or the active symlink when PDF is enabled.
+For first enablement, probe the deployed binary, set the flag, restart the API and check capability plus a real
+preview. If this fails, restore the flag before restarting. There is no unsandboxed fallback. See [backend limits](../backend/README.md#pdf-import-runtime).
 
 The release builds both Rust binaries, installs/restarts `fsp-simulator.service` before API activation and checks
 its loopback health together with API and nginx. Failed activation restores the previous units/release. Rolling
-back to an older release without the simulator stops the helper; it does not undo additive database migrations.
+back to a schema-compatible release without the simulator stops the helper. The schema guard runs first;
+helper lifecycle support alone does not make a historical binary a valid rollback target.
 `0004_fsp_results.sql` preserves historical records with an empty detailed-results array until refreshed.
 [FSP fixtures](../docs/fsp-simulator.md) are entirely fictional and cannot establish real federation identity.

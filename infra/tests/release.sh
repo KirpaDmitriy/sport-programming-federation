@@ -48,6 +48,11 @@ cat > "$fixture/bin/sleep" <<'STUB'
 #!/usr/bin/env bash
 exit 0
 STUB
+cat > "$fixture/bin/systemd-run" <<'STUB'
+#!/usr/bin/env bash
+set -eu
+[[ "${FSP_TEST_FAIL:-}" != pdf ]]
+STUB
 mkdir -p "$FSP_RUSTUP_ROOT/toolchains/1.99.0-x86_64-unknown-linux-gnu/bin"
 cat > "$FSP_RUSTUP_ROOT/toolchains/1.99.0-x86_64-unknown-linux-gnu/bin/cargo" <<'STUB'
 #!/usr/bin/env bash
@@ -68,6 +73,8 @@ make_release() {
   cp -r "$HERE" "$dir/infra"
   echo '<main>fixture</main>' > "$dir/frontend/dist/index.html"
   echo 'channel = "1.99.0"' > "$dir/backend/rust-toolchain.toml"
+  mkdir -p "$dir/backend/crates/storage-postgres/migrations"
+  echo 'SELECT 1;' > "$dir/backend/crates/storage-postgres/migrations/0001_initial.sql"
   printf '#!/bin/sh\nexit 0\n' > "$dir/bin/fsp-career-api"
   chmod +x "$dir/bin/fsp-career-api"
 }
@@ -107,12 +114,12 @@ if FSP_TEST_FAIL=build bash "$HERE/release.sh" "$third" "$stage" > "$fixture/out
 [[ "$(readlink -f "$FSP_RELEASE_ROOT/current")" == "$FSP_RELEASE_ROOT/releases/$old" ]]
 echo 'PASS: failed build leaves active release intact'
 
-bash "$HERE/release.sh" "$third" "$stage" > "$fixture/first.log" 2>&1 &
+bash "$stage/infra/release.sh" "$third" "$stage" > "$fixture/first.log" 2>&1 &
 first=$!
 stage_two="$FSP_RELEASE_ROOT/releases/.staging-two"
 make_release "$stage_two"
 fourth=4444444444444444444444444444444444444444
-bash "$HERE/release.sh" "$fourth" "$stage_two" > "$fixture/second.log" 2>&1 &
+bash "$stage_two/infra/release.sh" "$fourth" "$stage_two" > "$fixture/second.log" 2>&1 &
 second=$!
 wait "$first"
 wait "$second"
@@ -131,3 +138,53 @@ bash "$HERE/release.sh" "$old" >/dev/null
 rg_command='disable --now fsp-simulator'
 [[ "$(cat "$FSP_TEST_COMMANDS")" == *"$rg_command"* ]]
 echo 'PASS: legacy rollback stops the simulator and retains both releases'
+
+# Release manifests must be compatible before any host/service mutation.
+make_release "$FSP_RELEASE_ROOT/releases/$new"
+schema=backend/crates/storage-postgres/migrations
+for failure in changed added removed divergent strict_target; do
+  reset_previous
+  old_dir="$FSP_RELEASE_ROOT/releases/$old"
+  new_dir="$FSP_RELEASE_ROOT/releases/$new"
+  rm -f "$old_dir/$schema/"*.sql "$new_dir/$schema/"*.sql
+  rm -f "$old_dir/backend/ROLLBACK_COMPATIBLE" "$new_dir/backend/ROLLBACK_COMPATIBLE"
+  echo 'SELECT 1;' > "$old_dir/$schema/0001_initial.sql"
+  echo 'SELECT 1;' > "$new_dir/$schema/0001_initial.sql"
+  case "$failure" in
+    changed) echo 'SELECT 2;' > "$new_dir/$schema/0001_initial.sql" ;;
+    added) echo 'SELECT 2;' > "$new_dir/$schema/0002_extra.sql" ;;
+    removed) echo 'SELECT 2;' > "$old_dir/$schema/0002_extra.sql" ;;
+    divergent)
+      echo 'SELECT 2;' > "$old_dir/$schema/0002_extra.sql"
+      echo 'SELECT 3;' > "$new_dir/$schema/0003_other.sql"
+      ;;
+    strict_target) echo sqlx-forward-additive-v1 > "$old_dir/backend/ROLLBACK_COMPATIBLE" ;;
+  esac
+  if bash "$HERE/release.sh" "$new" > "$fixture/output" 2>&1; then
+    echo "Expected schema rejection: $failure" >&2; exit 1
+  fi
+  [[ ! -f "$FSP_TEST_COMMANDS" ]]
+  [[ "$(readlink -f "$FSP_RELEASE_ROOT/current")" == "$old_dir" ]]
+  [[ "$(cat "$FSP_SYSTEM_ROOT/etc/systemd/system/fsp-api.service")" == old-unit ]]
+  echo "PASS: $failure schema leaves the active release untouched"
+done
+
+echo sqlx-forward-additive-v1 > "$new_dir/backend/ROLLBACK_COMPATIBLE"
+echo 'SELECT 2;' > "$new_dir/$schema/0002_extra.sql"
+bash "$HERE/release.sh" "$new" >/dev/null
+bash "$HERE/release.sh" "$old" >/dev/null
+[[ "$(readlink -f "$FSP_RELEASE_ROOT/current")" == "$old_dir" ]]
+echo 'PASS: compatible binaries can upgrade and roll back an additive schema'
+
+reset_previous
+if FSP_TEST_FAIL=health bash "$HERE/release.sh" "$new" > "$fixture/output" 2>&1; then exit 1; fi
+[[ "$(readlink -f "$FSP_RELEASE_ROOT/current")" == "$old_dir" ]]
+echo 'PASS: additive release health failure restores a compatible binary'
+
+reset_previous
+echo 'FSP_PDF_IMPORT=1' >> "$FSP_SYSTEM_ROOT/etc/fsp/rust-api.env"
+if FSP_TEST_FAIL=pdf bash "$HERE/release.sh" "$new" > "$fixture/output" 2>&1; then exit 1; fi
+[[ ! -f "$FSP_TEST_COMMANDS" ]]
+[[ "$(readlink -f "$FSP_RELEASE_ROOT/current")" == "$old_dir" ]]
+[[ "$(cat "$FSP_SYSTEM_ROOT/etc/systemd/system/fsp-api.service")" == old-unit ]]
+echo 'PASS: PDF runtime failure stops before activation and migrations'
