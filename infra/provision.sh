@@ -84,11 +84,13 @@ SQL
   mv "$db_env" /etc/fsp/db.env
 fi
 
-install -d -m 700 -o postgres -g postgres /var/backups/fsp
-install -D -m 755 "$HERE/backup-db.sh" /usr/local/libexec/fsp-backup-db
-install -m 644 "$HERE/fsp-backup.service" "$HERE/fsp-backup.timer" /etc/systemd/system/
+# Owner policy: no database backups, including on previously provisioned stands.
+systemctl disable --now fsp-backup.timer 2>/dev/null || true
+systemctl stop fsp-backup.service 2>/dev/null || true
+rm -f /etc/systemd/system/fsp-backup.service /etc/systemd/system/fsp-backup.timer \
+  /usr/local/libexec/fsp-backup-db
+systemctl mask fsp-backup.service fsp-backup.timer
 systemctl daemon-reload
-systemctl enable --now fsp-backup.timer
 
 ufw allow OpenSSH >/dev/null
 ufw allow 'Nginx Full' >/dev/null
