@@ -10,7 +10,7 @@ visible; they are superseded by the new `fsp/*` policy, never rewritten as succe
 
 `gate.sh` preserves platform types/lint/contracts/components/build/browser acceptance, Rust fmt/clippy/tests
 with real PostgreSQL, real PDF extraction under the API's exact systemd restrictions, Compose images and HTTP
-checks, deployment fault recovery, nginx configuration, backup/restore and controller regression tests.
+checks, deployment fault recovery, nginx configuration and controller regression tests. Backup creation is disabled by owner policy.
 All four statuses (`fsp/platform`, `fsp/backend`, `fsp/compose`, `fsp/release-safety`) must pass. Exact Git tree
 and installed controller content identify evidence; identical integration trees reuse successful evidence and
 explicitly name its source SHA in the status. Failures do not pass and are not repeatedly retried automatically.
@@ -62,7 +62,7 @@ For controller upgrades: stop the timer, wait for the current service to finish,
 from the reviewed release, then restart the timer. For a single script update, review and validate it,
 install it with the existing root ownership/mode while the service is inactive, and restart the timer.
 Controller content changes invalidate cached proof. Keep the
-stand's earlier compatible releases/backups; reverting CI never requires database changes. Do not re-enable retired
+stand's earlier compatible application releases; reverting CI never requires database changes. Do not re-enable retired
 Actions workflows without restoring billing/permissions and deliberately migrating the gate policy.
 
 Primary references: [GitHub commit statuses](https://docs.github.com/en/rest/commits/statuses),

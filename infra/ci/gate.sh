@@ -59,12 +59,6 @@ case "${1:?gate required}" in
     bash infra/tests/nginx-config.sh
     python3 -m unittest discover -s infra/ci -p 'test_*.py'
     shellcheck infra/*.sh infra/tests/*.sh infra/ci/*.sh
-    database="fsp-ci-backup-$$"
-    trap 'docker rm -f "$database" >/dev/null 2>&1 || true' EXIT
-    docker run --detach --name "$database" --label fsp.ci=true --memory=512m -e POSTGRES_HOST_AUTH_METHOD=trust postgres:17-alpine
-    for _ in {1..60}; do docker exec "$database" pg_isready -U postgres && break; sleep 1; done
-    docker cp infra "$database:/tmp/fsp-infra"
-    docker exec -e PGUSER=postgres "$database" bash /tmp/fsp-infra/tests/backup.sh
     ;;
   *) echo 'Unknown gate' >&2; exit 1 ;;
 esac
