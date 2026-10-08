@@ -29,7 +29,7 @@ the private fictional FSP provider and knowledge assessments stay in place.
    production login must read a real delivered OTP through a dedicated test inbox;
    no public fixed codes, hidden login bypass or silent skipped release gate.
 7. Run relevant Rust, contract, frontend, browser and release-failure checks.
-   Commit cohesive changes on `feat/38-domain-email`, PR into `danil`, let checked
+   Commit cohesive changes on feature branches, PR into `danil`, let checked
    integration PRs reach `main`, and deploy that exact commit. Retain rollback support.
    Actions billing prevented jobs from starting, and runner registration requires unavailable admin rights.
    Issue #40 replaces Actions with four real private-server gates and checked PR integration, as authorized.
@@ -49,12 +49,34 @@ the private fictional FSP provider and knowledge assessments stay in place.
 - [Resend restricted API keys](https://resend.com/docs/api-reference/api-keys/create-api-key)
 - [OWASP verification token guidance](https://cheatsheetseries.owasp.org/cheatsheets/Forgot_Password_Cheat_Sheet.html)
 
-This plan records intended work; completion requires the evidence described above.
+The sequence above is implemented. Exact integrated release identities and final synchronization receipts are
+recorded in issues #38 and #40; use those ledgers and the CI release marker for the current SHA.
 
-## Execution evidence
+## Execution evidence — 2026-10-08
 
-Real Resend delivery to the owner reached the inbox. Local real-mail Rust/PostgreSQL browser acceptance
-passed the candidate and two-company journey, with authenticated received messages. Rust workspace checks
-and 67 tests passed; TypeScript/mock/component/build checks passed, and browser accessibility reruns passed
-after resolving host disk exhaustion. The external CI run and final public cutover are tracked in issues #38
-and #40; these implementation checks alone do not claim a completed public release.
+- PR #41 shipped the domain/mail/CI implementation; PR #39 remains superseded history. GitGuardian flagged
+  only an intermediate disposable test password in #39. The corrected branch used random credentials from
+  its first CI commit and passed the scanner normally; no exclusions or fabricated statuses were added.
+- All four private-server gates passed at `1e7a215` and `5c00c2f`: 26 mock tests, 36 component tests,
+  36 ordinary browser tests (one opt-in screenshot test skipped), 67 Rust tests, real PostgreSQL HTTP tests,
+  exact-systemd PDF extraction, Compose smoke, 16 release fault cases, 10 CI controller regressions and
+  isolated backup/restore. PR #44 fixed the Node 26 JSON-import attribute and added public-suite collection
+  to the pre-deployment gate after the first live acceptance loader failed. That failure remains visible.
+- Origin cutover at 13:12 UTC preserved PostgreSQL data and activated real Resend authentication. The owner
+  confirmed the first direct test message reached the inbox. A subsequent real Chromium login to
+  `danil@nddev.ai` verified delivery, wrong-code rejection, resend limiting, single use, Secure/HttpOnly/
+  SameSite cookies, reload persistence, foreign-origin rejection and API no-store at 13:19 UTC.
+- Both public browser scenarios passed against `https://nddev.link`: actual delivered/authenticated email,
+  new candidate, knowledge assessment, PDF export, two new companies, invitation acceptance and contact
+  isolation. No mock controls, request interception, production reset or authentication bypass were used.
+- Cloudflare proxy and Always Use HTTPS are enabled with Full (strict). Direct-origin and edge TLS both
+  validate, API responses are DYNAMIC/no-store, and old IP traffic redirects to the domain. A forged direct
+  CF-Connecting-IP is ignored; proxied requests retain the real visitor IP in nginx logs.
+- Domain and original-IP certificate renewal dry runs passed. Independent read-only browser/HTTP/log
+  verification of the cutover found no JavaScript errors or server 5xx. No OpenObserve is installed;
+  operational verification uses systemd/nginx and CI logs.
+
+Private delivery/login proof, provider configuration and backup copies stay in the ignored `.fsp-infra/`.
+The CI host records accepted releases only after deployment and the real public mail/browser journey pass;
+`/var/lib/fsp-ci/deployed.json` and `fsp/deployment` are authoritative for that result. CI logs retain 14 days.
+Daily local backups retain 14 days; verified off-host copies are manual, not an automated recovery service.
