@@ -8,7 +8,7 @@ getent passwd fsp >/dev/null || useradd --system --no-create-home fsp
 usermod -aG docker fsp-ci
 install -d -m 700 /etc/fsp-ci
 install -d -m 755 /opt/fsp-ci /var/lib/fsp-ci
-install -d -o fsp-ci -g fsp-ci /var/lib/fsp-ci/home /var/lib/fsp-ci/home/.local/bin /var/lib/fsp-ci/home/.docker/cli-plugins /var/lib/fsp-ci/cache
+install -d -o fsp-ci -g fsp-ci /var/lib/fsp-ci/home /var/lib/fsp-ci/home/.local /var/lib/fsp-ci/home/.local/bin /var/lib/fsp-ci/home/.docker /var/lib/fsp-ci/home/.docker/cli-plugins /var/lib/fsp-ci/cache
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
 apt-get install -y --no-install-recommends bubblewrap poppler-utils shellcheck pkg-config libssl-dev build-essential curl ca-certificates xz-utils libnspr4 libnss3 libatk1.0-0 libatk-bridge2.0-0 libatspi2.0-0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libxkbcommon0 libasound2t64 libcups2 libpango-1.0-0 libcairo2 fonts-liberation

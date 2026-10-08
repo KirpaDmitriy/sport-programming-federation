@@ -63,7 +63,8 @@ next run without forcibly disconnecting an active test.
 | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` | unset | Enable GitHub OAuth when both are non-empty; `GITHUB_CALLBACK_URL` defaults to `http://127.0.0.1:8080/api/v1/integrations/github/callback` |
 | `BIFROST_CHAT_URL` | unset | Enables Bifrost analysis when non-empty; `BIFROST_API_KEY` is optional and `BIFROST_MODEL` defaults to `openai/gpt-5-mini` |
 
-CI runs the same checks in `.github/workflows/backend.yml` for every push and PR, so the cascade always has a Rust gate.
+The [private CI service](../infra/ci/README.md) runs these checks with PostgreSQL and the real systemd PDF probe
+for canonical PRs, and gates integration/deployment with `fsp/backend`.
 
 ## Contract and implemented boundaries
 

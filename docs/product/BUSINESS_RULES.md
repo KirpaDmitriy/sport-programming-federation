@@ -354,5 +354,5 @@ scoring; their public bank has no measured psychometric validity. Only the devel
 and assistant replies. Rust uses isolated Poppler extraction and Bifrost with validated evidence and no canned fallback.
 Rust persists application records and sessions; its initial candidate bank is synthetic. GitHub calls are real only
 when configured. Graph output is validated against input skills and references; employer projections remove evidence
-nodes. An LLM relation is a suggestion, not a qualification verdict. Email delivery and GitHub OAuth setup are explicitly
+nodes. An LLM relation is a suggestion, not a qualification verdict. Real email delivery is implemented through Resend; GitHub OAuth setup remains
 deferred; official FSP integration and arbitrary code execution are outside the chosen product scope.
