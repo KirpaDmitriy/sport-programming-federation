@@ -34,6 +34,8 @@ export const candidateQuery = (scope: Scope, candidateId: string, needId?: strin
 export const candidateGraphQuery = (scope: Scope, candidateId: string) =>
   queryOptions({
     queryKey: [...candidatesKey(scope), candidateId, 'graph'] as const,
+    // Retrying a slow inference doubles the wait; the graph offers an explicit retry.
+    retry: false,
     queryFn: async ({ signal }) =>
       requireData(
         await api.GET('/api/v1/candidates/{candidateId}/graph', { params: { path: { candidateId } }, signal }),

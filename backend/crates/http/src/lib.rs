@@ -44,9 +44,9 @@ const MAX_JSON_BODY: usize = 512 * 1024;
 const MAX_IMPORT_BODY: usize = 3 * 1024 * 1024;
 /// The mock's `MAX_PDF`.
 const MAX_PDF_FILE: usize = 2 * 1024 * 1024;
-/// Per-request ceiling: every query runs under the pool's 15s statement
-/// timeout, so a request outliving this is a defect, not slow business work.
-const REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+/// Allow the integrations' 45s total budget plus storage/envelope overhead,
+/// while finishing before nginx's 60s proxy read deadline.
+const REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(55);
 
 #[derive(Debug, Clone)]
 pub struct HttpConfig {
@@ -2333,6 +2333,50 @@ mod tests {
 
     fn app() -> Router {
         app_with_static(None)
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn bounded_integrations_finish_before_the_outer_deadline() {
+        use axum::body::Body;
+        use tower::ServiceExt;
+
+        for status in [StatusCode::OK, StatusCode::BAD_GATEWAY] {
+            let app = Router::new()
+                .route(
+                    "/",
+                    get(move || async move {
+                        tokio::time::sleep(std::time::Duration::from_secs(45)).await;
+                        status
+                    }),
+                )
+                .layer(middleware::from_fn(with_timeout));
+            let response = app.oneshot(Request::new(Body::empty())).await.unwrap();
+            assert_eq!(response.status(), status);
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn stalled_handlers_still_return_a_contract_error() {
+        use axum::body::Body;
+        use http_body_util::BodyExt;
+        use tower::ServiceExt;
+
+        let app = Router::new()
+            .route("/", get(std::future::pending::<StatusCode>))
+            .layer(middleware::from_fn(with_timeout));
+        let started = tokio::time::Instant::now();
+        let response = app.oneshot(Request::new(Body::empty())).await.unwrap();
+        assert_eq!(started.elapsed(), std::time::Duration::from_secs(55));
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        let envelope = response
+            .extensions()
+            .get::<ApiError>()
+            .unwrap()
+            .render("timeout-test");
+        let bytes = envelope.into_body().collect().await.unwrap().to_bytes();
+        let body: Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(body["code"], "internal_error");
+        assert_eq!(body["requestId"], "timeout-test");
     }
 
     #[tokio::test]

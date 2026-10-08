@@ -306,3 +306,8 @@ Card headers wrap their heading and actions onto separate lines when space is li
 search count and ordering summary at mobile widths. Live browser verification and updated screenshots are tracked
 in [issue #23](https://github.com/KirpaDmitriy/sport-programming-federation/issues/23). The screenshot set above remains
 the documented mock fixture gallery, rather than evidence of live backend behavior.
+
+Graph views request generation only when selected. Pending generation shows a loading state; failures show
+the server error and an explicit retry, with the list still selectable. Automatic retries are disabled for
+these potentially 45-second operations. [Issue #27](https://github.com/KirpaDmitriy/sport-programming-federation/issues/27)
+records the related browser finding and final delivery proof.

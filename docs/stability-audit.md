@@ -177,3 +177,13 @@ tests without a new change or unresolved concern.
 - Removed duplicate obsolete backup/restore guidance from the PostgreSQL section of the infrastructure README.
   The pre-release private archive also has an off-host copy in the original checkout's git-ignored
   `.fsp-infra/backups/`, with SHA-256 matching the server; automatic off-host retention is still not configured.
+
+## Live-browser follow-up
+
+[Issue #23](https://github.com/KirpaDmitriy/sport-programming-federation/issues/23) records the October 8
+Chromium pass against Rust/PostgreSQL. A late network review found one pre-fix graph HTTP 500: the API
+handler still capped work at 30 seconds after the proxies had been aligned to 60 seconds.
+[Issue #27](https://github.com/KirpaDmitriy/sport-programming-federation/issues/27) corrects that missed
+layer to 55 seconds around the existing 45-second integration budgets, with virtual-time regressions.
+Graphs now load on demand and expose failures/manual retry on both skills screens; list mode does not
+start AI work. This evidence supersedes any earlier zero-5xx checkpoint for the browser pass.

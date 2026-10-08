@@ -99,3 +99,44 @@ test('an emptied bank keeps saved shortlist entries as unavailable', async ({ pa
   await expect(page.getByText('Кандидаты не найдены')).toBeVisible();
   await expect(page.getByText('Профиль сейчас недоступен').first()).toBeVisible();
 });
+
+test('graphs load on demand and a failed employer graph exposes retry instead of a hidden list fallback', async ({
+  page,
+}) => {
+  const graphPath = '**/api/v1/candidates/candidate018/graph';
+  let requests = 0;
+  let release: (() => void) | undefined;
+  const blocked = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route(graphPath, async (route) => {
+    requests += 1;
+    await blocked;
+    await route.fulfill({
+      status: 502,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        code: 'bifrost_unavailable',
+        message: 'Сервис анализа временно недоступен',
+        requestId: 'graph-test',
+        details: [],
+      }),
+    });
+  });
+  await page.goto('/employer/candidates/candidate018?tab=skills');
+  await expect(page.getByText('Rust', { exact: true }).first()).toBeVisible();
+  expect(requests).toBe(0);
+  await page.getByRole('button', { name: 'Граф', exact: true }).click();
+  await expect(page.getByText('Строим граф…')).toBeVisible();
+  release?.();
+  await expect(page.getByText('Сервис временно недоступен')).toBeVisible();
+  await expect(page.getByText('Пока граф недоступен, используйте список.')).toBeVisible();
+  await expect(page.getByText('Rust', { exact: true })).toHaveCount(0);
+  expect(requests).toBe(1);
+  await page.unroute(graphPath);
+  await page.getByRole('button', { name: 'Повторить', exact: true }).click();
+  await expect(page.getByRole('button', { name: /Навык: Rust/ })).toBeVisible();
+  await expect(page.getByText('Сервис временно недоступен')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Список', exact: true }).click();
+  await expect(page.getByText('Rust', { exact: true }).first()).toBeVisible();
+});
