@@ -63,7 +63,8 @@ PDF»; «Для работодателей» — the anonymous preview; privacy 
 selected target shown separately.
 
 PDF import is a dialog: choose a PDF (type and size checked first), wait for the job, review and edit the preview
-(marked as a demo extraction), «Применить». Nothing changes until the candidate confirms.
+(marked as a demo extraction), «Применить». Nothing changes until the candidate confirms. The warning describes
+the simulated behavior independently of the API implementation and does not expose the internal parser identifier.
 
 ### `/candidate/sources` — «Источники профиля»
 
@@ -300,3 +301,8 @@ candidate data works.
 Every data view has loading, empty and error states; errors show a human message, the request ID when present and
 a retry. «Раздел недоступен» appears when a signed-in user opens the other role's section, «Страница не найдена» for
 unknown paths.
+
+Card headers wrap their heading and actions onto separate lines when space is limited, including the candidate
+search count and ordering summary at mobile widths. Live browser verification and updated screenshots are tracked
+in [issue #23](https://github.com/KirpaDmitriy/sport-programming-federation/issues/23). The screenshot set above remains
+the documented mock fixture gallery, rather than evidence of live backend behavior.

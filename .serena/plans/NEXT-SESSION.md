@@ -1,5 +1,10 @@
 # Project handoff
 
+Latest follow-up: [issue #23](https://github.com/KirpaDmitriy/sport-programming-federation/issues/23) records the real
+browser pass, corrected simulated-PDF wording and responsive card headers. Check its delivery status as well as
+the earlier audit ledger before resuming. Live screenshots and traces are private verification artifacts, not
+the mock screenshot gallery.
+
 ## Current law
 
 Code is the source of truth. Read AGENTS.md, subtree rules and docs/stability-audit.md. English engineering text,
