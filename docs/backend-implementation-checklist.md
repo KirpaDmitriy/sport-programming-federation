@@ -36,8 +36,7 @@ Historical cutover commands for another contributor's server are not operating i
 ## Delivery evidence
 
 The public stand is `https://nddev.link` (origin `188.166.88.183`), managed by [`infra/`](../infra/README.md). Main is deployed through
-feature → personal → dev → main with successful checks. Release failure recovery and real backup restoration
-have automated probes. Public browser acceptance and exact stand/main SHA verification are recorded in the
+feature → personal → dev → main with successful checks. Release activation rollback has automated probes. Backup creation is disabled by owner policy. Public browser acceptance and exact stand/main SHA verification are recorded in the
 [audit execution log](stability-audit.md#execution-log); local tests alone do not imply successful deployment.
 
 Code and current verification results take precedence over a checked historical task.
