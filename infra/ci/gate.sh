@@ -18,6 +18,8 @@ case "${1:?gate required}" in
     done
     bun run --cwd mock-server test
     bun run --cwd frontend verify
+    # Collect live tests without sending mail; catch runtime/module errors before deployment.
+    (cd frontend && bun run e2e:public --list)
     (cd frontend && bunx playwright install chromium && bun run e2e)
     ;;
   backend)
