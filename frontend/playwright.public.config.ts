@@ -4,6 +4,7 @@ import { defineConfig, devices } from '@playwright/test';
 // public flows and fresh accounts; FSP_PUBLIC_URL and FSP_DEMO_CODE come from the environment.
 export default defineConfig({
   testDir: './e2e/public',
+  outputDir: 'test-results/public',
   fullyParallel: false,
   workers: 1,
   timeout: 90_000,
@@ -11,10 +12,13 @@ export default defineConfig({
   reporter: [['list'], ['json', { outputFile: 'test-results/public-results.json' }]],
   use: {
     baseURL: process.env.FSP_PUBLIC_URL,
+    actionTimeout: 20_000,
+    navigationTimeout: 30_000,
     locale: 'ru-RU',
     timezoneId: 'Europe/Moscow',
-    trace: 'retain-on-failure',
-    screenshot: 'only-on-failure',
+    // Real OTPs and authenticated cookies must not enter CI artifacts.
+    trace: 'off',
+    screenshot: 'off',
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 } } }],
 });
