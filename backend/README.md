@@ -72,8 +72,9 @@ CI runs the same checks in `.github/workflows/backend.yml` for every push and PR
 
 Rust implements the 74 application operations plus `/health`; `/__mock__` controls are absent. Sessions,
 roles, tenant scoping and PostgreSQL persistence are real. Email ownership verification uses a fixed demo code;
-FSP, code execution/evaluation, assistant replies and PDF import remain explicit simulations. GitHub OAuth is
-real when configured and checks `/user` before accepting repository evidence. Bifrost graph extraction is real
+FSP and code execution/evaluation remain explicit simulations. PDF text extraction uses a bounded, isolated
+Poppler process and Bifrost proposes fields with validated page excerpts. The assessment assistant calls Bifrost
+with the current saved answer and question; these replies never establish a grade. GitHub OAuth is real when configured and checks `/user` before accepting repository evidence. Bifrost graph extraction is real
 when configured; repository-to-competition matching is an adapter port without a product call path.
 `GET /api/v1/meta` reports configuration, not proof of a provider's availability or assessment validity.
 
@@ -120,3 +121,21 @@ against the backend; everything else uses the contract.
 2. Change the contract only through [`../contracts/README.md`](../contracts/README.md).
 3. Deploy through [`../infra/README.md`](../infra/README.md#commands) and
    run the stand smoke suite (`bun run e2e:public` in `frontend/`).
+
+## PDF import runtime
+
+Enable with `FSP_PDF_IMPORT=1` and the configured Bifrost gateway. Install `bubblewrap` and `poppler-utils`.
+Startup probes the exact sandbox and fails if it cannot start; there is no unsandboxed fallback. On Ubuntu,
+`infra/provision.sh` installs `infra/apparmor/fsp-pdf-bwrap` to permit this executable's user namespaces without
+relaxing the global userns policy. The service permits AF_NETLINK for setup of the isolated network namespace.
+Docker import is opt-in and requires a host/runtime that permits nested unprivileged namespaces; do not grant
+`--privileged` or disable seccomp to enable it. Export works independently.
+
+Limits: 2 MiB upload, 20 pages, 64 KiB extracted text, two concurrent parser processes, 256 MiB address space,
+3 CPU seconds and 5 elapsed seconds. Scans, password-protected, malformed and excessive documents fail visibly.
+Files are streamed to the sandbox, not stored. The sandbox has an empty root with only read-only system runtime,
+private temporary storage, and isolated user/process/network namespaces; no environment secrets are passed.
+The model sees extracted text, never the current profile. Only supported fields with actual page excerpts are
+accepted. Unknown fields preserve profile values; explicit month totals are not inferred from overlapping dates.
+Preview confirmation checks processing consent and the original profile revision inside a candidate lock.
+A stale preview returns `409 import_profile_changed`, so it cannot overwrite a later edit.

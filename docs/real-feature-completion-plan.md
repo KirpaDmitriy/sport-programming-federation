@@ -15,15 +15,17 @@ The source code is the behavior reference. A configured integration is not proof
    answer, task and question through the existing gateway, validate bounded text, and check consent/state
    again after I/O. Make the UI describe actual assistant capability independently of simulated assessment
    execution. Preserve questions on failure and prevent overlapping requests. Prove the live model call.
-3. **Assessment integrity** — current preview already contains passed checks, check runs always pass and
-   every nonempty submission certifies its target grade. Establish a versioned executable task and isolated
-   runner with deterministic checks before calling this real grading. A model suggestion cannot establish
-   grade validity. Preserve existing demo records as historical simulations; do not silently relabel them.
-   Review task coverage and grade criteria before production qualification claims.
-4. **External identity/evidence** — email delivery requires an actual sender/provider; GitHub OAuth already
-   has an adapter but lacks app credentials; FSP has only a synthetic adapter and no supplied official API
-   specification. Resolve those exact setup requirements with the user. No invented API or silent fixture
-   fallback. Never place credentials in source/chat or use unrelated infrastructure.
+3. **Knowledge tests** — the user prefers tests with answer choices and practical situations instead of writing
+   and executing code. Replace new attempts with versioned questionnaires, server-held correct answers and
+   deterministic scoring. Keep historical code attempts identifiable; no arbitrary nonempty submission passes.
+   Define coverage and threshold per tested skill, preserve confirmed grades on failure, and explain that the
+   result measures knowledge on this test rather than practical coding experience. Review answer quality and
+   ambiguous questions against primary Rust/PostgreSQL sources; no model-only pass/fail decisions.
+4. **FSP simulator** — the user explicitly requests a realistic mock HTTP service, not a real federation
+   integration. Model participants, event discipline, individual/team results, protocol provenance and status
+   using public federation materials; all people/results remain fictional and explicitly synthetic. Do not
+   equate a team placement or identity link with individual skill qualification. Email and GitHub OAuth are
+   explicitly postponed by the user and are outside this implementation wave.
 5. **Verification and release** — contract/mock/generated frontend stay aligned; run relevant Rust/Postgres,
    TypeScript/component and browser tests; deliver atomic implementation/docs/memory commits through the
    checked feature -> danil -> dev -> main cascade. Check the changed live surfaces and logs independently,
@@ -47,4 +49,4 @@ examples do not replace this project's Rust hexagonal architecture. PDF parsing 
 ## Progress
 
 - Source inspection and initial primary-source research complete.
-- External integration setup question pending; PDF/assistant work can proceed independently.
+- User confirmed: FSP stays simulated through a realistic mock server; email and GitHub OAuth are deferred.

@@ -317,7 +317,12 @@ directly, and the company's contact was visible from the start.
   file `fsp-profile.pdf`.
 - **Import:** one `application/pdf` file up to 2 MiB with a valid signature and end marker starts a `profile_import`
   job; its preview is edited by the candidate and applied once with a confirmation (`409 import_not_ready`,
-  `409 import_already_confirmed`). Import cannot change verified fields and needs processing consent. Both APIs return a fixed preview rather than extracting document contents marked `parser: fixture_preview`, with unknown experience left empty.
+  `409 import_already_confirmed`). Import cannot change verified fields and needs processing consent. The mock returns a disclosed `fixture_preview`. Rust uses `poppler_bifrost` with `simulation: false`:
+  digital text from up to 20 pages, 64 KiB maximum, is parsed in an isolated process and then supplied to Bifrost.
+  Each extracted field carries a matching page excerpt; unknown fields preserve current profile values.
+  The candidate reviews and edits the preview. A profile revision change invalidates confirmation with
+  `409 import_profile_changed`. Scans, encrypted files and parse/analysis failures never update the profile.
+  `profilePdfImport` gates import independently of export.
 
 ## 14. Jobs
 
@@ -334,9 +339,11 @@ while still marking demo features as simulated. Real LLM and GitHub OAuth flags 
 The stand currently enables Bifrost and leaves GitHub OAuth unconfigured. Development demo controls are absent
 from production bundles. The `live` mode does not turn fixed-code email verification into proof of email ownership.
 
-Both implementations simulate email delivery, FSP participation, PDF extraction, assessment checks/evaluation and
-assistant replies. Rust persists actual application records and sessions; its candidate bank starts with a
+Both implementations simulate email delivery, FSP participation and assessment checks/evaluation.
+The mock also simulates PDF extraction and assistant replies. Rust uses the configured Bifrost gateway for
+contextual assistance and resume-field extraction, and exposes failures without fixed-response fallback. Rust persists actual application records and sessions; its candidate bank starts with a
 synthetic seed. GitHub calls are real only when configured. Graph output is validated against input skills and
 references; public IDs/labels/states are canonical and evidence nodes are removed for employers. An LLM relation
 is a model suggestion, not a measured prerequisite or a qualification verdict. Production identity verification,
-external FSP access and real execution require separate product work.
+real execution require separate product work. The user has explicitly deferred email/OAuth setup and requests
+an HTTP simulator for FSP instead of a real external integration.

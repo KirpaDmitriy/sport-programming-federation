@@ -14,7 +14,7 @@ Historical cutover commands for another contributor's server are not operating i
 - Candidate visibility, deterministic ranking, filters, server-returned pagination and anonymous projections.
 - GitHub OAuth identity binding, bounded repository analysis and evidence updates that preserve verified grades.
 - Optional Bifrost graph extraction with structural/reference validation and safe employer projection.
-- Real PDF export, explicit import preview confirmation, source/job privacy and capability flags.
+- Real PDF export/import, revision-checked preview confirmation, contextual Bifrost assistance, source/job privacy and capability flags.
 - Rustfmt, clippy, unit tests and PostgreSQL HTTP/storage regressions; workflow gates cover every PR.
 
 ## Explicit demo limits
@@ -23,7 +23,7 @@ Historical cutover commands for another contributor's server are not operating i
 - FSP uses a synthetic adapter. No official API, authentication or dataset was supplied.
 - Assessment code is stored but never executed. Valid Rust demo submissions pass a simulated evaluation;
   the mock additionally exercises failure and service-error scenarios. Assistant replies are prepared.
-- PDF import returns a disclosed fixture preview. It does not extract the uploaded document.
+- PDF import extracts digital text in a bounded Poppler sandbox; scans/OCR are unsupported. Bifrost fields require actual page excerpts and user confirmation.
 - Jobs complete inline in Rust; there is no durable background worker.
 - Repository/competition matching has an adapter port but no product workflow. Graph relations are model
   suggestions, not independently verified qualification evidence.
