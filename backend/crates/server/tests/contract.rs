@@ -25,14 +25,15 @@ struct FixedDelivery;
 
 #[async_trait::async_trait]
 impl VerificationDelivery for FixedDelivery {
-    fn code_for(&self) -> String {
-        "123456".into()
+    fn code_for(&self) -> Result<String, fsp_application::IntegrationError> {
+        Ok("123456".into())
     }
 
     async fn deliver(
         &self,
         _email: &str,
         _code: &str,
+        _challenge_id: &str,
     ) -> Result<(), fsp_application::IntegrationError> {
         Ok(())
     }
@@ -1886,4 +1887,191 @@ async fn fsp_http_sync_preserves_snapshot_on_failure_and_never_changes_grade() {
     assert_eq!(unchanged, &before);
     let (_, profile) = get(&app, "/api/v1/me/profile", Some(&candidate)).await;
     assert_eq!(profile["verifiedGrade"], "junior");
+}
+
+struct MailDelivery {
+    sends: std::sync::atomic::AtomicUsize,
+    fail: bool,
+}
+#[async_trait::async_trait]
+impl VerificationDelivery for MailDelivery {
+    fn code_for(&self) -> Result<String, fsp_application::IntegrationError> {
+        Ok("654321".into())
+    }
+    async fn deliver(
+        &self,
+        _: &str,
+        _: &str,
+        _: &str,
+    ) -> Result<(), fsp_application::IntegrationError> {
+        self.sends.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        if self.fail {
+            Err(fsp_application::IntegrationError {
+                code: "verification_delivery_failed",
+                message: "Не удалось отправить письмо".into(),
+            })
+        } else {
+            Ok(())
+        }
+    }
+    fn contract_name(&self) -> &'static str {
+        "email"
+    }
+}
+
+#[tokio::test]
+async fn production_email_throttles_concurrent_delivery_and_keeps_failed_send_budget() {
+    for fail in [false, true] {
+        let (repo, _db) = PostgresRepository::connect_test_database(&test_admin_url()).await;
+        let delivery = Arc::new(MailDelivery {
+            sends: 0.into(),
+            fail,
+        });
+        let app = app_with_service(
+            PlatformService::new(Arc::new(repo.clone()), delivery.clone())
+                .with_auth_key(&"ab".repeat(32))
+                .unwrap(),
+        )
+        .await;
+        let email = json!({"email":"rate@example.com","role":"candidate"});
+        let (a, b) = tokio::join!(
+            send(
+                &app,
+                "POST",
+                "/api/v1/auth/email/challenges",
+                None,
+                email.clone()
+            ),
+            send(
+                &app,
+                "POST",
+                "/api/v1/auth/email/challenges",
+                None,
+                email.clone()
+            )
+        );
+        assert!(a.0 == StatusCode::TOO_MANY_REQUESTS || b.0 == StatusCode::TOO_MANY_REQUESTS);
+        assert!(
+            a.0 == if fail {
+                StatusCode::BAD_GATEWAY
+            } else {
+                StatusCode::CREATED
+            } || b.0
+                == if fail {
+                    StatusCode::BAD_GATEWAY
+                } else {
+                    StatusCode::CREATED
+                }
+        );
+        assert_eq!(delivery.sends.load(std::sync::atomic::Ordering::SeqCst), 1);
+        for _ in 1..5 {
+            sqlx::query("UPDATE challenges SET created_at=created_at-interval '61 seconds' WHERE email='rate@example.com'").execute(repo.pool()).await.unwrap();
+            let (status, _) = send(
+                &app,
+                "POST",
+                "/api/v1/auth/email/challenges",
+                None,
+                email.clone(),
+            )
+            .await;
+            assert_eq!(
+                status,
+                if fail {
+                    StatusCode::BAD_GATEWAY
+                } else {
+                    StatusCode::CREATED
+                }
+            );
+        }
+        sqlx::query("UPDATE challenges SET created_at=created_at-interval '61 seconds' WHERE email='rate@example.com'").execute(repo.pool()).await.unwrap();
+        let (status, body) = send(&app, "POST", "/api/v1/auth/email/challenges", None, email).await;
+        assert_eq!(status, StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(body["code"], "rate_limited");
+        assert_eq!(delivery.sends.load(std::sync::atomic::Ordering::SeqCst), 5);
+    }
+}
+
+#[tokio::test]
+async fn production_secret_invalidates_demo_credentials_and_rotates_sessions() {
+    let (repo, _db) = PostgresRepository::connect_test_database(&test_admin_url()).await;
+    let demo = app_with_repository(repo.clone()).await;
+    let old_cookie = login(&demo, "existing@example.com", "candidate").await;
+    let (_, old_challenge) = send(
+        &demo,
+        "POST",
+        "/api/v1/auth/email/challenges",
+        None,
+        json!({"email":"pending@example.com","role":"candidate"}),
+    )
+    .await;
+    let make = |key: String| {
+        PlatformService::new(
+            Arc::new(repo.clone()),
+            Arc::new(MailDelivery {
+                sends: 0.into(),
+                fail: false,
+            }),
+        )
+        .with_auth_key(&key)
+        .unwrap()
+    };
+    let app = app_with_service(make("ab".repeat(32))).await;
+    assert_eq!(
+        get(&app, "/api/v1/session", Some(&old_cookie)).await.0,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        send(
+            &app,
+            "POST",
+            "/api/v1/auth/email/verify",
+            None,
+            json!({"challengeId":old_challenge["challengeId"],"code":"123456"})
+        )
+        .await
+        .0,
+        StatusCode::BAD_REQUEST
+    );
+    let (_, challenge) = send(
+        &app,
+        "POST",
+        "/api/v1/auth/email/challenges",
+        None,
+        json!({"email":"secure@example.com","role":"candidate"}),
+    )
+    .await;
+    assert_eq!(challenge["delivery"], "email");
+    let payload = json!({"challengeId":challenge["challengeId"],"code":"654321"});
+    let (status, headers, _) = call(
+        &app,
+        request(
+            "POST",
+            "/api/v1/auth/email/verify",
+            None,
+            Some(payload.clone()),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let cookie = headers[header::SET_COOKIE]
+        .to_str()
+        .unwrap()
+        .split(';')
+        .next()
+        .unwrap();
+    assert_eq!(
+        get(&app, "/api/v1/session", Some(cookie)).await.0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        send(&app, "POST", "/api/v1/auth/email/verify", None, payload)
+            .await
+            .1["code"],
+        "challenge_used"
+    );
+    let rotated = app_with_service(make("cd".repeat(32))).await;
+    assert_eq!(
+        get(&rotated, "/api/v1/session", Some(cookie)).await.0,
+        StatusCode::UNAUTHORIZED
+    );
 }

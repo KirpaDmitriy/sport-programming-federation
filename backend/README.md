@@ -52,7 +52,10 @@ next run without forcibly disconnecting an active test.
 | `FSP_ALLOWED_ORIGINS` | `http://127.0.0.1:5173,http://localhost:5173` | Comma-separated browser origins accepted on requests with `Origin`; others get `403 origin_not_allowed` |
 | `DATABASE_URL` | `postgres://fsp:fsp@127.0.0.1:5434/fsp` | PostgreSQL connection; migrations and the demo seed run on startup |
 | `FSP_SIMULATOR_URL` | `http://127.0.0.1:4020` | Private fictional participant-results provider; start with `just fsp-simulator` |
-| `FSP_AUTH_MODE` | `demo` | `demo` exposes the fixed verification code; e-mail delivery is not implemented, so other values cannot issue challenges |
+| `FSP_AUTH_MODE` | `demo` | `demo` uses a fixed local code; `resend` sends real random codes. Unknown values abort startup |
+| `RESEND_API_KEY` | unset | Required in `resend` mode; use a sending-only key restricted to the sending domain |
+| `FSP_EMAIL_FROM` | unset | Required bare sender address, e.g. `login@auth.nddev.link` |
+| `FSP_AUTH_KEY` | unset | Required in `resend` mode: 32 random bytes as 64 hex characters; HMAC protects codes and sessions |
 | `FSP_DEMO_EMAIL_CODE` | `123456` | Verification code used only in demo mode |
 | `FSP_SECURE_COOKIE` | unset | `1` adds `Secure` to the session cookie (set it behind HTTPS) |
 | `FSP_PUBLIC_WEB_URL` | `http://127.0.0.1:5173` | Browser URL used after OAuth callbacks |
@@ -72,7 +75,7 @@ CI runs the same checks in `.github/workflows/backend.yml` for every push and PR
 | [`../mock-server`](../mock-server/README.md) | The rules as running code (`src/domain.ts`) and as HTTP tests (`test/mock-api.test.ts`), ported to `crates/server/tests/contract.rs` |
 
 Rust implements the 74 application operations plus `/health`; `/__mock__` controls are absent. Sessions,
-roles, tenant scoping and PostgreSQL persistence are real. Email ownership verification uses a fixed demo code;
+roles, tenant scoping and PostgreSQL persistence are real. Email ownership is verified by Resend in `resend` mode; local `demo` mode retains a fixed code;
 FSP uses a separate fictional HTTP provider. Knowledge tests are scored deterministically; no code executes. PDF text extraction uses a bounded, isolated
 Poppler process and Bifrost proposes fields with validated page excerpts. The assessment assistant calls Bifrost
 with the current saved answer and question; these replies never establish a grade. GitHub OAuth is real when configured and checks `/user` before accepting repository evidence. Bifrost graph extraction is real
@@ -158,3 +161,21 @@ reviewed additive schema changes. Known checksums, unknown older versions and di
 A dedicated connection holds SQLx's advisory lock across validation/application and is closed on cancellation
 or error, never returning a locked session to the pool. The release marker and guard are documented in the
 [infrastructure runbook](../infra/README.md); they do not make destructive migrations safe to roll back.
+
+### Transactional email
+
+`crates/integration-email` implements the delivery port using Resend HTTPS, a
+10-second deadline, no redirects, bounded responses and challenge-scoped provider
+idempotency. Codes are six uniform CSPRNG digits, expire in 15 minutes and are
+single-use. PostgreSQL serializes real-mail issuance per email (one/minute,
+five/15 minutes) including failed provider calls. The cumulative five-wrong-code
+budget remains in force across requests. Local fixed-code deliveries do not send
+mail and do not spend the sending quota.
+
+Challenge-bound HMAC-SHA256 prevents a database dump from revealing six-digit
+codes. Session digests have a separate namespace. Enabling or rotating
+`FSP_AUTH_KEY` invalidates earlier sessions/codes without deleting accounts.
+Never revert to demo authentication on the public stand. Provider acceptance is
+logged by delivery ID, without addresses, keys or codes. Monitor delivery/bounce
+status in Resend; a successful send response alone does not establish delivery.
+`meta.capabilities.realEmail` controls the frontend's real-mail/demo guidance.

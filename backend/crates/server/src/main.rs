@@ -4,11 +4,10 @@ use std::env;
 use std::error::Error;
 use std::sync::Arc;
 
-use fsp_application::{
-    IntegrationError, PlatformRepository, PlatformService, VerificationDelivery,
-};
+use fsp_application::{PlatformRepository, PlatformService, VerificationDelivery};
 use fsp_http::HttpConfig;
 use fsp_integration_bifrost::BifrostGateway;
+use fsp_integration_email::{DemoDelivery, ResendDelivery};
 use fsp_integration_fsp_synthetic::HttpFsp;
 use fsp_integration_github::GitHubApi;
 use fsp_storage_postgres::PostgresRepository;
@@ -16,35 +15,6 @@ use tokio::net::TcpListener;
 use tokio::signal;
 
 const DEV_ORIGINS: &str = "http://127.0.0.1:5173,http://localhost:5173";
-
-struct ConfiguredDelivery {
-    code: String,
-    mock: bool,
-}
-
-#[async_trait::async_trait]
-impl VerificationDelivery for ConfiguredDelivery {
-    fn code_for(&self) -> String {
-        self.code.clone()
-    }
-
-    async fn deliver(&self, _email: &str, _code: &str) -> Result<(), IntegrationError> {
-        if self.mock {
-            // Demo mode "delivers" the fixed code; never log addresses or codes.
-            tracing::info!("verification code issued (demo mailbox)");
-            Ok(())
-        } else {
-            Err(IntegrationError {
-                code: "verification_delivery_failed",
-                message: "Отправка почты не настроена".into(),
-            })
-        }
-    }
-
-    fn contract_name(&self) -> &'static str {
-        if self.mock { "mock_mailbox" } else { "email" }
-    }
-}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -75,11 +45,34 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let database_url =
         env::var("DATABASE_URL").unwrap_or_else(|_| "postgres://fsp:fsp@127.0.0.1:5434/fsp".into());
-    let mock = env::var("FSP_AUTH_MODE").unwrap_or_else(|_| "demo".into()) == "demo";
-    let delivery = Arc::new(ConfiguredDelivery {
-        code: env::var("FSP_DEMO_EMAIL_CODE").unwrap_or_else(|_| "123456".into()),
-        mock,
-    });
+    let mode = env::var("FSP_AUTH_MODE").unwrap_or_else(|_| "demo".into());
+    let auth_key = if mode == "resend" {
+        Some(nonempty_env("FSP_AUTH_KEY").ok_or("FSP_AUTH_KEY is required in resend mode")?)
+    } else {
+        None
+    };
+    let delivery: Arc<dyn VerificationDelivery> = match mode.as_str() {
+        "demo" => {
+            let code = env::var("FSP_DEMO_EMAIL_CODE").unwrap_or_else(|_| "123456".into());
+            if code.len() != 6 || !code.bytes().all(|b| b.is_ascii_digit()) {
+                return Err("FSP_DEMO_EMAIL_CODE must contain six digits".into());
+            }
+            Arc::new(DemoDelivery(code))
+        }
+        "resend" => Arc::new(
+            ResendDelivery::new(
+                nonempty_env("RESEND_API_KEY").ok_or("RESEND_API_KEY is required")?,
+                nonempty_env("FSP_EMAIL_FROM").ok_or("FSP_EMAIL_FROM is required")?,
+            )
+            .map_err(|_| "Invalid Resend configuration")?,
+        ),
+        _ => return Err("FSP_AUTH_MODE must be demo or resend".into()),
+    };
+    if let Some(key) = &auth_key
+        && (key.len() != 64 || !key.bytes().all(|c| c.is_ascii_hexdigit()))
+    {
+        return Err("FSP_AUTH_KEY must be 32 random bytes encoded as 64 hex characters".into());
+    }
     // `successfulGradeChangeCooldownDays` from meta.assessmentPolicy: 0-365,
     // default 90; out-of-range values fall back rather than crash the boot.
     let grade_cooldown_days = env::var("FSP_GRADE_CHANGE_COOLDOWN_DAYS")
@@ -128,6 +121,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let mut platform = PlatformService::new(repository.clone(), delivery)
         .with_grade_cooldown_days(grade_cooldown_days)
         .with_fsp(Arc::new(fsp));
+    if let Some(key) = auth_key {
+        platform = platform.with_auth_key(&key)?;
+    }
     if let Some(github) = github_adapter {
         platform = platform.with_github(github);
     }

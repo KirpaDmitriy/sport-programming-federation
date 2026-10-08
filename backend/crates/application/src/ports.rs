@@ -91,9 +91,13 @@ pub trait PlatformRepository: Send + Sync {
 
     /// Atomically issues a verification challenge: persists it only when the
     /// caller is under the lockout budget — the running sum of attempts on
-    /// live challenges for the same email stays below five. `false` means the
-    /// email is locked out (the contract's `challenge_locked` surface).
-    async fn issue_challenge(&self, challenge: &PendingChallenge) -> Result<bool, RepositoryError>;
+    /// live challenges for the same email stays below five. Real delivery also
+    /// enforces one issuance per minute and five per fifteen minutes.
+    async fn issue_challenge(
+        &self,
+        challenge: &PendingChallenge,
+        limit_delivery: bool,
+    ) -> Result<crate::IssueChallenge, RepositoryError>;
     /// Marks `true` on the resolved account once its challenge is consumed.
     async fn mark_email_verified(&self, account_id: &str) -> Result<(), RepositoryError>;
     /// Consumes a challenge row under `FOR UPDATE`: expiry/usage/lock checks,
@@ -410,8 +414,13 @@ pub trait FspGateway: Send + Sync {
 
 #[async_trait]
 pub trait VerificationDelivery: Send + Sync {
-    fn code_for(&self) -> String;
-    async fn deliver(&self, email: &str, code: &str) -> Result<(), IntegrationError>;
+    fn code_for(&self) -> Result<String, IntegrationError>;
+    async fn deliver(
+        &self,
+        email: &str,
+        code: &str,
+        challenge_id: &str,
+    ) -> Result<(), IntegrationError>;
     fn contract_name(&self) -> &'static str;
 }
 
