@@ -12,13 +12,32 @@ const unauthenticated = http.get(`${API}/api/v1/session`, () =>
   HttpResponse.json(problem('unauthenticated', 'Войдите в аккаунт', 401).body, { status: 401 }),
 );
 
-function renderLogin() {
+function renderLogin(realEmail = false) {
   return renderWithProviders(<LoginPage redirectTo={undefined} expired={false} />, {
-    prefill: (client) => client.setQueryData(metaQueryOptions().queryKey, meta),
+    prefill: (client) =>
+      client.setQueryData(metaQueryOptions().queryKey, { ...meta, capabilities: { ...meta.capabilities, realEmail } }),
   });
 }
 
 describe('email sign-in', () => {
+  it('shows real mail guidance and hides demo accounts when the server sends email', async () => {
+    server.use(
+      unauthenticated,
+      http.post(`${API}/api/v1/auth/email/challenges`, () =>
+        HttpResponse.json(
+          { challengeId: 'challenge-real', expiresAt: '2026-10-05T12:15:00.000Z', delivery: 'email' },
+          { status: 201 },
+        ),
+      ),
+    );
+    await renderLogin(true);
+    expect(screen.queryByText('Демонстрационные аккаунты')).toBeNull();
+    await userEvent.type(screen.getByLabelText(/Электронная почта/), 'real@example.com');
+    await userEvent.click(screen.getByRole('button', { name: 'Получить код' }));
+    expect(await screen.findByText('Проверьте почту')).toBeTruthy();
+    expect(screen.queryByText('Демонстрационная почта')).toBeNull();
+    expect(screen.queryByText(/Код для этого стенда/)).toBeNull();
+  });
   it('validates the address before contacting the server', async () => {
     server.use(unauthenticated);
     await renderLogin();

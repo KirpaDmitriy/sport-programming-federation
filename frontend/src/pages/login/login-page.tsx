@@ -37,7 +37,7 @@ function verificationMessage(error: unknown) {
     case 'challenge_used':
       return 'Этот код уже использован. Запросите новый код.';
     case 'challenge_locked':
-      return 'Слишком много неверных попыток. Запросите новый код.';
+      return 'Слишком много неверных попыток. Дождитесь истечения срока кода, затем запросите новый.';
     case 'not_found':
       return 'Запрос подтверждения не найден. Запросите новый код.';
     default:
@@ -293,7 +293,13 @@ export function LoginPage({ redirectTo, expired }: Props) {
                 )}
               </Callout>
             )}
-            {DevMailbox && (
+            {challenge.delivery === 'email' && (
+              <Callout tone="info" title="Проверьте почту">
+                Если письмо не пришло, проверьте папку «Спам» и правильность адреса. Повторная отправка доступна через
+                минуту. Никому не сообщайте код.
+              </Callout>
+            )}
+            {DevMailbox && challenge.delivery === 'mock_mailbox' && (
               <Suspense fallback={null}>
                 <DevMailbox challengeId={challenge.challengeId} onCode={setCode} />
               </Suspense>
@@ -355,7 +361,7 @@ export function LoginPage({ redirectTo, expired }: Props) {
           </form>
         )}
 
-        {isDemoStand && !challenge && (
+        {isDemoStand && !meta.capabilities.realEmail && !challenge && (
           <Callout tone="neutral" title="Демонстрационные аккаунты">
             <p style={{ margin: '0 0 0.5rem' }}>
               Данные стенда синтетические. Для полного пути кандидата укажите любой новый адрес.
