@@ -116,6 +116,7 @@ export const meta: S['Meta'] = {
   capabilities: {
     emailVerification: true,
     profilePdf: true,
+    profilePdfImport: true,
     githubFixture: true,
     githubOAuth: false,
     fspFixture: true,

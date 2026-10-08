@@ -16,6 +16,7 @@ import {
   submitAssessment,
 } from '@/entities/assessment';
 import { useJob } from '@/entities/job';
+import { useMeta } from '@/entities/meta';
 import { profileKey } from '@/entities/profile';
 import { useScope } from '@/entities/session';
 import { graphKey, skillsKey } from '@/entities/skill';
@@ -132,25 +133,44 @@ function TaskPanel({ assessment }: { assessment: Assessment }) {
   );
 }
 
-function AssistantPanel({ assessment, disabled }: { assessment: Assessment; disabled: boolean }) {
+function AssistantPanel({
+  assessment,
+  disabled,
+  prepare,
+}: {
+  assessment: Assessment;
+  disabled: boolean;
+  prepare: () => Promise<boolean>;
+}) {
+  const meta = useMeta();
+  const available = meta.mode === 'mock' || meta.capabilities.realLlm;
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState('');
   const nextId = useRef(1);
   const ask = useMutation({
-    mutationFn: (message: string) => askAssistant(assessment.id, message),
-    onSuccess: (reply) =>
+    mutationFn: async (message: string) => {
+      if (!(await prepare())) throw new Error('Сначала сохраните решение');
+      return askAssistant(assessment.id, message);
+    },
+    onSuccess: (reply, question) => {
+      setDraft('');
       setMessages((items) => [
         ...items,
+        { id: nextId.current++, from: 'user', text: question, simulation: false },
         { id: nextId.current++, from: 'assistant', text: reply.message, simulation: reply.simulation },
-      ]),
+      ]);
+    },
   });
   return (
     <Card className={styles.pane} title="ИИ-помощник" headingLevel={2}>
       <div className="stack">
         <p className="small muted">
           Помощник разрешён на всех этапах, как и внешние инструменты.
-          {assessment.simulation && ' В демо-стенде ответы подготовлены заранее, модель не вызывается.'}
+          {meta.mode === 'mock'
+            ? ' В учебном API ответы подготовлены заранее.'
+            : ' Ответы генерируются ИИ по заданию, сохранённому решению и текущему вопросу. Помощник не запускает код и не выставляет оценку.'}
         </p>
+        {!available && <Callout tone="neutral">ИИ-помощник сейчас не подключён.</Callout>}
         {messages.length > 0 && (
           <ol className={styles.chat} aria-live="polite" aria-label="Переписка с помощником">
             {messages.map((message) => (
@@ -179,9 +199,7 @@ function AssistantPanel({ assessment, disabled }: { assessment: Assessment; disa
           onSubmit={(event) => {
             event.preventDefault();
             const text = draft.trim();
-            if (!text) return;
-            setMessages((items) => [...items, { id: nextId.current++, from: 'user', text, simulation: false }]);
-            setDraft('');
+            if (!text || disabled || ask.isPending || !available) return;
             ask.mutate(text);
           }}
         >
@@ -191,13 +209,13 @@ function AssistantPanel({ assessment, disabled }: { assessment: Assessment; disa
             rows={3}
             maxLength={10000}
             value={draft}
-            disabled={disabled}
+            disabled={disabled || ask.isPending || !available}
             onChange={(event) => setDraft(event.target.value)}
           />
           <Button
             type="submit"
             icon="send"
-            disabled={disabled || !draft.trim()}
+            disabled={disabled || ask.isPending || !available || !draft.trim()}
             pending={ask.isPending}
             pendingLabel="Ждём ответ…"
           >
@@ -449,7 +467,7 @@ function Workspace({ assessment }: { assessment: Assessment }) {
             </Card>
           )}
         </div>
-        <AssistantPanel assessment={assessment} disabled={submit.isPending} />
+        <AssistantPanel assessment={assessment} disabled={submit.isPending} prepare={() => flush(latest.current)} />
       </div>
       <div className={styles.footer}>
         <span className="row small" role="status">

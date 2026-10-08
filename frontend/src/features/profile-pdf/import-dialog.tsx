@@ -1,11 +1,11 @@
 import { useForm } from '@tanstack/react-form';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { type Job, useJob } from '@/entities/job';
 import { type SkillId, useMeta } from '@/entities/meta';
 import { profileKey } from '@/entities/profile';
 import { useScope } from '@/entities/session';
-import { type components, describeError } from '@/shared/api';
+import { type components, describeError, isApiError } from '@/shared/api';
 import { gradeLabel, gradeOrder, specializationLabel, specializationOrder } from '@/shared/lib';
 import {
   Button,
@@ -22,6 +22,17 @@ import {
 import { confirmProfileImport, importProfilePdf, validatePdf } from './api';
 
 type Preview = components['schemas']['ImportPreview'];
+const fieldLabels: Record<string, string> = {
+  name: 'Имя',
+  specialization: 'Специализация',
+  selectedGrade: 'Грейд для проверки',
+  stack: 'Стек',
+  teamRole: 'Роль в команде',
+  experienceMonths: 'Стаж',
+  experience: 'Опыт',
+  softSkills: 'Навыки общения',
+};
+
 type ImportResult = Extract<NonNullable<Job['result']>, { kind: 'profile_import' }>;
 
 function PreviewForm({ jobId, result, onDone }: { jobId: string; result: ImportResult; onDone: () => void }) {
@@ -35,6 +46,9 @@ function PreviewForm({ jobId, result, onDone }: { jobId: string; result: ImportR
       queryClient.setQueryData(profileKey(scope), profile);
       toast('Данные из PDF применены к профилю');
       onDone();
+    },
+    onError: () => {
+      void queryClient.invalidateQueries({ queryKey: profileKey(scope) });
     },
   });
   const form = useForm({
@@ -54,6 +68,27 @@ function PreviewForm({ jobId, result, onDone }: { jobId: string; result: ImportR
           В демонстрационном режиме содержимое файла не анализируется: используется подготовленный пример. Проверьте и
           исправьте поля перед применением. Неизвестные значения оставлены пустыми.
         </Callout>
+      )}
+      {!result.simulation && (
+        <Callout tone="info" title="Проверьте распознанные данные">
+          Поля заполнены по тексту PDF с помощью ИИ. Возможны ошибки: сверьте значения перед применением. Если поле не
+          найдено, сохранено его текущее значение. Подтверждённый грейд не изменится.
+        </Callout>
+      )}
+      {result.evidence && result.evidence.length > 0 && (
+        <details>
+          <summary>Фрагменты PDF, использованные при заполнении</summary>
+          <ul className="stack">
+            {result.evidence.map((item) => (
+              <li key={`${item.field}-${item.page}-${item.quote}`}>
+                <strong>
+                  {fieldLabels[item.field]} · страница {item.page}
+                </strong>
+                <p style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{item.quote}</p>
+              </li>
+            ))}
+          </ul>
+        </details>
       )}
       <div className="form-grid">
         <form.Field name="name" validators={{ onSubmit: ({ value }) => (value.trim() ? undefined : 'Укажите имя') }}>
@@ -175,10 +210,18 @@ export function ImportProfileDialog({ open, onClose }: { open: boolean; onClose:
   const scope = useScope();
   const [fileError, setFileError] = useState<string | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
-  const upload = useMutation({ mutationFn: importProfilePdf, onSuccess: (job) => setJobId(job.id) });
+  const generation = useRef(0);
+  const upload = useMutation({
+    mutationFn: importProfilePdf,
+    onMutate: () => generation.current,
+    onSuccess: (job, _file, started) => {
+      if (started === generation.current) setJobId(job.id);
+    },
+  });
   const job = useJob(scope, jobId);
 
   const close = () => {
+    generation.current += 1;
     setJobId(null);
     setFileError(null);
     upload.reset();
@@ -215,13 +258,17 @@ export function ImportProfileDialog({ open, onClose }: { open: boolean; onClose:
               }}
             />
             <span id="import-file-hint" className="small muted">
-              PDF до 2 МиБ. Текущие данные профиля сохранятся, если разбор не удастся.
+              PDF с текстовым слоем до 2 МиБ и 20 страниц. Текст анализируется для заполнения формы. Сканы и файлы с
+              паролем не поддерживаются.
             </span>
           </label>
-          {upload.isPending && <InlineStatus>Загружаем файл…</InlineStatus>}
+          {upload.isPending && <InlineStatus>Загружаем и разбираем PDF…</InlineStatus>}
           {(fileError || upload.error) && (
             <Callout tone="danger" role="alert" title="Файл не принят">
-              {fileError ?? describeError(upload.error).message}
+              {fileError ??
+                (isApiError(upload.error) && upload.error.code === 'resume_extraction_invalid'
+                  ? upload.error.message
+                  : describeError(upload.error).message)}
             </Callout>
           )}
         </div>

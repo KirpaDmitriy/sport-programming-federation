@@ -99,6 +99,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .map_err(|error| format!("Bifrost adapter: {}", error.message))?;
         platform = platform.with_llm(Arc::new(bifrost));
     }
+    if env::var("FSP_PDF_IMPORT").is_ok_and(|value| value == "1") {
+        let pdf = fsp_integration_pdf::SandboxedPdf::default();
+        pdf.probe()
+            .await
+            .map_err(|error| format!("PDF adapter: {}", error.message))?;
+        platform = platform.with_pdf(Arc::new(pdf));
+    }
     let service = Arc::new(platform);
     service.initialize().await.map_err(|error| error.message)?;
     // Expired challenges, sessions and stale idempotency markers are workload

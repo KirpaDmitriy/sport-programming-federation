@@ -1405,6 +1405,7 @@ export interface components {
             capabilities: {
                 emailVerification: boolean;
                 profilePdf: boolean;
+                profilePdfImport: boolean;
                 githubFixture: boolean;
                 githubOAuth: boolean;
                 fspFixture: boolean;
@@ -2209,6 +2210,12 @@ export interface components {
                 preview: components["schemas"]["ImportPreview"];
                 parser: string;
                 simulation: boolean;
+                evidence?: {
+                    /** @enum {string} */
+                    field: "name" | "specialization" | "selectedGrade" | "stack" | "teamRole" | "experienceMonths" | "experience" | "softSkills";
+                    page: number;
+                    quote: string;
+                }[];
             } | {
                 /** @enum {string} */
                 kind: "source_sync";

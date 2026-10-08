@@ -1,5 +1,6 @@
 mod commands;
 mod graphs;
+mod imports;
 mod sources;
 pub use commands::Commands;
 
@@ -79,6 +80,7 @@ pub struct PlatformService {
     repository: Arc<dyn PlatformRepository>,
     delivery: Arc<dyn VerificationDelivery>,
     github: Option<Arc<dyn GitHubGateway>>,
+    pdf: Option<Arc<dyn crate::PdfGateway>>,
     llm: Option<Arc<dyn LlmGateway>>,
     fsp: Option<Arc<dyn FspGateway>>,
     grade_cooldown_days: u16,
@@ -94,6 +96,7 @@ impl PlatformService {
             delivery,
             github: None,
             llm: None,
+            pdf: None,
             fsp: None,
             grade_cooldown_days: 90,
         }
@@ -121,6 +124,17 @@ impl PlatformService {
     pub fn with_fsp(mut self, fsp: Arc<dyn FspGateway>) -> Self {
         self.fsp = Some(fsp);
         self
+    }
+
+    #[must_use]
+    pub fn with_pdf(mut self, pdf: Arc<dyn crate::PdfGateway>) -> Self {
+        self.pdf = Some(pdf);
+        self
+    }
+
+    #[must_use]
+    pub fn pdf_import_configured(&self) -> bool {
+        self.pdf.is_some() && self.llm.is_some()
     }
 
     pub async fn initialize(&self) -> Result<(), ApplicationError> {
@@ -2367,20 +2381,51 @@ impl PlatformService {
         Ok(job_view(job, None))
     }
 
-    /// The mock's `askAssessmentAssistant`: a fixed demo reply, no model call.
+    /// Assistance is advisory; only an evaluator can issue assessment results.
     pub async fn ask_assessment_assistant(
         &self,
         session: &SessionView,
         assessment_id: &str,
-        _input: AssistantInput,
+        input: AssistantInput,
     ) -> Result<AssistantReplyView, ApplicationError> {
         let record = self.assessment_for(session, assessment_id).await?;
         self.require_processing_consent(&record.candidate_id)
             .await?;
         mutable_assessment(&record)?;
+        let question = input.message.trim();
+        if question.is_empty() || question.chars().count() > 10_000 {
+            return Err(validation("Введите вопрос длиной до 10000 символов"));
+        }
+        let llm = self.llm.as_ref().ok_or_else(|| {
+            ApplicationError::new(503, "assistant_unavailable", "ИИ-помощник не настроен")
+        })?;
+        let reply = llm
+            .assessment_help(&fsp_domain::AssessmentHelpRequest {
+                task: record.task,
+                answer: record.answer,
+                question: question.into(),
+            })
+            .await
+            .map_err(integration_error)?;
+        if reply.message.trim().is_empty()
+            || reply.message.chars().count() > 6000
+            || reply
+                .message
+                .chars()
+                .any(|c| c.is_control() && c != '\n' && c != '\t' && c != '\r')
+        {
+            return Err(ApplicationError::new(
+                502,
+                "assistant_invalid_response",
+                "Помощник вернул некорректный ответ. Повторите вопрос",
+            ));
+        }
+        self.require_processing_consent(&record.candidate_id)
+            .await?;
+        mutable_assessment(&self.assessment_for(session, assessment_id).await?)?;
         Ok(AssistantReplyView {
-            message: "Демонстрационный ответ: зафиксируйте ключ идемпотентности и создание заказа в одной транзакции. Добавьте уникальное ограничение, определите поведение конкурентных запросов и объясните повтор после ошибки. Ответ подготовлен заранее; модель не вызывалась.".into(),
-            simulation: true,
+            message: reply.message.trim().into(),
+            simulation: false,
             ai_allowed: true,
             external_ai_allowed: true,
         })
@@ -2609,35 +2654,6 @@ impl PlatformService {
             .ok_or_else(|| ApplicationError::new(404, "not_found", "Ресурс не найден"))
     }
 
-    /// The mock's `importMyProfile`: the upload was validated by the
-    /// transport; the fixture preview completes inline.
-    pub async fn import_profile(&self, session: &SessionView) -> Result<JobView, ApplicationError> {
-        let candidate_id = candidate_id(session)?;
-        self.require_processing_consent(candidate_id).await?;
-        let mut job = self.new_job(candidate_id, "profile_import", None, None);
-        job.status = "succeeded".into();
-        job.updated_at = now();
-        job.result_json = Some(self.job_result(&JobResultView::ProfileImport {
-            preview: serde_json::json!({
-                "name": "Алексей Морозов",
-                "specialization": "backend",
-                "selectedGrade": "middle",
-                "stack": ["rust", "postgresql", "docker"],
-                "teamRole": "Разработчик",
-                "experienceMonths": serde_json::Value::Null,
-                "experience": "Демонстрационное извлечение: API на Rust и PostgreSQL. Содержимое загруженного файла не анализировалось.",
-                "softSkills": ["Командная работа"]
-            }),
-            parser: "fixture_preview",
-            simulation: true,
-        })?);
-        self.repository
-            .save_job(&job)
-            .await
-            .map_err(ApplicationError::storage)?;
-        Ok(job_view(job, None))
-    }
-
     /// The mock's `confirmProfileImport`: a succeeded, unconfirmed
     /// `profile_import` job applies the submitted profile patch once.
     pub async fn confirm_profile_import(
@@ -2672,48 +2688,49 @@ impl PlatformService {
         }
         self.require_processing_consent(candidate_id).await?;
         validate_profile_patch(&input.profile)?;
-        // Profile write and the confirmed-flag on the job commit together; the
-        // revision-guarded save retries once when a concurrent profile update
-        // lands between this transaction's read and write.
-        let mut attempts = 0;
-        let profile = loop {
-            let tx = self
-                .repository
-                .transaction()
-                .await
-                .map_err(ApplicationError::storage)?;
-            let mut profile = tx
-                .candidate(candidate_id)
-                .await
-                .map_err(ApplicationError::storage)?
-                .ok_or_else(|| ApplicationError::new(404, "not_found", "Профиль не найден"))?;
-            apply_profile_patch(&mut profile, input.profile.clone())?;
-            let base_revision = profile.revision;
-            profile.revision += 1;
-            profile.updated_at = now();
-            match tx.save_candidate_guarded(&profile, base_revision).await {
-                Ok(()) => {}
-                Err(RepositoryError::NotFound) if attempts == 0 => {
-                    attempts += 1;
-                    continue;
+        let tx = self
+            .repository
+            .transaction()
+            .await
+            .map_err(ApplicationError::storage)?;
+        tx.lock_candidate(candidate_id)
+            .await
+            .map_err(ApplicationError::storage)?;
+        if tx
+            .job(candidate_id, job_id)
+            .await
+            .map_err(ApplicationError::storage)?
+            .is_some_and(|current| current.confirmed)
+        {
+            return Err(ApplicationError::new(
+                409,
+                "import_already_confirmed",
+                "Импорт уже применён",
+            ));
+        }
+        let mut profile = tx
+            .candidate(candidate_id)
+            .await
+            .map_err(ApplicationError::storage)?
+            .ok_or_else(|| ApplicationError::new(404, "not_found", "Профиль не найден"))?;
+        imports::require_current_profile(&profile, job.input_revision.unwrap_or(profile.revision))?;
+        apply_profile_patch(&mut profile, input.profile)?;
+        profile.revision += 1;
+        profile.updated_at = now();
+        tx.save_candidate(&profile)
+            .await
+            .map_err(ApplicationError::storage)?;
+        job.confirmed = true;
+        job.updated_at = now();
+        tx.save_job_unconfirmed(&job)
+            .await
+            .map_err(|error| match error {
+                RepositoryError::NotFound => {
+                    ApplicationError::new(409, "import_already_confirmed", "Импорт уже применён")
                 }
-                Err(error) => return Err(ApplicationError::storage(error)),
-            }
-            job.confirmed = true;
-            job.updated_at = now();
-            tx.save_job_unconfirmed(&job)
-                .await
-                .map_err(|error| match error {
-                    RepositoryError::NotFound => ApplicationError::new(
-                        409,
-                        "import_already_confirmed",
-                        "Импорт уже применён",
-                    ),
-                    other => ApplicationError::storage(other),
-                })?;
-            tx.commit().await.map_err(ApplicationError::storage)?;
-            break profile;
-        };
+                other => ApplicationError::storage(other),
+            })?;
+        tx.commit().await.map_err(ApplicationError::storage)?;
         let signals = self
             .freshness_signals(&profile.id, profile.grade_confirmed_at.as_deref())
             .await?;

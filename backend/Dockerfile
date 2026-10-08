@@ -7,7 +7,7 @@ COPY backend/ ./
 RUN cargo build --release --locked -p fsp-server
 
 FROM debian:trixie-slim
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl \
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl bubblewrap poppler-utils \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --system --uid 10001 --no-create-home fsp
 COPY --from=build /app/target/release/fsp-career-api /usr/local/bin/fsp-career-api

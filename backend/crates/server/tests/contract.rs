@@ -49,10 +49,15 @@ async fn test_app() -> axum::Router {
 }
 
 async fn app_with_repository(repository: PostgresRepository) -> axum::Router {
-    let repository = Arc::new(repository);
-    let service = Arc::new(
-        PlatformService::new(repository, Arc::new(FixedDelivery)).with_fsp(Arc::new(SyntheticFsp)),
-    );
+    app_with_service(
+        PlatformService::new(Arc::new(repository), Arc::new(FixedDelivery))
+            .with_fsp(Arc::new(SyntheticFsp)),
+    )
+    .await
+}
+
+async fn app_with_service(platform: PlatformService) -> axum::Router {
+    let service = Arc::new(platform);
     service.initialize().await.expect("seeded demo data");
     router(
         HttpConfig {
@@ -915,7 +920,8 @@ async fn assessments_full_flow_and_grade_change() {
         json!({"message": "как проверить повтор?"}),
     )
     .await;
-    assert_eq!(status, StatusCode::OK, "{answer}");
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{answer}");
+    assert_eq!(answer["code"], "assistant_unavailable");
     // Submit is bodyless but keyed; it resolves synchronously in the demo.
     let submit_path = format!("/api/v1/me/assessments/{assessment_id}/submit");
     let ((status, _, submit), (patch_status, patch_result)) = tokio::join!(
@@ -1144,14 +1150,33 @@ async fn tasks_offer_and_response() {
 
 #[tokio::test]
 async fn profile_import_confirm_and_pdf_export() {
-    let app = test_app().await;
-    let candidate = login(&app, CANDIDATE_JUNIOR, "candidate").await;
-    // A valid-shaped PDF upload produces a succeeded profile_import job.
-    let boundary = "----fsp-test";
-    let payload = format!(
-        "--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"cv.pdf\"\r\nContent-Type: application/pdf\r\n\r\n%PDF-1.4 demo %%EOF\r\n--{boundary}--\r\n"
+    let (repository, _database) =
+        PostgresRepository::connect_test_database(&test_admin_url()).await;
+    let app = app_with_service(
+        PlatformService::new(Arc::new(repository), Arc::new(FixedDelivery))
+            .with_pdf(Arc::new(fsp_integration_pdf::SandboxedPdf::default()))
+            .with_llm(Arc::new(TestAnalysis)),
     )
-    .into_bytes();
+    .await;
+    let candidate = login(&app, CANDIDATE_JUNIOR, "candidate").await;
+    // Real PDF bytes traverse the sandboxed parser; the analysis double only selects
+    // a verbatim source line so this test has no model/network dependency.
+    let (_, original) = get(&app, "/api/v1/me/profile", Some(&candidate)).await;
+    let exported = app
+        .clone()
+        .oneshot(request(
+            "GET",
+            "/api/v1/me/profile/export",
+            Some(&candidate),
+            None,
+        ))
+        .await
+        .unwrap();
+    let pdf = exported.into_body().collect().await.unwrap().to_bytes();
+    let boundary = "----fsp-test";
+    let mut payload = format!("--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"cv.pdf\"\r\nContent-Type: application/pdf\r\n\r\n").into_bytes();
+    payload.extend_from_slice(&pdf);
+    payload.extend_from_slice(format!("\r\n--{boundary}--\r\n").as_bytes());
     let response = app
         .clone()
         .oneshot(
@@ -1163,7 +1188,7 @@ async fn profile_import_confirm_and_pdf_export() {
                     header::CONTENT_TYPE,
                     format!("multipart/form-data; boundary={boundary}"),
                 )
-                .body(Body::from(payload))
+                .body(Body::from(payload.clone()))
                 .unwrap(),
         )
         .await
@@ -1173,12 +1198,16 @@ async fn profile_import_confirm_and_pdf_export() {
     let job: Value = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(job["kind"], "profile_import");
     assert_eq!(job["status"], "succeeded");
-    assert_eq!(job["result"]["parser"], "fixture_preview");
+    assert_eq!(job["result"]["parser"], "poppler_bifrost");
+    assert_eq!(job["simulation"], false);
+    assert_eq!(job["result"]["simulation"], false);
+    assert_eq!(job["result"]["evidence"][0]["page"], 1);
     let job_id = job["id"].as_str().unwrap().to_owned();
     // The job is replayable through the polling endpoint.
     let (status, polled) = get(&app, &format!("/api/v1/jobs/{job_id}"), Some(&candidate)).await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(polled["result"]["preview"]["name"], "Алексей Морозов");
+    assert_eq!(polled["result"]["preview"]["name"], original["name"]);
+    assert_eq!(polled["result"]["preview"]["stack"], original["stack"]);
     // Confirm applies the patch once.
     let (status, profile) = send(
         &app,
@@ -1200,6 +1229,46 @@ async fn profile_import_confirm_and_pdf_export() {
     .await;
     assert_eq!(status, StatusCode::CONFLICT);
     assert_eq!(code(&body), "import_already_confirmed");
+    // A preview is bound to its profile revision: do not overwrite a newer edit.
+    let (status, _, fresh_job) = call(
+        &app,
+        Request::builder()
+            .method("POST")
+            .uri("/api/v1/me/profile/imports")
+            .header(header::COOKIE, &candidate)
+            .header(
+                header::CONTENT_TYPE,
+                format!("multipart/form-data; boundary={boundary}"),
+            )
+            .body(Body::from(payload))
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::ACCEPTED, "{fresh_job}");
+    let (status, changed) = send(
+        &app,
+        "PATCH",
+        "/api/v1/me/profile",
+        Some(&candidate),
+        json!({"name": "Новое имя"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{changed}");
+    let (status, conflict) = send(
+        &app,
+        "POST",
+        &format!(
+            "/api/v1/me/profile/imports/{}/confirm",
+            fresh_job["id"].as_str().unwrap()
+        ),
+        Some(&candidate),
+        json!({"profile": {"name": "Устаревшее имя"}}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT, "{conflict}");
+    assert_eq!(conflict["code"], "import_profile_changed");
+    let (_, unchanged) = get(&app, "/api/v1/me/profile", Some(&candidate)).await;
+    assert_eq!(unchanged["name"], "Новое имя");
     // Export returns a real PDF.
     let response = app
         .clone()
@@ -1432,4 +1501,116 @@ async fn concurrent_assessment_starts_with_distinct_keys_return_domain_conflicts
             .count(),
         1
     );
+}
+
+struct TestAnalysis;
+#[async_trait::async_trait]
+impl fsp_application::LlmGateway for TestAnalysis {
+    async fn extract_resume(
+        &self,
+        pages: &[fsp_domain::PdfPage],
+    ) -> Result<fsp_domain::ResumeExtraction, fsp_application::IntegrationError> {
+        let first = pages[0].text.lines().next().unwrap().trim().to_string();
+        Ok(fsp_domain::ResumeExtraction {
+            fields: vec![fsp_domain::ResumeField {
+                field: "name".into(),
+                value: first.clone(),
+                page: 1,
+                quote: first,
+            }],
+        })
+    }
+    async fn assessment_help(
+        &self,
+        request: &fsp_domain::AssessmentHelpRequest,
+    ) -> Result<fsp_domain::AssessmentHelpReply, fsp_application::IntegrationError> {
+        Ok(fsp_domain::AssessmentHelpReply {
+            message: format!("{}: {}", request.question, request.answer.code),
+        })
+    }
+    async fn extract_graph(
+        &self,
+        _: &fsp_domain::GraphExtractionRequest,
+    ) -> Result<fsp_domain::ExtractedGraph, fsp_application::IntegrationError> {
+        unreachable!()
+    }
+    async fn match_repository(
+        &self,
+        _: &fsp_domain::RepositoryMatchRequest,
+    ) -> Result<fsp_domain::RepositoryCompetitionMatch, fsp_application::IntegrationError> {
+        unreachable!()
+    }
+}
+
+#[tokio::test]
+async fn assistant_uses_saved_answer_and_never_issues_a_grade() {
+    let (repository, _database) =
+        PostgresRepository::connect_test_database(&test_admin_url()).await;
+    let app = app_with_service(
+        PlatformService::new(Arc::new(repository), Arc::new(FixedDelivery))
+            .with_llm(Arc::new(TestAnalysis)),
+    )
+    .await;
+    let candidate = login(&app, CANDIDATE_JUNIOR, "candidate").await;
+    let (status, _, assessment) = call(
+        &app,
+        keyed_request(
+            "POST",
+            "/api/v1/me/assessments",
+            Some(&candidate),
+            "assistant-test-start",
+            Some(json!({"specialization":"backend","grade":"middle"})),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{assessment}");
+    let id = assessment["id"].as_str().unwrap();
+    let (status, saved) = send(
+        &app,
+        "PUT",
+        &format!("/api/v1/me/assessments/{id}/answer"),
+        Some(&candidate),
+        json!({"code":"fn saved_answer() {}", "explanation":"Транзакция", "externalAiUsed":false}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{saved}");
+    let (status, reply) = send(
+        &app,
+        "POST",
+        &format!("/api/v1/me/assessments/{id}/assistant"),
+        Some(&candidate),
+        json!({"message":"Как проверить откат?"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{reply}");
+    assert_eq!(reply["simulation"], false);
+    assert!(
+        reply["message"]
+            .as_str()
+            .unwrap()
+            .contains("fn saved_answer() {}")
+    );
+    assert!(
+        reply["message"]
+            .as_str()
+            .unwrap()
+            .contains("Как проверить откат?")
+    );
+    let (_, unchanged) = get(
+        &app,
+        &format!("/api/v1/me/assessments/{id}"),
+        Some(&candidate),
+    )
+    .await;
+    assert_eq!(unchanged["status"], "in_progress");
+    assert_eq!(unchanged["result"], Value::Null);
+    let (status, _) = send(
+        &app,
+        "POST",
+        &format!("/api/v1/me/assessments/{id}/assistant"),
+        Some(&candidate),
+        json!({"message":" "}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
 }

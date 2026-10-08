@@ -11947,6 +11947,9 @@
               "profilePdf": {
                 "type": "boolean"
               },
+              "profilePdfImport": {
+                "type": "boolean"
+              },
               "githubFixture": {
                 "type": "boolean"
               },
@@ -11984,6 +11987,7 @@
             "required": [
               "emailVerification",
               "profilePdf",
+              "profilePdfImport",
               "githubFixture",
               "githubOAuth",
               "fspFixture",
@@ -16146,6 +16150,44 @@
                       },
                       "simulation": {
                         "type": "boolean"
+                      },
+                      "evidence": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "field": {
+                              "type": "string",
+                              "enum": [
+                                "name",
+                                "specialization",
+                                "selectedGrade",
+                                "stack",
+                                "teamRole",
+                                "experienceMonths",
+                                "experience",
+                                "softSkills"
+                              ]
+                            },
+                            "page": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 20
+                            },
+                            "quote": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 4000
+                            }
+                          },
+                          "required": [
+                            "field",
+                            "page",
+                            "quote"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "maxItems": 24
                       }
                     },
                     "required": [

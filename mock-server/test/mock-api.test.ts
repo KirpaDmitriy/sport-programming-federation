@@ -1238,6 +1238,25 @@ test('PDF export is a real current-profile PDF; fixture import is asynchronous a
   await request('POST', '/api/v1/me/profile/imports', { actor: candidate, raw: invalid, status: 422 });
 });
 
+test('a PDF preview cannot overwrite a newer profile revision', async (t) => {
+  const { request, login, job } = await setup(t);
+  const candidate = await login('candidate024');
+  const exported = await request('GET', '/api/v1/me/profile/export', { actor: candidate });
+  const form = new FormData();
+  form.set('file', new Blob([exported.buffer], { type: 'application/pdf' }), 'profile.pdf');
+  const imported = (await request('POST', '/api/v1/me/profile/imports', { actor: candidate, raw: form, status: 202 }))
+    .body;
+  await job(imported.id, candidate);
+  await request('PATCH', '/api/v1/me/profile', { actor: candidate, body: { name: 'Актуальное имя' } });
+  const conflict = await request('POST', `/api/v1/me/profile/imports/${imported.id}/confirm`, {
+    actor: candidate,
+    body: { profile: { name: 'Старое имя' } },
+    status: 409,
+  });
+  assert.equal(conflict.body.code, 'import_profile_changed');
+  assert.equal((await request('GET', '/api/v1/me/profile', { actor: candidate })).body.name, 'Актуальное имя');
+});
+
 test('scenario reset clears sessions and supports no-FSP, empty and error states', async (t) => {
   const { request, login } = await setup(t);
   let employer = await login('employer-a');

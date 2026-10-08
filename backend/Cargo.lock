@@ -587,6 +587,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "fsp-integration-pdf"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "fsp-application",
+ "fsp-domain",
+ "tokio",
+]
+
+[[package]]
 name = "fsp-server"
 version = "0.1.0"
 dependencies = [
@@ -594,10 +604,12 @@ dependencies = [
  "axum",
  "chrono",
  "fsp-application",
+ "fsp-domain",
  "fsp-http",
  "fsp-integration-bifrost",
  "fsp-integration-fsp-synthetic",
  "fsp-integration-github",
+ "fsp-integration-pdf",
  "fsp-storage-postgres",
  "http-body-util",
  "serde_json",

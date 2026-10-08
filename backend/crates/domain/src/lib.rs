@@ -1,9 +1,11 @@
 //! Pure domain types and rules for the reverse-hiring platform.
 
+mod documents;
 mod llm;
 mod matching;
 mod sources;
 
+pub use documents::*;
 pub use llm::*;
 pub use matching::*;
 pub use sources::*;

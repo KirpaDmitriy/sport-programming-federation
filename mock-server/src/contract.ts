@@ -57,6 +57,7 @@ export const schemas = {
         [
           'emailVerification',
           'profilePdf',
+          'profilePdfImport',
           'githubFixture',
           'githubOAuth',
           'fspFixture',
@@ -562,12 +563,32 @@ export const schemas = {
     updatedAt: dt,
     result: nullable({
       oneOf: [
-        obj({
-          kind: en('profile_import'),
-          preview: ref('ImportPreview'),
-          parser: str({ minLength: 1, maxLength: 80 }),
-          simulation: bool,
-        }),
+        obj(
+          {
+            kind: en('profile_import'),
+            preview: ref('ImportPreview'),
+            parser: str({ minLength: 1, maxLength: 80 }),
+            simulation: bool,
+            evidence: arr(
+              obj({
+                field: en(
+                  'name',
+                  'specialization',
+                  'selectedGrade',
+                  'stack',
+                  'teamRole',
+                  'experienceMonths',
+                  'experience',
+                  'softSkills',
+                ),
+                page: num({ minimum: 1, maximum: 20 }),
+                quote: str({ minLength: 1, maxLength: 4000 }),
+              }),
+              { maxItems: 24 },
+            ),
+          },
+          ['kind', 'preview', 'parser', 'simulation'],
+        ),
         obj({ kind: en('source_sync'), source: ref('Source') }),
         obj({ kind: en('checks'), assessmentId: id, checks: arr(ref('Check')), simulation: bool }),
         obj({ kind: en('assessment'), assessment: ref('Assessment') }),

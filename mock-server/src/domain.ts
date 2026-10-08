@@ -903,6 +903,7 @@ const handlers: Handlers = {
     capabilities: {
       emailVerification: true,
       profilePdf: true,
+      profilePdfImport: true,
       githubFixture: true,
       githubOAuth: false,
       fspFixture: true,
@@ -1007,22 +1008,28 @@ const handlers: Handlers = {
   importMyProfile: (ctx) => {
     const candidate = me(ctx);
     processing(candidate);
-    return createJob(ctx.s, ctx.actor, 'profile_import', () => ({
-      kind: 'profile_import',
-      preview: {
-        name: 'Алексей Морозов',
-        specialization: 'backend',
-        selectedGrade: 'middle',
-        stack: ['rust', 'postgresql', 'docker'],
-        teamRole: 'Разработчик',
-        experienceMonths: null,
-        experience:
-          'Демонстрационное извлечение: API на Rust и PostgreSQL. Содержимое загруженного файла не анализировалось.',
-        softSkills: ['Командная работа'],
-      },
-      parser: 'fixture_preview',
-      simulation: true,
-    }));
+    return createJob(
+      ctx.s,
+      ctx.actor,
+      'profile_import',
+      () => ({
+        kind: 'profile_import',
+        preview: {
+          name: 'Алексей Морозов',
+          specialization: 'backend',
+          selectedGrade: 'middle',
+          stack: ['rust', 'postgresql', 'docker'],
+          teamRole: 'Разработчик',
+          experienceMonths: null,
+          experience:
+            'Демонстрационное извлечение: API на Rust и PostgreSQL. Содержимое загруженного файла не анализировалось.',
+          softSkills: ['Командная работа'],
+        },
+        parser: 'fixture_preview',
+        simulation: true,
+      }),
+      { inputRevision: candidate.revision },
+    );
   },
   confirmProfileImport: (ctx) => {
     const job = jobFor(ctx, param(ctx, 'jobId'));
@@ -1031,8 +1038,15 @@ const handlers: Handlers = {
     if (job.confirmed) fail(409, 'import_already_confirmed', 'Импорт уже применён');
     const candidate = me(ctx);
     processing(candidate);
+    if (job.inputRevision !== undefined && candidate.revision !== job.inputRevision)
+      fail(
+        409,
+        'import_profile_changed',
+        'Профиль изменился после загрузки PDF. Загрузите файл заново, чтобы сохранить актуальные данные',
+      );
+    const updated = patchProfile(ctx.s, candidate, ctx.body.profile);
     job.confirmed = true;
-    return patchProfile(ctx.s, candidate, ctx.body.profile);
+    return updated;
   },
   exportMyProfile: (ctx) => ({ pdfProfile: profileDto(ctx.s, me(ctx)) }),
   authorizeGitHub: () => ({
