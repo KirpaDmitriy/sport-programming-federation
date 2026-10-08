@@ -1,4 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
+import { answerKnowledgeTest } from './knowledge';
 import { ALEXEY, actor, COMPANY_A, resetMock, signIn } from './support';
 
 // Regenerates the documentation screenshots; runs only when SCREENSHOTS=1.
@@ -29,16 +30,9 @@ test('documentation screenshots of the implemented screens', async ({ browser, p
   await page.goto('/candidate/overview');
   await page.getByRole('button', { name: 'Начать проверку' }).click();
   await page.waitForURL(/\/workspace$/);
-  await page
-    .getByLabel('Код решения на Rust')
-    .fill(
-      'pub async fn create_order(key: &str) -> Result<Order, Error> {\n    // одна транзакция: ключ + заказ\n    todo!()\n}\n',
-    );
-  await expect(page.getByText(/Черновик сохранён в/)).toBeVisible();
+  await answerKnowledgeTest(page);
   await shot(page, '05-assessment-workspace');
-  await page.getByRole('button', { name: /3\. Объяснение/ }).click();
-  await page.getByLabel('Объяснение').fill('Ключ и заказ сохраняются атомарно, повтор возвращает существующий заказ.');
-  await page.getByRole('button', { name: 'Отправить решение' }).click();
+  await page.getByRole('button', { name: 'Отправить ответы' }).click();
   await page.getByRole('dialog').getByRole('button', { name: 'Отправить' }).click();
   await expect(page.getByText('Профиль обновлён автоматически')).toBeVisible();
   await shot(page, '06-assessment-result');
@@ -102,11 +96,8 @@ test('documentation screenshots of the implemented screens', async ({ browser, p
   await resetMock('assessment_failure');
   const failing = await actor(browser, ALEXEY, 'candidate');
   await failing.page.getByRole('button', { name: 'Начать проверку' }).click();
-  await failing.page.getByLabel('Код решения на Rust').fill('pub fn attempt() {}');
-  await expect(failing.page.getByText(/Черновик сохранён в/)).toBeVisible();
-  await failing.page.getByRole('button', { name: /3\. Объяснение/ }).click();
-  await failing.page.getByLabel('Объяснение').fill('Попытка без транзакции.');
-  await failing.page.getByRole('button', { name: 'Отправить решение' }).click();
+  await answerKnowledgeTest(failing.page, false);
+  await failing.page.getByRole('button', { name: 'Отправить ответы' }).click();
   await failing.page.getByRole('dialog').getByRole('button', { name: 'Отправить' }).click();
   await expect(failing.page.getByRole('heading', { name: 'Мидл пока не подтверждён' })).toBeVisible();
   await shot(failing.page, '14-failed-upgrade');

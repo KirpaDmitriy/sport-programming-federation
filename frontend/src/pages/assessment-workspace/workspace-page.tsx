@@ -8,14 +8,11 @@ import {
   assessmentKey,
   assessmentQuery,
   assessmentsKey,
-  CheckStatusChip,
   isEditable,
   isEvaluating,
-  runChecks,
   saveAnswer,
   submitAssessment,
 } from '@/entities/assessment';
-import { useJob } from '@/entities/job';
 import { useMeta } from '@/entities/meta';
 import { profileKey } from '@/entities/profile';
 import { useScope } from '@/entities/session';
@@ -30,9 +27,7 @@ import {
   Checkbox,
   ConfirmDialog,
   Icon,
-  InlineStatus,
   panelId,
-  Segmented,
   StatusChip,
   type TabItem,
   Tabs,
@@ -41,48 +36,10 @@ import {
 } from '@/shared/ui';
 import styles from './workspace-page.module.css';
 
-type Step = 'task' | 'solution' | 'explanation';
 type SaveState = { status: 'saved' | 'dirty' | 'saving' | 'error'; at: Date | null; error?: unknown };
 type ChatMessage = { id: number; from: 'user' | 'assistant'; text: string; simulation: boolean };
 
 const AUTOSAVE_DELAY = 1200;
-const stepLabels: Record<Step, string> = { task: 'Условие', solution: 'Решение', explanation: 'Объяснение' };
-const stepOrder: Step[] = ['task', 'solution', 'explanation'];
-
-function CodeEditor({
-  value,
-  onChange,
-  disabled,
-}: {
-  value: string;
-  onChange: (value: string) => void;
-  disabled: boolean;
-}) {
-  const gutter = useRef<HTMLPreElement>(null);
-  const lines = value.split('\n').length;
-  return (
-    <div className={styles.editor}>
-      <pre className={styles.gutter} ref={gutter} aria-hidden="true">
-        {Array.from({ length: lines }, (_, index) => index + 1).join('\n')}
-      </pre>
-      <textarea
-        className={styles.code}
-        value={value}
-        disabled={disabled}
-        spellCheck={false}
-        autoCapitalize="off"
-        autoCorrect="off"
-        aria-label="Код решения на Rust"
-        aria-describedby="editor-hint"
-        onChange={(event) => onChange(event.target.value)}
-        onScroll={(event) => {
-          if (gutter.current) gutter.current.scrollTop = event.currentTarget.scrollTop;
-        }}
-      />
-    </div>
-  );
-}
-
 function TaskPanel({ assessment }: { assessment: Assessment }) {
   const [tab, setTab] = useState<'task' | 'materials'>('task');
   const task = assessment.task;
@@ -149,7 +106,7 @@ function AssistantPanel({
   const nextId = useRef(1);
   const ask = useMutation({
     mutationFn: async (message: string) => {
-      if (!(await prepare())) throw new Error('Сначала сохраните решение');
+      if (!(await prepare())) throw new Error('Сначала сохраните ответы');
       return askAssistant(assessment.id, message);
     },
     onSuccess: (reply, question) => {
@@ -168,7 +125,7 @@ function AssistantPanel({
           Помощник разрешён на всех этапах, как и внешние инструменты.
           {meta.mode === 'mock'
             ? ' В учебном API ответы подготовлены заранее.'
-            : ' Ответы генерируются ИИ по заданию, сохранённому решению и текущему вопросу. Помощник не запускает код и не выставляет оценку.'}
+            : ' Ответы генерируются ИИ по вопросам теста, сохранённым ответам и текущему вопросу. Помощник не выставляет оценку.'}
         </p>
         {!available && <Callout tone="neutral">ИИ-помощник сейчас не подключён.</Callout>}
         {messages.length > 0 && (
@@ -191,7 +148,7 @@ function AssistantPanel({
         )}
         {ask.error && (
           <Callout tone="warning">
-            Помощник недоступен: {describeError(ask.error).message}. Работа с решением не затронута.
+            Помощник недоступен: {describeError(ask.error).message}. Выбранные ответы сохранены в черновике.
           </Callout>
         )}
         <form
@@ -205,7 +162,7 @@ function AssistantPanel({
         >
           <TextareaField
             id="assistant-question"
-            label="Вопрос о решении"
+            label="Вопрос по тесту"
             rows={3}
             maxLength={10000}
             value={draft}
@@ -231,12 +188,10 @@ function Workspace({ assessment }: { assessment: Assessment }) {
   const scope = useScope();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const [step, setStep] = useState<Step>('solution');
   const [answer, setAnswer] = useState<AssessmentAnswer>(assessment.answer);
   const [save, setSave] = useState<SaveState>({ status: 'saved', at: null });
-  const [checksJobId, setChecksJobId] = useState<string | null>(null);
   const [confirmSubmit, setConfirmSubmit] = useState(false);
-  const [explanationError, setExplanationError] = useState<string | null>(null);
+  const [answerError, setAnswerError] = useState<string | null>(null);
   const lastSaved = useRef(JSON.stringify(assessment.answer));
   const submitKey = useRef<string | null>(null);
   const timer = useRef<number | undefined>(undefined);
@@ -284,20 +239,6 @@ function Workspace({ assessment }: { assessment: Assessment }) {
     return () => window.clearTimeout(timer.current);
   }, [answer, flush]);
 
-  const checksJob = useJob(scope, checksJobId, () => {
-    void queryClient.invalidateQueries({ queryKey: assessmentKey(scope, assessment.id) });
-  });
-  const checksRunning =
-    Boolean(checksJobId) && checksJob.data?.status !== 'succeeded' && checksJob.data?.status !== 'failed';
-
-  const startChecks = useMutation({
-    mutationFn: async () => {
-      if (!(await flush(latest.current))) throw new Error('Черновик не сохранён');
-      return runChecks(assessment.id);
-    },
-    onSuccess: (job) => setChecksJobId(job.id),
-  });
-
   const submit = useMutation({
     mutationFn: async () => {
       if (!(await flush(latest.current))) throw new Error('Черновик не сохранён — отправка отменена');
@@ -323,22 +264,16 @@ function Workspace({ assessment }: { assessment: Assessment }) {
     },
   });
 
+  const questions = assessment.task.questions ?? [];
+  const responses = answer.responses ?? [];
   const requestSubmit = () => {
-    if (!answer.code.trim()) {
-      setStep('solution');
+    if (questions.some((q) => !responses.some((r) => r.questionId === q.id))) {
+      setAnswerError('Выберите ответ на каждый вопрос перед отправкой.');
       return;
     }
-    if (!answer.explanation.trim()) {
-      setStep('explanation');
-      setExplanationError('Опишите решение перед отправкой: объяснение входит в оценку.');
-      return;
-    }
+    setAnswerError(null);
     setConfirmSubmit(true);
   };
-
-  const checks = assessment.checks;
-  const passed = checks.filter((check) => check.status === 'passed').length;
-  const stepIndex = stepOrder.indexOf(step) + 1;
 
   return (
     <>
@@ -350,17 +285,9 @@ function Workspace({ assessment }: { assessment: Assessment }) {
           <h1 className={styles.title}>
             {specializationLabel[assessment.specialization]} · Проверка {gradeLabel[assessment.grade]}
           </h1>
-          <div className={styles.steps}>
-            <span className="muted">
-              Шаг {stepIndex} из 3 · {stepLabels[step]}
-            </span>
-            <Segmented<Step>
-              label="Этап работы"
-              value={step}
-              onChange={setStep}
-              options={stepOrder.map((value, index) => ({ value, label: `${index + 1}. ${stepLabels[value]}` }))}
-            />
-          </div>
+          <p className="muted">
+            Тест знаний · выбрано {responses.length} из {questions.length} ответов · версия {assessment.task.version}
+          </p>
         </div>
         <div className={styles.badges}>
           <StatusChip tone="success" icon="sparkles">
@@ -371,100 +298,54 @@ function Workspace({ assessment }: { assessment: Assessment }) {
           </StatusChip>
         </div>
       </div>
-      {assessment.task.execution === 'simulated' && (
-        <Callout tone="warning" title="Демонстрационная проверка">
-          Код не компилируется и не исполняется. Результаты проверок и итоговая оценка берутся из сценария стенда.
-        </Callout>
-      )}
+      <Callout tone="neutral" title="Проверка знаний">
+        Код писать не нужно. Выберите один ответ на каждый вопрос. Результат относится к темам этого теста и не
+        подтверждает практический опыт разработки.
+      </Callout>
       <div className={styles.panes} style={{ marginTop: '1rem' }}>
         <TaskPanel assessment={assessment} />
         <div className={`${styles.pane} stack`}>
-          {step === 'task' && (
-            <Card title="Перед началом">
-              <div className="stack">
-                <p>
-                  Прочитайте условие и рубрику. Решение и объяснение сохраняются как черновик автоматически, отправка
-                  выполняется один раз.
-                </p>
-                <Button variant="primary" iconAfter="arrowRight" onClick={() => setStep('solution')}>
-                  Перейти к решению
-                </Button>
-              </div>
+          {questions.map((question, index) => (
+            <Card key={question.id}>
+              <fieldset className={styles.question} disabled={submit.isPending}>
+                <legend>
+                  {index + 1}. {question.prompt}
+                </legend>
+                {question.options.map((option) => (
+                  <label key={option.id} className={styles.option}>
+                    <input
+                      type="radio"
+                      name={`question-${question.id}`}
+                      value={option.id}
+                      checked={responses.some((r) => r.questionId === question.id && r.optionId === option.id)}
+                      onChange={() => {
+                        setAnswerError(null);
+                        setAnswer((value) => ({
+                          ...value,
+                          responses: [
+                            ...(value.responses ?? []).filter((r) => r.questionId !== question.id),
+                            { questionId: question.id, optionId: option.id },
+                          ],
+                        }));
+                      }}
+                    />
+                    <span>{option.label}</span>
+                  </label>
+                ))}
+              </fieldset>
             </Card>
-          )}
-          {step === 'solution' && (
-            <>
-              <Card>
-                <div className={styles.editorHead}>
-                  <strong>Решение</strong>
-                  <StatusChip tone="neutral" icon="code">
-                    Язык: Rust
-                  </StatusChip>
-                </div>
-                <CodeEditor
-                  value={answer.code}
-                  onChange={(code) => setAnswer((value) => ({ ...value, code }))}
-                  disabled={submit.isPending}
-                />
-                <p id="editor-hint" className="small muted" style={{ marginTop: '0.5rem' }}>
-                  Tab переводит фокус к следующему элементу; для отступов используйте пробелы.
-                </p>
-              </Card>
-              <Card
-                title={`Проверки · ${passed} из ${checks.length} пройдены`}
-                subtitle={assessment.simulation ? 'Симуляция: результаты заданы сценарием стенда' : undefined}
-              >
-                {checksRunning && <InlineStatus>Проверки выполняются…</InlineStatus>}
-                {checksJob.data?.status === 'failed' && (
-                  <Callout tone="warning" title="Проверки не завершены">
-                    {checksJob.data.error?.message ?? 'Сервис проверок недоступен.'} Это техническая ошибка, а не оценка
-                    решения.
-                  </Callout>
-                )}
-                {startChecks.error && <Callout tone="danger">{describeError(startChecks.error).message}</Callout>}
-                <ul className={styles.checks}>
-                  {checks.map((check) => (
-                    <li key={check.id} className={styles.check}>
-                      <span className="stack" style={{ gap: '0.125rem' }}>
-                        <strong>{check.label}</strong>
-                        <span className="small muted">{check.message}</span>
-                      </span>
-                      <CheckStatusChip status={check.status} />
-                    </li>
-                  ))}
-                </ul>
-              </Card>
-            </>
-          )}
-          {step === 'explanation' && (
-            <Card title="Объяснение решения">
-              <div className="stack">
-                <p className="small muted">
-                  Опишите границы транзакции, поведение при одновременных запросах и повтор после ошибки. Требования к
-                  адаптации, если они есть, указаны в условии задачи.
-                </p>
-                <TextareaField
-                  id="assessment-explanation"
-                  disabled={submit.isPending}
-                  label="Объяснение"
-                  rows={10}
-                  maxLength={20000}
-                  value={answer.explanation}
-                  error={explanationError ?? undefined}
-                  onChange={(event) => {
-                    setExplanationError(null);
-                    setAnswer((value) => ({ ...value, explanation: event.target.value }));
-                  }}
-                />
-                <Checkbox
-                  checked={answer.externalAiUsed}
-                  disabled={submit.isPending}
-                  onChange={(event) => setAnswer((value) => ({ ...value, externalAiUsed: event.target.checked }))}
-                  label="Я использовал внешние ИИ-инструменты"
-                  description="Это разрешено и не снижает оценку; отметка помогает интерпретировать результат."
-                />
-              </div>
-            </Card>
+          ))}
+          <Checkbox
+            checked={answer.externalAiUsed}
+            disabled={submit.isPending}
+            onChange={(event) => setAnswer((value) => ({ ...value, externalAiUsed: event.target.checked }))}
+            label="Я использовал внешние ИИ-инструменты"
+            description="Это разрешено и не снижает оценку."
+          />
+          {answerError && (
+            <Callout tone="warning" role="alert">
+              {answerError}
+            </Callout>
           )}
         </div>
         <AssistantPanel assessment={assessment} disabled={submit.isPending} prepare={() => flush(latest.current)} />
@@ -489,23 +370,14 @@ function Workspace({ assessment }: { assessment: Assessment }) {
           )}
         </span>
         <div className={styles.footerActions}>
-          <Button
-            icon="play"
-            onClick={() => startChecks.mutate()}
-            pending={startChecks.isPending || checksRunning}
-            pendingLabel="Проверяем…"
-            disabled={submit.isPending}
-          >
-            Запустить проверки
-          </Button>
           <Button variant="primary" icon="send" onClick={requestSubmit} disabled={submit.isPending}>
-            Отправить решение
+            Отправить ответы
           </Button>
         </div>
       </div>
       <ConfirmDialog
         open={confirmSubmit}
-        title="Отправить решение на оценку?"
+        title="Отправить ответы на оценку?"
         confirmLabel="Отправить"
         pending={submit.isPending}
         onConfirm={() => submit.mutate()}
@@ -515,9 +387,7 @@ function Workspace({ assessment }: { assessment: Assessment }) {
         }}
       >
         <div className="stack">
-          <p>
-            После отправки решение и объяснение изменить нельзя. Подтверждённый грейд сохранится при любом результате.
-          </p>
+          <p>После отправки ответы изменить нельзя. Подтверждённый грейд сохранится при любом результате.</p>
           {submit.error && (
             <Callout tone="danger" role="alert">
               {describeError(submit.error).message}
@@ -530,9 +400,24 @@ function Workspace({ assessment }: { assessment: Assessment }) {
 }
 
 export function AssessmentWorkspacePage({ assessmentId }: { assessmentId: string }) {
-  useDocumentTitle('Практическая проверка');
+  useDocumentTitle('Тест знаний');
   const scope = useScope();
   const { data: assessment } = useSuspenseQuery(assessmentQuery(scope, assessmentId));
+  if (assessment.task.execution !== 'questionnaire') {
+    return (
+      <Card title="Архивная демонстрационная задача">
+        <div className="stack">
+          <p>
+            Формат изменился: теперь проверка состоит из тестовых вопросов. Старое решение сохранено в истории и больше
+            не оценивается.
+          </p>
+          <pre className={styles.legacyAnswer}>{assessment.answer.code}</pre>
+          <p>{assessment.answer.explanation}</p>
+          <ButtonLink to="/candidate/assessments">Перейти к тестам знаний</ButtonLink>
+        </div>
+      </Card>
+    );
+  }
   if (!isEditable(assessment)) {
     return (
       <Card title={isEvaluating(assessment) ? 'Решение отправлено' : 'Проверка завершена'}>

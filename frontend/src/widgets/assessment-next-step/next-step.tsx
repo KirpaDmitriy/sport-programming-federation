@@ -79,7 +79,7 @@ export function AssessmentNextStep({ profile }: { profile: Profile }) {
         <h3 style={{ margin: 0 }}>
           {profile.verifiedGrade ? `Подтвердить ${gradeLabel[eligibility.selectedGrade]}` : 'Подтвердить уровень'}
         </h3>
-        <p className="muted">{target}. Практическая задача, ИИ разрешён.</p>
+        <p className="muted">{target}. Тест знаний с выбором ответов, ИИ разрешён.</p>
         <Button
           variant="primary"
           iconAfter="arrowRight"

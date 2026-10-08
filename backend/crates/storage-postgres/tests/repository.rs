@@ -718,11 +718,13 @@ async fn assessments_and_jobs_round_trip_with_persisted_results() {
                 ai_allowed: true,
                 external_ai_allowed: true,
                 execution: "simulated".into(),
+                questions: vec![],
             },
             answer: fsp_domain::AssessmentAnswer {
                 code: "todo!()".into(),
                 explanation: "Ответ".into(),
                 external_ai_used: false,
+                responses: vec![],
             },
             checks: vec![fsp_domain::AssessmentCheck {
                 id: "check-1".into(),

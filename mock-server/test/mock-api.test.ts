@@ -5,6 +5,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { request as rawHttpRequest } from 'node:http';
 import test, { after, type TestContext } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import bank from '../../backend/crates/domain/data/knowledge-v1.json';
 import { buildOpenApi, routes, routeTable } from '../src/contract.ts';
 import { createMockServer, type MockServerOptions } from '../src/server.ts';
 import { validators } from '../src/validation.ts';
@@ -83,9 +84,12 @@ async function setup(t: TestContext, options: MockServerOptions = {}) {
   return { app, url, request, login, job, client };
 }
 const answer = {
-  code: 'pub fn demo() {}',
-  explanation: 'Уникальный ключ и запись результата сохраняются атомарно.',
+  code: '',
+  explanation: '',
   externalAiUsed: true,
+  responses: bank.questions
+    .filter((q) => q.grade === 'middle')
+    .map((q) => ({ questionId: q.id, optionId: q.correctOptionId })),
 };
 const forbiddenKeys = new Set([
   'name',
@@ -492,7 +496,7 @@ test('assessment workflow uses jobs, preserves unrelated evidence, and applies a
     await request('POST', `/api/v1/me/assessments/${item.id}/checks`, { actor: candidate, status: 202 })
   ).body;
   assert.equal(checksJob.status, 'queued');
-  assert.equal((await job(checksJob.id, candidate)).result.checks.length, 4);
+  assert.equal((await job(checksJob.id, candidate)).result.checks.length, 10);
   const submitted = (
     await request('POST', `/api/v1/me/assessments/${item.id}/submit`, {
       actor: candidate,

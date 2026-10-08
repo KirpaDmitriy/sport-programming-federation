@@ -2105,10 +2105,25 @@ export interface components {
             /** @enum {string} */
             grade: "junior" | "middle" | "senior";
         };
+        KnowledgeResponse: {
+            questionId: string;
+            optionId: string;
+        };
+        KnowledgeQuestion: {
+            id: string;
+            /** @enum {string} */
+            skillId: "rust" | "postgresql";
+            prompt: string;
+            options: {
+                id: string;
+                label: string;
+            }[];
+        };
         AssessmentAnswer: {
             code: string;
             explanation: string;
             externalAiUsed: boolean;
+            responses?: components["schemas"]["KnowledgeResponse"][];
         };
         Check: {
             id: string;
@@ -2146,7 +2161,8 @@ export interface components {
             /** @constant */
             externalAiAllowed: true;
             /** @enum {string} */
-            execution: "simulated" | "sandboxed";
+            execution: "simulated" | "sandboxed" | "questionnaire";
+            questions?: components["schemas"]["KnowledgeQuestion"][];
         };
         AssessmentResult: {
             assessmentId: string;

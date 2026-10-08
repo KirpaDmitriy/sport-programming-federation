@@ -5,6 +5,7 @@ import { join, resolve } from 'node:path';
 const assets = resolve(import.meta.dirname, '..', 'dist', 'assets');
 const forbidden = [
   '/__mock__',
+  'correctOptionId',
   'email-codes',
   'mockSelectSession',
   'Вставить код из демо-ящика',

@@ -164,9 +164,18 @@ export function assessment(overrides: Partial<S['Assessment']> = {}): S['Assessm
       rubric: [{ id: 'correctness', label: 'Корректность', weight: 4 }],
       aiAllowed: true,
       externalAiAllowed: true,
-      execution: 'simulated',
+      execution: 'questionnaire',
+      questions: Array.from({ length: 10 }, (_, i) => ({
+        id: `q-${i}`,
+        skillId: 'rust',
+        prompt: `Вопрос ${i + 1}`,
+        options: [
+          { id: 'a', label: `Вариант A ${i + 1}` },
+          { id: 'b', label: `Вариант B ${i + 1}` },
+        ],
+      })),
     },
-    answer: { code: 'fn main() {}\n', explanation: '', externalAiUsed: false },
+    answer: { code: '', explanation: '', externalAiUsed: false, responses: [] },
     checks: [
       {
         id: 'check-1',

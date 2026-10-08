@@ -1,16 +1,12 @@
 import { readFile } from 'node:fs/promises';
 import { expect, test } from '@playwright/test';
+import { answerKnowledgeTest } from './knowledge';
 import { ALEXEY, latestCode, requestCode, resetMock, signIn } from './support';
 
 async function submitCurrentAttempt(page: import('@playwright/test').Page) {
   await expect(page.getByRole('heading', { name: /Проверка/ })).toBeVisible();
-  await page.getByLabel('Код решения на Rust').fill('pub fn create_order() { /* transaction + unique key */ }');
-  await expect(page.getByText(/Черновик сохранён в/)).toBeVisible();
-  await page.getByRole('button', { name: /3\. Объяснение/ }).click();
-  await page
-    .getByLabel('Объяснение')
-    .fill('Ключ идемпотентности и заказ записываются в одной транзакции с уникальным индексом.');
-  await page.getByRole('button', { name: 'Отправить решение' }).click();
+  await answerKnowledgeTest(page);
+  await page.getByRole('button', { name: 'Отправить ответы' }).click();
   await page.getByRole('dialog').getByRole('button', { name: 'Отправить' }).click();
   await page.waitForURL(/\/result$/);
 }
@@ -60,10 +56,10 @@ test('UI-10 UI-12 UI-05 draft survives reload, upgrade updates every view and th
   await page.getByRole('button', { name: 'Начать проверку' }).click();
   await page.waitForURL(/\/workspace$/);
   const url = page.url();
-  await page.getByLabel('Код решения на Rust').fill('pub fn draft() {}');
+  await page.getByRole('radio').first().check();
   await expect(page.getByText(/Черновик сохранён в/)).toBeVisible();
   await page.reload();
-  await expect(page.getByLabel('Код решения на Rust')).toHaveValue('pub fn draft() {}');
+  await expect(page.getByRole('radio').first()).toBeChecked();
   expect(page.url()).toBe(url);
   await page.goto('/candidate/assessments');
   await expect(page.getByRole('link', { name: 'Продолжить', exact: true })).toHaveCount(1);

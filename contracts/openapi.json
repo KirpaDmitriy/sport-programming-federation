@@ -15662,6 +15662,80 @@
         ],
         "additionalProperties": false
       },
+      "KnowledgeResponse": {
+        "type": "object",
+        "properties": {
+          "questionId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "pattern": "^[A-Za-z0-9_.:-]+$"
+          },
+          "optionId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "pattern": "^[A-Za-z0-9_.:-]+$"
+          }
+        },
+        "required": [
+          "questionId",
+          "optionId"
+        ],
+        "additionalProperties": false
+      },
+      "KnowledgeQuestion": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "pattern": "^[A-Za-z0-9_.:-]+$"
+          },
+          "skillId": {
+            "type": "string",
+            "enum": [
+              "rust",
+              "postgresql"
+            ]
+          },
+          "prompt": {
+            "type": "string"
+          },
+          "options": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 100,
+                  "pattern": "^[A-Za-z0-9_.:-]+$"
+                },
+                "label": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "label"
+              ],
+              "additionalProperties": false
+            },
+            "minItems": 2,
+            "maxItems": 6
+          }
+        },
+        "required": [
+          "id",
+          "skillId",
+          "prompt",
+          "options"
+        ],
+        "additionalProperties": false
+      },
       "AssessmentAnswer": {
         "type": "object",
         "properties": {
@@ -15675,6 +15749,13 @@
           },
           "externalAiUsed": {
             "type": "boolean"
+          },
+          "responses": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/KnowledgeResponse"
+            },
+            "maxItems": 10
           }
         },
         "required": [
@@ -15831,8 +15912,17 @@
             "type": "string",
             "enum": [
               "simulated",
-              "sandboxed"
+              "sandboxed",
+              "questionnaire"
             ]
+          },
+          "questions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/KnowledgeQuestion"
+            },
+            "minItems": 10,
+            "maxItems": 10
           }
         },
         "required": [

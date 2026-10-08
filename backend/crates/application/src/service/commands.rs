@@ -358,17 +358,18 @@ impl Commands {
             return Err(ApplicationError::new(
                 422,
                 "assessment_scope_unavailable",
-                "Демонстрационные задания доступны только для бэкенда",
+                "Тесты знаний доступны только для бэкенда",
             ));
         }
-        let running = self
+        let attempts = self
             .service
             .repository
             .candidate_assessments(candidate_id)
             .await
-            .map_err(ApplicationError::storage)?
+            .map_err(ApplicationError::storage)?;
+        let running = attempts
             .iter()
-            .any(|item| item.status.active());
+            .any(|item| item.status.active() && item.task.execution == "questionnaire");
         if running {
             return Err(ApplicationError::new(
                 409,
@@ -406,7 +407,29 @@ impl Commands {
                 "Изменить грейд можно после nextEligibleAt в профиле",
             ));
         }
-        let task = assessment_task(input.grade);
+        // Retire only unfinished legacy simulations. History and confirmed grades remain intact.
+        // This write shares the candidate lock and transaction with the new attempt.
+        for mut legacy in attempts
+            .into_iter()
+            .filter(|a| a.status.active() && a.task.execution != "questionnaire")
+        {
+            legacy.status = fsp_domain::AssessmentStatus::ServiceError;
+            legacy.updated_at = now();
+            legacy.revision += 1;
+            legacy.result = Some(fsp_domain::AssessmentResultData {
+                assessment_id: legacy.id.clone(), outcome: "service_error".into(),
+                confirmed_grade: candidate.profile.verified_grade, previous_grade: candidate.profile.verified_grade,
+                grade_changed: false, rubric: vec![], checks: vec![],
+                feedback: "Демонстрационная задача архивирована при переходе на тесты знаний. Оценка не выставлялась.".into(),
+                next_eligible_at: None, simulation: true,
+            });
+            self.service
+                .repository
+                .save_assessment(&legacy)
+                .await
+                .map_err(ApplicationError::storage)?;
+        }
+        let task = fsp_domain::knowledge_task(input.grade);
         let timestamp = now();
         let record = fsp_domain::AssessmentRecord {
             id: format!("assessment-{}", Uuid::new_v4().simple()),
@@ -418,8 +441,9 @@ impl Commands {
                 code: task.starter_code.clone(),
                 explanation: String::new(),
                 external_ai_used: false,
+                responses: vec![],
             },
-            checks: assessment_checks("preview"),
+            checks: vec![],
             task,
             result: None,
             created_at: timestamp.clone(),
@@ -443,15 +467,20 @@ impl Commands {
     ) -> Result<JobView, ApplicationError> {
         let candidate_id = candidate_id(session)?;
         self.service
+            .repository
+            .lock_candidate(candidate_id)
+            .await
+            .map_err(ApplicationError::storage)?;
+        self.service
             .require_processing_consent(candidate_id)
             .await?;
         let mut record = self.service.assessment_for(session, assessment_id).await?;
         mutable_assessment(&record)?;
-        if record.answer.code.trim().is_empty() || record.answer.explanation.trim().is_empty() {
+        if fsp_domain::score_knowledge(record.grade, &record.task, &record.answer).is_none() {
             return Err(ApplicationError::new(
                 422,
                 "answer_incomplete",
-                "Сохраните решение и его объяснение",
+                "Ответьте на все вопросы теста",
             ));
         }
         record.status = fsp_domain::AssessmentStatus::Submitted;

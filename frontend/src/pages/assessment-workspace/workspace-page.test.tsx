@@ -35,9 +35,9 @@ describe('assessment draft persistence', () => {
       }),
     );
     await renderWorkspace();
-    fireEvent.change(screen.getByLabelText('Код решения на Rust'), { target: { value: 'first draft' } });
+    fireEvent.click(screen.getByLabelText('Вариант A 1'));
     await waitFor(() => expect(received).toHaveLength(1), { timeout: 4000 });
-    fireEvent.change(screen.getByLabelText('Код решения на Rust'), { target: { value: 'latest draft' } });
+    fireEvent.click(screen.getByLabelText('Вариант B 1'));
     try {
       await new Promise((resolve) => setTimeout(resolve, 1400));
       expect(received).toHaveLength(1);
@@ -45,7 +45,7 @@ describe('assessment draft persistence', () => {
       releaseFirst();
     }
     await waitFor(() => expect(received).toHaveLength(2));
-    expect(received[1]?.code).toBe('latest draft');
+    expect(received[1]?.responses).toEqual([{ questionId: 'q-0', optionId: 'b' }]);
     expect(await screen.findByText(/Черновик сохранён в/)).toBeTruthy();
   });
 
@@ -59,10 +59,15 @@ describe('assessment draft persistence', () => {
       }),
     );
     await renderWorkspace();
-    fireEvent.change(screen.getByLabelText('Код решения на Rust'), { target: { value: 'fn solve() {}' } });
+    fireEvent.click(screen.getByLabelText('Вариант A 1'));
     expect(screen.getByText('Есть несохранённые изменения')).toBeTruthy();
     expect(await screen.findByText(/Черновик сохранён в/, undefined, { timeout: 4000 })).toBeTruthy();
-    expect(saved).toEqual({ code: 'fn solve() {}', explanation: '', externalAiUsed: false });
+    expect(saved).toEqual({
+      code: '',
+      explanation: '',
+      externalAiUsed: false,
+      responses: [{ questionId: 'q-0', optionId: 'a' }],
+    });
   });
 
   it('keeps the edit and says so when saving fails', async () => {
@@ -72,15 +77,15 @@ describe('assessment draft persistence', () => {
       ),
     );
     await renderWorkspace();
-    fireEvent.change(screen.getByLabelText('Код решения на Rust'), { target: { value: 'fn solve() {}' } });
+    fireEvent.click(screen.getByLabelText('Вариант A 1'));
     expect(await screen.findByText(/Черновик не сохранён/, undefined, { timeout: 4000 })).toBeTruthy();
-    expect((screen.getByLabelText('Код решения на Rust') as HTMLTextAreaElement).value).toBe('fn solve() {}');
+    expect((screen.getByLabelText('Вариант A 1') as HTMLInputElement).checked).toBe(true);
   });
 
-  it('does not submit without an explanation', async () => {
+  it('does not submit incomplete test answers', async () => {
     await renderWorkspace();
-    fireEvent.click(screen.getByRole('button', { name: 'Отправить решение' }));
-    expect(screen.getByText(/Опишите решение перед отправкой/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Отправить ответы' }));
+    expect(screen.getByText(/Выберите ответ на каждый вопрос/)).toBeTruthy();
   });
 });
 
@@ -101,7 +106,7 @@ describe('assessment assistance', () => {
       }),
     );
     await renderWorkspace();
-    const question = screen.getByLabelText('Вопрос о решении') as HTMLTextAreaElement;
+    const question = screen.getByLabelText('Вопрос по тесту') as HTMLTextAreaElement;
     fireEvent.change(question, { target: { value: 'Что произойдёт после ошибки?' } });
     fireEvent.click(screen.getByRole('button', { name: 'Спросить' }));
     expect(await screen.findByText(/Помощник недоступен/)).toBeTruthy();

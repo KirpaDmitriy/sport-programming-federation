@@ -241,7 +241,7 @@ async fn fresh_candidate_completes_assessment() {
         "PUT",
         &format!("/api/v1/me/assessments/{assessment_id}/answer"),
         Some(&cookie),
-        json!({"code": "pub fn create_order() {}", "explanation": "Ключ и заказ в одной транзакции.", "externalAiUsed": false}),
+        knowledge_answer("junior", true),
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{body}");
@@ -871,7 +871,7 @@ async fn assessments_full_flow_and_grade_change() {
     assert_eq!(status, StatusCode::CREATED, "{assessment}");
     let assessment_id = assessment["id"].as_str().unwrap().to_owned();
     assert_eq!(assessment["status"], "draft");
-    assert_eq!(assessment["task"]["family"], "idempotent-api");
+    assert_eq!(assessment["task"]["family"], "backend-knowledge");
     // A second active attempt conflicts.
     let (status, body) = send_keyed(
         &app,
@@ -884,14 +884,14 @@ async fn assessments_full_flow_and_grade_change() {
     .await;
     assert_eq!(status, StatusCode::CONFLICT);
     assert_eq!(code(&body), "assessment_active");
-    assert_eq!(assessment["simulation"], true);
+    assert_eq!(assessment["simulation"], false);
     // Answers, checks and assistant.
     let (status, body) = send(
         &app,
         "PUT",
         &format!("/api/v1/me/assessments/{assessment_id}/answer"),
         Some(&candidate),
-        json!({"code": "fn idempotent()", "explanation": "Ключ идемпотентности", "externalAiUsed": true}),
+        knowledge_answer("middle", true),
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{body}");
@@ -958,6 +958,19 @@ async fn assessments_full_flow_and_grade_change() {
     let (_, profile) = get(&app, "/api/v1/me/profile", Some(&candidate)).await;
     assert_eq!(profile["verifiedGrade"], "middle");
     assert_eq!(profile["name"], "Обновлённое имя");
+    let (_, skills) = get(&app, "/api/v1/me/skills", Some(&candidate)).await;
+    assert!(
+        skills["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|s| s["skillId"] == "rust" || s["skillId"] == "postgresql")
+            .all(|s| s["evidence"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|e| e["reference"] == assessment_id && e["synthetic"] == false))
+    );
 }
 
 #[tokio::test]
@@ -1525,7 +1538,11 @@ impl fsp_application::LlmGateway for TestAnalysis {
         request: &fsp_domain::AssessmentHelpRequest,
     ) -> Result<fsp_domain::AssessmentHelpReply, fsp_application::IntegrationError> {
         Ok(fsp_domain::AssessmentHelpReply {
-            message: format!("{}: {}", request.question, request.answer.code),
+            message: format!(
+                "{}: {}",
+                request.question,
+                serde_json::to_string(&request.answer).unwrap()
+            ),
         })
     }
     async fn extract_graph(
@@ -1570,7 +1587,7 @@ async fn assistant_uses_saved_answer_and_never_issues_a_grade() {
         "PUT",
         &format!("/api/v1/me/assessments/{id}/answer"),
         Some(&candidate),
-        json!({"code":"fn saved_answer() {}", "explanation":"Транзакция", "externalAiUsed":false}),
+        knowledge_answer("middle", true),
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{saved}");
@@ -1584,12 +1601,7 @@ async fn assistant_uses_saved_answer_and_never_issues_a_grade() {
     .await;
     assert_eq!(status, StatusCode::OK, "{reply}");
     assert_eq!(reply["simulation"], false);
-    assert!(
-        reply["message"]
-            .as_str()
-            .unwrap()
-            .contains("fn saved_answer() {}")
-    );
+    assert!(reply["message"].as_str().unwrap().contains("mr-arc"));
     assert!(
         reply["message"]
             .as_str()
@@ -1613,4 +1625,197 @@ async fn assistant_uses_saved_answer_and_never_issues_a_grade() {
     )
     .await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+fn knowledge_answer(grade: &str, correct: bool) -> Value {
+    let bank: Value =
+        serde_json::from_str(include_str!("../../domain/data/knowledge-v1.json")).unwrap();
+    let responses: Vec<Value> = bank["questions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|q| q["grade"] == grade)
+        .map(|q| {
+            let option = if correct {
+                &q["correctOptionId"]
+            } else {
+                &q["options"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .find(|o| o["id"] != q["correctOptionId"])
+                    .unwrap()["id"]
+            };
+            json!({"questionId": q["id"], "optionId": option})
+        })
+        .collect();
+    json!({"code":"", "explanation":"", "externalAiUsed":true, "responses":responses})
+}
+
+#[tokio::test]
+async fn knowledge_test_rejects_forged_answers_and_scores_failure_without_changing_grade() {
+    let app = test_app().await;
+    let candidate = login(&app, CANDIDATE_JUNIOR, "candidate").await;
+    let (_, assessment) = send_keyed(
+        &app,
+        "POST",
+        "/api/v1/me/assessments",
+        Some(&candidate),
+        "quiz-negative-start",
+        json!({"specialization":"backend", "grade":"middle"}),
+    )
+    .await;
+    let id = assessment["id"].as_str().unwrap();
+    let path = format!("/api/v1/me/assessments/{id}");
+    assert_eq!(
+        assessment["task"]["questions"].as_array().unwrap().len(),
+        10
+    );
+    assert!(!assessment.to_string().contains("correctOptionId"));
+    assert!(!assessment.to_string().contains("explanation\":\"Верный"));
+    for answer in [
+        json!({"code":"arbitrary code", "explanation":"anything", "externalAiUsed":false}),
+        json!({"code":"", "explanation":"", "externalAiUsed":false, "responses":[{"questionId":"foreign", "optionId":"x"}]}),
+        json!({"code":"", "explanation":"", "externalAiUsed":false, "responses":[{"questionId":"mr-arc", "optionId":"forged"}]}),
+    ] {
+        let (status, _) = send(
+            &app,
+            "PUT",
+            &format!("{path}/answer"),
+            Some(&candidate),
+            answer,
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+    }
+    let mut duplicate = knowledge_answer("middle", false);
+    duplicate["responses"][1] = duplicate["responses"][0].clone();
+    let (status, _) = send(
+        &app,
+        "PUT",
+        &format!("{path}/answer"),
+        Some(&candidate),
+        duplicate,
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    let (status, _, _) = call(
+        &app,
+        keyed_request(
+            "POST",
+            &format!("{path}/submit"),
+            Some(&candidate),
+            "incomplete-quiz-submit",
+            None,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    let (status, _) = send(
+        &app,
+        "PUT",
+        &format!("{path}/answer"),
+        Some(&candidate),
+        knowledge_answer("middle", false),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _, submitted) = call(
+        &app,
+        keyed_request(
+            "POST",
+            &format!("{path}/submit"),
+            Some(&candidate),
+            "failed-quiz-submit",
+            None,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::ACCEPTED, "{submitted}");
+    assert_eq!(submitted["simulation"], false);
+    let result = &submitted["result"]["assessment"]["result"];
+    assert_eq!(result["outcome"], "failed");
+    assert_eq!(result["confirmedGrade"], "junior");
+    assert_eq!(result["gradeChanged"], false);
+    assert!(
+        result["checks"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|c| c["status"] == "failed")
+    );
+    let (_, _, replay) = call(
+        &app,
+        keyed_request(
+            "POST",
+            &format!("{path}/submit"),
+            Some(&candidate),
+            "failed-quiz-submit",
+            None,
+        ),
+    )
+    .await;
+    assert_eq!(submitted, replay);
+    let (status, _) = send_keyed(
+        &app,
+        "POST",
+        "/api/v1/me/assessments",
+        Some(&candidate),
+        "retry-failed-quiz",
+        json!({"specialization":"backend", "grade":"middle"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+}
+
+#[tokio::test]
+async fn new_test_archives_legacy_draft_without_issuing_a_grade() {
+    let (repository, _database) =
+        PostgresRepository::connect_test_database(&test_admin_url()).await;
+    let pool = repository.pool().clone();
+    let app = app_with_repository(repository).await;
+    let candidate = login(&app, CANDIDATE_JUNIOR, "candidate").await;
+    let (_, first) = send_keyed(
+        &app,
+        "POST",
+        "/api/v1/me/assessments",
+        Some(&candidate),
+        "legacy-start",
+        json!({"specialization":"backend","grade":"middle"}),
+    )
+    .await;
+    let id = first["id"].as_str().unwrap();
+    sqlx::query("UPDATE assessments SET task_json = jsonb_set(task_json::jsonb, '{execution}', '\"simulated\"')::text WHERE id=$1").bind(id).execute(&pool).await.unwrap();
+    let (status, _, result) = call(
+        &app,
+        keyed_request(
+            "POST",
+            &format!("/api/v1/me/assessments/{id}/submit"),
+            Some(&candidate),
+            "legacy-submit",
+            None,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(result["code"], "assessment_format_retired");
+    let (status, second) = send_keyed(
+        &app,
+        "POST",
+        "/api/v1/me/assessments",
+        Some(&candidate),
+        "new-quiz-start",
+        json!({"specialization":"backend","grade":"middle"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{second}");
+    let (_, archived) = get(
+        &app,
+        &format!("/api/v1/me/assessments/{id}"),
+        Some(&candidate),
+    )
+    .await;
+    assert_eq!(archived["result"]["outcome"], "service_error");
+    assert_eq!(archived["result"]["gradeChanged"], false);
+    assert_eq!(archived["result"]["confirmedGrade"], "junior");
 }
