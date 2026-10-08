@@ -2,10 +2,11 @@
 # container's network namespace and is the only way in (see docker-compose.yml).
 FROM oven/bun:1.4.2-alpine
 
-WORKDIR /app
+WORKDIR /app/mock-server
 COPY mock-server/package.json mock-server/bun.lock ./
 RUN bun install --frozen-lockfile --production
 COPY mock-server/src ./src
+COPY backend/crates/domain/data/knowledge-v1.json /app/backend/crates/domain/data/knowledge-v1.json
 COPY mock-server/fixtures/DejaVuSans.ttf mock-server/fixtures/DejaVu-LICENSE.txt ./fixtures/
 # File modes follow the checkout's umask; the service user only needs to read.
 RUN chmod -R a+rX /app

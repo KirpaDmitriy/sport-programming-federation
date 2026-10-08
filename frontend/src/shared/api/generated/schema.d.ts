@@ -1405,6 +1405,7 @@ export interface components {
             capabilities: {
                 emailVerification: boolean;
                 profilePdf: boolean;
+                profilePdfImport: boolean;
                 githubFixture: boolean;
                 githubOAuth: boolean;
                 fspFixture: boolean;
@@ -1628,6 +1629,28 @@ export interface components {
                 pushedAt: string | null;
             };
         };
+        FspResult: {
+            competitionId: string;
+            competitionName: string;
+            discipline: string;
+            /** Format: date-time */
+            startsAt: string;
+            /** Format: date-time */
+            endsAt: string;
+            /** @enum {string} */
+            scope: "individual" | "team";
+            teamName: string | null;
+            teamSize: number | null;
+            /** @enum {string} */
+            status: "published" | "pending" | "disqualified";
+            place: number | null;
+            fieldSize: number;
+            score: number | null;
+            protocolReference: string | null;
+            publishedAt: string | null;
+            /** @constant */
+            synthetic: true;
+        };
         Source: {
             id: string;
             /** @enum {string} */
@@ -1655,6 +1678,7 @@ export interface components {
             verifiedParticipation: boolean;
             competitionIds: string[];
             notice: string;
+            fspResults?: components["schemas"]["FspResult"][];
         };
         Sources: {
             items: components["schemas"]["Source"][];
@@ -2104,10 +2128,25 @@ export interface components {
             /** @enum {string} */
             grade: "junior" | "middle" | "senior";
         };
+        KnowledgeResponse: {
+            questionId: string;
+            optionId: string;
+        };
+        KnowledgeQuestion: {
+            id: string;
+            /** @enum {string} */
+            skillId: "rust" | "postgresql";
+            prompt: string;
+            options: {
+                id: string;
+                label: string;
+            }[];
+        };
         AssessmentAnswer: {
             code: string;
             explanation: string;
             externalAiUsed: boolean;
+            responses?: components["schemas"]["KnowledgeResponse"][];
         };
         Check: {
             id: string;
@@ -2145,7 +2184,8 @@ export interface components {
             /** @constant */
             externalAiAllowed: true;
             /** @enum {string} */
-            execution: "simulated" | "sandboxed";
+            execution: "simulated" | "sandboxed" | "questionnaire";
+            questions?: components["schemas"]["KnowledgeQuestion"][];
         };
         AssessmentResult: {
             assessmentId: string;
@@ -2209,6 +2249,12 @@ export interface components {
                 preview: components["schemas"]["ImportPreview"];
                 parser: string;
                 simulation: boolean;
+                evidence?: {
+                    /** @enum {string} */
+                    field: "name" | "specialization" | "selectedGrade" | "stack" | "teamRole" | "experienceMonths" | "experience" | "softSkills";
+                    page: number;
+                    quote: string;
+                }[];
             } | {
                 /** @enum {string} */
                 kind: "source_sync";

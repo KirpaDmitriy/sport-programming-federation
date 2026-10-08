@@ -1,16 +1,12 @@
 import { readFile } from 'node:fs/promises';
 import { expect, test } from '@playwright/test';
+import { answerKnowledgeTest } from './knowledge';
 import { ALEXEY, latestCode, requestCode, resetMock, signIn } from './support';
 
 async function submitCurrentAttempt(page: import('@playwright/test').Page) {
   await expect(page.getByRole('heading', { name: /Проверка/ })).toBeVisible();
-  await page.getByLabel('Код решения на Rust').fill('pub fn create_order() { /* transaction + unique key */ }');
-  await expect(page.getByText(/Черновик сохранён в/)).toBeVisible();
-  await page.getByRole('button', { name: /3\. Объяснение/ }).click();
-  await page
-    .getByLabel('Объяснение')
-    .fill('Ключ идемпотентности и заказ записываются в одной транзакции с уникальным индексом.');
-  await page.getByRole('button', { name: 'Отправить решение' }).click();
+  await answerKnowledgeTest(page);
+  await page.getByRole('button', { name: 'Отправить ответы' }).click();
   await page.getByRole('dialog').getByRole('button', { name: 'Отправить' }).click();
   await page.waitForURL(/\/result$/);
 }
@@ -60,10 +56,10 @@ test('UI-10 UI-12 UI-05 draft survives reload, upgrade updates every view and th
   await page.getByRole('button', { name: 'Начать проверку' }).click();
   await page.waitForURL(/\/workspace$/);
   const url = page.url();
-  await page.getByLabel('Код решения на Rust').fill('pub fn draft() {}');
+  await page.getByRole('radio').first().check();
   await expect(page.getByText(/Черновик сохранён в/)).toBeVisible();
   await page.reload();
-  await expect(page.getByLabel('Код решения на Rust')).toHaveValue('pub fn draft() {}');
+  await expect(page.getByRole('radio').first()).toBeChecked();
   expect(page.url()).toBe(url);
   await page.goto('/candidate/assessments');
   await expect(page.getByRole('link', { name: 'Продолжить', exact: true })).toHaveCount(1);
@@ -149,7 +145,7 @@ test('UI-06 a verified FSP record appears as a labelled demo source', async ({ p
   await page.getByLabel('ФСП ID').fill('FSP-DEMO-024');
   await page.getByRole('button', { name: 'Подключить' }).click();
   await expect(page.getByText('Подтверждённое участие')).toBeVisible();
-  await expect(page.getByText(/синтетическое событие/)).toBeVisible();
+  await expect(page.getByText('DEMO-PROTOCOL-API-2026-01', { exact: false })).toBeVisible();
 });
 
 test('UI-08 UI-09 graph and list share one selection and the list is keyboard-operable', async ({ page }) => {
@@ -192,4 +188,23 @@ test('UI-04 PDF import previews fixture data and applies it only on confirmation
   await dialog.getByLabel('Имя и фамилия').fill('Алексей Морозов');
   await dialog.getByRole('button', { name: 'Применить к профилю' }).click();
   await expect(page.getByText('Данные из PDF применены к профилю')).toBeVisible();
+});
+
+test('FSP pending and empty histories stay distinct and never change the assessment grade', async ({ page }) => {
+  await resetMock('baseline');
+  await signIn(page, ALEXEY, 'candidate');
+  await page.goto('/candidate/sources');
+  const change = page.getByRole('button', { name: 'Изменить ФСП ID' });
+  if (await change.count()) await change.click();
+  else await page.getByRole('button', { name: 'Указать ФСП ID' }).click();
+  await page.getByLabel('ФСП ID', { exact: true }).fill('FSP-DEMO-PENDING');
+  await page.getByRole('button', { name: 'Подключить', exact: true }).click();
+  await expect(page.getByText('Протокол ещё не опубликован')).toBeVisible();
+  await expect(page.getByText('Подтверждённое участие', { exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Изменить ФСП ID' }).click();
+  await page.getByLabel('ФСП ID', { exact: true }).fill('FSP-DEMO-EMPTY');
+  await page.getByRole('button', { name: 'Подключить', exact: true }).click();
+  await expect(page.getByText('Истории ФСП нет', { exact: true })).toBeVisible();
+  await page.goto('/candidate/overview');
+  await expect(page.getByText('Джуниор подтверждён').first()).toBeVisible();
 });

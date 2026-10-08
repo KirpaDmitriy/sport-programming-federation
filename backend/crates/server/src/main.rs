@@ -9,7 +9,7 @@ use fsp_application::{
 };
 use fsp_http::HttpConfig;
 use fsp_integration_bifrost::BifrostGateway;
-use fsp_integration_fsp_synthetic::SyntheticFsp;
+use fsp_integration_fsp_synthetic::HttpFsp;
 use fsp_integration_github::GitHubApi;
 use fsp_storage_postgres::PostgresRepository;
 use tokio::net::TcpListener;
@@ -81,7 +81,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .unwrap_or(90);
     let mut platform = PlatformService::new(repository.clone(), delivery)
         .with_grade_cooldown_days(grade_cooldown_days)
-        .with_fsp(Arc::new(SyntheticFsp));
+        .with_fsp(Arc::new(
+            HttpFsp::new(
+                &env::var("FSP_SIMULATOR_URL").unwrap_or_else(|_| "http://127.0.0.1:4020".into()),
+            )
+            .map_err(|error| std::io::Error::other(error.message))?,
+        ));
     if let (Some(client_id), Some(client_secret)) = (
         nonempty_env("GITHUB_CLIENT_ID"),
         nonempty_env("GITHUB_CLIENT_SECRET"),
@@ -98,6 +103,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
         )
         .map_err(|error| format!("Bifrost adapter: {}", error.message))?;
         platform = platform.with_llm(Arc::new(bifrost));
+    }
+    if env::var("FSP_PDF_IMPORT").is_ok_and(|value| value == "1") {
+        let pdf = fsp_integration_pdf::SandboxedPdf::default();
+        pdf.probe()
+            .await
+            .map_err(|error| format!("PDF adapter: {}", error.message))?;
+        platform = platform.with_pdf(Arc::new(pdf));
     }
     let service = Arc::new(platform);
     service.initialize().await.map_err(|error| error.message)?;

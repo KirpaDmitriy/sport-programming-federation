@@ -1,14 +1,16 @@
 # FSP / Career
 
 A reverse-hiring platform for the FSP 2026 special track. Candidates complete a questionnaire and a
-simulated practical assessment; employers search anonymous profiles and send offers with a salary range.
+versioned knowledge test; employers search anonymous profiles and send offers with a salary range.
 Candidates disclose selected contacts to a company by accepting its invitation or applying to its vacancy.
 Recurring company tasks provide a separate freshness signal.
 
 Demo stand: <https://188.166.88.183>. Email verification uses the disclosed demo code `123456`.
-Rust and PostgreSQL persist platform data. Seed candidates, FSP participation, assessment evaluation and PDF
-import are simulations; GitHub OAuth and Bifrost are optional real integrations. Capability flags describe
-which integrations are configured. This demo does not measure professional qualification.
+Rust and PostgreSQL persist platform data. Knowledge tests are scored deterministically; digital PDF import and
+contextual assistance use isolated extraction and Bifrost. Seed candidates and the separate HTTP FSP provider
+are explicitly fictional. Email delivery and GitHub OAuth setup are deferred. Capability flags describe
+configuration, not provider health. Knowledge results do not certify professional experience.
+See [knowledge tests](docs/knowledge-tests.md) and [FSP simulator](docs/fsp-simulator.md).
 
 ## Repository
 
@@ -43,6 +45,7 @@ just install                   # pinned TypeScript dependencies via Bun
 just mock                      # development mock on 127.0.0.1:4010
 just dev                       # frontend on http://127.0.0.1:5173
 just db-up                     # local PostgreSQL for Rust and integration tests
+just fsp-simulator             # fictional provider on 127.0.0.1:4020 (separate terminal)
 just backend                   # Rust API on 127.0.0.1:8080
 just verify                    # contract, mock, frontend types/lint/tests/build
 just backend-check             # rustfmt, clippy, unit and PostgreSQL HTTP/storage tests

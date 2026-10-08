@@ -1,9 +1,13 @@
 //! Pure domain types and rules for the reverse-hiring platform.
 
+mod documents;
+mod knowledge;
 mod llm;
 mod matching;
 mod sources;
 
+pub use documents::*;
+pub use knowledge::*;
 pub use llm::*;
 pub use matching::*;
 pub use sources::*;
@@ -485,6 +489,8 @@ pub struct AssessmentTask {
     pub ai_allowed: bool,
     pub external_ai_allowed: bool,
     pub execution: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub questions: Vec<KnowledgeQuestion>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -501,6 +507,8 @@ pub struct AssessmentAnswer {
     pub code: String,
     pub explanation: String,
     pub external_ai_used: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub responses: Vec<KnowledgeResponse>,
 }
 
 /// One automated check over the submitted answer.

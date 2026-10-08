@@ -11947,6 +11947,9 @@
               "profilePdf": {
                 "type": "boolean"
               },
+              "profilePdfImport": {
+                "type": "boolean"
+              },
               "githubFixture": {
                 "type": "boolean"
               },
@@ -11984,6 +11987,7 @@
             "required": [
               "emailVerification",
               "profilePdf",
+              "profilePdfImport",
               "githubFixture",
               "githubOAuth",
               "fspFixture",
@@ -13228,6 +13232,137 @@
         ],
         "additionalProperties": false
       },
+      "FspResult": {
+        "type": "object",
+        "properties": {
+          "competitionId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "pattern": "^[A-Za-z0-9_.:-]+$"
+          },
+          "competitionName": {
+            "type": "string"
+          },
+          "discipline": {
+            "type": "string"
+          },
+          "startsAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "endsAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "individual",
+              "team"
+            ]
+          },
+          "teamName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "teamSize": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 3,
+                "maximum": 6
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "published",
+              "pending",
+              "disqualified"
+            ]
+          },
+          "place": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "fieldSize": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "protocolReference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "publishedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "synthetic": {
+            "const": true,
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "competitionId",
+          "competitionName",
+          "discipline",
+          "startsAt",
+          "endsAt",
+          "scope",
+          "teamName",
+          "teamSize",
+          "status",
+          "place",
+          "fieldSize",
+          "score",
+          "protocolReference",
+          "publishedAt",
+          "synthetic"
+        ],
+        "additionalProperties": false
+      },
       "Source": {
         "type": "object",
         "properties": {
@@ -13372,6 +13507,12 @@
           },
           "notice": {
             "type": "string"
+          },
+          "fspResults": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FspResult"
+            }
           }
         },
         "required": [
@@ -15658,6 +15799,80 @@
         ],
         "additionalProperties": false
       },
+      "KnowledgeResponse": {
+        "type": "object",
+        "properties": {
+          "questionId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "pattern": "^[A-Za-z0-9_.:-]+$"
+          },
+          "optionId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "pattern": "^[A-Za-z0-9_.:-]+$"
+          }
+        },
+        "required": [
+          "questionId",
+          "optionId"
+        ],
+        "additionalProperties": false
+      },
+      "KnowledgeQuestion": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "pattern": "^[A-Za-z0-9_.:-]+$"
+          },
+          "skillId": {
+            "type": "string",
+            "enum": [
+              "rust",
+              "postgresql"
+            ]
+          },
+          "prompt": {
+            "type": "string"
+          },
+          "options": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 100,
+                  "pattern": "^[A-Za-z0-9_.:-]+$"
+                },
+                "label": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "label"
+              ],
+              "additionalProperties": false
+            },
+            "minItems": 2,
+            "maxItems": 6
+          }
+        },
+        "required": [
+          "id",
+          "skillId",
+          "prompt",
+          "options"
+        ],
+        "additionalProperties": false
+      },
       "AssessmentAnswer": {
         "type": "object",
         "properties": {
@@ -15671,6 +15886,13 @@
           },
           "externalAiUsed": {
             "type": "boolean"
+          },
+          "responses": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/KnowledgeResponse"
+            },
+            "maxItems": 10
           }
         },
         "required": [
@@ -15827,8 +16049,17 @@
             "type": "string",
             "enum": [
               "simulated",
-              "sandboxed"
+              "sandboxed",
+              "questionnaire"
             ]
+          },
+          "questions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/KnowledgeQuestion"
+            },
+            "minItems": 10,
+            "maxItems": 10
           }
         },
         "required": [
@@ -16146,6 +16377,44 @@
                       },
                       "simulation": {
                         "type": "boolean"
+                      },
+                      "evidence": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "field": {
+                              "type": "string",
+                              "enum": [
+                                "name",
+                                "specialization",
+                                "selectedGrade",
+                                "stack",
+                                "teamRole",
+                                "experienceMonths",
+                                "experience",
+                                "softSkills"
+                              ]
+                            },
+                            "page": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 20
+                            },
+                            "quote": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 4000
+                            }
+                          },
+                          "required": [
+                            "field",
+                            "page",
+                            "quote"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "maxItems": 24
                       }
                     },
                     "required": [

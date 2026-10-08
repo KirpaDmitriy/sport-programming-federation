@@ -1,5 +1,6 @@
 import { useQuery, useSuspenseQuery } from '@tanstack/react-query';
 import { useState } from 'react';
+import { useMeta } from '@/entities/meta';
 import { blockerLabel, type Profile, profileQuery } from '@/entities/profile';
 import { VerifiedGradeBadge } from '@/entities/qualification';
 import { useScope } from '@/entities/session';
@@ -91,6 +92,7 @@ function CurrentStatus({ profile }: { profile: Profile }) {
 
 export function CandidateProfilePage() {
   useDocumentTitle('Профиль и цели');
+  const meta = useMeta();
   const scope = useScope();
   const { data: profile } = useSuspenseQuery(profileQuery(scope));
   const [importOpen, setImportOpen] = useState(false);
@@ -100,9 +102,11 @@ export function CandidateProfilePage() {
         title="Профиль и цели"
         subtitle="Контактные данные и направление следующей проверки"
         actions={
-          <Button icon="upload" onClick={() => setImportOpen(true)} disabled={!profile.consents.processing}>
-            Импортировать PDF
-          </Button>
+          meta.capabilities.profilePdfImport && (
+            <Button icon="upload" onClick={() => setImportOpen(true)} disabled={!profile.consents.processing}>
+              Импортировать PDF
+            </Button>
+          )
         }
       />
       <div className="split">

@@ -5,6 +5,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { request as rawHttpRequest } from 'node:http';
 import test, { after, type TestContext } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import bank from '../../backend/crates/domain/data/knowledge-v1.json';
 import { buildOpenApi, routes, routeTable } from '../src/contract.ts';
 import { createMockServer, type MockServerOptions } from '../src/server.ts';
 import { validators } from '../src/validation.ts';
@@ -83,9 +84,12 @@ async function setup(t: TestContext, options: MockServerOptions = {}) {
   return { app, url, request, login, job, client };
 }
 const answer = {
-  code: 'pub fn demo() {}',
-  explanation: 'Уникальный ключ и запись результата сохраняются атомарно.',
+  code: '',
+  explanation: '',
   externalAiUsed: true,
+  responses: bank.questions
+    .filter((q) => q.grade === 'middle')
+    .map((q) => ({ questionId: q.id, optionId: q.correctOptionId })),
 };
 const forbiddenKeys = new Set([
   'name',
@@ -492,7 +496,7 @@ test('assessment workflow uses jobs, preserves unrelated evidence, and applies a
     await request('POST', `/api/v1/me/assessments/${item.id}/checks`, { actor: candidate, status: 202 })
   ).body;
   assert.equal(checksJob.status, 'queued');
-  assert.equal((await job(checksJob.id, candidate)).result.checks.length, 4);
+  assert.equal((await job(checksJob.id, candidate)).result.checks.length, 10);
   const submitted = (
     await request('POST', `/api/v1/me/assessments/${item.id}/submit`, {
       actor: candidate,
@@ -1236,6 +1240,25 @@ test('PDF export is a real current-profile PDF; fixture import is asynchronous a
   const invalid = new FormData();
   invalid.set('file', new Blob(['not-a-pdf'], { type: 'application/pdf' }), 'bad.pdf');
   await request('POST', '/api/v1/me/profile/imports', { actor: candidate, raw: invalid, status: 422 });
+});
+
+test('a PDF preview cannot overwrite a newer profile revision', async (t) => {
+  const { request, login, job } = await setup(t);
+  const candidate = await login('candidate024');
+  const exported = await request('GET', '/api/v1/me/profile/export', { actor: candidate });
+  const form = new FormData();
+  form.set('file', new Blob([exported.buffer], { type: 'application/pdf' }), 'profile.pdf');
+  const imported = (await request('POST', '/api/v1/me/profile/imports', { actor: candidate, raw: form, status: 202 }))
+    .body;
+  await job(imported.id, candidate);
+  await request('PATCH', '/api/v1/me/profile', { actor: candidate, body: { name: 'Актуальное имя' } });
+  const conflict = await request('POST', `/api/v1/me/profile/imports/${imported.id}/confirm`, {
+    actor: candidate,
+    body: { profile: { name: 'Старое имя' } },
+    status: 409,
+  });
+  assert.equal(conflict.body.code, 'import_profile_changed');
+  assert.equal((await request('GET', '/api/v1/me/profile', { actor: candidate })).body.name, 'Актуальное имя');
 });
 
 test('scenario reset clears sessions and supports no-FSP, empty and error states', async (t) => {

@@ -13,7 +13,9 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -q
 apt-get upgrade -yq
-apt-get install -yq nginx ufw curl unzip build-essential postgresql
+apt-get install -yq nginx ufw curl unzip build-essential postgresql bubblewrap poppler-utils
+install -D -m 644 "$HERE/apparmor/fsp-pdf-bwrap" /etc/apparmor.d/fsp-pdf-bwrap
+apparmor_parser -r /etc/apparmor.d/fsp-pdf-bwrap
 
 if [ "$(/opt/bun/bin/bun --version 2>/dev/null)" != "$BUN_VERSION" ]; then
   tmp="$(mktemp -d)"

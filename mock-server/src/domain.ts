@@ -6,7 +6,6 @@ import {
   type Candidate,
   COMPETITIONS,
   type Company,
-  checks,
   createState,
   evidenceFor,
   type Grade,
@@ -17,17 +16,17 @@ import {
   makeSkills,
   type Need,
   nextId,
-  RUBRIC,
   type Scenario,
   SKILLS,
   type Source,
   type State,
   sources,
-  TASK,
   type TaskRecord,
   type TaskResponse,
 } from './data.ts';
+import { fspResults } from './fsp-fixture.ts';
 import type { components } from './generated/schema.d.ts';
+import { knowledgeCompletion, knowledgeTask, scoreKnowledge, validKnowledgeAnswer } from './knowledge.ts';
 
 type Schemas = components['schemas'];
 
@@ -158,7 +157,8 @@ function eligibility(s: State, candidate: Candidate): Schemas['GradeEligibility'
     : null;
   const form = onboarding(candidate);
   const running = [...s.assessments.values()].some(
-    (item) => item.candidateId === candidate.id && activeAssessment.has(item.status),
+    (item) =>
+      item.candidateId === candidate.id && activeAssessment.has(item.status) && item.task.execution === 'questionnaire',
   );
   const reason =
     !form.emailVerified || !form.questionnaireComplete || !candidate.consents.processing
@@ -218,6 +218,14 @@ const profileKeys = [
 function freshness(s: State, candidate: Candidate): Schemas['Freshness'] {
   const signals: { at: string; kind: 'assessment' | 'task' }[] = [];
   if (candidate.gradeConfirmedAt) signals.push({ at: candidate.gradeConfirmedAt, kind: 'assessment' });
+  for (const attempt of s.assessments.values()) {
+    if (
+      attempt.candidateId === candidate.id &&
+      attempt.status === 'passed' &&
+      attempt.task.execution === 'questionnaire'
+    )
+      signals.push({ at: attempt.updatedAt, kind: 'assessment' });
+  }
   for (const item of s.taskResponses.values())
     if (item.candidateId === candidate.id && item.status !== 'needs_work')
       signals.push({ at: item.submittedAt, kind: 'task' });
@@ -401,7 +409,7 @@ function gapPlan(candidate: Candidate, need: Need): Schemas['GapPlan'] {
           status: item.status,
           reason: item.reason,
           action: policy.acceptAssessments
-            ? 'Пройдите практическую проверку навыка нужного уровня.'
+            ? 'Пройдите тест знаний нужного уровня.'
             : 'Предоставьте свидетельство из источников, которые принимает работодатель.',
           acceptedCompetitionIds,
           assessmentAvailable: policy.acceptAssessments && need.specialization === 'backend',
@@ -491,7 +499,7 @@ const activeApplication = (s: State, candidateId: string, needId: string) =>
 const eligibilityMessage = {
   email: 'Подтвердите почту, чтобы откликаться на вакансии',
   questionnaire: 'Заполните анкету, чтобы откликаться на вакансии',
-  assessment: 'Подтвердите грейд практической проверкой, чтобы откликаться на вакансии',
+  assessment: 'Подтвердите грейд тестом знаний, чтобы откликаться на вакансии',
   processing_consent: 'Для отклика необходимо согласие на обработку данных',
   application_exists: 'Вы уже откликнулись на эту вакансию',
 } as const satisfies Record<NonNullable<Schemas['ApplicationEligibility']['reason']>, string>;
@@ -671,6 +679,8 @@ function sessionDto(s: State, actor: Actor): Schemas['Session'] {
   };
 }
 function mutableAssessment(item: AssessmentRecord) {
+  if (item.task.execution !== 'questionnaire')
+    fail(422, 'assessment_format_retired', 'Эта демонстрационная задача архивирована. Начните новый тест знаний');
   if (item.status !== 'draft' && item.status !== 'in_progress')
     fail(409, 'assessment_not_editable', 'Проверка уже отправлена или завершена');
 }
@@ -753,8 +763,14 @@ function startSourceSync(s: State, actor: Actor, candidate: Candidate, source: S
   return job;
 }
 function completeAssessment(s: State, candidate: Candidate, item: AssessmentRecord): JobResult {
+  const score = scoreKnowledge(item.grade, item.task, item.answer);
+  if (!score) return fail(422, 'answer_incomplete', 'Ответьте на все вопросы теста');
   const outcome =
-    s.scenario === 'service_failure' ? 'service_error' : s.scenario === 'assessment_failure' ? 'failed' : 'passed';
+    s.scenario === 'service_failure'
+      ? 'service_error'
+      : s.scenario === 'assessment_failure' || !score.passed
+        ? 'failed'
+        : 'passed';
   const previousGrade = candidate.verifiedGrade;
   const gradeChanged =
     outcome === 'passed' &&
@@ -797,20 +813,9 @@ function completeAssessment(s: State, candidate: Candidate, item: AssessmentReco
       candidate.updatedAt = s.clock;
     }
   }
-  const outcomes: Schemas['RubricOutcome'][] =
-    outcome === 'service_error'
-      ? []
-      : RUBRIC.map((criterion, index) => ({
-          criterionId: criterion.id,
-          label: criterion.label,
-          outcome: outcome === 'passed' ? 'met' : index === 0 ? 'partial' : 'not_met',
-          feedback:
-            outcome === 'passed'
-              ? 'Критерий выполнен в демонстрационном сценарии.'
-              : 'Критерий требует доработки в демонстрационном сценарии.',
-        }));
+  const outcomes = outcome === 'service_error' ? [] : score.rubric;
   item.status = outcome;
-  item.checks = outcome === 'service_error' ? [] : checks(outcome === 'passed' ? 'pass' : 'fail');
+  item.checks = outcome === 'service_error' ? [] : score.checks;
   item.updatedAt = s.clock;
   item.revision += 1;
   item.result = {
@@ -822,11 +827,9 @@ function completeAssessment(s: State, candidate: Candidate, item: AssessmentReco
     rubric: outcomes,
     checks: item.checks,
     feedback:
-      outcome === 'passed'
-        ? 'Проверка пройдена. Результат симулирован для демонстрации интерфейса.'
-        : outcome === 'failed'
-          ? 'Требования пока не выполнены. Ранее подтверждённый грейд сохранён.'
-          : 'Ошибка демонстрационного оценивания. Грейд сохранён, штрафа и дополнительного ожидания нет.',
+      outcome === 'service_error'
+        ? 'Ошибка демонстрационного оценивания. Грейд сохранён, штрафа и дополнительного ожидания нет.'
+        : score.feedback,
     nextEligibleAt: candidate.gradeConfirmedAt
       ? plusDays(candidate.gradeConfirmedAt, s.policy.gradeChangeCooldownDays)
       : null,
@@ -903,6 +906,7 @@ const handlers: Handlers = {
     capabilities: {
       emailVerification: true,
       profilePdf: true,
+      profilePdfImport: true,
       githubFixture: true,
       githubOAuth: false,
       fspFixture: true,
@@ -1007,22 +1011,28 @@ const handlers: Handlers = {
   importMyProfile: (ctx) => {
     const candidate = me(ctx);
     processing(candidate);
-    return createJob(ctx.s, ctx.actor, 'profile_import', () => ({
-      kind: 'profile_import',
-      preview: {
-        name: 'Алексей Морозов',
-        specialization: 'backend',
-        selectedGrade: 'middle',
-        stack: ['rust', 'postgresql', 'docker'],
-        teamRole: 'Разработчик',
-        experienceMonths: null,
-        experience:
-          'Демонстрационное извлечение: API на Rust и PostgreSQL. Содержимое загруженного файла не анализировалось.',
-        softSkills: ['Командная работа'],
-      },
-      parser: 'fixture_preview',
-      simulation: true,
-    }));
+    return createJob(
+      ctx.s,
+      ctx.actor,
+      'profile_import',
+      () => ({
+        kind: 'profile_import',
+        preview: {
+          name: 'Алексей Морозов',
+          specialization: 'backend',
+          selectedGrade: 'middle',
+          stack: ['rust', 'postgresql', 'docker'],
+          teamRole: 'Разработчик',
+          experienceMonths: null,
+          experience:
+            'Демонстрационное извлечение: API на Rust и PostgreSQL. Содержимое загруженного файла не анализировалось.',
+          softSkills: ['Командная работа'],
+        },
+        parser: 'fixture_preview',
+        simulation: true,
+      }),
+      { inputRevision: candidate.revision },
+    );
   },
   confirmProfileImport: (ctx) => {
     const job = jobFor(ctx, param(ctx, 'jobId'));
@@ -1031,8 +1041,15 @@ const handlers: Handlers = {
     if (job.confirmed) fail(409, 'import_already_confirmed', 'Импорт уже применён');
     const candidate = me(ctx);
     processing(candidate);
+    if (job.inputRevision !== undefined && candidate.revision !== job.inputRevision)
+      fail(
+        409,
+        'import_profile_changed',
+        'Профиль изменился после загрузки PDF. Загрузите файл заново, чтобы сохранить актуальные данные',
+      );
+    const updated = patchProfile(ctx.s, candidate, ctx.body.profile);
     job.confirmed = true;
-    return patchProfile(ctx.s, candidate, ctx.body.profile);
+    return updated;
   },
   exportMyProfile: (ctx) => ({ pdfProfile: profileDto(ctx.s, me(ctx)) }),
   authorizeGitHub: () => ({
@@ -1053,7 +1070,16 @@ const handlers: Handlers = {
             fspVerified: ctx.body.account === 'FSP-DEMO-024' || ctx.body.account === 'FSP-DEMO-031',
           });
     const connected = provider === 'github' ? github : fsp;
-    connected.accountLabel = ctx.body.account;
+    connected.accountLabel = provider === 'fsp' ? ctx.body.account.trim().toUpperCase() : ctx.body.account;
+    if (provider === 'fsp') {
+      if (!/^[A-Za-z0-9_-]+$/.test(connected.accountLabel))
+        fail(400, 'validation_error', 'Используйте буквы, цифры, дефис или подчёркивание в ФСП ID');
+      connected.fspResults = fspResults(connected.accountLabel);
+      connected.competitionIds = connected.fspResults
+        .filter((r) => r.status === 'published')
+        .map((r) => r.competitionId);
+      connected.verifiedParticipation = connected.competitionIds.length > 0;
+    }
     candidate.sources[index] = connected;
     startSourceSync(ctx.s, ctx.actor, candidate, connected);
     candidate.updatedAt = ctx.s.clock;
@@ -1089,10 +1115,13 @@ const handlers: Handlers = {
     if (!form.emailVerified || !form.questionnaireComplete)
       fail(409, 'onboarding_incomplete', 'Подтвердите почту и заполните анкету');
     if (ctx.body.specialization !== 'backend')
-      fail(422, 'assessment_scope_unavailable', 'Демонстрационные задания доступны только для бэкенда');
+      fail(422, 'assessment_scope_unavailable', 'Тесты знаний доступны только для бэкенда');
     if (
       [...ctx.s.assessments.values()].some(
-        (item) => item.candidateId === candidate.id && activeAssessment.has(item.status),
+        (item) =>
+          item.candidateId === candidate.id &&
+          activeAssessment.has(item.status) &&
+          item.task.execution === 'questionnaire',
       )
     )
       fail(409, 'assessment_active', 'Сначала завершите текущую проверку');
@@ -1110,15 +1139,38 @@ const handlers: Handlers = {
       Date.parse(plusDays(candidate.gradeConfirmedAt, ctx.s.policy.gradeChangeCooldownDays)) > Date.parse(ctx.s.clock)
     )
       fail(409, 'grade_change_cooldown', 'Изменить грейд можно после nextEligibleAt в профиле');
+    for (const legacy of ctx.s.assessments.values()) {
+      if (
+        legacy.candidateId === candidate.id &&
+        activeAssessment.has(legacy.status) &&
+        legacy.task.execution !== 'questionnaire'
+      ) {
+        legacy.status = 'service_error';
+        legacy.updatedAt = ctx.s.clock;
+        legacy.revision += 1;
+        legacy.result = {
+          assessmentId: legacy.id,
+          outcome: 'service_error',
+          confirmedGrade: candidate.verifiedGrade,
+          previousGrade: candidate.verifiedGrade,
+          gradeChanged: false,
+          rubric: [],
+          checks: [],
+          nextEligibleAt: null,
+          feedback: 'Демонстрационная задача архивирована при переходе на тесты знаний. Оценка не выставлялась.',
+          simulation: true,
+        };
+      }
+    }
     const item: AssessmentRecord = {
       id: nextId(ctx.s, 'assessment'),
       candidateId: candidate.id,
       specialization: ctx.body.specialization,
       grade: ctx.body.grade,
       status: 'draft',
-      task: { ...structuredClone(TASK), variantId: `orders-${ctx.body.grade}-a` },
-      answer: { code: TASK.starterCode, explanation: '', externalAiUsed: false },
-      checks: checks(),
+      task: knowledgeTask(ctx.body.grade),
+      answer: { code: '', explanation: '', externalAiUsed: false, responses: [] },
+      checks: [],
       result: null,
       createdAt: ctx.s.clock,
       updatedAt: ctx.s.clock,
@@ -1133,7 +1185,10 @@ const handlers: Handlers = {
     const item = assessmentFor(ctx, param(ctx, 'assessmentId'));
     processing(me(ctx));
     mutableAssessment(item);
+    if (!validKnowledgeAnswer(item.task, ctx.body))
+      fail(400, 'validation_error', 'Ответ содержит неизвестный вопрос, вариант или повтор');
     item.answer = ctx.body;
+    item.checks = knowledgeCompletion(item.task, item.answer);
     item.status = 'in_progress';
     item.revision += 1;
     item.updatedAt = ctx.s.clock;
@@ -1148,7 +1203,7 @@ const handlers: Handlers = {
       ctx.actor,
       'checks',
       () => {
-        item.checks = checks(ctx.s.scenario === 'assessment_failure' ? 'fail' : 'pass');
+        item.checks = knowledgeCompletion(item.task, item.answer);
         return { kind: 'checks', assessmentId: item.id, checks: item.checks, simulation: true };
       },
       { assessmentId: item.id, inputRevision: item.revision },
@@ -1171,8 +1226,8 @@ const handlers: Handlers = {
     processing(candidate);
     const item = assessmentFor(ctx, param(ctx, 'assessmentId'));
     mutableAssessment(item);
-    if (!item.answer.code.trim() || !item.answer.explanation.trim())
-      fail(422, 'answer_incomplete', 'Сохраните решение и его объяснение');
+    if (!scoreKnowledge(item.grade, item.task, item.answer))
+      fail(422, 'answer_incomplete', 'Ответьте на все вопросы теста');
     item.status = 'submitted';
     item.updatedAt = ctx.s.clock;
     item.revision += 1;
