@@ -1,5 +1,8 @@
 # Real feature completion plan
 
+Historical delivery record. For current behavior, verification and explicit limits, read
+[current-state.md](current-state.md); completed baseline findings below are not open defects.
+
 Baseline: live release `bf85cc4` (2026-10-08), issue #31. Backend ownership coordination is approved.
 The source code is the behavior reference. A configured integration is not proof of successful execution.
 

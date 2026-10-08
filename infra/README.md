@@ -27,17 +27,11 @@ with 404. The mock runs with `FSP_MOCK_DEV_ROUTES=0` and the stand's origin in `
 
 ## API implementation
 
-`/etc/fsp/api-backend` contains `mock` (initial provisioning default) or `rust` (current stand). `release.sh` reads it on every deploy: only the selected
-unit is enabled and bound to :4010, so a reboot restores exactly the selected implementation. Switching is a flag
-plus a service restart — no redeploy needed:
-
-```sh
-# cut the stand over to the Rust backend (built during every deploy since the toolchain exists)
-ssh -F .fsp-infra/ssh/config fsp-demo 'echo rust > /etc/fsp/api-backend && systemctl disable --now fsp-mock-api; systemctl enable --now fsp-simulator fsp-api'
-
-# back to the mock
-ssh -F .fsp-infra/ssh/config fsp-demo 'echo mock > /etc/fsp/api-backend && systemctl disable --now fsp-api fsp-simulator; systemctl enable --now fsp-mock-api'
-```
+`/etc/fsp/api-backend` selects the implementation. The public stand must use `rust` with real-mail
+configuration; `release.sh` enables only the selected API unit. The legacy `mock` option is retained for
+bootstrap/development, not for rollback of the public service: it cannot preserve real account authentication
+or PostgreSQL behavior. Recover the public stand with a compatible Rust release through the commands below.
+Never switch nddev.link back to mock/fixed-code authentication.
 
 ## Docker
 
@@ -143,16 +137,14 @@ round trip and that a failed backup leaves the previous archive intact (`infra/t
 
 | Task on the host | Command |
 | --- | --- |
-| API status / logs | `systemctl status fsp-mock-api fsp-api`, `journalctl -u fsp-api -n 100` |
+| API status / logs | `systemctl status fsp-api fsp-simulator`, `journalctl -u fsp-api -n 100` |
 | Which API serves | `cat /etc/fsp/api-backend` |
-| Reset demo data (mock) | `systemctl restart fsp-mock-api` (state is in memory; seeded `baseline` scenario) |
-| Certificate | `certbot certificates`; renewal by `snap.certbot.renew.timer` three days before expiry, then `systemctl reload nginx` |
+| Certificate | `certbot certificates`; renewal by `snap.certbot.renew.timer` using each certificate's policy (the short-lived IP certificate uses three days), then the nginx reload hook |
 | Renewal dry run | `certbot renew --cert-name nddev.link --dry-run --no-random-sleep-on-renew` |
 
-While the mock serves, the demo API is shared by every visitor and keeps state only until restart. It is not
-production authentication: codes are fixed, email codes remain publicly known, and fixture data
-is synthetic. The Rust backend persists sessions and profiles in PostgreSQL; the demo code stays fixed in `demo`
-mode.
+The current Rust stand persists sessions/profiles in PostgreSQL and verifies mailbox access through Resend.
+Local mock/demo mode uses fixed codes and does not prove mailbox ownership. See the
+[demo script](../frontend/docs/DEMO_SCRIPT_RU.md) for the separate live and local procedures.
 
 ## PostgreSQL
 
@@ -171,8 +163,8 @@ so a fresh database is ready on first start.
 | Restore test | Use a new isolated database as described in [Backups and recovery](#backups-and-recovery) |
 | Rotate password | `ALTER ROLE fsp PASSWORD '…'` then update `DATABASE_URL` in `/etc/fsp/db.env` and restart `fsp-api` |
 
-Migrations are forward-only (`sqlx::migrate!` at startup). A binary rollback must remain compatible with the
-current schema; restoring an earlier database is a separate recovery operation, never an automatic deploy step.
+Migrations are embedded with `sqlx::migrate!` and applied by the reviewed forward-additive runner in
+`backend/crates/storage-postgres/src/migrations.rs`. A binary rollback must remain compatible with the current schema; restoring an earlier database is a separate recovery operation, never an automatic deploy step.
 The installed `fsp-backup.timer` provides daily local backups. Off-host retention remains an operator task.
 
 ## LLM chain
@@ -193,13 +185,13 @@ Host-side secrets (never committed):
 | `/var/lib/fsp/bifrost/config.json` | Bifrost config; reference: [`llm/bifrost-config.json`](llm/bifrost-config.json) |
 | `/etc/fsp/llm.env` | `NDDEV_CLIPROXY_KEY` (CLIProxyAPI api-key), `NDDEV_BIFROST_KEY` (Bifrost virtual key) and the backend-side `BIFROST_CHAT_URL`, `BIFROST_API_KEY` (= the virtual key), `BIFROST_MODEL=grok-build/grok-4.7` — `fsp-api.service` loads the same file, so provisioning never rewrites it |
 
-Without `BIFROST_*` the backend reports `meta.capabilities.realLlm: false` and serves the deterministic
-fallback graph. The xAI OAuth token is shared with the local `nddev-runtime` setup; refresh-token rotation
+Without configured Bifrost the backend reports `meta.capabilities.realLlm: false` and builds a deterministic
+graph from stored skills. An error from a configured provider remains an error; it never silently falls back. The xAI OAuth token is shared with the local `nddev-runtime` setup; refresh-token rotation
 on one side can invalidate the other, in which case re-copy the auth file.
 
 ## Backend cutover checklist
 
-1. The backend passes the [cutover checklist](../contracts/API_INTEGRATION.md#backend-cutover-checklist) —
+1. The backend passes the [cutover checklist](../contracts/API_INTEGRATION.md#backend-compatibility-checklist) —
    including the error envelope, idempotency and pagination semantics — and its tests cover the mock's cases.
 2. `meta.capabilities` reports the features the backend actually serves; the frontend must not hide a flow the
    demo needs.
