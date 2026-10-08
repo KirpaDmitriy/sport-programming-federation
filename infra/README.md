@@ -256,10 +256,10 @@ Codes and authentication keys must not appear in logs, artifacts or commits.
 The CLI uses a separate local `fsp` profile; this headless host stores it in a
 mode-600 credentials file because a desktop secret service is unavailable.
 
-Release variables `FSP_PUBLIC_URL` and `FSP_AUTH_MODE` must match the stand.
-The `stand` GitHub environment holds `FSP_RESEND_ACCEPTANCE_KEY`, a separate
-Resend key used only by the trusted main-branch browser job to read unique test
-inboxes. Resend currently requires `full_access` for received-email retrieval;
+The external CI host's `/etc/fsp-ci/public-url` and `auth-mode` must match the stand.
+Its root-only `resend-acceptance-key` supplies `FSP_RESEND_ACCEPTANCE_KEY`, a separate
+Resend key used only by trusted main-branch browser acceptance to read unique test
+inboxes. GitHub Actions secrets are no longer used. Resend currently requires `full_access` for received-email retrieval;
 this key is deliberately excluded from the runtime and pull-request jobs. Rotate
 it independently. The acceptance test requires genuine inbound mail with passing
 DKIM/DMARC, then creates a candidate and two companies through public workflows.
