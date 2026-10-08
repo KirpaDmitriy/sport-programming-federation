@@ -9,7 +9,6 @@ import re
 import shutil
 import subprocess
 import time
-import urllib.error
 import urllib.request
 
 REPO = "KirpaDmitriy/sport-programming-federation"
@@ -168,12 +167,27 @@ def integrations(open_prs):
 
 def deploy(sha, mirror):
     marker = ROOT / "deployed.json"
-    if marker.exists() and json.loads(marker.read_text())["sha"] == sha:
-        return
     if not (CONFIG / "deploy-enabled").exists():
+        return
+    configuration = hashlib.sha256(b"".join(
+        (CONFIG / name).read_bytes() for name in ("public-url", "auth-mode", "resend-acceptance-key")
+    )).hexdigest()
+    if marker.exists():
+        deployed = json.loads(marker.read_text())
+        if deployed["sha"] == sha and deployed.get("configuration") == configuration:
+            return
+    attempts_file = ROOT / "deploy-attempts.json"
+    attempts = {"sha": sha, "configuration": configuration, "count": 0, "lastAt": 0}
+    if attempts_file.exists():
+        previous = json.loads(attempts_file.read_text())
+        if previous["sha"] == sha and previous["configuration"] == configuration:
+            attempts = previous
+    if attempts["count"] >= 3 or time.time() - attempts["lastAt"] < 300:
         return
     if api("commits/main")["sha"] != sha:
         return
+    attempts.update(count=attempts["count"] + 1, lastAt=int(time.time()))
+    save(attempts_file, attempts)
     deploy_work = ROOT / "deploy"
     shutil.rmtree(deploy_work, ignore_errors=True)
     run(["git", "clone", "--shared", str(mirror), str(deploy_work)])
@@ -182,16 +196,17 @@ def deploy(sha, mirror):
     log_path = ROOT / "logs" / sha / "deployment.log"
     log_path.parent.mkdir(parents=True, exist_ok=True)
     try:
-        with log_path.open("w") as log:
+        with log_path.open("a") as log:
             run(["timeout", "--kill-after=30s", "45m", "bash", str(deploy_work / "infra/deploy.sh"), sha],
                 cwd=deploy_work, env={**os.environ, "FSP_DEPLOY_HOST": "stand", "FSP_SSH_CONFIG": str(CONFIG / "ssh-config")},
                 stdout=log, stderr=subprocess.STDOUT)
-            run([str(CONTROL / "public.sh"), str(deploy_work)], stdout=log, stderr=subprocess.STDOUT)
-        save(marker, {"sha": sha, "deployedAt": int(time.time())})
+            run(["timeout", "--kill-after=30s", "15m", str(CONTROL / "public.sh"), str(deploy_work)], stdout=log, stderr=subprocess.STDOUT)
+        save(marker, {"sha": sha, "configuration": configuration, "deployedAt": int(time.time())})
         status(sha, "deployment", "success", "Live release and actual public browser journey passed")
     except subprocess.CalledProcessError:
         status(sha, "deployment", "failure", "Deployment or public acceptance failed; inspect private deployment log")
-        raise
+        # Keep checking PRs: a broken deployment must not block the fix from reaching main.
+        return
 
 
 def cycle():

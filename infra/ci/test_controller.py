@@ -106,3 +106,39 @@ class ReleasePolicy(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class DeploymentRecovery(unittest.TestCase):
+    def test_failed_release_keeps_fix_prs_unblocked_and_bounds_retries(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config = root / "config"
+            config.mkdir()
+            for name, value in {"deploy-enabled": "", "public-url": "https://nddev.link", "auth-mode": "resend", "resend-acceptance-key": "test-key"}.items():
+                (config / name).write_text(value)
+            sha = "a" * 40
+            with patch.object(ci, "ROOT", root), patch.object(ci, "CONFIG", config), \
+                 patch.object(ci, "api", return_value={"sha": sha}), patch.object(ci, "status") as status, \
+                 patch.object(ci, "run") as run:
+                def fail_deploy(args, **kwargs):
+                    if args[0] == "timeout":
+                        raise subprocess.CalledProcessError(1, args)
+                run.side_effect = fail_deploy
+                ci.deploy(sha, root / "source.git")
+                self.assertFalse((root / "deployed.json").exists())
+                self.assertEqual(status.call_args.args[2], "failure")
+                self.assertEqual(json.loads((root / "deploy-attempts.json").read_text())["count"], 1)
+                before = run.call_count
+                ci.deploy(sha, root / "source.git")
+                self.assertEqual(run.call_count, before)
+                ci.save(root / "deploy-attempts.json", {"sha": sha, "configuration": json.loads((root / "deploy-attempts.json").read_text())["configuration"], "count": 3, "lastAt": 0})
+                ci.deploy(sha, root / "source.git")
+                self.assertEqual(run.call_count, before)
+                # Runtime changes require fresh public acceptance even with the same main SHA.
+                (config / "public-url").write_text("https://new.example")
+                run.side_effect = None
+                ci.deploy(sha, root / "source.git")
+                self.assertTrue((root / "deployed.json").exists())
+                self.assertEqual(status.call_args.args[2], "success")
+                before = run.call_count
+                ci.deploy(sha, root / "source.git")
+                self.assertEqual(run.call_count, before)

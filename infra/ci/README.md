@@ -53,8 +53,9 @@ availability or delivery failures leave checks failed. The controller never rese
 
 Inspect `journalctl -u fsp-ci.service` and private `/var/lib/fsp-ci/logs/<sha>/*.log`; evidence lives in
 `/var/lib/fsp-ci/evidence/`. A failed revision is retried by removing only its matching evidence JSON and requesting a
-cycle. New content automatically receives new checks. A deployment failure is retried on the next cycle and remains
-red until public acceptance succeeds. `deployed.json` records only actual accepted releases. Stop the timer to pause
+cycle. New content automatically receives new checks. A deployment failure remains red, retries at most three times with five-minute spacing, and never blocks
+PR checks needed to fix it. After fixing infrastructure, remove only `deploy-attempts.json` to retry; a new main
+SHA or changed public URL/auth mode/inbox key starts a fresh acceptance cycle. `deployed.json` records only actual accepted releases. Stop the timer to pause
 new cycles; stop the service separately only when deliberately interrupting a running check/release.
 
 For controller upgrades: stop the timer, wait for the current service to finish, review the diff, run `install-host.sh`
