@@ -1,0 +1,9 @@
+# Permit this namespace constructor on Ubuntu's restricted-userns kernels.
+# Actual parser isolation is defined by SandboxedPdf's fixed arguments; no
+# global sysctl is relaxed and no host capabilities are granted to the API.
+abi <abi/4.0>,
+include <tunables/global>
+
+profile fsp-pdf-bwrap /usr/bin/bwrap flags=(unconfined) {
+  userns,
+}

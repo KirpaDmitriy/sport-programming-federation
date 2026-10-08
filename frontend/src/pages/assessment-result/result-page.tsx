@@ -16,13 +16,18 @@ import { ExportProfileButton } from '@/features/profile-pdf';
 import { useStartAssessment } from '@/features/start-assessment';
 import { describeError } from '@/shared/api';
 import { formatDate, gradeLabel, initials, specializationLabel, useDocumentTitle } from '@/shared/lib';
-import { Avatar, Button, ButtonLink, Callout, Card, Icon, InlineStatus, StatusChip, TableWrap } from '@/shared/ui';
+import { Avatar, Button, ButtonLink, Callout, Card, Icon, InlineStatus, StatusChip } from '@/shared/ui';
 import styles from './result-page.module.css';
 
 function headline(assessment: Assessment) {
   const result = assessment.result;
   const target = gradeLabel[assessment.grade];
-  if (!result) return { icon: 'clock' as const, tone: 'info', title: 'Решение проверяется' };
+  if (!result)
+    return {
+      icon: 'clock' as const,
+      tone: 'info',
+      title: assessment.task.execution === 'questionnaire' ? 'Ответы проверяются' : 'Архивная демонстрационная задача',
+    };
   if (result.outcome === 'service_error')
     return { icon: 'alert' as const, tone: 'warning', title: 'Оценка не получена' };
   if (result.outcome === 'failed') {
@@ -52,8 +57,8 @@ function NextActions({ assessment }: { assessment: Assessment }) {
           <p>Сбой сервиса не считается попыткой с отрицательным результатом. Можно начать новую попытку сразу.</p>
         ) : assessment.result?.previousGrade ? (
           <p>
-            Подтверждённый грейд «{gradeLabel[assessment.result.previousGrade]}» остаётся в профиле. Повторите проверку
-            позже или выберите другую цель.
+            Подтверждённый грейд «{gradeLabel[assessment.result.previousGrade]}» остаётся в профиле. Можно сразу
+            повторить тест или выбрать другую цель.
           </p>
         ) : (
           <p>Категория пока не присвоена. Можно повторить проверку или выбрать более подходящий грейд в профиле.</p>
@@ -99,7 +104,7 @@ function EvidenceUpdated({ assessment }: { assessment: Assessment }) {
         {confirmed.length ? (
           <div className="stack">
             <p className="muted">
-              Навыки из рубрики этой задачи теперь подтверждены на уровне «{gradeLabel[assessment.grade]}»:
+              Знания по темам этого теста подтверждены на уровне «{gradeLabel[assessment.grade]}»:
             </p>
             <div className="row">
               {confirmed.map((skill) => (
@@ -109,12 +114,12 @@ function EvidenceUpdated({ assessment }: { assessment: Assessment }) {
               ))}
             </div>
             <p className="small muted">
-              Подтверждение относится к проверенной задаче и не охватывает все темы этих технологий. Остальные навыки не
-              изменились.
+              Результат относится к вопросам этого теста, не охватывает все темы технологий и не подтверждает
+              практический опыт. Остальные навыки не изменились.
             </p>
           </div>
         ) : (
-          <InlineStatus>Обновляем навыки профиля…</InlineStatus>
+          <p className="muted">Результат сохранён в истории. Актуальные свидетельства доступны на странице навыков.</p>
         )}
       </Card>
       {gap && (
@@ -168,6 +173,19 @@ export function AssessmentResultPage({ assessmentId }: { assessmentId: string })
     profile.data?.verifiedGrade === result.confirmedGrade &&
     profile.data?.verifiedSpecialization === assessment.specialization;
 
+  if (!result && assessment.task.execution !== 'questionnaire') {
+    return (
+      <Card title="Архивная демонстрационная задача">
+        <div className="stack">
+          <p>Эта попытка больше не оценивается. Сохранённое решение доступно для просмотра.</p>
+          <ButtonLink to="/candidate/assessments/$assessmentId/workspace" params={{ assessmentId }}>
+            Открыть старое решение
+          </ButtonLink>
+          <ButtonLink to="/candidate/assessments">Перейти к тестам знаний</ButtonLink>
+        </div>
+      </Card>
+    );
+  }
   return (
     <>
       <header className={styles.header}>
@@ -177,8 +195,9 @@ export function AssessmentResultPage({ assessmentId }: { assessmentId: string })
         <div>
           <h1 className={styles.title}>{head.title}</h1>
           <p className="muted" style={{ fontSize: '1.125rem' }}>
-            {specializationLabel[assessment.specialization]} · практическая проверка{' '}
-            {result ? `завершена ${formatDate(assessment.updatedAt)}` : 'ещё оценивается'}
+            {specializationLabel[assessment.specialization]} ·{' '}
+            {assessment.task.execution === 'questionnaire' ? 'тест знаний' : 'архивная демонстрационная проверка'}{' '}
+            {result ? `завершён ${formatDate(assessment.updatedAt)}` : 'ещё оценивается'}
           </p>
         </div>
       </header>
@@ -244,52 +263,58 @@ export function AssessmentResultPage({ assessmentId }: { assessmentId: string })
             <div className="stack-lg">
               {result.rubric.length > 0 && (
                 <Card title="Результаты по критериям">
-                  <TableWrap label="Результаты по критериям">
-                    <table className="table">
-                      <thead>
-                        <tr>
-                          <th scope="col">Критерий</th>
-                          <th scope="col">Результат</th>
-                          <th scope="col">Основание</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {result.rubric.map((item) => (
-                          <tr key={item.criterionId}>
-                            <td>
-                              <strong>{item.label}</strong>
-                            </td>
-                            <td>
-                              <RubricOutcomeChip outcome={item.outcome} />
-                            </td>
-                            <td>{item.feedback}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </TableWrap>
+                  <ul className="stack" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+                    {result.rubric.map((item) => (
+                      <li key={item.criterionId} className="stack" style={{ gap: '0.5rem' }}>
+                        <div className="row">
+                          <strong>{item.label}</strong>
+                          <RubricOutcomeChip outcome={item.outcome} />
+                        </div>
+                        <p className="small muted">{item.feedback}</p>
+                      </li>
+                    ))}
+                  </ul>
                 </Card>
               )}
               {result.checks.length > 0 && (
-                <Card title="Результаты запуска">
+                <Card title="Разбор ответов">
                   <ul className={styles.checks}>
                     {result.checks.map((check) => (
                       <li key={check.id}>
-                        <span>{check.label}</span>
+                        <div className="stack" style={{ gap: '0.5rem', minWidth: 0, overflowWrap: 'anywhere' }}>
+                          <strong>{check.label}</strong>
+                          <p className="small">
+                            Ваш ответ:{' '}
+                            {assessment.task.questions
+                              ?.find((q) => q.id === check.id)
+                              ?.options.find(
+                                (o) =>
+                                  o.id ===
+                                  assessment.answer.responses?.find((r) => r.questionId === check.id)?.optionId,
+                              )?.label ?? 'Архивный ответ'}
+                          </p>
+                          <p className="small muted">{check.message}</p>
+                        </div>
                         <CheckStatusChip status={check.status} />
                       </li>
                     ))}
                   </ul>
                   <p className="small muted" style={{ marginTop: '0.75rem' }}>
-                    Учтены проверки поведения и общая рубрика семейства задач «{assessment.task.family}», версия{' '}
-                    {assessment.task.version}.{result.simulation && ' Результаты симулированы для демонстрации.'}
+                    Применены критерии теста «{assessment.task.family}», версия {assessment.task.version}.
+                    {result.simulation && ' Результаты симулированы для демонстрации.'}
                   </p>
                 </Card>
               )}
             </div>
             <div className="stack-lg">
               {result.outcome === 'passed' ? (
-                <EvidenceUpdated assessment={assessment} />
+                assessment.task.execution === 'questionnaire' ? (
+                  <EvidenceUpdated assessment={assessment} />
+                ) : (
+                  <Callout tone="neutral">
+                    Архивный результат демонстрационной проверки. Знания по новому тесту здесь не оценивались.
+                  </Callout>
+                )
               ) : (
                 <NextActions assessment={assessment} />
               )}

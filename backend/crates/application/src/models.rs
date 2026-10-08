@@ -884,6 +884,7 @@ pub struct SourceView {
     pub verified_participation: bool,
     pub competition_ids: Vec<String>,
     pub notice: String,
+    pub fsp_results: Vec<fsp_domain::FspResult>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -946,12 +947,12 @@ pub enum JobResultView {
     Assessment {
         assessment: AssessmentView,
     },
-    /// The mock's fixed `fixture_preview` parse result: the upload is
-    /// validated, the preview does not depend on its contents.
+    /// Extracted fields remain a proposal until explicit confirmation.
     ProfileImport {
         preview: serde_json::Value,
         parser: &'static str,
         simulation: bool,
+        evidence: Vec<fsp_domain::ImportEvidence>,
     },
 }
 
@@ -1011,8 +1012,9 @@ pub fn source_view(record: SourceRecord) -> SourceView {
         observation_period,
         verified_participation: record.verified_participation,
         competition_ids: record.competition_ids,
+        fsp_results: record.fsp_results,
         notice: if record.synthetic {
-            "Демонстрационные данные ФСП".into()
+            "Вымышленные данные ФСП. Командный результат не подтверждает индивидуальные навыки или грейд.".into()
         } else if analysis.is_some() {
             "Метрики рассчитаны по данным GitHub".into()
         } else {
@@ -1034,6 +1036,24 @@ pub fn job_view(record: JobRecord, source: Option<SourceView>) -> JobView {
                 serde_json::to_value(JobResultView::SourceSync { source }).unwrap_or_default()
             })
         });
+    let simulation = result
+        .as_ref()
+        .and_then(|value: &serde_json::Value| {
+            value
+                .get("simulation")
+                .or_else(|| {
+                    value
+                        .get("assessment")
+                        .and_then(|assessment| assessment.get("simulation"))
+                })
+                .or_else(|| {
+                    value
+                        .get("source")
+                        .and_then(|source| source.get("synthetic"))
+                })
+        })
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(record.kind != "profile_import");
     JobView {
         id: record.id,
         kind: record.kind,
@@ -1047,7 +1067,7 @@ pub fn job_view(record: JobRecord, source: Option<SourceView>) -> JobView {
             retryable: true,
         }),
         poll_after_ms: if terminal { 0 } else { 250 },
-        simulation: true,
+        simulation,
     }
 }
 

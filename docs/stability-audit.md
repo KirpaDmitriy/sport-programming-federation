@@ -31,8 +31,9 @@ mutable documentation page is a historical snapshot. The project itself began on
 ## Product boundary
 
 Stabilize the implemented platform and preserve the current contract. Demo authentication deliberately
-uses a disclosed fixed code. FSP data, assessment execution and PDF extraction are simulations;
-GitHub OAuth and the optional LLM adapter are real integrations when configured. Do not claim this
+uses a disclosed fixed code. The original baseline simulated FSP, assessment evaluation and PDF extraction.
+The [follow-up implementation](real-feature-completion-plan.md) now uses knowledge tests, actual isolated PDF
+extraction/Bifrost analysis and a separate fictional FSP HTTP service. GitHub OAuth setup and email are deferred. Do not claim this
 is production identity verification or measured assessment quality. Adding a mail provider, an official
 FSP API, ATS, chat, anti-fraud or a sandboxed code executor is a separate product decision, not a
 prerequisite for correcting the present implementation. Do not silently enable third-party services.
@@ -78,7 +79,7 @@ The ownership requirement in `AGENTS.md` is satisfied for the stabilization work
 | GitHub username/token binding | Confirmed and repaired: authenticated `/user` login must match the requested account. |
 | Request-derived integration errors/logs | Integration errors use stable public messages; GitHub error_description is not reflected. Live logs are part of delivery verification; no raw secrets or session transcripts are published. |
 | Source active-job marker and cold/full-table reads | Inline execution is explicit; stale/consent checks protect source writes. Indexed single-profile reads replace hot full scans; collection ranking remains in memory. |
-| Real email/FSP/assessment/PDF parsing | Explicit demo boundaries; documentation must describe them accurately. |
+| Real email/FSP/assessment/PDF parsing | Superseded by [issue #31](real-feature-completion-plan.md): deterministic knowledge tests, real digital-PDF extraction/assistance, fictional HTTP FSP; email/OAuth setup deferred. |
 | Optional need graph UI, repository metrics UI, editable work modes | Separate product enhancements, not broken contract operations; keep their current limits explicit. |
 
 ## Research anchors

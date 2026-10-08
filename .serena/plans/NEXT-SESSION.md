@@ -1,53 +1,46 @@
 # Project handoff
 
-Latest follow-up: [issue #23](https://github.com/KirpaDmitriy/sport-programming-federation/issues/23) records the real
-browser pass, corrected simulated-PDF wording and responsive card headers. Check its delivery status as well as
-the earlier audit ledger before resuming. [Issue #27](https://github.com/KirpaDmitriy/sport-programming-federation/issues/27)
-tracks the subsequently discovered graph timeout, eager-query and hidden-error corrections. Live screenshots and traces are private verification artifacts, not
-the mock screenshot gallery.
-
 ## Current law
 
-Code is the source of truth. Read AGENTS.md, subtree rules and docs/stability-audit.md. English engineering text,
-Russian UI, pinned Rust/TypeScript 7/Bun. Backend audit fixes were coordinated with Dima and explicitly authorized.
-Do not reset stand data, rotate credentials, create a second droplet or modify unrelated hosts. Preserve the user's
-no-attribution preference. Work in a feature branch and follow personal → dev → main with required green checks.
+Read AGENTS.md and subtree rules. Code is authoritative. English engineering text, Russian UI, pinned Rust/TS7/Bun.
+Backend changes in this audit were coordinated with Dima and explicitly authorized. Do not reset stand data,
+rotate credentials, create another droplet or touch unrelated hosts. Preserve the no-attribution preference.
+Feature -> danil -> dev -> main requires green checks; upstream is KirpaDmitriy, origin is the rldyourmnd mirror.
 
-## Completed implementation
+## Implemented
 
-- af52e15: evidence-backed plan and accessible session inventory.
-- 56053f0 / 23b1fda: immutable releases/recovery, retryable provisioning and verified backups.
-- 18a5a2a: fail-closed cascade checks and exact-SHA deployment gates.
-- 9b858ca / 9507336: ordered assessment saves and inline source job handling.
-- 25ff006 / a0765c5 / 3ba089d: durable auth budget, atomic command replay and concurrent aggregate protection.
-- cfcb4d0 / f3aecfc: GitHub identity, safe graph projection and atomic source evidence.
-- 0e29a81 / 3f45fdb: strict storage parsing/migration rebuilds and command documentation.
-- db581b2: immediate structured nginx authentication limits.
-- 4c2e28a / 847b0f8: independent review follow-up: serialize distinct-key assessment starts and remove obsolete backup instructions.
-- 1be7311: bounded company fields, HTTP(S) websites, strict email format and correct nullable PATCH semantics.
-- 92c582d: current product/operating documentation; 38a741d: deterministic login E2E ordering.
+Earlier stabilization/browser/deadline work is recorded in closed issues #16, #23 and #27. Do not repeat it from
+old transcripts. Active delivery ledger: [issue #31](https://github.com/KirpaDmitriy/sport-programming-federation/issues/31).
 
-## Verification and delivery record
+- 1b97338: real isolated digital-PDF extraction, validated/cited Bifrost fields, revision-safe confirmation and contextual assistance.
+- 8e0a6c1: immutable knowledge-v1 tests, deterministic scoring, grade/consent/response atomicity, legacy archives and Russian UI.
+- 6590b5a: separate fictional FSP HTTP provider, validated durable results, preserved snapshots on failure, private runtime and rollback.
+- 89f0a2b: browser helper waits for the questionnaire and result headings/checks wrap on mobile.
+- f1b4608: consistent knowledge-test vocabulary in candidate/employer evidence and vacancy flows.
+- a8fc70a: readable mobile criteria and truthful legacy-result presentation.
+- Documentation/knowledge follow-ups reconcile current rules, architecture, runbooks and screenshots.
 
-Local gates passed: just verify (25 mock, 34 component tests), just backend-check (24 HTTP, 10 repository tests
-plus unit/adapter tests), seven release fault scenarios, cascade tests, actual nginx rate-limit probe and real
-PostgreSQL backup restore. The follow-up browser suite has 35 cases plus one intentionally opt-in screenshot; a mailbox
-race discovered in a later local run was fixed and all five auth tests passed three repetitions (15/15).
-All gates, including the full browser suite, must pass on the final PR head.
+## Verification and delivery
 
-[PR #17](https://github.com/KirpaDmitriy/sport-programming-federation/pull/17) carries the initial implementation; the follow-up verification fixes are linked from issue #16.
-[Issue #16](https://github.com/KirpaDmitriy/sport-programming-federation/issues/16) is the final delivery ledger:
-its checked list and closure record canonical/mirror/local permanent refs, active stand SHA, public browser,
-real LLM/privacy checks and independent read-only verification. Read it before resuming; do not repeat completed
-work based on an older session summary. If still open, finish its unchecked delivery steps. If closed, there is
-no uncompleted stabilization action in this audit. Follow-up product limits are documented, not hidden defects.
+Local TypeScript/mock/component/build and Rust workspace gates passed. Browser review used the actual local
+Rust API, isolated PostgreSQL and configured live Bifrost: cited PDF confirmation, real assistance, passing and
+failing knowledge tests, draft reload, mobile results, FSP HTTP published/pending/empty and outage/recovery.
+Release fault tests cover simulator outage and rollback to older releases without it. Two final browser-test
+failures were traced to stale FSP copy and the helper matching an outgoing form, then corrected.
 
-## Scope and next decisions
+Read issue #31 before resuming: it records final browser/CI results, PR/cascade/deployment SHA, independent live
+verification and canonical/mirror/local/stand synchronization. If still open, complete unchecked delivery steps.
+The issue closes only after these checks; local success never implies deployment. Private browser traces and
+reports live under the original checkout's ignored .fsp-infra/. No production reset is a verification step.
 
-Accessible history: current Codex, one Claude transcript, two Devin sessions in the ten-day window. No local
-project match in Grok/Cursor indexes; remote/deleted history could not be audited. Original session logs were not
-rewritten. Project-specific Claude memories were reconciled; preference memories were preserved.
+## Scope and remaining limits
 
-No implementation step is blocked on the user. Production email identity, official FSP, real code execution/PDF
-extraction, off-host backup destination and measured large-bank scaling require separate explicit product or
-operating decisions. Do not silently claim these capabilities or enable paid external services.
+The user explicitly chose knowledge tests instead of a code executor, a fictional HTTP FSP provider instead of
+an official federation integration, and deferred email/GitHub OAuth setup. None requires another approval now.
+The public study bank is not leak-resistant or professionally calibrated; passing proves these test answers,
+not practical work. OCR, durable background workers, measured large-bank scaling, off-host backup automation
+and production identity assurance are not claimed implemented.
+
+History audit covered current Codex, one Claude transcript and two Devin sessions in the available ten-day window.
+Grok/Cursor indexes had no local project match; remote/deleted history was unavailable. Original session logs
+remain intact. Update current project memories without overwriting user preferences or historical evidence.

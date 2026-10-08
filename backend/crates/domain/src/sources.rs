@@ -40,6 +40,28 @@ pub struct FspParticipation {
     pub account_label: String,
     pub verified: bool,
     pub competition_ids: Vec<String>,
+    pub results: Vec<FspResult>,
+}
+
+/// Fictional provider result; a team placement is not an individual skill assessment.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct FspResult {
+    pub competition_id: String,
+    pub competition_name: String,
+    pub discipline: String,
+    pub starts_at: String,
+    pub ends_at: String,
+    pub scope: String,
+    pub team_name: Option<String>,
+    pub team_size: Option<u16>,
+    pub status: String,
+    pub place: Option<u32>,
+    pub field_size: u32,
+    pub score: Option<u32>,
+    pub protocol_reference: Option<String>,
+    pub published_at: Option<String>,
+    pub synthetic: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -54,6 +76,7 @@ pub struct SourceRecord {
     pub analysis: Option<GitHubAnalysis>,
     pub verified_participation: bool,
     pub competition_ids: Vec<String>,
+    pub fsp_results: Vec<FspResult>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

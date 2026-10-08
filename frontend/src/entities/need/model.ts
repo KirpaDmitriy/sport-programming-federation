@@ -51,7 +51,7 @@ export const defaultEvidencePolicy = (): EvidencePolicy => ({
 
 export function describePolicy(policy: EvidencePolicy) {
   const sources = [
-    policy.acceptAssessments && 'практические проверки',
+    policy.acceptAssessments && 'тесты знаний',
     policy.acceptGithub && 'работа в GitHub',
     policy.acceptFsp && (policy.competitionSelection === 'system' ? 'соревнования ФСП' : 'выбранные соревнования ФСП'),
   ].filter(Boolean);

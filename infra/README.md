@@ -10,6 +10,7 @@ key, host key, droplet metadata) lives in the git-ignored `.fsp-infra/` at the r
 | `deploy.sh` | Archives a git ref (`frontend`, `mock-server`, `backend`, `infra`), copies it to the host and runs `release.sh` there |
 | `release.sh` | On the host: builds the release (frontend, mock, Rust backend), switches `/opt/fsp/current` atomically, runs the API implementation chosen by `/etc/fsp/api-backend`, health-checks and rolls back on failure |
 | `fsp-mock-api.service` | Hardened systemd unit for the mock API (user `fsp`, `127.0.0.1:4010`) |
+| `fsp-simulator.service` | Fictional participant-results HTTP service on private loopback 4020; released with the API, no public nginx route |
 | `fsp-api.service` | Hardened systemd unit for the Rust API (same user and port; `StateDirectory=fsp` gives it `/var/lib/fsp`) |
 | `backup-db.sh`, `fsp-backup.service`, `fsp-backup.timer` | Private daily PostgreSQL archives, with a tested restore procedure |
 | `nginx/` | Site config (SPA fallback, `/api/v1/` proxy, `/__mock__` → 404), ACME bootstrap config, security headers |
@@ -31,10 +32,10 @@ plus a service restart — no redeploy needed:
 
 ```sh
 # cut the stand over to the Rust backend (built during every deploy since the toolchain exists)
-ssh -F .fsp-infra/ssh/config fsp-demo 'echo rust > /etc/fsp/api-backend && systemctl disable --now fsp-mock-api; systemctl enable --now fsp-api'
+ssh -F .fsp-infra/ssh/config fsp-demo 'echo rust > /etc/fsp/api-backend && systemctl disable --now fsp-mock-api; systemctl enable --now fsp-simulator fsp-api'
 
 # back to the mock
-ssh -F .fsp-infra/ssh/config fsp-demo 'echo mock > /etc/fsp/api-backend && systemctl disable --now fsp-api; systemctl enable --now fsp-mock-api'
+ssh -F .fsp-infra/ssh/config fsp-demo 'echo mock > /etc/fsp/api-backend && systemctl disable --now fsp-api fsp-simulator; systemctl enable --now fsp-mock-api'
 ```
 
 ## Docker
@@ -49,6 +50,9 @@ containers run read-only as non-root users with every capability dropped. `FSP_P
 `postgres:17-alpine` on `127.0.0.1:5434` with a `pg_isready` healthcheck that `api` waits for; the `pg-data`
 volume persists the database across container restarts. An optional LLM chain reaches the host's Bifrost gateway
 through `host.docker.internal` (see [`.env.example`](../.env.example)).
+The private `fsp-simulator` container has no published port; API connect/sync calls it at
+`FSP_SIMULATOR_URL=http://fsp-simulator:4020` and startup waits for its healthcheck.
+PDF import is opt-in and off in default Compose: no privileged/seccomp bypass is enabled.
 
 ## Commands
 
@@ -186,3 +190,18 @@ on one side can invalidate the other, in which case re-copy the auth file.
 3. Flip `/etc/fsp/api-backend` to `rust` (above), run `infra/deploy.sh main`, then `e2e:public` against the stand.
 4. Keep `location ^~ /__mock__ { return 404; }` — the production backend never implements development controls.
 5. Build the frontend without `VITE_DEMO_STAND` and `VITE_DEMO_EMAIL_CODE` once e-mail delivery is real.
+
+## PDF and fictional FSP runtime
+
+For digital PDF import, provisioning installs `bubblewrap`, `poppler-utils` and the narrow executable profile
+[`apparmor/fsp-pdf-bwrap`](apparmor/fsp-pdf-bwrap), allowing user namespaces for `/usr/bin/bwrap` on Ubuntu 24.04.
+Global unprivileged-userns restrictions stay enabled. The API unit permits `AF_NETLINK` for namespace setup;
+the parser still runs without host network/secrets, under process/time/output/concurrency limits.
+Set `FSP_PDF_IMPORT=1` in the private API environment and configure Bifrost. Startup probes the actual sandbox
+and fails closed if unavailable. There is no unsandboxed fallback. See [backend limits](../backend/README.md#pdf-import-runtime).
+
+The release builds both Rust binaries, installs/restarts `fsp-simulator.service` before API activation and checks
+its loopback health together with API and nginx. Failed activation restores the previous units/release. Rolling
+back to an older release without the simulator stops the helper; it does not undo additive database migrations.
+`0004_fsp_results.sql` preserves historical records with an empty detailed-results array until refreshed.
+[FSP fixtures](../docs/fsp-simulator.md) are entirely fictional and cannot establish real federation identity.

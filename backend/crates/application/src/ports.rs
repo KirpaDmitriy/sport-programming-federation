@@ -384,6 +384,15 @@ pub trait GitHubGateway: Send + Sync {
 
 #[async_trait]
 pub trait LlmGateway: Send + Sync {
+    async fn extract_resume(
+        &self,
+        pages: &[fsp_domain::PdfPage],
+    ) -> Result<fsp_domain::ResumeExtraction, IntegrationError>;
+    async fn assessment_help(
+        &self,
+        request: &fsp_domain::AssessmentHelpRequest,
+    ) -> Result<fsp_domain::AssessmentHelpReply, IntegrationError>;
+
     async fn extract_graph(
         &self,
         request: &GraphExtractionRequest,
@@ -404,4 +413,9 @@ pub trait VerificationDelivery: Send + Sync {
     fn code_for(&self) -> String;
     async fn deliver(&self, email: &str, code: &str) -> Result<(), IntegrationError>;
     fn contract_name(&self) -> &'static str;
+}
+
+#[async_trait]
+pub trait PdfGateway: Send + Sync {
+    async fn extract(&self, bytes: &[u8]) -> Result<Vec<fsp_domain::PdfPage>, IntegrationError>;
 }

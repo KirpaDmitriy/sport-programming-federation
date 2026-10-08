@@ -1,3 +1,4 @@
+import { fspResults } from './fsp-fixture.ts';
 import type { components } from './generated/schema.d.ts';
 
 type S = components['schemas'];
@@ -245,6 +246,7 @@ export function sources(candidateId: string, options: SourceOptions = {}): [Sour
       repositories,
       activeDays: connected ? 27 : null,
       observationPeriod: connected ? period : null,
+      fspResults: [],
       verifiedParticipation: false,
       competitionIds: [],
       notice:
@@ -262,6 +264,7 @@ export function sources(candidateId: string, options: SourceOptions = {}): [Sour
       repositories: [],
       activeDays: null,
       observationPeriod: null,
+      fspResults: options.fspVerified ? fspResults('FSP-DEMO-024') : [],
       verifiedParticipation: Boolean(options.fspVerified),
       competitionIds: options.fspVerified ? ['competition-demo-api'] : [],
       notice:
@@ -292,7 +295,7 @@ export function evidenceFor(candidateId: string, skill: SkillId, status: SkillSt
 }
 
 const summaries: Record<SkillStatus, string> = {
-  confirmed: 'Подтверждено практической проверкой',
+  confirmed: 'Подтверждено проверкой платформы',
   evidence: 'Есть свидетельства использования; целевой уровень ещё не проверен',
   observed: 'Технология найдена в проекте; уровень не подтверждён',
   insufficient: 'Недостаточно свидетельств',

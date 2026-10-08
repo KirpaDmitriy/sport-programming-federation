@@ -339,7 +339,7 @@ async fn meta(State(state): State<AppState>) -> Json<Value> {
         "serverTime": Utc::now().to_rfc3339(),
         "scenario": "live",
         "capabilities": {
-            "emailVerification": true, "profilePdf": true, "githubFixture": false,
+            "emailVerification": true, "profilePdf": true, "profilePdfImport": state.service.pdf_import_configured(), "githubFixture": false,
             "fspFixture": true, "matching": true, "directInvitations": true,
             "vacancyPublication": true, "selfApplication": true, "chat": false,
             "recurringTasks": true, "realCodeExecution": false, "realLlm": state.service.llm_configured(),
@@ -1456,7 +1456,7 @@ async fn import_profile(
     }
     state
         .service
-        .import_profile(&session)
+        .import_profile(&session, &bytes)
         .await
         .map(|view| (StatusCode::ACCEPTED, Json(view)).into_response())
         .map_err(api_error)

@@ -44,6 +44,10 @@ e2e:
 backend:
     cd backend && cargo run -p fsp-server
 
+# Fictional FSP provider on 127.0.0.1:4020; start alongside the local Rust backend.
+fsp-simulator:
+    cd backend && cargo run -p fsp-integration-fsp-synthetic --bin fsp-simulator
+
 # Local PostgreSQL for development and tests (127.0.0.1:5434, user/db "fsp")
 db-up:
     docker compose up --detach --wait db

@@ -36,6 +36,9 @@ export function ConnectSourceForm({ provider, label, submitLabel, hint, placehol
     defaultValues: { account: '' },
     onSubmit: ({ value }) => connect.mutateAsync(value.account.trim()).catch(() => {}),
   });
+  const available =
+    provider !== 'github' || meta.capabilities.githubOAuth || (meta.mode === 'mock' && meta.capabilities.githubFixture);
+  if (!available) return <Callout tone="neutral">Подключение GitHub запланировано позже.</Callout>;
   return (
     <form
       className="stack"
@@ -67,8 +70,10 @@ export function ConnectSourceForm({ provider, label, submitLabel, hint, placehol
           {describeError(connect.error ?? authorization.error).message}
         </Callout>
       )}
-      {provider === 'github' && !meta.capabilities.githubOAuth && (
-        <Callout tone="info">Подключение GitHub сейчас недоступно.</Callout>
+      {provider === 'github' && meta.mode === 'mock' && !meta.capabilities.githubOAuth && (
+        <Callout tone="info">
+          Демонстрационное подключение: данные вымышленные, владение аккаунтом не проверяется.
+        </Callout>
       )}
       {provider === 'github' && meta.capabilities.githubOAuth && (
         <Button
@@ -84,7 +89,7 @@ export function ConnectSourceForm({ provider, label, submitLabel, hint, placehol
       <Button
         type="submit"
         variant="primary"
-        disabled={provider === 'github' && !meta.capabilities.githubOAuth}
+        disabled={!available}
         pending={connect.isPending}
         pendingLabel="Подключаем…"
       >

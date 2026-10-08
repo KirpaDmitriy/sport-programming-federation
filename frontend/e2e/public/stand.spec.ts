@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { type Browser, expect, type Page, test } from '@playwright/test';
+import { answerKnowledgeTest } from '../knowledge';
 
 const code = process.env.FSP_DEMO_CODE ?? '123456';
 
@@ -50,11 +51,8 @@ test('a new candidate and two companies complete the reverse-hiring flow', async
   await expect(candidate.getByText('Профиль сохранён')).toBeVisible();
   await candidate.getByRole('button', { name: 'Подтвердить уровень' }).click();
   await candidate.waitForURL(/\/workspace$/);
-  await candidate.getByLabel('Код решения на Rust').fill('pub fn create_order() {}');
-  await expect(candidate.getByText(/Черновик сохранён в/)).toBeVisible();
-  await candidate.getByRole('button', { name: /3\. Объяснение/ }).click();
-  await candidate.getByLabel('Объяснение').fill('Ключ и заказ сохраняются в одной транзакции.');
-  await candidate.getByRole('button', { name: 'Отправить решение' }).click();
+  await answerKnowledgeTest(candidate);
+  await candidate.getByRole('button', { name: 'Отправить ответы' }).click();
   await candidate.getByRole('dialog').getByRole('button', { name: 'Отправить' }).click();
   await expect(candidate.getByRole('heading', { name: 'Джуниор подтверждён' })).toBeVisible();
   const profile = await (await candidate.request.get('/api/v1/me/profile')).json();

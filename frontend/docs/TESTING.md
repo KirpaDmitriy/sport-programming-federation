@@ -6,9 +6,9 @@ are checked by `.github/workflows/infra.yml`.
 
 | Suite | Runner | Where | Count | Command |
 | --- | --- | --- | --- | --- |
-| Mock API | `bun test` | `mock-server/test/mock-api.test.ts` | 25 | `bun run --cwd ../mock-server test` |
-| Unit and component | Vitest 5 + Testing Library + MSW 3 (jsdom, on Node) | `src/**/*.test.ts(x)` | 34 in 8 files | `bun run test` |
-| Browser acceptance | Playwright 1.63 + axe, Chromium 1440×900 | `e2e/*.spec.ts` | 35 + 1 opt-in | `bun run e2e` |
+| Mock API | `bun test` | `mock-server/test/mock-api.test.ts` | 26 | `bun run --cwd ../mock-server test` |
+| Unit and component | Vitest 5 + Testing Library + MSW 3 (jsdom, on Node) | `src/**/*.test.ts(x)` | 35 in 8 files | `bun run test` |
+| Browser acceptance | Playwright 1.63 + axe, Chromium 1440×900 | `e2e/*.spec.ts` | 36 + 1 opt-in | `bun run e2e` |
 | Deployed stand | Playwright | `e2e/public/stand.spec.ts` | 2 | `FSP_PUBLIC_URL=https://188.166.88.183 bun run e2e:public` |
 
 `bun run verify` runs the codegen check, typecheck, Biome, the FSD layer check, the unit tests, the production build
@@ -77,8 +77,11 @@ assessment submission, PDF download/import, real graphs, company/need forms, per
 invitation disclosure, cross-company isolation, applications/withdrawal, weekly task review and mobile navigation.
 It found backend-specific PDF wording and cramped mobile card headings; the fixes and final deployed screenshots
 are tracked in [issue #23](https://github.com/KirpaDmitriy/sport-programming-federation/issues/23).
-Treat a live test of a simulated feature as UI/API integration evidence, not proof of real email, code execution,
-FSP lookup or PDF extraction. GitHub OAuth must be configured before its live connection can be tested.
+That earlier pass tested the then-simulated assessment and import. Follow-up [issue #31](https://github.com/KirpaDmitriy/sport-programming-federation/issues/31)
+replaces them with deterministic knowledge tests and actual sandboxed digital-PDF extraction/Bifrost fields.
+Local real-backend browser evidence covers passing/failing tests, draft restoration, cited PDF confirmation,
+contextual assistance, FSP HTTP published/pending/empty results, and preserved snapshots during provider outage.
+The issue records final release/live evidence separately. Email and GitHub OAuth remain deferred; FSP remains fictional.
 
 ## What the tests do not show
 

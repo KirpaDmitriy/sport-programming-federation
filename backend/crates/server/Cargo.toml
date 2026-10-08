@@ -17,6 +17,7 @@ fsp-application.workspace = true
 fsp-http.workspace = true
 fsp-integration-bifrost.workspace = true
 fsp-integration-fsp-synthetic.workspace = true
+fsp-integration-pdf.workspace = true
 fsp-integration-github.workspace = true
 fsp-storage-postgres.workspace = true
 tokio.workspace = true
@@ -24,6 +25,7 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 
 [dev-dependencies]
+fsp-domain.workspace = true
 fsp-storage-postgres = { workspace = true, features = ["testing"] }
 http-body-util.workspace = true
 serde_json.workspace = true
