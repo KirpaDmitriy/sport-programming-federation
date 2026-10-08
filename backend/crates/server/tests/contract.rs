@@ -249,7 +249,7 @@ async fn fresh_candidate_completes_assessment() {
         "PUT",
         &format!("/api/v1/me/assessments/{assessment_id}/answer"),
         Some(&cookie),
-        knowledge_answer("junior", true),
+        knowledge_answer(&assessment["task"], true),
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{body}");
@@ -899,7 +899,7 @@ async fn assessments_full_flow_and_grade_change() {
         "PUT",
         &format!("/api/v1/me/assessments/{assessment_id}/answer"),
         Some(&candidate),
-        knowledge_answer("middle", true),
+        knowledge_answer(&assessment["task"], true),
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{body}");
@@ -1595,7 +1595,7 @@ async fn assistant_uses_saved_answer_and_never_issues_a_grade() {
         "PUT",
         &format!("/api/v1/me/assessments/{id}/answer"),
         Some(&candidate),
-        knowledge_answer("middle", true),
+        knowledge_answer(&assessment["task"], true),
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{saved}");
@@ -1635,15 +1635,27 @@ async fn assistant_uses_saved_answer_and_never_issues_a_grade() {
     assert_eq!(status, StatusCode::BAD_REQUEST);
 }
 
-fn knowledge_answer(grade: &str, correct: bool) -> Value {
-    let bank: Value =
+fn knowledge_answer(task: &Value, correct: bool) -> Value {
+    let legacy: Value =
         serde_json::from_str(include_str!("../../domain/data/knowledge-v1.json")).unwrap();
-    let responses: Vec<Value> = bank["questions"]
+    let additions: Value = serde_json::from_str(include_str!(
+        "../../domain/data/knowledge-v2-additions.json"
+    ))
+    .unwrap();
+    let questions = legacy["questions"]
         .as_array()
         .unwrap()
         .iter()
-        .filter(|q| q["grade"] == grade)
-        .map(|q| {
+        .chain(additions["questions"].as_array().unwrap());
+    let responses: Vec<Value> = task["questions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|public| {
+            let q = questions
+                .clone()
+                .find(|candidate| candidate["id"] == public["id"])
+                .unwrap();
             let option = if correct {
                 &q["correctOptionId"]
             } else {
@@ -1696,7 +1708,7 @@ async fn knowledge_test_rejects_forged_answers_and_scores_failure_without_changi
         .await;
         assert_eq!(status, StatusCode::BAD_REQUEST);
     }
-    let mut duplicate = knowledge_answer("middle", false);
+    let mut duplicate = knowledge_answer(&assessment["task"], false);
     duplicate["responses"][1] = duplicate["responses"][0].clone();
     let (status, _) = send(
         &app,
@@ -1724,7 +1736,7 @@ async fn knowledge_test_rejects_forged_answers_and_scores_failure_without_changi
         "PUT",
         &format!("{path}/answer"),
         Some(&candidate),
-        knowledge_answer("middle", false),
+        knowledge_answer(&assessment["task"], false),
     )
     .await;
     assert_eq!(status, StatusCode::OK);

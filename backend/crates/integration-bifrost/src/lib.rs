@@ -98,7 +98,7 @@ impl LlmGateway for BifrostGateway {
              Each quote must be an exact excerpt from that page supporting that field. Omit unknown fields. \
              Text values must be copied verbatim from the quote, not summarized; enum values must use the lowercase canonical IDs listed below. No email/contact/identity/verified grade fields. \
              specialization: backend/frontend/fullstack only when explicitly named. selectedGrade: junior/middle/senior only when explicitly named, not inferred from tenure. \
-             stack: one item per explicitly named skill from rust/postgresql/docker/redis/react only. softSkills: one item per explicit self-description, maximum 12. \
+             stack: one item per explicitly named skill from rust/postgresql/docker/redis/typescript/react only. softSkills: one item per explicit self-description, maximum 12. \
              experienceMonths: digits only, only if the total is explicitly stated in months; do not compute dates/years. \
              Single text values except stack/softSkills. Maximum lengths: name/teamRole 120, experience 4000, each soft skill 100. \
              Maximum 24 items. If no supported facts, return an empty fields array.", &pages

@@ -9,7 +9,7 @@ const searchSchema = z.object({
   specialization: z.enum(['backend', 'frontend', 'fullstack']).optional().catch(undefined),
   grade: z.enum(['junior', 'middle', 'senior']).optional().catch(undefined),
   workMode: z.enum(['remote', 'hybrid', 'office']).optional().catch(undefined),
-  skill: z.enum(['rust', 'postgresql', 'docker', 'redis', 'react']).optional().catch(undefined),
+  skill: z.enum(['rust', 'postgresql', 'docker', 'redis', 'typescript', 'react']).optional().catch(undefined),
   page: z.number().int().min(1).max(1000).optional().catch(undefined),
 });
 
