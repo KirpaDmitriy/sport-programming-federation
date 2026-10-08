@@ -15,6 +15,8 @@ persists accounts, sessions, profiles, sources, processing jobs and the matching
 | `crates/integration-github` | `fsp-integration-github` | GitHub OAuth and bounded repository analysis |
 | `crates/integration-fsp-synthetic` | `fsp-integration-fsp-synthetic` | Bounded HTTP adapter and separate fictional FSP simulator |
 | `crates/integration-bifrost` | `fsp-integration-bifrost` | Optional Bifrost adapter for graph extraction and repository-to-competition matching |
+| `crates/integration-email` | `fsp-integration-email` | Resend delivery with random codes and bounded HTTP; fixed-code delivery for local demo mode |
+| `crates/integration-pdf` | `fsp-integration-pdf` | Bounded digital-text extraction through isolated Poppler processes |
 | `crates/server` | `fsp-server` (binary `fsp-career-api`) | Composition root: configuration, wiring, graceful shutdown on SIGINT/SIGTERM |
 
 **Dependency rule:** `domain` ← `application` ← adapters (`http`, storage, integrations) ← `server`. The domain
@@ -62,6 +64,8 @@ next run without forcibly disconnecting an active test.
 | `FSP_STATIC_DIR` | unset | Serve a built SPA from this directory and use its `index.html` as the non-API fallback |
 | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` | unset | Enable GitHub OAuth when both are non-empty; `GITHUB_CALLBACK_URL` defaults to `http://127.0.0.1:8080/api/v1/integrations/github/callback` |
 | `BIFROST_CHAT_URL` | unset | Enables Bifrost analysis when non-empty; `BIFROST_API_KEY` is optional and `BIFROST_MODEL` defaults to `openai/gpt-5-mini` |
+| `FSP_PDF_IMPORT` | unset | `1` enables and probes the isolated PDF adapter; usable import also requires Bifrost |
+| `FSP_GRADE_CHANGE_COOLDOWN_DAYS` | `90` | Successful grade-change cooldown, 0–365; invalid values use the default |
 
 The [private CI service](../infra/ci/README.md) runs these checks with PostgreSQL and the real systemd PDF probe
 for canonical PRs, and gates integration/deployment with `fsp/backend`.

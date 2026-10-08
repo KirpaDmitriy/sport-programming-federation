@@ -12,8 +12,8 @@ implements and the frontend relies on; the backend has to keep it.
 - The Vite dev and preview servers proxy `/api` to `FSP_API_TARGET` (default `http://127.0.0.1:4010`, the mock); the
   dev server also proxies `/__mock__`.
 - `/__mock__/*` are development controls marked `x-mock-only` (choose actor, reset scenario, read the demo mailbox,
-  advance the clock). They are not part of the application API, are disabled on the stand
-  (`FSP_MOCK_DEV_ROUTES=0`) and blocked by nginx.
+  advance the clock). They are not part of the application API. Rust never exposes them and nginx blocks them on the stand;
+  `FSP_MOCK_DEV_ROUTES=0` additionally disables them in a standalone mock deployment.
 
 ## Session
 

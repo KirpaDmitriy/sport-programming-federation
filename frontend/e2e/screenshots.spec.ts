@@ -6,6 +6,8 @@ import { ALEXEY, actor, COMPANY_A, resetMock, signIn } from './support';
 test.skip(!process.env.SCREENSHOTS, 'Set SCREENSHOTS=1 to refresh docs/screenshots');
 
 const shot = async (page: Page, name: string) => {
+  // Form actions can scroll to the last question; capture fixed chrome at the page top.
+  await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'instant' }));
   await page.waitForTimeout(400);
   await page.screenshot({ path: `docs/screenshots/${name}.png`, fullPage: true });
 };
