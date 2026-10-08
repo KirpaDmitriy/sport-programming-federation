@@ -18,6 +18,7 @@ actual unique test inboxes and checks message authentication; it never bypasses 
 traces/screenshots are disabled to avoid retaining OTPs/cookies. Data persists; tests never reset the stand.
 Opt-in documentation screenshots are normally skipped. All 36 ordinary browser tests passed in private CI.
 Both live domain scenarios and owner real-email login passed; independent read-only UI/log checks passed.
-Release execution and exact live SHA: issues #38/#40; earlier full product/browser evidence: closed issue #31.
+Live/demo instructions and CI matrix were reconciled in #50; capture screenshots from scroll position zero.
+Current release execution and exact live SHA: #50; earlier full product/browser evidence: closed issue #31.
 
-Last commit: 5c00c2f185849cdff8dba0bb8701420eab4eb44a (verified implementation); integrated release receipt: issues #38/#40.
+Last commit: cd449516828977dd2627dabb094a2ff43600c501 (accepted baseline); consistency review and latest receipt: #50.

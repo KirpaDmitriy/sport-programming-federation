@@ -99,7 +99,8 @@ navigation.
 | Code | Development | Production build |
 | --- | --- | --- |
 | Dev controls in the «Демо» dialog, «Вставить код из демо-ящика» | Present (lazy, `import.meta.env.DEV`) | Removed |
-| Demo-stand notes and seed account hints on `/login` | Present | Only with `VITE_DEMO_STAND=1` |
+| Fictional-data notes | Present | Only with `VITE_DEMO_STAND=1` |
+| Seed account hints and configured demo code on `/login` | Only when `realEmail` is false | Requires `VITE_DEMO_STAND=1` and `realEmail` false |
 | «Демо» dialog | Shown while `meta.mode` is `mock` | Removed by the production build |
 
 `scripts/check-bundle.ts` fails the build check if built JavaScript contains `/__mock__`, the mailbox or dev-control

@@ -78,7 +78,7 @@ FSP_API_TARGET=http://127.0.0.1:8080 bun run dev
 | Variable | Read by | Effect |
 | --- | --- | --- |
 | `FSP_API_TARGET` | Vite dev and preview servers | Where `/api` (and in dev `/__mock__`) is proxied; default `http://127.0.0.1:4010` |
-| `VITE_DEMO_STAND` | Build | `1` adds the demo-stand notes and seed account hints to a production build; development always has them |
+| `VITE_DEMO_STAND` | Build | `1` labels fictional data in a production build; seed-account hints also require `realEmail` false |
 | `VITE_DEMO_EMAIL_CODE` | Build | Shown next to the code field while the server delivers codes to the demo mailbox |
 | `VITE_API_ORIGIN` | Build, tests | Absolute API origin; empty (same origin) in the app, set by tests because Node cannot resolve relative URLs |
 

@@ -22,7 +22,8 @@ See [knowledge tests](docs/knowledge-tests.md) and [FSP simulator](docs/fsp-simu
 | [backend/](backend/README.md) | Hexagonal Rust API, PostgreSQL and integration adapters |
 | [infra/](infra/README.md) | Stand provisioning, immutable releases, recovery, backups and nginx |
 | [docs/product/](docs/product/BUSINESS_RULES.md) | Implemented rules, requirements and organizer specification |
-| [Stability audit](docs/stability-audit.md) | Session reconciliation, findings, plan and verification evidence |
+| [Current state](docs/current-state.md) | Verified behavior, remaining limits and release verification commands |
+| [Stability audit](docs/stability-audit.md) | Historical session reconciliation and delivery evidence |
 
 Ownership and contribution rules: [AGENTS.md](AGENTS.md). Feature PRs target `danil` or `dima`;
 [Private-server CI](infra/ci/README.md) checks and merges integration PRs into `dev`, then `main`.

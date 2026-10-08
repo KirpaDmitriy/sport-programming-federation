@@ -1,7 +1,8 @@
 # Screens
 
-Every route of the application as implemented. Screenshots in [`screenshots/`](screenshots) are taken from the app
-running against the mock (`SCREENSHOTS=1 bun run e2e e2e/screenshots.spec.ts` refreshes them). Operations per
+Every route of the application as implemented. Screenshots in [`screenshots/`](screenshots) were refreshed on
+2026-10-08 against the development mock (`SCREENSHOTS=1 bun run e2e e2e/screenshots.spec.ts`). They illustrate
+fixture data, including the current knowledge-test workspace; live email evidence is in [TESTING.md](TESTING.md). Operations per
 route are listed in [`../../contracts/API_INTEGRATION.md`](../../contracts/API_INTEGRATION.md#screens-and-operations);
 the rules behind each state are in [`../../docs/product/BUSINESS_RULES.md`](../../docs/product/BUSINESS_RULES.md).
 
@@ -22,8 +23,9 @@ the sidebar becomes a drawer opened from the header.
 - Second step «Подтвердите почту»: six-digit code with its lifetime, «Подтвердить и войти», «Отправить новый код»,
   «Изменить почту». Wrong, expired, used and locked codes each get their own message and the resend button is
   highlighted.
-- While codes go to the demo mailbox, a note says no letter is sent; on the stand it shows the code. In development
-  «Вставить код из демо-ящика» fills it in. The demo-stand build lists the seed accounts with «Подставить».
+- On nddev.link, Resend sends the code to the supplied mailbox. The page explains inbox/spam checks and resend
+  timing; no code or seed-account shortcut is displayed. Local demo delivery explains that no mail is sent;
+  development offers «Вставить код из демо-ящика». Fixed-code/seed hints require `realEmail` to be false.
 - After a `401` elsewhere the page shows «Сессия завершилась»; an already signed-in visitor sees «Вы уже вошли» with
   «Перейти в кабинет» and «Выйти».
 

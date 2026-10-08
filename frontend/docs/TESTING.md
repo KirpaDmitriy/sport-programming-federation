@@ -1,15 +1,16 @@
 # Testing
 
-These suites check the frontend and mock. CI (`.github/workflows/platform.yml`) runs on every push and PR.
-Rust/PostgreSQL behavior is checked separately by `just backend-check`; deployment recovery and backup/restore
-are checked by `.github/workflows/infra.yml`.
+The [private CI controller](../../infra/ci/README.md) checks admitted canonical PRs and main.
+`fsp/platform` covers TypeScript, the mock and frontend; `fsp/backend` covers real PostgreSQL and the exact
+systemd PDF sandbox; `fsp/compose` covers containers; `fsp/release-safety` covers deployment and backup recovery.
+`fsp/deployment` passes only after actual HTTPS/Resend browser acceptance. GitHub Actions is retired.
 
 | Suite | Runner | Where | Count | Command |
 | --- | --- | --- | --- | --- |
 | Mock API | `bun test` | `mock-server/test/mock-api.test.ts` | 26 | `bun run --cwd ../mock-server test` |
-| Unit and component | Vitest 5 + Testing Library + MSW 3 (jsdom, on Node) | `src/**/*.test.ts(x)` | 35 in 8 files | `bun run test` |
+| Unit and component | Vitest 5 + Testing Library + MSW 3 (jsdom, on Node) | `src/**/*.test.ts(x)` | 36 in 8 files | `bun run test` |
 | Browser acceptance | Playwright 1.63 + axe, Chromium 1440×900 | `e2e/*.spec.ts` | 36 + 1 opt-in | `bun run e2e` |
-| Deployed stand | Playwright | `e2e/public/stand.spec.ts` | 2 | `FSP_PUBLIC_URL=https://188.166.88.183 bun run e2e:public` |
+| Deployed stand | Playwright | `e2e/public/stand.spec.ts` | 2 | `FSP_PUBLIC_URL=https://nddev.link FSP_AUTH_MODE=resend bun run e2e:public` |
 
 `bun run verify` runs the codegen check, typecheck, Biome, the FSD layer check, the unit tests, the production build
 and the bundle check; `just verify` adds the mock tests. JSON reports go to `test-results/`.
@@ -39,7 +40,7 @@ MSW intercepts requests at `http://localhost:3000` (`VITE_API_ORIGIN` in tests) 
 | `entities/qualification/ui.test.tsx` | Verified grade never shown without verification; target kept apart |
 | `features/shortlist-membership/use-membership.test.tsx` | Optimistic add rolled back on rejection; removal reflected everywhere |
 | `features/respond-invitation/invitation-decision.test.tsx` | At least one disclosed field, exactly the chosen fields sent, conflicts keep contacts closed, no decision on a withdrawn invitation |
-| `pages/login/login-page.test.tsx` | Address validation, wrong-code recovery, role conflict |
+| `pages/login/login-page.test.tsx` | Address validation, wrong-code recovery, role conflict, real-mail guidance without demo hints |
 | `pages/assessment-workspace/workspace-page.test.tsx` | Acknowledged and failed saves, serialized overlapping edits, submission prerequisites |
 | `features/connect-source/use-source-processing.test.tsx` | Inline terminal jobs refresh derived data and expose failures |
 
@@ -66,10 +67,19 @@ e-mail, repository names, references or fixture links) before disclosure.
 
 ## Deployed stand
 
-`e2e/public/stand.spec.ts` needs no mock controls: it checks that the HTTPS stand serves the app and deep links
-without `/__mock__`, and walks a new candidate and two companies through the whole flow with a fresh candidate and the two seeded companies
-(`FSP_DEMO_CODE`, default `123456`). Candidate addresses are unique; test records persist in PostgreSQL.
-The suite does not reset or delete stand data. A mock restart has no effect on Rust data.
+`e2e/public/stand.spec.ts` checks HTTPS, deep links, capability flags, no-store and blocked mock controls.
+Its second scenario creates a new candidate and two new companies, completes a knowledge test, exports a
+real PDF, accepts an invitation and verifies that the other company still cannot see private contacts.
+All actors use unique addresses; no seeded company login or production reset is used.
+
+For nddev.link, set `FSP_AUTH_MODE=resend` and inject `FSP_RESEND_ACCEPTANCE_KEY` privately. The helper
+[`e2e/public/mail.ts`](../e2e/public/mail.ts) reads only dedicated `fsp-ci-*` addresses at
+`FSP_TEST_EMAIL_DOMAIN` (default `auth.nddev.link`), requires the expected sender and passing DKIM/DMARC,
+and waits up to two minutes for actual mail. Missing credentials or delivery failures fail acceptance.
+Public traces/screenshots are disabled to avoid retaining OTPs/cookies. Test records persist in PostgreSQL.
+The root-managed CI configuration and safe invocation are in the [stand runbook](../../infra/README.md#domain-and-resend).
+Local demo acceptance can explicitly use `FSP_AUTH_MODE=demo` and `FSP_DEMO_CODE` (default `123456`).
+Never use demo acceptance configuration for nddev.link.
 
 The live exploratory pass on 2026-10-08 used Chromium against the HTTPS Rust/PostgreSQL stand with separate
 candidate and employer contexts, no interception and no mock controls. It covered registration, saved drafts,
@@ -81,12 +91,16 @@ That earlier pass tested the then-simulated assessment and import. Follow-up [is
 replaces them with deterministic knowledge tests and actual sandboxed digital-PDF extraction/Bifrost fields.
 Local real-backend browser evidence covers passing/failing tests, draft restoration, cited PDF confirmation,
 contextual assistance, FSP HTTP published/pending/empty results, and preserved snapshots during provider outage.
-The issue records final release/live evidence separately. Email and GitHub OAuth remain deferred; FSP remains fictional.
+That issue records the earlier product release. Real Resend delivery and owner login subsequently passed in
+[#38](https://github.com/KirpaDmitriy/sport-programming-federation/issues/38), with private CI in
+[#40](https://github.com/KirpaDmitriy/sport-programming-federation/issues/40). Only GitHub OAuth remains deferred;
+FSP remains fictional. Current checks and limitations are summarized in [current state](../../docs/current-state.md).
 
 ## What the tests do not show
 
-They prove contract shapes, state transitions, access rules and the interface against synthetic data. They do not
-measure assessment validity, matching quality, real e-mail delivery or production security.
+Mock suites prove contract shapes, state transitions, access rules and the interface against fixtures. The
+separate live suite proves actual Rust/PostgreSQL flows and authenticated mail delivery. Neither establishes
+assessment validity, matching quality, high-load capacity or a comprehensive production security review.
 
 The live browser pass also exposed an outer API timeout shorter than the gateway budget and hidden employer
 graph failures. [Issue #27](https://github.com/KirpaDmitriy/sport-programming-federation/issues/27) tracks the

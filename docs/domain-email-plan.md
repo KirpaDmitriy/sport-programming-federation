@@ -1,5 +1,8 @@
 # Domain and email release — issue #38
 
+Historical delivery record. For current behavior, verification and explicit limits, read
+[current-state.md](current-state.md); completed baseline findings below are not open defects.
+
 The approved target is `https://nddev.link` on the existing stand at
 `188.166.88.183`. Real verification mail replaces public demo codes. The owner
 authorized a delivery/login test to `danil@nddev.ai`. GitHub OAuth stays deferred;

@@ -1,5 +1,8 @@
 # Stability audit and execution plan
 
+Historical delivery record. For current behavior, verification and explicit limits, read
+[current-state.md](current-state.md); completed baseline findings below are not open defects.
+
 Audit opened on 2026-10-08, starting at `c0d86d8`. Tracking: [issue #16](https://github.com/KirpaDmitriy/sport-programming-federation/issues/16).
 Code and observed behavior take precedence over historical completion claims.
 
