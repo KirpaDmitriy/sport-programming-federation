@@ -20,7 +20,7 @@ See [knowledge tests](docs/knowledge-tests.md) and [FSP simulator](docs/fsp-simu
 | [contracts/](contracts/README.md) | Shared OpenAPI contract, error catalog and type generator |
 | [mock-server/](mock-server/README.md) | Stateful development mock and executable behavior reference |
 | [backend/](backend/README.md) | Hexagonal Rust API, PostgreSQL and integration adapters |
-| [infra/](infra/README.md) | Stand provisioning, immutable releases, recovery, backups and nginx |
+| [infra/](infra/README.md) | Stand provisioning, immutable releases, activation rollback and nginx |
 | [docs/product/](docs/product/BUSINESS_RULES.md) | Implemented rules, requirements and organizer specification |
 | [Current state](docs/current-state.md) | Verified behavior, remaining limits and release verification commands |
 | [Stability audit](docs/stability-audit.md) | Historical session reconciliation and delivery evidence |
@@ -56,3 +56,6 @@ just e2e                       # browser acceptance against the mock
 
 The historical Python/FastAPI MVP and its documentation are preserved at tag `archive/dima-mvp`.
 Inspect it with `git show archive/dima-mvp:README.md` or a separate detached worktree; it is not part of main.
+
+The owner standard forbids backups, snapshots and redundant repository mirrors. Backup creation is disabled;
+local branches synchronize only with canonical `upstream`. See [operations policy](infra/README.md#backups-and-recovery).
