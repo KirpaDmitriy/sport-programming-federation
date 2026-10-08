@@ -339,7 +339,7 @@ async fn meta(State(state): State<AppState>) -> Json<Value> {
         "serverTime": Utc::now().to_rfc3339(),
         "scenario": "live",
         "capabilities": {
-            "emailVerification": true, "profilePdf": true, "profilePdfImport": state.service.pdf_import_configured(), "githubFixture": false,
+            "emailVerification": true, "realEmail": state.service.real_email_configured(), "profilePdf": true, "profilePdfImport": state.service.pdf_import_configured(), "githubFixture": false,
             "fspFixture": true, "matching": true, "directInvitations": true,
             "vacancyPublication": true, "selfApplication": true, "chat": false,
             "recurringTasks": true, "realCodeExecution": false, "realLlm": state.service.llm_configured(),
@@ -1957,8 +1957,12 @@ mod tests {
             Ok(())
         }
 
-        async fn issue_challenge(&self, _: &PendingChallenge) -> Result<bool, RepositoryError> {
-            Ok(false)
+        async fn issue_challenge(
+            &self,
+            _: &PendingChallenge,
+            _: bool,
+        ) -> Result<fsp_application::IssueChallenge, RepositoryError> {
+            Ok(fsp_application::IssueChallenge::Locked)
         }
 
         async fn mark_email_verified(&self, _: &str) -> Result<(), RepositoryError> {
@@ -2302,10 +2306,15 @@ mod tests {
     struct Delivery;
     #[async_trait::async_trait]
     impl VerificationDelivery for Delivery {
-        fn code_for(&self) -> String {
-            "123456".into()
+        fn code_for(&self) -> Result<String, fsp_application::IntegrationError> {
+            Ok("123456".into())
         }
-        async fn deliver(&self, _: &str, _: &str) -> Result<(), fsp_application::IntegrationError> {
+        async fn deliver(
+            &self,
+            _: &str,
+            _: &str,
+            _: &str,
+        ) -> Result<(), fsp_application::IntegrationError> {
             Ok(())
         }
         fn contract_name(&self) -> &'static str {

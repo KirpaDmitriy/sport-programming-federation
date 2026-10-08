@@ -36,5 +36,8 @@ fi
 if [[ -f "$root/current/infra/check-schema-compatibility.sh" ]]; then
   bash "$root/current/infra/check-schema-compatibility.sh" "$root/current" "$stage"
 fi
+if [[ -f "$root/current/infra/check-runtime-compatibility.sh" ]]; then
+  bash "$root/current/infra/check-runtime-compatibility.sh" "$stage" "${FSP_SYSTEM_ROOT:-}/etc/fsp/rust-api.env"
+fi
 bash "$stage/infra/release.sh" "$sha" "$stage"
 REMOTE

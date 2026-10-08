@@ -419,9 +419,13 @@ impl PlatformRepository for PostgresRepository {
         ops::create_company(conn.get()?, value).await
     }
 
-    async fn issue_challenge(&self, challenge: &PendingChallenge) -> Result<bool, RepositoryError> {
+    async fn issue_challenge(
+        &self,
+        challenge: &PendingChallenge,
+        limit_delivery: bool,
+    ) -> Result<fsp_application::IssueChallenge, RepositoryError> {
         let mut conn = self.conn().await?;
-        ops::issue_challenge(conn.get()?, challenge).await
+        ops::issue_challenge(conn.get()?, challenge, limit_delivery).await
     }
 
     async fn mark_email_verified(&self, account_id: &str) -> Result<(), RepositoryError> {
@@ -924,8 +928,12 @@ impl PlatformRepository for TxRepository {
         self.repo.create_company(value).await
     }
 
-    async fn issue_challenge(&self, challenge: &PendingChallenge) -> Result<bool, RepositoryError> {
-        self.repo.issue_challenge(challenge).await
+    async fn issue_challenge(
+        &self,
+        challenge: &PendingChallenge,
+        limit_delivery: bool,
+    ) -> Result<fsp_application::IssueChallenge, RepositoryError> {
+        self.repo.issue_challenge(challenge, limit_delivery).await
     }
 
     async fn mark_email_verified(&self, account_id: &str) -> Result<(), RepositoryError> {
@@ -1779,13 +1787,22 @@ mod ops {
     pub(super) async fn issue_challenge(
         conn: &mut PgConnection,
         value: &PendingChallenge,
-    ) -> Result<bool, RepositoryError> {
+        limit_delivery: bool,
+    ) -> Result<fsp_application::IssueChallenge, RepositoryError> {
         let mut transaction = conn.begin().await.map_err(storage)?;
         lock_email(&mut transaction, &value.email).await?;
         let spent = challenge_attempts(&mut transaction, &value.email).await?;
         if spent >= 5 {
             transaction.commit().await.map_err(storage)?;
-            return Ok(false);
+            return Ok(fsp_application::IssueChallenge::Locked);
+        }
+        if limit_delivery {
+            let limited: bool = sqlx::query_scalar(
+                "SELECT count(*) >= 5 OR COALESCE(bool_or(created_at > now() - interval '1 minute'), false) FROM challenges WHERE email=$1 AND created_at > now() - interval '15 minutes'",
+            ).bind(&value.email).fetch_one(&mut *transaction).await.map_err(storage)?;
+            if limited {
+                return Ok(fsp_application::IssueChallenge::RateLimited);
+            }
         }
         sqlx::query(
         "INSERT INTO challenges(id,email,role,code_hash,expires_at,attempts,used) VALUES($1,$2,$3,$4,$5,$6,$7)",
@@ -1801,7 +1818,7 @@ mod ops {
     .await
     .map_err(storage)?;
         transaction.commit().await.map_err(storage)?;
-        Ok(true)
+        Ok(fsp_application::IssueChallenge::Issued)
     }
 
     // Issuance and verification use the same transaction-scoped lock. On a

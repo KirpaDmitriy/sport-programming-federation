@@ -128,6 +128,7 @@ export const meta: S['Meta'] = {
     recurringTasks: false,
     realCodeExecution: false,
     realLlm: false,
+    realEmail: false,
   },
   assessmentPolicy: {
     successfulGradeChangeCooldownDays: 90,

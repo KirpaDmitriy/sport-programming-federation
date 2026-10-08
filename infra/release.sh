@@ -24,7 +24,7 @@ esac
 
 healthy() {
   curl --max-time 5 -fsS http://127.0.0.1:4010/health >/dev/null 2>&1 \
-    && curl --max-time 5 -fsSk -o /dev/null https://127.0.0.1/ || return 1
+    && curl --max-time 5 -fsS --resolve "$(sed -n 's|^FSP_PUBLIC_WEB_URL=https://||p' "$CONFIG/rust-api.env"):443:127.0.0.1" -o /dev/null "$(sed -n 's|^FSP_PUBLIC_WEB_URL=||p' "$CONFIG/rust-api.env")/" || return 1
   if [[ "$(cat "$CONFIG/api-backend")" == rust && -x "$ROOT/current/bin/fsp-simulator" ]]; then
     curl --max-time 5 -fsS http://127.0.0.1:4020/health >/dev/null 2>&1
   fi
@@ -36,6 +36,8 @@ if [[ "$PREV" == "$DIR" ]]; then
   echo "Already active and healthy: $SHA"
   exit 0
 fi
+
+bash "$SCRIPTS/check-runtime-compatibility.sh" "$STAGE" "$CONFIG/rust-api.env"
 
 if [[ ! -d "$DIR" ]]; then
   set -a
@@ -140,10 +142,7 @@ done
 if [[ -f "$DIR/infra/fsp-simulator.service" ]]; then
   install -m 644 "$DIR/infra/fsp-simulator.service" "$SYSTEM_ROOT/etc/systemd/system/fsp-simulator.service"
 fi
-public_ip="$(sed -n 's|^FSP_PUBLIC_WEB_URL=https://||p' "$CONFIG/rust-api.env")"
-[[ "$public_ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]
-sed "s/__PUBLIC_IP__/$public_ip/g" "$DIR/infra/nginx/fsp-demo.conf" \
-  > "$SYSTEM_ROOT/etc/nginx/sites-available/fsp-demo.conf"
+bash "$DIR/infra/render-nginx.sh" "$CONFIG/rust-api.env" > "$SYSTEM_ROOT/etc/nginx/sites-available/fsp-demo.conf"
 install -m 644 "$DIR/infra/nginx/fsp-security-headers.conf" "$SYSTEM_ROOT/etc/nginx/snippets/fsp-security-headers.conf"
 nginx -t
 switch_link "$DIR"

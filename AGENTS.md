@@ -22,8 +22,8 @@ stand. Dima's first version, a Python (FastAPI) MVP, is tagged `archive/dima-mvp
   [`contracts/README.md`](contracts/README.md), in one change that updates every side.
 - Work on a feature branch and PR it into your personal branch (`danil` or `dima`). Feature branches must not
   live under the `danil/` or `dima/` prefixes — those are the permanent personal branches, and git cannot hold
-  both `danil` and `danil/x`. `cascade.yml` then merges automatically: personal → `dev` → `main`, deletes the
-  merged feature branch and keeps `danil`, `dima`, `dev` and `main` permanent. `main` is what
+  both `danil` and `danil/x`. The external [CI controller](infra/ci/README.md) then merges verified personal → `dev` → `main` PRs.
+  Delete the feature branch after merging; keep `danil`, `dima`, `dev` and `main` permanent. `main` is what
   `infra/deploy.sh` ships to the stand.
 - Never commit secrets. Stand access lives in the git-ignored `.fsp-infra/`; service secrets belong in environment
   files on the host.
@@ -38,7 +38,6 @@ stand. Dima's first version, a Python (FastAPI) MVP, is tagged `archive/dima-mvp
 | contract, mock, frontend | TypeScript 7.0.2 (strict) on Bun 1.4.2; Vitest on Node 26 (24.15 or newer works); Biome 2.5 from the root `biome.json` | `just verify`, `just e2e` |
 | backend | Rust 1.99.0 (`backend/rust-toolchain.toml`), edition 2024 | `just backend-check` |
 
-`just` lists the tasks for the TypeScript modules, the backend, Docker and the stand. CI:
-`.github/workflows/platform.yml` (contract, mock, frontend), `.github/workflows/backend.yml` (Rust),
-`.github/workflows/docker.yml` (images and a smoke run of `docker-compose.yml`) and
-`.github/workflows/deploy.yml` (ships `main` to the stand).
+`just` lists the tasks for the TypeScript modules, the backend, Docker and the stand.
+CI runs on the existing private server through [`infra/ci/`](infra/ci/README.md), reports four `fsp/*`
+commit statuses, and deploys verified `main` with real public browser acceptance. GitHub Actions is retired.

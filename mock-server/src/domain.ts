@@ -905,6 +905,7 @@ const handlers: Handlers = {
     scenario: s.scenario,
     capabilities: {
       emailVerification: true,
+      realEmail: false,
       profilePdf: true,
       profilePdfImport: true,
       githubFixture: true,

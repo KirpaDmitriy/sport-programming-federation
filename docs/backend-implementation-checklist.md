@@ -15,11 +15,13 @@ Historical cutover commands for another contributor's server are not operating i
 - GitHub OAuth identity binding, bounded repository analysis and evidence updates that preserve verified grades.
 - Optional Bifrost graph extraction with structural/reference validation and safe employer projection.
 - Real PDF export/import, revision-checked preview confirmation, contextual Bifrost assistance, source/job privacy and capability flags.
-- Rustfmt, clippy, unit tests and PostgreSQL HTTP/storage regressions; workflow gates cover every PR.
+- Bounded Resend delivery, per-email issuance limits, cumulative wrong-code budgets and challenge/session HMAC separation.
+- Rustfmt, clippy, unit tests and PostgreSQL HTTP/storage regressions; private-server CI gates cover admitted canonical PRs.
 
 ## Explicit demo limits
 
-- Email uses the public fixed code; this is not proof of ownership of a real mailbox.
+- Public authentication uses actual Resend delivery, random single-use codes and keyed digests. Local `demo`
+  mode retains the disclosed fixed code; demo verification is not mailbox ownership proof.
 - FSP uses a separate fictional HTTP provider with bounded validation, published/pending/disqualified results
   and durable snapshots. No official API, identity verification or dataset is implied.
 - Knowledge tests use a versioned server-side bank and deterministic scoring. The public study bank is not
@@ -33,7 +35,7 @@ Historical cutover commands for another contributor's server are not operating i
 
 ## Delivery evidence
 
-The authorized stand is `188.166.88.183`, managed by [`infra/`](../infra/README.md). Main is deployed through
+The public stand is `https://nddev.link` (origin `188.166.88.183`), managed by [`infra/`](../infra/README.md). Main is deployed through
 feature → personal → dev → main with successful checks. Release failure recovery and real backup restoration
 have automated probes. Public browser acceptance and exact stand/main SHA verification are recorded in the
 [audit execution log](stability-audit.md#execution-log); local tests alone do not imply successful deployment.
