@@ -1,12 +1,12 @@
 # Operations and delivery
 
 Public site https://nddev.link; existing origin 188.166.88.183. Domain/email cutover completed on October 8; #38 tracks proof;
-external CI migration in #40. Both deliveries are complete; #50 rechecks consistency. See docs/current-state.md for current limits.
+external CI migration in #40. Both deliveries are complete; #50 checked consistency; #54 disables backups and redundant copies. See docs/current-state.md for current limits.
 Private stand/Resend state is in the original checkout's ignored .fsp-infra/; never print credentials.
 User explicitly authorized existing CI servers after canonical Actions billing failed and runner registration
 was denied. Project CI lives on server-gha-runner-2; other projects/runner slots are not part of this task.
 
-Canonical upstream KirpaDmitriy/sport-programming-federation; origin is rldyourmnd's mirror. Feature -> danil/dima
+Canonical upstream KirpaDmitriy/sport-programming-federation; the additional GitHub mirror is retired. Feature -> danil/dima
 -> dev -> main uses PRs. infra/ci controller reports four fsp/* statuses, preserves independent security checks,
 checks unchanged heads/bases and merged tree identity, and deploys verified current main. Actions is retired.
 Controller installation is reviewed separately; no PR auto-updates it. Root-only /etc/fsp-ci stores credentials;
@@ -26,8 +26,9 @@ Resend auth.nddev.link sends as login@auth.nddev.link with DKIM/SPF/DMARC, track
 Runtime key is sending-only/domain-restricted; private acceptance key reads real CI inboxes. HMAC key changes
 invalidate old sessions/codes without deleting accounts. SMTP delivery and actual inbox placement are distinct.
 
-Daily private PostgreSQL backups retain 14 days and have real isolated restore tests. Copy/checksum off-host
-before/after release; off-host scheduling is not automated. No OpenObserve exists: inspect systemd/nginx logs.
+Owner standard: no backups, snapshots, off-host backup copies or redundant repository mirroring unless explicitly
+requested later. FSP backup units are masked; provisioning/CI must not recreate archives. Existing project backup
+archives were deleted. Sync local branches with canonical upstream only. No OpenObserve: inspect systemd/nginx logs.
 GitHub OAuth remains deferred. No production DB reset, unrelated-host changes or unrequested credential rotation.
 
-Last commit: cd449516828977dd2627dabb094a2ff43600c501 (accepted baseline); consistency review and latest receipt: #50.
+Last commit: 5ff1527ab772df15fab3fa6cd4598ed84d5e4e3b (accepted baseline); no-backup policy/latest receipt: #54.
