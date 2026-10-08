@@ -2576,7 +2576,7 @@ impl PlatformService {
                         }
                     }
                     None => candidate.skills.push(fsp_domain::SkillEvidence {
-                        skill_id: skill_id.into(),
+                        skill_id: (*skill_id).into(),
                         status: EvidenceStatus::Confirmed,
                         evidence_grade: Some(record.grade),
                         sources: vec![fsp_domain::EvidenceSource::Assessment],

@@ -545,6 +545,48 @@ test('assessment workflow uses jobs, preserves unrelated evidence, and applies a
   assert.equal(history.length, 2);
 });
 
+test('frontend assessment confirms TypeScript and React for a supported grade', async (t) => {
+  const { request, login, job } = await setup(t);
+  const candidate = await login('candidate024');
+  await request('PATCH', '/api/v1/me/profile', {
+    actor: candidate,
+    body: {
+      specialization: 'frontend',
+      selectedGrade: 'middle',
+      stack: ['typescript', 'react'],
+    },
+  });
+  const item = (
+    await request('POST', '/api/v1/me/assessments', {
+      actor: candidate,
+      body: { specialization: 'frontend', grade: 'middle' },
+      status: 201,
+    })
+  ).body;
+  assert.deepEqual([...new Set(item.task.questions.map((question: Body) => question.skillId))].sort(), [
+    'react',
+    'typescript',
+  ]);
+  await request('PUT', `/api/v1/me/assessments/${item.id}/answer`, {
+    actor: candidate,
+    body: assessmentAnswerFor(item.task),
+  });
+  const submitted = (
+    await request('POST', `/api/v1/me/assessments/${item.id}/submit`, {
+      actor: candidate,
+      status: 202,
+    })
+  ).body;
+  const result = await job(submitted.id, candidate);
+  assert.equal(result.result.assessment.status, 'passed');
+  const profile = (await request('GET', '/api/v1/me/profile', { actor: candidate })).body;
+  assert.equal(profile.verifiedSpecialization, 'frontend');
+  assert.equal(profile.verifiedGrade, 'middle');
+  const skills = (await request('GET', '/api/v1/me/skills', { actor: candidate })).body.items;
+  for (const skillId of ['typescript', 'react'])
+    assert.equal(skills.find((skill: Body) => skill.skillId === skillId).status, 'confirmed');
+});
+
 test('failed and unavailable assessment scenarios preserve grades and allow retry without a penalty', async (t) => {
   for (const scenario of ['assessment_failure', 'service_failure'] as const)
     await t.test(scenario, async (subtest) => {

@@ -320,13 +320,12 @@ fn score_selected(
                 .responses
                 .iter()
                 .any(|r| r.question_id == q.question.id && r.option_id == q.correct_option_id);
-            if correct {
-                if let Some(index) = topic_list
+            if correct
+                && let Some(index) = topic_list
                     .iter()
                     .position(|(id, _)| *id == q.question.skill_id)
-                {
-                    topic_scores[index] += 1;
-                }
+            {
+                topic_scores[index] += 1;
             }
             let label = q
                 .question
@@ -489,5 +488,70 @@ mod tests {
             )
             .is_none()
         );
+    }
+
+    #[test]
+    fn v2_scores_backend_and_frontend_without_exposing_the_key() {
+        for (specialization, grade) in [
+            (crate::Specialization::Backend, Grade::Senior),
+            (crate::Specialization::Frontend, Grade::Middle),
+        ] {
+            let task = knowledge_task(specialization, grade, "scoring-test").unwrap();
+            let responses = task
+                .questions
+                .iter()
+                .map(|question| {
+                    let bank_question = BANK
+                        .questions
+                        .iter()
+                        .chain(V2_ADDITIONS.questions.iter())
+                        .find(|item| item.question.id == question.id)
+                        .unwrap();
+                    KnowledgeResponse {
+                        question_id: question.id.clone(),
+                        option_id: bank_question.correct_option_id.clone(),
+                    }
+                })
+                .collect();
+            let answer = AssessmentAnswer {
+                code: String::new(),
+                explanation: String::new(),
+                external_ai_used: false,
+                responses,
+            };
+            assert!(
+                score_knowledge(specialization, grade, &task, &answer)
+                    .unwrap()
+                    .passed
+            );
+
+            let wrong = AssessmentAnswer {
+                responses: task
+                    .questions
+                    .iter()
+                    .map(|question| KnowledgeResponse {
+                        question_id: question.id.clone(),
+                        option_id: question
+                            .options
+                            .iter()
+                            .find(|option| {
+                                answer.responses.iter().any(|response| {
+                                    response.question_id == question.id
+                                        && response.option_id != option.id
+                                })
+                            })
+                            .unwrap()
+                            .id
+                            .clone(),
+                    })
+                    .collect(),
+                ..answer
+            };
+            assert!(
+                !score_knowledge(specialization, grade, &task, &wrong)
+                    .unwrap()
+                    .passed
+            );
+        }
     }
 }

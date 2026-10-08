@@ -792,7 +792,9 @@ function completeAssessment(s: State, candidate: Candidate, item: AssessmentReco
       for (const skillId of confirmedSkills) {
         const previous = candidate.skills.find((skill) => skill.skillId === skillId);
         const current = must(
-          makeSkills(candidate.id, true).find((skill) => skill.skillId === skillId),
+          makeSkills(candidate.id, true, false, item.specialization === 'frontend').find(
+            (skill) => skill.skillId === skillId,
+          ),
           `seed skill ${skillId}`,
         );
         const assessmentEvidence = {

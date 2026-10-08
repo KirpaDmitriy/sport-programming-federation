@@ -99,9 +99,11 @@ are.
 
 ## 4. Assessments
 
-- Supported scope: backend, grades junior/middle/senior (`meta.assessmentPolicy.supportedScopes`). Each grade has
-  ten single-choice questions: five Rust and five PostgreSQL. The immutable `knowledge-v1` snapshot is checked
-  against the server bank before grading. Correct options and explanations are returned only in the final result.
+- Supported scope: backend junior/middle/senior and frontend junior/middle
+  (`meta.assessmentPolicy.supportedScopes`). Each attempt has ten single-choice questions selected
+  deterministically from a larger grade/specialization pool: five Rust and five PostgreSQL for backend, or five
+  TypeScript and five React for frontend. The immutable `knowledge-v2` snapshot is checked against the server bank
+  before grading. Correct options and explanations are returned only in the final result.
 - Passing requires at least 8/10 overall and 3/5 in each subject. This measures knowledge on these questions,
   not practical development experience. The bank is public study material, not a secure certification exam.
 - AI and references are allowed, including external tools (`externalAiUsed`). No code is written or executed;
@@ -116,7 +118,7 @@ starts.
 | --- | --- | --- |
 | `onboarding_incomplete` | E-mail unverified, questionnaire incomplete or no processing consent | `409 onboarding_incomplete` |
 | `active_assessment` | A questionnaire is `draft`, `in_progress`, `submitted` or `evaluating`; one active test at a time | `409 assessment_active` |
-| `unsupported_scope` | The selected specialization is not backend | `422 assessment_scope_unavailable` |
+| `unsupported_scope` | Fullstack, or frontend senior, has no assessment bank | `422 assessment_scope_unavailable` |
 | `grade_downgrade` | The target is below the verified grade in the same specialization; such attempts are never run | `422 grade_downgrade_forbidden` |
 | `cooldown` | A grade-changing attempt within the cooldown after the last successful grade change | `409 grade_change_cooldown` |
 
@@ -146,7 +148,7 @@ Rust and the ordinary mock scenario use the same versioned bank and deterministi
 
 | Outcome | Effect |
 | --- | --- |
-| `passed` | The verified specialization and grade become the assessed ones (when there were none, the specialization differs, or the grade is not lower). `gradeConfirmedAt`, and with it the cooldown, moves only when the grade actually changed. Rust and PostgreSQL become `confirmed` at the assessed grade with an assessment evidence item appended; earlier evidence and other skills stay. |
+| `passed` | The verified specialization and grade become the assessed ones (when there were none, the specialization differs, or the grade is not lower). `gradeConfirmedAt`, and with it the cooldown, moves only when the grade actually changed. The two assessed skills become `confirmed` at the assessed grade with an assessment evidence item appended; earlier evidence and other skills stay. |
 | `failed` | The verified grade stays; rubric criteria are partial or not met; no cooldown is added. |
 | `service_error` | No rubric, the grade stays, no cooldown; the job fails as `assessment_service_unavailable` (retryable) and a new attempt can start at once. |
 
@@ -225,7 +227,7 @@ answers `404`, except to a company the candidate applied to (section 10) until t
 ### Gap plan
 
 For a need, each requirement that does not meet gets an action: a knowledge test when the policy accepts
-assessments (`assessmentAvailable` is true only for backend needs), otherwise «provide accepted evidence», plus the
+assessments and the need has a supported assessment scope, otherwise «provide accepted evidence», plus the
 accepted catalog competitions when the policy accepts FSP. Employers get it for any visible candidate and their own need. Candidates get it only for
 needs from their own invitations, built from the invitation's snapshot, so other needs cannot be read by guessing
 IDs.
@@ -308,6 +310,9 @@ The specification's recurring short tasks keep a profile current and give employ
   candidate and the authoring company see it; it changes neither the grade nor skill states.
 - **Review** (the authoring company): `POST /task-responses/{id}/review` with `accepted` or `needs_work` and optional
   feedback, once (`409 task_response_reviewed` for a different verdict; repeating the same one returns the record).
+- **Evaluation boundary:** the authoring company remains authoritative. There is no automatic LLM verdict because
+  authored tasks have no required reference answer or measured evaluator accuracy. Adding one would require an
+  opt-in evaluation contract and a recorded false-accept/false-reject experiment, not a silent replacement of review.
 - **Freshness:** the profile's and the anonymous projection's `freshness` names the latest signal — the grade
   confirmation or latest successful same-grade knowledge test (`assessment`) or a task answer the company did not mark `needs_work` (`task`) — and is `fresh` while
   that signal is at most 90 days old («Профиль актуален» / «Давно не обновлялся»). It does not change search order.
