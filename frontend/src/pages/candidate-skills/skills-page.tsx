@@ -172,7 +172,7 @@ export function CandidateSkillsPage({ view, selected, onChange }: Props) {
   const scope = useScope();
   const { data: profile } = useSuspenseQuery(profileQuery(scope));
   const { data: skills } = useSuspenseQuery(mySkillsQuery(scope));
-  const graph = useQuery(myGraphQuery(scope));
+  const graph = useQuery({ ...myGraphQuery(scope), enabled: view === 'graph' });
   const [filter, setFilter] = useState('');
   const query = filter.trim().toLowerCase();
   const items = skills.items.filter((skill) => !query || skill.label.toLowerCase().includes(query));
@@ -241,13 +241,13 @@ export function CandidateSkillsPage({ view, selected, onChange }: Props) {
                 {graph.isPending && <LoadingState label="Строим граф…" />}
                 {graph.isError && (
                   <>
-                    <ErrorState error={graph.error} onRetry={() => graph.refetch()} />
+                    <ErrorState error={graph.error} onRetry={() => graph.refetch()} retrying={graph.isFetching} />
                     <p className="small muted" style={{ marginTop: '1rem' }}>
                       Пока граф недоступен, используйте список.
                     </p>
                   </>
                 )}
-                {graph.data && (
+                {graph.data && !graph.isError && (
                   <Suspense fallback={<LoadingState label="Загружаем граф…" />}>
                     <CompetenceGraph
                       graph={graph.data}

@@ -8,6 +8,8 @@ and disables editing. Source synchronization tracks the returned job even when i
 refreshes derived queries on success and shows failures. The deep-link login test waits for code delivery.
 Card headers wrap actions at narrow widths. Simulated PDF import uses backend-neutral wording without an internal
 parser identifier; its explicit confirmation still controls whether the preview changes the profile.
+Graph generation runs only in graph view, has no automatic retry, and exposes loading/failure/manual retry
+in both roles. An errored graph does not remain visible as a stale success.
 
 ## Known Gaps
 
@@ -15,4 +17,4 @@ Mock E2E validates disclosed fixtures; public E2E separately validates Rust inte
 are opt-in (one skipped test in ordinary runs). Public tests create a unique candidate and use seeded companies;
 records persist and must not be reset. Real graph requests can fail and must retain visible retryable errors.
 
-Last commit: 10cad04 (live browser follow-up; exact delivery and screenshot evidence are in issue #23).
+Last commit: 5b9feec (graph lifecycle; delivery and real browser evidence are in issues #23 and #27).

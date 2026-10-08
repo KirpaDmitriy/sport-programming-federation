@@ -155,8 +155,16 @@ test('UI-06 a verified FSP record appears as a labelled demo source', async ({ p
 test('UI-08 UI-09 graph and list share one selection and the list is keyboard-operable', async ({ page }) => {
   await resetMock('baseline');
   await signIn(page, ALEXEY, 'candidate');
-  await page.goto('/candidate/skills?view=graph');
+  const graphRequests: string[] = [];
+  page.on('request', (request) => {
+    if (new URL(request.url()).pathname === '/api/v1/me/graph') graphRequests.push(request.url());
+  });
+  await page.goto('/candidate/skills');
+  await expect(page.getByRole('button', { name: /^Docker/ })).toBeVisible();
+  expect(graphRequests).toHaveLength(0);
+  await page.getByRole('button', { name: 'Граф', exact: true }).click();
   await page.getByRole('button', { name: /Навык: PostgreSQL/ }).click();
+  expect(graphRequests).toHaveLength(1);
   const inspector = page.getByRole('complementary', { name: 'Подробности выбранного элемента' });
   await expect(inspector.getByRole('heading', { name: 'PostgreSQL' })).toBeVisible();
   await expect(inspector.getByText('Для уровня «Мидл» нужна проверка')).toBeVisible();
