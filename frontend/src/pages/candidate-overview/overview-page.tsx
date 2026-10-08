@@ -176,7 +176,7 @@ function HistoryCard() {
             <li key={item.id} className={styles.historyItem}>
               <span className="stack" style={{ gap: '0.25rem' }}>
                 <Link to="/candidate/assessments/$assessmentId/result" params={{ assessmentId: item.id }}>
-                  {gradeLabel[item.grade]} · практическая задача
+                  {gradeLabel[item.grade]} · проверка
                 </Link>
                 <AssessmentStatusChip status={item.status} />
               </span>

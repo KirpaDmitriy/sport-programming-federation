@@ -153,7 +153,7 @@ pub(crate) async fn seed(conn: &mut PgConnection, now: &str) -> Result<(), Repos
     .bind("fsp")
     .bind(true)
     .bind(Option::<String>::None)
-    .bind("fsp-demo-024")
+    .bind("FSP-DEMO-024")
     .bind(ts(now)?)
     .bind(Option::<String>::None)
     .bind(true)

@@ -13,6 +13,7 @@ fsp-domain = { path = "crates/domain" }
 fsp-application = { path = "crates/application" }
 fsp-http = { path = "crates/http" }
 fsp-storage-postgres = { path = "crates/storage-postgres" }
+fsp-integration-pdf = { path = "crates/integration-pdf" }
 fsp-integration-github = { path = "crates/integration-github" }
 fsp-integration-bifrost = { path = "crates/integration-bifrost" }
 fsp-integration-fsp-synthetic = { path = "crates/integration-fsp-synthetic" }

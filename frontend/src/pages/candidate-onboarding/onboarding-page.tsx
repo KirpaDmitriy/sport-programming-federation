@@ -1,5 +1,6 @@
 import { useSuspenseQuery } from '@tanstack/react-query';
 import { type ReactNode, useState } from 'react';
+import { useMeta } from '@/entities/meta';
 import { eligibilityReasonText, profileQuery } from '@/entities/profile';
 import { useScope } from '@/entities/session';
 import { ConsentControls } from '@/features/consents';
@@ -27,6 +28,7 @@ function Step({ index, done, title, children }: { index: number; done: boolean; 
 export function CandidateOnboardingPage() {
   useDocumentTitle('Анкета кандидата');
   const scope = useScope();
+  const meta = useMeta();
   const { data: profile } = useSuspenseQuery(profileQuery(scope));
   const [importOpen, setImportOpen] = useState(false);
   const start = useStartAssessment();
@@ -55,9 +57,11 @@ export function CandidateOnboardingPage() {
               <p className="muted">
                 Заполните поля вручную или загрузите резюме в PDF и проверьте распознанные данные.
               </p>
-              <Button icon="upload" onClick={() => setImportOpen(true)} disabled={!profile.consents.processing}>
-                Заполнить из PDF
-              </Button>
+              {meta.capabilities.profilePdfImport && (
+                <Button icon="upload" onClick={() => setImportOpen(true)} disabled={!profile.consents.processing}>
+                  Заполнить из PDF
+                </Button>
+              )}
             </div>
             {!profile.consents.processing && (
               <p className="small muted">Импорт резюме доступен после согласия на обработку данных.</p>

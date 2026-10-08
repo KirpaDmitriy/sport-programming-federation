@@ -13,8 +13,10 @@ export const assessmentKey = (scope: Scope, id: string) => [...scope, 'assessmen
 
 export const editableStatuses: AssessmentStatus[] = ['draft', 'in_progress'];
 export const pendingStatuses: AssessmentStatus[] = ['submitted', 'evaluating'];
-export const isEditable = (assessment: Assessment) => editableStatuses.includes(assessment.status);
-export const isEvaluating = (assessment: Assessment) => pendingStatuses.includes(assessment.status);
+export const isEditable = (assessment: Assessment) =>
+  assessment.task.execution === 'questionnaire' && editableStatuses.includes(assessment.status);
+export const isEvaluating = (assessment: Assessment) =>
+  assessment.task.execution === 'questionnaire' && pendingStatuses.includes(assessment.status);
 
 export const assessmentsQuery = (scope: Scope) =>
   queryOptions({

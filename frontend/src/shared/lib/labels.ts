@@ -31,7 +31,7 @@ export const workModeLabel: Record<S['Need']['workMode'], string> = {
 export const evidenceSourceLabel: Record<S['Evidence']['source'], string> = {
   github: 'GitHub',
   fsp: 'ФСП',
-  assessment: 'Практическая проверка',
+  assessment: 'Тест знаний',
 };
 
 export const criticalityLabel: Record<S['Requirement']['criticality'], string> = {

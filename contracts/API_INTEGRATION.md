@@ -123,7 +123,24 @@ return `items`, `page`, `pageSize`, `total` and `hasNextPage`. Other lists are r
 - Import: `POST /api/v1/me/profile/imports` with one form field `file` (`application/pdf`, 1 byte – 2 MiB). The
   browser sets the multipart boundary; the client validates type and size first. Errors: `400 file_required`,
   `415 pdf_required`, `413 file_too_large`, `422 invalid_pdf`. The job's preview is applied with
-  `POST /api/v1/me/profile/imports/{jobId}/confirm`.
+  `POST /api/v1/me/profile/imports/{jobId}/confirm`. Rust reads digital PDF text (20 pages / 64 KiB maximum)
+  in a sandbox and validates Bifrost-proposed fields against page excerpts; optional `result.evidence` preserves
+  these excerpts for review. Unknown fields retain current values. `profilePdfImport` gates this capability;
+  export has no model dependency. A later profile revision returns `409 import_profile_changed` on confirmation.
+  Parser/content failures are `422`, unavailable/busy parser is `503`, and model failures are `502`; none
+  changes the profile. The development mock remains a disclosed fixture parser with the same revision guard.
+
+## Knowledge tests and FSP snapshots
+
+New assessment tasks use `execution: questionnaire` and `questions`; drafts use `answer.responses` as
+`{ questionId, optionId }` entries. Legacy code/explanation fields remain for stored attempts, but must be empty
+for new tests. Questions/responses remain optional on the wire for old immutable records. Correct options and
+explanations appear only in final results. See [scoring/version rules](../docs/knowledge-tests.md).
+
+Sources include optional `fspResults` for historical-response compatibility. Current Rust responses always emit
+an array; old job replays may omit it. Published/pending/disqualified status, team scope and protocol references
+are synthetic data from the [private FSP simulator](../docs/fsp-simulator.md). An unavailable source produces an
+error without erasing the last successful snapshot or changing its timestamp. It never changes a grade.
 
 ## Time
 

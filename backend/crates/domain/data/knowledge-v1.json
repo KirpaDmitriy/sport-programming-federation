@@ -1,0 +1,695 @@
+{
+  "version": "knowledge-v1",
+  "questions": [
+    {
+      "id": "jr-own",
+      "grade": "junior",
+      "skillId": "rust",
+      "prompt": "String передали в функцию по значению без clone. Что происходит с исходной переменной?",
+      "options": [
+        {
+          "id": "3b6eb305d9dc",
+          "label": "Значение перемещено; использовать исходную переменную нельзя"
+        },
+        {
+          "id": "48d5655b3f47",
+          "label": "Обе переменные независимо владеют той же памятью"
+        },
+        {
+          "id": "b051b5a40540",
+          "label": "Компилятор автоматически копирует содержимое строки"
+        }
+      ],
+      "correctOptionId": "3b6eb305d9dc",
+      "explanation": "String не реализует Copy. Передача по значению перемещает владение; clone нужен для независимой копии.",
+      "source": "https://doc.rust-lang.org/book/ch04-01-what-is-ownership.html"
+    },
+    {
+      "id": "jr-borrow",
+      "grade": "junior",
+      "skillId": "rust",
+      "prompt": "Функция должна прочитать строку без изменения и передачи владения. Какой параметр выбрать?",
+      "options": [
+        {
+          "id": "07157457727f",
+          "label": "String"
+        },
+        {
+          "id": "1497b0a92c3b",
+          "label": "&mut String"
+        },
+        {
+          "id": "aca6c3649eaa",
+          "label": "&str"
+        }
+      ],
+      "correctOptionId": "aca6c3649eaa",
+      "explanation": "&str даёт неизменяемое заимствование строки и подходит также для среза String.",
+      "source": "https://doc.rust-lang.org/book/ch04-03-slices.html"
+    },
+    {
+      "id": "jr-result",
+      "grade": "junior",
+      "skillId": "rust",
+      "prompt": "Чтение файла может завершиться ожидаемой ошибкой доступа. Как вернуть её вызывающему коду?",
+      "options": [
+        {
+          "id": "0daac78e61b6",
+          "label": "Вернуть пустую строку при любой ошибке"
+        },
+        {
+          "id": "bd71aec8dbb7",
+          "label": "Вернуть Result и обработать Err"
+        },
+        {
+          "id": "dc11cf86865e",
+          "label": "Вызвать unwrap для каждого результата"
+        }
+      ],
+      "correctOptionId": "bd71aec8dbb7",
+      "explanation": "Result отделяет успешное значение от ошибки; unwrap паникует при Err, а пустая строка скрывает причину.",
+      "source": "https://doc.rust-lang.org/book/ch09-02-recoverable-errors-with-result.html"
+    },
+    {
+      "id": "jr-option",
+      "grade": "junior",
+      "skillId": "rust",
+      "prompt": "Поиск пользователя может ничего не найти, и это нормальный результат. Как представить отсутствие значения?",
+      "options": [
+        {
+          "id": "3428dd7d43e7",
+          "label": "Option<User>"
+        },
+        {
+          "id": "361b21a3504c",
+          "label": "Всегда возвращать фиктивного User"
+        },
+        {
+          "id": "63f506586ac4",
+          "label": "Завершать процесс через panic!"
+        }
+      ],
+      "correctOptionId": "3428dd7d43e7",
+      "explanation": "Option явно представляет Some(value) и None без фиктивных значений.",
+      "source": "https://doc.rust-lang.org/book/ch06-01-defining-an-enum.html"
+    },
+    {
+      "id": "jr-mut",
+      "grade": "junior",
+      "skillId": "rust",
+      "prompt": "Две &mut ссылки на один String используются в одном println!. Как отреагирует безопасный Rust?",
+      "options": [
+        {
+          "id": "6e6bf720906e",
+          "label": "Разрешит, если программа однопоточная"
+        },
+        {
+          "id": "2529e60e3301",
+          "label": "Добавит блокировку во время выполнения"
+        },
+        {
+          "id": "fa804abe362c",
+          "label": "Отклонит код при компиляции"
+        }
+      ],
+      "correctOptionId": "fa804abe362c",
+      "explanation": "Одновременные изменяемые заимствования одного значения недопустимы; правило действует и в одном потоке.",
+      "source": "https://doc.rust-lang.org/book/ch04-02-references-and-borrowing.html"
+    },
+    {
+      "id": "jp-unique",
+      "grade": "junior",
+      "skillId": "postgresql",
+      "prompt": "Два запроса одновременно создают аккаунт с одним email. Чем надёжно запретить дубликаты в БД?",
+      "options": [
+        {
+          "id": "706d3bccfb71",
+          "label": "Индексом без UNIQUE"
+        },
+        {
+          "id": "b3a02fdaea90",
+          "label": "Ограничением UNIQUE на email"
+        },
+        {
+          "id": "c1c8be1bcf7e",
+          "label": "Только SELECT перед INSERT"
+        }
+      ],
+      "correctOptionId": "b3a02fdaea90",
+      "explanation": "UNIQUE обеспечивает уникальность и при конкурирующих записях; отдельная предварительная проверка гонку не закрывает.",
+      "source": "https://www.postgresql.org/docs/16/ddl-constraints.html"
+    },
+    {
+      "id": "jp-null",
+      "grade": "junior",
+      "skillId": "postgresql",
+      "prompt": "Как выбрать строки, где deleted_at отсутствует (NULL)?",
+      "options": [
+        {
+          "id": "be2339bbd523",
+          "label": "WHERE deleted_at IS NULL"
+        },
+        {
+          "id": "23b33a0eb83e",
+          "label": "WHERE deleted_at = NULL"
+        },
+        {
+          "id": "daeb45596f5f",
+          "label": "WHERE deleted_at = 0"
+        }
+      ],
+      "correctOptionId": "be2339bbd523",
+      "explanation": "Для проверки NULL используют IS NULL. Обычное сравнение с NULL не даёт TRUE.",
+      "source": "https://www.postgresql.org/docs/16/functions-comparison.html"
+    },
+    {
+      "id": "jp-tx",
+      "grade": "junior",
+      "skillId": "postgresql",
+      "prompt": "Перевод денег изменяет две строки. Как сделать эти изменения атомарными?",
+      "options": [
+        {
+          "id": "7b49933aa151",
+          "label": "Зафиксировать каждое изменение отдельно"
+        },
+        {
+          "id": "7239350d1489",
+          "label": "Использовать два соединения без транзакции"
+        },
+        {
+          "id": "ac8eb211f32a",
+          "label": "Выполнить оба изменения в одной транзакции и откатить её при ошибке"
+        }
+      ],
+      "correctOptionId": "ac8eb211f32a",
+      "explanation": "Транзакция объединяет изменения: COMMIT фиксирует их, ROLLBACK отменяет незавершённую операцию.",
+      "source": "https://www.postgresql.org/docs/16/tutorial-transactions.html"
+    },
+    {
+      "id": "jp-fk",
+      "grade": "junior",
+      "skillId": "postgresql",
+      "prompt": "Как гарантировать, что order.customer_id ссылается на существующего клиента?",
+      "options": [
+        {
+          "id": "9b1e3aa3fdd1",
+          "label": "CHECK (customer_id > 0)"
+        },
+        {
+          "id": "47acbfa15295",
+          "label": "FOREIGN KEY на таблицу клиентов"
+        },
+        {
+          "id": "81c3292b9467",
+          "label": "Только обычный индекс customer_id"
+        }
+      ],
+      "correctOptionId": "47acbfa15295",
+      "explanation": "Внешний ключ проверяет ссылочную целостность; положительное число или индекс существование клиента не гарантируют.",
+      "source": "https://www.postgresql.org/docs/16/ddl-constraints.html"
+    },
+    {
+      "id": "jp-order",
+      "grade": "junior",
+      "skillId": "postgresql",
+      "prompt": "Нужно стабильно показать первые 20 записей по времени и id. Что использовать?",
+      "options": [
+        {
+          "id": "f488cacd58ff",
+          "label": "ORDER BY created_at, id LIMIT 20"
+        },
+        {
+          "id": "093725decf28",
+          "label": "LIMIT 20 без сортировки"
+        },
+        {
+          "id": "f9437c37f6d3",
+          "label": "GROUP BY created_at без ORDER BY"
+        }
+      ],
+      "correctOptionId": "f488cacd58ff",
+      "explanation": "Без ORDER BY порядок не гарантирован. Уникальный id разрешает совпадения времени.",
+      "source": "https://www.postgresql.org/docs/16/queries-limit.html"
+    },
+    {
+      "id": "mr-arc",
+      "grade": "middle",
+      "skillId": "rust",
+      "prompt": "Несколько потоков должны изменять общий счётчик. Что подходит в безопасном Rust?",
+      "options": [
+        {
+          "id": "9a1a724cca71",
+          "label": "Rc<RefCell<u64>>"
+        },
+        {
+          "id": "0be16a1e814d",
+          "label": "Arc<u64> с обычным изменением через &"
+        },
+        {
+          "id": "8b98c75f3edf",
+          "label": "Arc<Mutex<u64>>"
+        }
+      ],
+      "correctOptionId": "8b98c75f3edf",
+      "explanation": "Arc даёт совместное владение между потоками, Mutex синхронизирует изменение. Rc и RefCell не заменяют межпоточную синхронизацию.",
+      "source": "https://doc.rust-lang.org/book/ch16-03-shared-state.html"
+    },
+    {
+      "id": "mr-question",
+      "grade": "middle",
+      "skillId": "rust",
+      "prompt": "В функции, возвращающей Result, применили ? к Err с совместимым типом ошибки. Что произойдёт?",
+      "options": [
+        {
+          "id": "1e2e81e4ea34",
+          "label": "Значение ошибки будет заменено на Ok"
+        },
+        {
+          "id": "d329b03e819c",
+          "label": "Функция досрочно вернёт ошибку"
+        },
+        {
+          "id": "237366897890",
+          "label": "Ошибка автоматически повторится до успеха"
+        }
+      ],
+      "correctOptionId": "d329b03e819c",
+      "explanation": "? распространяет ошибку вызывающему коду; механизм повторов он не добавляет.",
+      "source": "https://doc.rust-lang.org/book/ch09-02-recoverable-errors-with-result.html"
+    },
+    {
+      "id": "mr-send",
+      "grade": "middle",
+      "skillId": "rust",
+      "prompt": "Что означает реализация Send для типа?",
+      "options": [
+        {
+          "id": "dca8a4817a34",
+          "label": "Владение значением можно безопасно передавать между потоками"
+        },
+        {
+          "id": "fd69c2dc698c",
+          "label": "Любые операции над значением автоматически атомарны"
+        },
+        {
+          "id": "5a08aa1d421e",
+          "label": "Значение всегда можно копировать без clone"
+        }
+      ],
+      "correctOptionId": "dca8a4817a34",
+      "explanation": "Send относится к передаче владения между потоками, а не к атомарности операций или Copy.",
+      "source": "https://doc.rust-lang.org/book/ch16-04-extensible-concurrency-sync-and-send.html"
+    },
+    {
+      "id": "mr-block",
+      "grade": "middle",
+      "skillId": "rust",
+      "prompt": "В async-обработчике Tokio нужно вызвать ограниченную по времени синхронную блокирующую библиотеку. Что предпочтительнее?",
+      "options": [
+        {
+          "id": "8a47de161039",
+          "label": "Вызывать её напрямую на рабочем потоке async без ограничений"
+        },
+        {
+          "id": "76a765512869",
+          "label": "Добавить async к сигнатуре библиотеки без изменения тела"
+        },
+        {
+          "id": "41574421e3ec",
+          "label": "spawn_blocking с контролем числа одновременных задач"
+        }
+      ],
+      "correctOptionId": "41574421e3ec",
+      "explanation": "spawn_blocking переносит блокирующую работу в отдельный пул; ограничение параллелизма защищает ресурсы.",
+      "source": "https://docs.rs/tokio/latest/tokio/task/fn.spawn_blocking.html"
+    },
+    {
+      "id": "mr-life",
+      "grade": "middle",
+      "skillId": "rust",
+      "prompt": "Можно ли вернуть &str, ссылающийся на локальный String, уничтожаемый при выходе из функции?",
+      "options": [
+        {
+          "id": "d131cdbf0cb9",
+          "label": "Да, если строка короче 256 байт"
+        },
+        {
+          "id": "44121e379e99",
+          "label": "Нет: нужно вернуть владение или ссылку на дольше живущие данные"
+        },
+        {
+          "id": "710d5e774b5f",
+          "label": "Да, если добавить произвольное имя lifetime"
+        }
+      ],
+      "correctOptionId": "44121e379e99",
+      "explanation": "Аннотация lifetime описывает отношения времён жизни и не продлевает жизнь локального значения.",
+      "source": "https://doc.rust-lang.org/book/ch10-03-lifetime-syntax.html"
+    },
+    {
+      "id": "mp-snapshot",
+      "grade": "middle",
+      "skillId": "postgresql",
+      "prompt": "При Read Committed два последовательных SELECT в одной транзакции могут увидеть разные данные?",
+      "options": [
+        {
+          "id": "08ce0a4e4e1a",
+          "label": "Да, если между ними зафиксировалась другая транзакция"
+        },
+        {
+          "id": "c1f03086c2ee",
+          "label": "Нет, снимок всегда один на всю транзакцию"
+        },
+        {
+          "id": "3175f3123d2a",
+          "label": "Да, включая незакоммиченные изменения других транзакций"
+        }
+      ],
+      "correctOptionId": "08ce0a4e4e1a",
+      "explanation": "Read Committed получает снимок на начало каждого оператора; чужие незакоммиченные изменения не видны.",
+      "source": "https://www.postgresql.org/docs/16/transaction-iso.html"
+    },
+    {
+      "id": "mp-lock",
+      "grade": "middle",
+      "skillId": "postgresql",
+      "prompt": "Нужно прочитать существующий заказ и защитить его от конкурентного изменения до своего UPDATE. Что выбрать?",
+      "options": [
+        {
+          "id": "a4b07f1da8e3",
+          "label": "Обычный SELECT, затем UPDATE в новой транзакции"
+        },
+        {
+          "id": "488edd13b9e4",
+          "label": "SELECT ... LIMIT 1 без транзакции"
+        },
+        {
+          "id": "84026577015d",
+          "label": "SELECT ... FOR UPDATE в той же транзакции"
+        }
+      ],
+      "correctOptionId": "84026577015d",
+      "explanation": "FOR UPDATE блокирует выбранные строки до завершения транзакции, поэтому чтение и изменение должны быть в одной транзакции.",
+      "source": "https://www.postgresql.org/docs/16/explicit-locking.html"
+    },
+    {
+      "id": "mp-deadlock",
+      "grade": "middle",
+      "skillId": "postgresql",
+      "prompt": "Транзакция стала жертвой deadlock. Что должен повторять обработчик после отката?",
+      "options": [
+        {
+          "id": "f25979545b1b",
+          "label": "COMMIT до тех пор, пока ошибка не исчезнет"
+        },
+        {
+          "id": "3a12491e0d68",
+          "label": "Всю логическую транзакцию с повторным чтением данных"
+        },
+        {
+          "id": "48cda19bb8cd",
+          "label": "Только последний SQL на том же aborted-соединении без ROLLBACK"
+        }
+      ],
+      "correctOptionId": "3a12491e0d68",
+      "explanation": "После deadlock нужно откатить и повторить всю транзакцию; значения из предыдущей попытки могут устареть.",
+      "source": "https://www.postgresql.org/docs/16/explicit-locking.html"
+    },
+    {
+      "id": "mp-upsert",
+      "grade": "middle",
+      "skillId": "postgresql",
+      "prompt": "Есть UNIQUE(key). Как атомарно вставить счётчик либо увеличить существующий?",
+      "options": [
+        {
+          "id": "96c8f0f3a5e5",
+          "label": "INSERT ... ON CONFLICT (key) DO UPDATE"
+        },
+        {
+          "id": "c70d64182c0f",
+          "label": "SELECT, затем INSERT без обработки конфликта"
+        },
+        {
+          "id": "d9f32bc22575",
+          "label": "Два INSERT подряд с одинаковым key"
+        }
+      ],
+      "correctOptionId": "96c8f0f3a5e5",
+      "explanation": "ON CONFLICT DO UPDATE даёт атомарный исход вставки или обновления при конкуренции, если нет независимой ошибки.",
+      "source": "https://www.postgresql.org/docs/16/sql-insert.html"
+    },
+    {
+      "id": "mp-analyze",
+      "grade": "middle",
+      "skillId": "postgresql",
+      "prompt": "Что важно знать перед EXPLAIN ANALYZE UPDATE на рабочей БД?",
+      "options": [
+        {
+          "id": "1986b4086cfd",
+          "label": "ANALYZE только рисует приблизительный план"
+        },
+        {
+          "id": "731189beca4e",
+          "label": "EXPLAIN ANALYZE всегда автоматически откатывает изменения"
+        },
+        {
+          "id": "02913a11998c",
+          "label": "Оператор реально выполняется и меняет данные"
+        }
+      ],
+      "correctOptionId": "02913a11998c",
+      "explanation": "EXPLAIN ANALYZE выполняет оператор. Для исследования изменений нужна безопасная среда либо продуманный откат транзакции.",
+      "source": "https://www.postgresql.org/docs/16/sql-explain.html"
+    },
+    {
+      "id": "sr-sync",
+      "grade": "senior",
+      "skillId": "rust",
+      "prompt": "Как определяется Sync для типа T?",
+      "options": [
+        {
+          "id": "49dbc0dec84d",
+          "label": "Каждый метод T автоматически получает глобальную блокировку"
+        },
+        {
+          "id": "c07a2f932f5b",
+          "label": "&T можно безопасно передавать между потоками (то есть &T: Send)"
+        },
+        {
+          "id": "a2d6aa60bbf1",
+          "label": "T обязательно реализует Copy"
+        }
+      ],
+      "correctOptionId": "c07a2f932f5b",
+      "explanation": "Sync описывает безопасность совместного доступа через ссылку; он не добавляет блокировки автоматически.",
+      "source": "https://doc.rust-lang.org/book/ch16-04-extensible-concurrency-sync-and-send.html"
+    },
+    {
+      "id": "sr-abort",
+      "grade": "senior",
+      "skillId": "rust",
+      "prompt": "Задача spawn_blocking уже начала синхронную работу. Остановит ли её JoinHandle::abort?",
+      "options": [
+        {
+          "id": "1276e7c520a3",
+          "label": "Нет, начавшуюся блокирующую работу abort не останавливает"
+        },
+        {
+          "id": "6f24234a4187",
+          "label": "Да, немедленно завершит системный поток"
+        },
+        {
+          "id": "a3ab36167f0a",
+          "label": "Да, но только если результат Result"
+        }
+      ],
+      "correctOptionId": "1276e7c520a3",
+      "explanation": "Начавшиеся spawn_blocking задачи не прерываются abort. Для жёсткой остановки недоверенной работы нужна иная граница, например отдельный процесс.",
+      "source": "https://docs.rs/tokio/latest/tokio/task/fn.spawn_blocking.html"
+    },
+    {
+      "id": "sr-rc",
+      "grade": "senior",
+      "skillId": "rust",
+      "prompt": "Почему Arc<RefCell<T>> сам по себе не делает совместное изменение T безопасным между потоками?",
+      "options": [
+        {
+          "id": "363769211263",
+          "label": "Arc запрещает любое совместное владение"
+        },
+        {
+          "id": "f9c8d2451afe",
+          "label": "RefCell всегда копирует T для каждого потока"
+        },
+        {
+          "id": "7857cc6459b7",
+          "label": "Arc синхронизирует счётчик ссылок, но RefCell не является Sync"
+        }
+      ],
+      "correctOptionId": "7857cc6459b7",
+      "explanation": "Потокобезопасность управления владением не делает внутренний тип потокобезопасным. Для общей мутации нужна подходящая синхронизация.",
+      "source": "https://doc.rust-lang.org/book/ch16-04-extensible-concurrency-sync-and-send.html"
+    },
+    {
+      "id": "sr-poison",
+      "grade": "senior",
+      "skillId": "rust",
+      "prompt": "Поток запаниковал, удерживая std::sync::Mutex. Что означает ошибка от следующего lock()?",
+      "options": [
+        {
+          "id": "be25c9ba297e",
+          "label": "Объект Mutex навсегда удалён из памяти"
+        },
+        {
+          "id": "e4cc7177becc",
+          "label": "Данные могли остаться в нарушенном состоянии; восстановление требует проверки инвариантов"
+        },
+        {
+          "id": "fb863dcf7bd0",
+          "label": "Данные автоматически возвращены к снимку до panic"
+        }
+      ],
+      "correctOptionId": "e4cc7177becc",
+      "explanation": "Poisoning сигнализирует о возможном нарушении инвариантов. Автоматического отката изменений Mutex не делает.",
+      "source": "https://doc.rust-lang.org/std/sync/struct.Mutex.html"
+    },
+    {
+      "id": "sr-bound",
+      "grade": "senior",
+      "skillId": "rust",
+      "prompt": "Для CPU-тяжёлых задач используют spawn_blocking. Почему дополнительно ограничивают число задач?",
+      "options": [
+        {
+          "id": "dc62b8247a72",
+          "label": "Пул допускает много потоков; без лимита CPU и память могут быть перегружены"
+        },
+        {
+          "id": "918d08d67dfa",
+          "label": "spawn_blocking всегда исполняет ровно одну задачу"
+        },
+        {
+          "id": "b913e9d0b6d8",
+          "label": "Ограничение нужно только ради borrow checker"
+        }
+      ],
+      "correctOptionId": "dc62b8247a72",
+      "explanation": "Tokio рекомендует ограничивать параллелизм CPU-нагрузки, например семафором; лимит защищает ресурсы сервиса.",
+      "source": "https://docs.rs/tokio/latest/tokio/task/fn.spawn_blocking.html"
+    },
+    {
+      "id": "sp-serial",
+      "grade": "senior",
+      "skillId": "postgresql",
+      "prompt": "Serializable-транзакция получила SQLSTATE 40001. Как корректно обработать это?",
+      "options": [
+        {
+          "id": "d2d438d62458",
+          "label": "Повторить только COMMIT с прежним снимком"
+        },
+        {
+          "id": "a75617fa726c",
+          "label": "Понизить изоляцию уже выполнившейся транзакции и продолжить"
+        },
+        {
+          "id": "231b53597e87",
+          "label": "Откатить и повторить всю транзакцию, включая логику выбора запросов и значений"
+        }
+      ],
+      "correctOptionId": "231b53597e87",
+      "explanation": "Serialization failure требует повтора всей транзакции с новым снимком; повтор одной последней команды недостаточен.",
+      "source": "https://www.postgresql.org/docs/16/mvcc-serialization-failure-handling.html"
+    },
+    {
+      "id": "sp-skew",
+      "grade": "senior",
+      "skillId": "postgresql",
+      "prompt": "Две Repeatable Read транзакции читают общую сумму, затем меняют разные строки. Гарантируется ли сохранение межстрочного ограничения?",
+      "options": [
+        {
+          "id": "874839dcbb6c",
+          "label": "Да: разные строки исключают логические гонки"
+        },
+        {
+          "id": "9380ecf771f7",
+          "label": "Нет: возможна аномалия сериализации; нужен Serializable с повторами или явная синхронизация"
+        },
+        {
+          "id": "f55286f97919",
+          "label": "Да: Repeatable Read эквивалентен Serializable"
+        }
+      ],
+      "correctOptionId": "9380ecf771f7",
+      "explanation": "Стабильный снимок не гарантирует сериализуемость. Межстрочный инвариант требует подходящей стратегии конкуренции.",
+      "source": "https://www.postgresql.org/docs/16/transaction-iso.html"
+    },
+    {
+      "id": "sp-null",
+      "grade": "senior",
+      "skillId": "postgresql",
+      "prompt": "UNIQUE(email) в PostgreSQL 16 без дополнительных параметров разрешит две строки с NULL в email?",
+      "options": [
+        {
+          "id": "dc371521849e",
+          "label": "Да; для запрета нужен NULLS NOT DISTINCT либо подходящий NOT NULL"
+        },
+        {
+          "id": "430381f24609",
+          "label": "Нет: NULL всегда равен другому NULL"
+        },
+        {
+          "id": "1345ab484e61",
+          "label": "Да, но только вне транзакции"
+        }
+      ],
+      "correctOptionId": "dc371521849e",
+      "explanation": "По умолчанию NULL считаются различными для UNIQUE. NULLS NOT DISTINCT меняет это правило, NOT NULL запрещает само отсутствие значения.",
+      "source": "https://www.postgresql.org/docs/16/ddl-constraints.html"
+    },
+    {
+      "id": "sp-index",
+      "grade": "senior",
+      "skillId": "postgresql",
+      "prompt": "Нужно запретить email, различающиеся только регистром при сравнении lower(email). Что соответствует этому правилу?",
+      "options": [
+        {
+          "id": "a4f65085db50",
+          "label": "Обычный неуникальный индекс на email"
+        },
+        {
+          "id": "b2014325a8e9",
+          "label": "Увеличение max_connections"
+        },
+        {
+          "id": "152529fc824d",
+          "label": "Уникальный индекс на lower(email)"
+        }
+      ],
+      "correctOptionId": "152529fc824d",
+      "explanation": "Уникальный индекс на выражение lower(email) применяет уникальность к нормализованному значению; NULL регулируются отдельно.",
+      "source": "https://www.postgresql.org/docs/16/indexes-expressional.html"
+    },
+    {
+      "id": "sp-deadlock",
+      "grade": "senior",
+      "skillId": "postgresql",
+      "prompt": "Две транзакции берут блокировки строк в противоположном порядке. Что снижает вероятность deadlock?",
+      "options": [
+        {
+          "id": "03e543d257a8",
+          "label": "Разрешить каждой транзакции игнорировать чужие блокировки"
+        },
+        {
+          "id": "96eff35b53e8",
+          "label": "Брать блокировки в согласованном порядке и всё равно обрабатывать повтор транзакции"
+        },
+        {
+          "id": "0b243595da54",
+          "label": "Увеличить время ожидания каждой блокировки без изменения порядка"
+        }
+      ],
+      "correctOptionId": "96eff35b53e8",
+      "explanation": "Согласованный порядок получения блокировок уменьшает риск deadlock; обработка ошибок и повтор остаются необходимыми.",
+      "source": "https://www.postgresql.org/docs/16/explicit-locking.html"
+    }
+  ]
+}

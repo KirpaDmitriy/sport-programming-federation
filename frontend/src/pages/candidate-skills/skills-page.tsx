@@ -111,7 +111,7 @@ function SkillInspector({ skill, profile }: { skill: SelfSkill; profile: Profile
             Что ещё проверить
           </h3>
           <p className="small">
-            Практическая проверка уровня «{gradeLabel[target]}» подтверждает навыки, которые входят в её рубрику.
+            Тест знаний уровня «{gradeLabel[target]}» подтверждает навыки, которые входят в её рубрику.
           </p>
           <ButtonLink to="/candidate/assessments" variant="primary" iconAfter="arrowRight">
             {profile.assessmentEligibility.canStartSelected
@@ -264,7 +264,7 @@ export function CandidateSkillsPage({ view, selected, onChange }: Props) {
                     <Icon name="file" size={16} /> Внешнее свидетельство
                   </span>
                   <span>
-                    <Icon name="target" size={16} /> Практическая проверка
+                    <Icon name="target" size={16} /> Тест знаний
                   </span>
                   <span>
                     <Icon name="minusCircle" size={16} /> Недостаточно данных

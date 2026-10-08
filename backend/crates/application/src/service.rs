@@ -1,5 +1,6 @@
 mod commands;
 mod graphs;
+mod imports;
 mod sources;
 pub use commands::Commands;
 
@@ -79,6 +80,7 @@ pub struct PlatformService {
     repository: Arc<dyn PlatformRepository>,
     delivery: Arc<dyn VerificationDelivery>,
     github: Option<Arc<dyn GitHubGateway>>,
+    pdf: Option<Arc<dyn crate::PdfGateway>>,
     llm: Option<Arc<dyn LlmGateway>>,
     fsp: Option<Arc<dyn FspGateway>>,
     grade_cooldown_days: u16,
@@ -94,6 +96,7 @@ impl PlatformService {
             delivery,
             github: None,
             llm: None,
+            pdf: None,
             fsp: None,
             grade_cooldown_days: 90,
         }
@@ -121,6 +124,17 @@ impl PlatformService {
     pub fn with_fsp(mut self, fsp: Arc<dyn FspGateway>) -> Self {
         self.fsp = Some(fsp);
         self
+    }
+
+    #[must_use]
+    pub fn with_pdf(mut self, pdf: Arc<dyn crate::PdfGateway>) -> Self {
+        self.pdf = Some(pdf);
+        self
+    }
+
+    #[must_use]
+    pub fn pdf_import_configured(&self) -> bool {
+        self.pdf.is_some() && self.llm.is_some()
     }
 
     pub async fn initialize(&self) -> Result<(), ApplicationError> {
@@ -2283,33 +2297,52 @@ impl PlatformService {
         if input.code.chars().count() > 100_000 || input.explanation.chars().count() > 20_000 {
             return Err(validation("Запрос не соответствует контракту"));
         }
-        let mut record = self.assessment_for(session, assessment_id).await?;
-        self.require_processing_consent(&record.candidate_id)
+        let tx = self
+            .repository
+            .transaction()
+            .await
+            .map_err(ApplicationError::storage)?;
+        let scoped = Self {
+            repository: tx.share(),
+            ..self.clone()
+        };
+        tx.lock_candidate(candidate_id(session)?)
+            .await
+            .map_err(ApplicationError::storage)?;
+        let mut record = scoped.assessment_for(session, assessment_id).await?;
+        scoped
+            .require_processing_consent(&record.candidate_id)
             .await?;
         mutable_assessment(&record)?;
+        if !fsp_domain::valid_knowledge_answer(&record.task, &input) {
+            return Err(validation(
+                "Ответ содержит неизвестный вопрос, вариант или повтор",
+            ));
+        }
         record.answer = input;
+        record.checks = fsp_domain::knowledge_completion(&record.task, &record.answer);
         record.status = fsp_domain::AssessmentStatus::InProgress;
         let base_revision = record.revision;
         record.revision += 1;
         record.updated_at = now();
-        self.repository
-            .save_assessment_guarded(
-                &record,
-                base_revision,
-                &[
-                    fsp_domain::AssessmentStatus::Draft,
-                    fsp_domain::AssessmentStatus::InProgress,
-                ],
-            )
-            .await
-            .map_err(|error| match error {
-                RepositoryError::NotFound => ApplicationError::new(
-                    409,
-                    "assessment_not_editable",
-                    "Проверка уже отправлена или завершена",
-                ),
-                other => ApplicationError::storage(other),
-            })?;
+        tx.save_assessment_guarded(
+            &record,
+            base_revision,
+            &[
+                fsp_domain::AssessmentStatus::Draft,
+                fsp_domain::AssessmentStatus::InProgress,
+            ],
+        )
+        .await
+        .map_err(|error| match error {
+            RepositoryError::NotFound => ApplicationError::new(
+                409,
+                "assessment_not_editable",
+                "Проверка уже отправлена или завершена",
+            ),
+            other => ApplicationError::storage(other),
+        })?;
+        tx.commit().await.map_err(ApplicationError::storage)?;
         Ok(assessment_view(&record))
     }
 
@@ -2320,8 +2353,21 @@ impl PlatformService {
         session: &SessionView,
         assessment_id: &str,
     ) -> Result<JobView, ApplicationError> {
-        let mut record = self.assessment_for(session, assessment_id).await?;
-        self.require_processing_consent(&record.candidate_id)
+        let tx = self
+            .repository
+            .transaction()
+            .await
+            .map_err(ApplicationError::storage)?;
+        let scoped = Self {
+            repository: tx.share(),
+            ..self.clone()
+        };
+        tx.lock_candidate(candidate_id(session)?)
+            .await
+            .map_err(ApplicationError::storage)?;
+        let mut record = scoped.assessment_for(session, assessment_id).await?;
+        scoped
+            .require_processing_consent(&record.candidate_id)
             .await?;
         mutable_assessment(&record)?;
         let mut job = self.new_job(
@@ -2330,14 +2376,9 @@ impl PlatformService {
             Some(&record.id),
             Some(record.revision),
         );
-        record.checks = assessment_checks("pass");
+        record.checks = fsp_domain::knowledge_completion(&record.task, &record.answer);
         record.updated_at = now();
         // Checks write and the job row commit together.
-        let tx = self
-            .repository
-            .transaction()
-            .await
-            .map_err(ApplicationError::storage)?;
         tx.save_assessment_guarded(
             &record,
             record.revision,
@@ -2360,34 +2401,65 @@ impl PlatformService {
         job.result_json = Some(self.job_result(&JobResultView::Checks {
             assessment_id: record.id.clone(),
             checks: record.checks.clone(),
-            simulation: true,
+            simulation: false,
         })?);
         tx.save_job(&job).await.map_err(ApplicationError::storage)?;
         tx.commit().await.map_err(ApplicationError::storage)?;
         Ok(job_view(job, None))
     }
 
-    /// The mock's `askAssessmentAssistant`: a fixed demo reply, no model call.
+    /// Assistance is advisory; only an evaluator can issue assessment results.
     pub async fn ask_assessment_assistant(
         &self,
         session: &SessionView,
         assessment_id: &str,
-        _input: AssistantInput,
+        input: AssistantInput,
     ) -> Result<AssistantReplyView, ApplicationError> {
         let record = self.assessment_for(session, assessment_id).await?;
         self.require_processing_consent(&record.candidate_id)
             .await?;
         mutable_assessment(&record)?;
+        let question = input.message.trim();
+        if question.is_empty() || question.chars().count() > 10_000 {
+            return Err(validation("Введите вопрос длиной до 10000 символов"));
+        }
+        let llm = self.llm.as_ref().ok_or_else(|| {
+            ApplicationError::new(503, "assistant_unavailable", "ИИ-помощник не настроен")
+        })?;
+        let reply = llm
+            .assessment_help(&fsp_domain::AssessmentHelpRequest {
+                task: record.task,
+                answer: record.answer,
+                question: question.into(),
+            })
+            .await
+            .map_err(integration_error)?;
+        if reply.message.trim().is_empty()
+            || reply.message.chars().count() > 6000
+            || reply
+                .message
+                .chars()
+                .any(|c| c.is_control() && c != '\n' && c != '\t' && c != '\r')
+        {
+            return Err(ApplicationError::new(
+                502,
+                "assistant_invalid_response",
+                "Помощник вернул некорректный ответ. Повторите вопрос",
+            ));
+        }
+        self.require_processing_consent(&record.candidate_id)
+            .await?;
+        mutable_assessment(&self.assessment_for(session, assessment_id).await?)?;
         Ok(AssistantReplyView {
-            message: "Демонстрационный ответ: зафиксируйте ключ идемпотентности и создание заказа в одной транзакции. Добавьте уникальное ограничение, определите поведение конкурентных запросов и объясните повтор после ошибки. Ответ подготовлен заранее; модель не вызывалась.".into(),
-            simulation: true,
+            message: reply.message.trim().into(),
+            simulation: false,
             ai_allowed: true,
             external_ai_allowed: true,
         })
     }
 
-    /// The mock's `completeAssessment` happy path: confirm or raise the
-    /// verified grade, refresh the two demo skills and build the result.
+    /// Score the immutable knowledge test, preserve grades on failure and
+    /// attach successful results as evidence for the tested skills.
     /// Writes go through the caller's repository handle so the grade change and
     /// the assessment result commit in one transaction.
     async fn complete_assessment(
@@ -2403,15 +2475,21 @@ impl PlatformService {
             .await
             .map_err(ApplicationError::storage)?
             .ok_or_else(|| ApplicationError::new(404, "not_found", "Кандидат не найден"))?;
+        let score = fsp_domain::score_knowledge(record.grade, &record.task, &record.answer)
+            .ok_or_else(|| {
+                ApplicationError::new(422, "answer_incomplete", "Ответьте на все вопросы теста")
+            })?;
         let previous_grade = candidate.profile.verified_grade;
-        let grade_changed = candidate.profile.verified_grade != Some(record.grade)
-            || candidate.profile.verified_specialization != Some(record.specialization);
-        if candidate.profile.verified_specialization != Some(record.specialization)
-            || candidate.profile.verified_grade.is_none()
-            || candidate
-                .profile
-                .verified_grade
-                .is_some_and(|grade| record.grade >= grade)
+        let grade_changed = score.passed
+            && (candidate.profile.verified_grade != Some(record.grade)
+                || candidate.profile.verified_specialization != Some(record.specialization));
+        if score.passed
+            && (candidate.profile.verified_specialization != Some(record.specialization)
+                || candidate.profile.verified_grade.is_none()
+                || candidate
+                    .profile
+                    .verified_grade
+                    .is_some_and(|grade| record.grade >= grade))
         {
             candidate.profile.verified_grade = Some(record.grade);
             candidate.profile.verified_specialization = Some(record.specialization);
@@ -2419,6 +2497,7 @@ impl PlatformService {
                 candidate.profile.grade_confirmed_at = Some(now());
                 candidate.last_signal_at = candidate.profile.grade_confirmed_at.clone();
             }
+            candidate.last_signal_at = Some(now());
             for skill_id in ["rust", "postgresql"] {
                 let skill = candidate
                     .skills
@@ -2452,35 +2531,30 @@ impl PlatformService {
                 .await
                 .map_err(ApplicationError::storage)?;
         }
-        record.checks = assessment_checks("pass");
-        record.status = fsp_domain::AssessmentStatus::Passed;
+        record.checks = score.checks;
+        record.status = if score.passed {
+            fsp_domain::AssessmentStatus::Passed
+        } else {
+            fsp_domain::AssessmentStatus::Failed
+        };
         record.updated_at = now();
         record.revision += 1;
         record.result = Some(fsp_domain::AssessmentResultData {
             assessment_id: record.id.clone(),
-            outcome: "passed".into(),
+            outcome: if score.passed { "passed" } else { "failed" }.into(),
             confirmed_grade: candidate.profile.verified_grade,
             previous_grade,
             grade_changed,
-            rubric: ASSESSMENT_RUBRIC
-                .iter()
-                .map(|(id, label, _)| fsp_domain::RubricOutcome {
-                    criterion_id: (*id).into(),
-                    label: (*label).into(),
-                    outcome: "met".into(),
-                    feedback: "Критерий выполнен в демонстрационном сценарии.".into(),
-                })
-                .collect(),
+            rubric: score.rubric,
             checks: record.checks.clone(),
-            feedback: "Проверка пройдена. Результат симулирован для демонстрации интерфейса."
-                .into(),
+            feedback: score.feedback,
             next_eligible_at: candidate
                 .profile
                 .grade_confirmed_at
                 .as_deref()
                 .and_then(timestamp_at)
                 .map(|at| (at + Duration::days(i64::from(self.grade_cooldown_days))).to_rfc3339()),
-            simulation: true,
+            simulation: false,
         });
         Ok(())
     }
@@ -2508,7 +2582,7 @@ impl PlatformService {
             .await
             .map_err(ApplicationError::storage)?
             .iter()
-            .any(|item| item.status.active()))
+            .any(|item| item.status.active() && item.task.execution == "questionnaire"))
     }
 
     fn new_job(
@@ -2609,35 +2683,6 @@ impl PlatformService {
             .ok_or_else(|| ApplicationError::new(404, "not_found", "Ресурс не найден"))
     }
 
-    /// The mock's `importMyProfile`: the upload was validated by the
-    /// transport; the fixture preview completes inline.
-    pub async fn import_profile(&self, session: &SessionView) -> Result<JobView, ApplicationError> {
-        let candidate_id = candidate_id(session)?;
-        self.require_processing_consent(candidate_id).await?;
-        let mut job = self.new_job(candidate_id, "profile_import", None, None);
-        job.status = "succeeded".into();
-        job.updated_at = now();
-        job.result_json = Some(self.job_result(&JobResultView::ProfileImport {
-            preview: serde_json::json!({
-                "name": "Алексей Морозов",
-                "specialization": "backend",
-                "selectedGrade": "middle",
-                "stack": ["rust", "postgresql", "docker"],
-                "teamRole": "Разработчик",
-                "experienceMonths": serde_json::Value::Null,
-                "experience": "Демонстрационное извлечение: API на Rust и PostgreSQL. Содержимое загруженного файла не анализировалось.",
-                "softSkills": ["Командная работа"]
-            }),
-            parser: "fixture_preview",
-            simulation: true,
-        })?);
-        self.repository
-            .save_job(&job)
-            .await
-            .map_err(ApplicationError::storage)?;
-        Ok(job_view(job, None))
-    }
-
     /// The mock's `confirmProfileImport`: a succeeded, unconfirmed
     /// `profile_import` job applies the submitted profile patch once.
     pub async fn confirm_profile_import(
@@ -2672,48 +2717,49 @@ impl PlatformService {
         }
         self.require_processing_consent(candidate_id).await?;
         validate_profile_patch(&input.profile)?;
-        // Profile write and the confirmed-flag on the job commit together; the
-        // revision-guarded save retries once when a concurrent profile update
-        // lands between this transaction's read and write.
-        let mut attempts = 0;
-        let profile = loop {
-            let tx = self
-                .repository
-                .transaction()
-                .await
-                .map_err(ApplicationError::storage)?;
-            let mut profile = tx
-                .candidate(candidate_id)
-                .await
-                .map_err(ApplicationError::storage)?
-                .ok_or_else(|| ApplicationError::new(404, "not_found", "Профиль не найден"))?;
-            apply_profile_patch(&mut profile, input.profile.clone())?;
-            let base_revision = profile.revision;
-            profile.revision += 1;
-            profile.updated_at = now();
-            match tx.save_candidate_guarded(&profile, base_revision).await {
-                Ok(()) => {}
-                Err(RepositoryError::NotFound) if attempts == 0 => {
-                    attempts += 1;
-                    continue;
+        let tx = self
+            .repository
+            .transaction()
+            .await
+            .map_err(ApplicationError::storage)?;
+        tx.lock_candidate(candidate_id)
+            .await
+            .map_err(ApplicationError::storage)?;
+        if tx
+            .job(candidate_id, job_id)
+            .await
+            .map_err(ApplicationError::storage)?
+            .is_some_and(|current| current.confirmed)
+        {
+            return Err(ApplicationError::new(
+                409,
+                "import_already_confirmed",
+                "Импорт уже применён",
+            ));
+        }
+        let mut profile = tx
+            .candidate(candidate_id)
+            .await
+            .map_err(ApplicationError::storage)?
+            .ok_or_else(|| ApplicationError::new(404, "not_found", "Профиль не найден"))?;
+        imports::require_current_profile(&profile, job.input_revision.unwrap_or(profile.revision))?;
+        apply_profile_patch(&mut profile, input.profile)?;
+        profile.revision += 1;
+        profile.updated_at = now();
+        tx.save_candidate(&profile)
+            .await
+            .map_err(ApplicationError::storage)?;
+        job.confirmed = true;
+        job.updated_at = now();
+        tx.save_job_unconfirmed(&job)
+            .await
+            .map_err(|error| match error {
+                RepositoryError::NotFound => {
+                    ApplicationError::new(409, "import_already_confirmed", "Импорт уже применён")
                 }
-                Err(error) => return Err(ApplicationError::storage(error)),
-            }
-            job.confirmed = true;
-            job.updated_at = now();
-            tx.save_job_unconfirmed(&job)
-                .await
-                .map_err(|error| match error {
-                    RepositoryError::NotFound => ApplicationError::new(
-                        409,
-                        "import_already_confirmed",
-                        "Импорт уже применён",
-                    ),
-                    other => ApplicationError::storage(other),
-                })?;
-            tx.commit().await.map_err(ApplicationError::storage)?;
-            break profile;
-        };
+                other => ApplicationError::storage(other),
+            })?;
+        tx.commit().await.map_err(ApplicationError::storage)?;
         let signals = self
             .freshness_signals(&profile.id, profile.grade_confirmed_at.as_deref())
             .await?;
@@ -2946,6 +2992,7 @@ impl PlatformService {
                     analysis: None,
                     verified_participation: false,
                     competition_ids: Vec::new(),
+                    fsp_results: Vec::new(),
                 });
             }
         }
@@ -2959,6 +3006,11 @@ impl PlatformService {
     pub async fn skills(&self, session: &SessionView) -> Result<SkillsView, ApplicationError> {
         let candidate_id = candidate_id(session)?;
         let record = self.candidate_index(candidate_id).await?;
+        let assessments = self
+            .repository
+            .candidate_assessments(candidate_id)
+            .await
+            .map_err(ApplicationError::storage)?;
         let observed_at = record.profile.updated_at.clone();
         let items = record
             .skills
@@ -2968,15 +3020,40 @@ impl PlatformService {
                     .sources
                     .iter()
                     .enumerate()
-                    .map(|(index, source)| EvidenceView {
-                        id: format!("evidence-{}-{index}", skill.skill_id),
-                        source: *source,
-                        title: format!("Свидетельство: {}", skill_label(&skill.skill_id)),
-                        url: None,
-                        reference: Some(format!("{}:{}", source_name(*source), skill.skill_id)),
-                        observed_at: observed_at.clone(),
-                        scope: "individual",
-                        synthetic: *source == fsp_domain::EvidenceSource::Fsp,
+                    .map(|(index, source)| {
+                        let assessment = (*source == fsp_domain::EvidenceSource::Assessment)
+                            .then(|| {
+                                assessments.iter().find(|attempt| {
+                                    attempt.status == fsp_domain::AssessmentStatus::Passed
+                                        && Some(attempt.grade) == skill.evidence_grade
+                                        && matches!(skill.skill_id.as_str(), "rust" | "postgresql")
+                                })
+                            })
+                            .flatten();
+                        EvidenceView {
+                            id: format!("evidence-{}-{index}", skill.skill_id),
+                            source: *source,
+                            title: match assessment {
+                                Some(item) if item.task.execution == "questionnaire" => format!(
+                                    "Тест знаний: {} · {}",
+                                    skill_label(&skill.skill_id),
+                                    item.task.version
+                                ),
+                                _ => format!("Свидетельство: {}", skill_label(&skill.skill_id)),
+                            },
+                            url: None,
+                            reference: Some(assessment.map_or_else(
+                                || format!("{}:{}", source_name(*source), skill.skill_id),
+                                |item| item.id.clone(),
+                            )),
+                            observed_at: assessment.map_or_else(
+                                || observed_at.clone(),
+                                |item| item.updated_at.clone(),
+                            ),
+                            scope: "individual",
+                            synthetic: *source == fsp_domain::EvidenceSource::Fsp
+                                || assessment.is_some_and(|a| a.task.execution != "questionnaire"),
+                        }
                     })
                     .collect::<Vec<_>>();
                 SelfSkillView {
@@ -3017,6 +3094,18 @@ impl PlatformService {
         let mut signals: Vec<(String, &'static str)> = Vec::new();
         if let Some(at) = grade_confirmed_at {
             signals.push((at.to_string(), "assessment"));
+        }
+        for attempt in self
+            .repository
+            .candidate_assessments(candidate_id)
+            .await
+            .map_err(ApplicationError::storage)?
+        {
+            if attempt.status == fsp_domain::AssessmentStatus::Passed
+                && attempt.task.execution == "questionnaire"
+            {
+                signals.push((attempt.updated_at, "assessment"));
+            }
         }
         for item in self
             .repository
@@ -3521,84 +3610,16 @@ fn task_view(record: &fsp_domain::TaskRecord, response_count: usize) -> TaskView
     }
 }
 
-/// The mock's `RUBRIC` fixture.
-const ASSESSMENT_RUBRIC: [(&str, &str, u32); 4] = [
-    ("correctness", "Корректность", 4),
-    ("reliability", "Надёжность", 3),
-    ("tests", "Проверки", 2),
-    ("explanation", "Объяснение решения", 1),
-];
-
-/// The mock's `TASK.acceptanceCriteria`.
-const ASSESSMENT_CRITERIA: [&str; 4] = [
-    "Первый запрос создаёт заказ",
-    "Повторный запрос возвращает тот же заказ",
-    "Одновременные запросы не создают дубликаты",
-    "Повтор после ошибки не оставляет неконсистентные данные",
-];
-
-/// The mock's `TASK` fixture; the variant id encodes the target grade.
-fn assessment_task(grade: Grade) -> fsp_domain::AssessmentTask {
-    fsp_domain::AssessmentTask {
-        id: "task-idempotency-v1".into(),
-        family: "idempotent-api".into(),
-        version: "1".into(),
-        variant_id: format!("orders-{}-a", grade.as_str()),
-        title: "Идемпотентное создание заказа".into(),
-        prompt: "Опишите и реализуйте обработку создания заказа с ключом идемпотентности. Повторный и одновременный запросы с одним ключом должны возвращать один результат. Объясните границы транзакции и поведение после ошибки. Это демонстрационная проверка: код здесь не исполняется, результаты берутся из сценария.".into(),
-        language: "rust".into(),
-        starter_code:
-            "pub async fn create_order(key: &str, payload: OrderInput) -> Result<Order, Error> {\n    todo!()\n}\n"
-                .into(),
-        acceptance_criteria: ASSESSMENT_CRITERIA.iter().map(|item| (*item).into()).collect(),
-        rubric: ASSESSMENT_RUBRIC
-            .iter()
-            .map(|(id, label, weight)| fsp_domain::RubricCriterion {
-                id: (*id).into(),
-                label: (*label).into(),
-                weight: *weight,
-            })
-            .collect(),
-        ai_allowed: true,
-        external_ai_allowed: true,
-        execution: "simulated".into(),
-    }
-}
-
-/// The mock's `checks()`: `preview` keeps the first two checks green, the
-/// third red and the last not run; `pass` greens all, `fail` reds the tail.
-fn assessment_checks(outcome: &str) -> Vec<fsp_domain::AssessmentCheck> {
-    ASSESSMENT_CRITERIA
-        .iter()
-        .enumerate()
-        .map(|(index, label)| {
-            let status = if outcome == "pass" || index < 2 {
-                "passed"
-            } else if outcome == "fail" || index == 2 {
-                "failed"
-            } else {
-                "not_run"
-            };
-            let message = if outcome == "pass" || index < 2 {
-                "Успешно в демонстрационном сценарии"
-            } else if index == 2 {
-                "Проверьте атомарность операции"
-            } else {
-                "Проверка ещё не запускалась"
-            };
-            fsp_domain::AssessmentCheck {
-                id: format!("check-{}", index + 1),
-                label: (*label).into(),
-                status: status.into(),
-                message: message.into(),
-            }
-        })
-        .collect()
-}
-
 /// The mock's `mutableAssessment`: only drafts and in-progress attempts
 /// accept edits and new runs.
 fn mutable_assessment(record: &fsp_domain::AssessmentRecord) -> Result<(), ApplicationError> {
+    if record.task.execution != "questionnaire" {
+        return Err(ApplicationError::new(
+            422,
+            "assessment_format_retired",
+            "Эта демонстрационная задача архивирована. Начните новый тест знаний",
+        ));
+    }
     if !matches!(
         record.status,
         fsp_domain::AssessmentStatus::Draft | fsp_domain::AssessmentStatus::InProgress
@@ -3625,7 +3646,7 @@ fn assessment_view(record: &fsp_domain::AssessmentRecord) -> AssessmentView {
         created_at: record.created_at.clone(),
         updated_at: record.updated_at.clone(),
         revision: record.revision,
-        simulation: true,
+        simulation: record.task.execution != "questionnaire",
     }
 }
 
@@ -3666,7 +3687,7 @@ fn gap_plan(candidate: &CandidateIndexRecord, need: &HiringNeedRecord) -> GapPla
                 status: item.status,
                 reason: item.reason,
                 action: if policy.accept_assessments {
-                    "Пройдите практическую проверку навыка нужного уровня."
+                    "Пройдите тест знаний по навыку нужного уровня."
                 } else {
                     "Предоставьте свидетельство из источников, которые принимает работодатель."
                 },

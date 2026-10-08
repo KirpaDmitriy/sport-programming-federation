@@ -62,22 +62,22 @@ of up to five, experience, team role, soft skills) with «Сохранить п�
 PDF»; «Для работодателей» — the anonymous preview; privacy settings; «Текущий статус» with the verified grade and the
 selected target shown separately.
 
-PDF import is a dialog: choose a PDF (type and size checked first), wait for the job, review and edit the preview
-(marked as a demo extraction), «Применить». Nothing changes until the candidate confirms. The warning describes
-the simulated behavior independently of the API implementation and does not expose the internal parser identifier.
+PDF import is available when the capability is on. Choose a digital PDF (up to 2 MiB), wait for bounded
+extraction, then review/edit fields and their page excerpts. Nothing changes before confirmation. A changed
+profile invalidates an old preview. Rust uses isolated extraction and Bifrost; mock previews are labelled fixtures.
 
 ### `/candidate/sources` — «Источники профиля»
 
 ![Sources](screenshots/03-profile-sources.png)
 
-- GitHub: connect by account name (demo, ownership not checked); then found / processed / queued / unavailable
-  counts, «Обновить», progress while the job runs, a retryable failure message, and a paged repository table with
-  technologies and state.
-- ФСП: «Указать ФСП ID»; then verified participation with the synthetic competitions, «Истории ФСП нет» (valid), or
-  a temporary-failure message that is explicitly not «no history».
-- «Что учитываем»: contribution of the connected account, active days, observation period; working hours are not
-  measured.
-- Connecting needs processing consent; all data is labelled synthetic.
+- GitHub uses OAuth when configured; the current stand shows that setup is deferred. Only the development mock
+  accepts fictional account names. Connected sources show repository counts, synchronization and errors.
+- FSP accepts a fictional participant ID, offers refresh and ID replacement, and displays event dates, discipline,
+  team/individual scope, publication status, place, points and protocol reference. Pending, disqualified and empty
+  histories are distinct. The card labels all data fictional and does not turn team results into individual skills.
+- An outage leaves the previous snapshot visible beside the error and preserves its date. Legacy seed records
+  without detailed results explicitly request a refresh.
+- Connecting requires processing consent. Source evidence never changes the confirmed grade.
 
 ### `/candidate/skills` — «Навыки и подтверждения»
 
@@ -91,24 +91,22 @@ Without skills: an empty state with «Подключить GitHub» and «Про
 
 ### `/candidate/assessments` — «Проверки»
 
-«Как устроена проверка» (task family and variants, server draft, explanation, AI allowed, failure and service-error
+«Как устроена проверка» (versioned knowledge tests, server draft, scoring thresholds, AI allowed, failure and service-error
 rules, cooldown length from the server, no checks below the verified grade, supported scopes), «Следующий шаг», and
 «История попыток»: date, target and variant, status, effect on the category («Джуниор → Мидл», «Грейд сохранён»,
 «Без изменений, штрафа и ожидания нет»), «Продолжить» or «Подробнее».
 
-### `/candidate/assessments/{id}/workspace` — practical check
+### `/candidate/assessments/{id}/workspace` — knowledge test
 
 ![Assessment workspace](screenshots/05-assessment-workspace.png)
 
-- Header with steps «Условие», «Решение», «Объяснение», and badges «ИИ разрешён, включая внешние инструменты» and
-  «Неудачная попытка не снизит подтверждённый грейд»; a warning that code is not executed in the demo.
-- Task panel with the prompt, requirements and the rubric with weights.
-- Code editor with line numbers; checks with «Запустить проверки» and per-criterion results; explanation with the
-  «Я использовал внешние ИИ-инструменты» checkbox.
-- «ИИ-помощник» panel; demo answers are labelled.
-- Footer: draft status («Черновик сохранён в …», «Есть несохранённые изменения», save error with «Повторить») and
-  «Отправить решение», which asks for confirmation and requires code and explanation.
-- An attempt that is already submitted shows a link to its result instead of the editor.
+- Version and answered count; explicit knowledge-only scope, allowed AI and preserved grade on failure.
+- Task requirements and rubric; ten accessible groups of three radio choices, with one answer per question.
+- Contextual AI assistant; Rust calls Bifrost, the development mock labels its prepared answers. Questions remain
+  editable after errors. Assistance saves the current responses first and does not decide the grade.
+- A queued autosave indicator, retry on failure and «Отправить ответы» with explicit confirmation. Incomplete
+  responses cannot be submitted. Inputs lock while submission waits for acknowledged saves and the server result.
+- Legacy code attempts are read-only archives. Submitted tests link to their result.
 
 ### `/candidate/assessments/{id}/result` — result
 
@@ -118,7 +116,8 @@ rules, cooldown length from the server, no checks below the verified grade, supp
 While evaluating: «Решение проверяется», polled until final. Then «Мидл подтверждён» / «… подтверждён повторно» /
 «Мидл пока не подтверждён» / «Проверка не пройдена» / «Оценка не получена», with «Было» and «Теперь», «Профиль
 обновлён автоматически» after a grade change, feedback, the next possible grade change, rubric results and check
-results. Next steps depend on the outcome: retry, choose another target, open the profile, «Скачать PDF», and the next
+results. The answer review gives selected and correct choices, explanations and primary source references.
+The test covers Rust/PostgreSQL knowledge, not practical work. Next steps depend on the outcome: retry, choose another target, open the profile, «Скачать PDF», and the next
 skill gap.
 
 ### `/candidate/tasks` — «Задания»
@@ -211,7 +210,7 @@ applications, «Удалить» (with confirmation; sent invitations and receiv
 
 Title, specialization, grade, work mode, salary «от» and «до» in whole rubles per month with the read-only basis «До
 вычета налогов», description; requirements with skill, «Обязательно»/«Желательно», minimum level and accepted
-evidence (practical checks, GitHub work, FSP competitions — any from the catalog or selected ones), a default policy
+evidence (knowledge tests, GitHub work, FSP competitions — any from the catalog or selected ones), a default policy
 that can be applied to all rows, add and remove rows; a live summary. «Сохранить и найти кандидатов» opens
 recommended search for the need, «Сохранить» stays. A note says invitations need no publication, or, for a published
 need, that candidates see edits at once while received applications keep their terms; an incomplete company profile

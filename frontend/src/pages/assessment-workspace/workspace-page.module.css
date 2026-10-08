@@ -18,14 +18,6 @@
   gap: var(--fsp-space-3);
 }
 
-.steps {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--fsp-space-3);
-  margin: var(--fsp-space-2) 0 var(--fsp-space-4);
-}
-
 .panes {
   display: grid;
   grid-template-columns: minmax(16rem, 0.9fr) minmax(0, 1.6fr) minmax(16rem, 0.9fr);
@@ -63,74 +55,6 @@
   background: var(--fsp-color-surface-subtle);
   color: var(--fsp-color-primary);
   font-weight: 700;
-}
-
-.editorHead {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--fsp-space-3);
-  margin-bottom: var(--fsp-space-2);
-}
-
-.editor {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  height: 22rem;
-  border: 1px solid var(--fsp-color-border-strong);
-  border-radius: var(--fsp-radius-control);
-  overflow: hidden;
-  background: #fcfbfe;
-}
-
-.editor:focus-within {
-  outline: var(--fsp-focus-width) solid var(--fsp-color-focus);
-  outline-offset: 2px;
-}
-
-.gutter {
-  margin: 0;
-  padding: var(--fsp-space-3) var(--fsp-space-2);
-  overflow: hidden;
-  border-right: 1px solid var(--fsp-color-border);
-  color: var(--fsp-color-text-muted);
-  font-family: var(--fsp-font-mono);
-  font-size: 0.875rem;
-  line-height: 1.5;
-  text-align: right;
-  user-select: none;
-}
-
-.code {
-  width: 100%;
-  height: 100%;
-  margin: 0;
-  padding: var(--fsp-space-3);
-  border: 0;
-  outline: none;
-  resize: none;
-  background: transparent;
-  color: var(--fsp-color-text);
-  font-family: var(--fsp-font-mono);
-  font-size: 0.875rem;
-  line-height: 1.5;
-  white-space: pre;
-  tab-size: 4;
-}
-
-.checks {
-  display: grid;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.check {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: var(--fsp-space-3);
-  padding: var(--fsp-space-3) 0;
-  border-top: 1px solid var(--fsp-color-border);
 }
 
 .chat {
@@ -205,4 +129,31 @@
     margin-bottom: calc(-1 * var(--fsp-space-6));
     padding-inline: var(--fsp-space-4);
   }
+}
+
+.question {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+.question legend {
+  font-weight: 600;
+  margin-bottom: 1rem;
+}
+.option {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.625rem 0;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.option input {
+  flex: 0 0 auto;
+  margin-top: 0.25rem;
+}
+.legacyAnswer {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }

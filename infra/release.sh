@@ -23,7 +23,10 @@ esac
 
 healthy() {
   curl --max-time 5 -fsS http://127.0.0.1:4010/health >/dev/null 2>&1 \
-    && curl --max-time 5 -fsSk -o /dev/null https://127.0.0.1/
+    && curl --max-time 5 -fsSk -o /dev/null https://127.0.0.1/ || return 1
+  if [[ "$(cat "$CONFIG/api-backend")" == rust && -x "$ROOT/current/bin/fsp-simulator" ]]; then
+    curl --max-time 5 -fsS http://127.0.0.1:4020/health >/dev/null 2>&1
+  fi
 }
 
 PREV="$(readlink -f "$ROOT/current" 2>/dev/null || true)"
@@ -48,8 +51,9 @@ if [[ ! -d "$DIR" ]]; then
   if [[ "$IMPL" == rust || -x "$rust_bin/cargo" ]]; then
     [[ -x "$rust_bin/cargo" ]] || { echo "Missing Rust $toolchain; run provisioning" >&2; exit 1; }
     (cd "$STAGE/backend" && PATH="$rust_bin:$PATH" RUSTUP_HOME="${FSP_RUSTUP_ROOT:-/opt/rustup}" \
-      CARGO_TARGET_DIR="$ROOT/target-cache" "$rust_bin/cargo" build --release --locked -p fsp-server)
+      CARGO_TARGET_DIR="$ROOT/target-cache" "$rust_bin/cargo" build --release --locked -p fsp-server -p fsp-integration-fsp-synthetic --bins)
     install -D -m 755 "$ROOT/target-cache/release/fsp-career-api" "$STAGE/bin/fsp-career-api"
+    install -D -m 755 "$ROOT/target-cache/release/fsp-simulator" "$STAGE/bin/fsp-simulator"
   fi
   mv "$STAGE" "$DIR"
 fi
@@ -61,6 +65,7 @@ if systemctl is-active --quiet fsp-api; then PREV_ACTIVE=fsp-api; fi
 backup="$(mktemp -d "$ROOT/.activation-XXXXXXXX")"
 config_files=(
   etc/systemd/system/fsp-mock-api.service etc/systemd/system/fsp-api.service
+  etc/systemd/system/fsp-simulator.service
   etc/systemd/system/fsp-cliproxy.service etc/systemd/system/fsp-bifrost.service
   etc/nginx/sites-available/fsp-demo.conf etc/nginx/snippets/fsp-security-headers.conf
 )
@@ -90,6 +95,12 @@ rollback() {
   if [[ -n "$PREV" && -d "$PREV" ]]; then
     switch_link "$PREV"
     systemctl daemon-reload
+    if [[ "$PREV_ACTIVE" == fsp-api && -x "$PREV/bin/fsp-simulator" ]]; then
+      systemctl enable fsp-simulator
+      systemctl restart fsp-simulator
+    else
+      systemctl disable --now fsp-simulator 2>/dev/null || true
+    fi
     if [[ "$PREV_ACTIVE" == fsp-api ]]; then
       echo rust > "$CONFIG/api-backend"
       systemctl disable --now fsp-mock-api
@@ -103,6 +114,7 @@ rollback() {
     if healthy; then echo "Restored ${PREV##*/}" >&2; else echo 'Rollback health check failed' >&2; fi
   else
     systemctl stop "$active"
+    systemctl disable --now fsp-simulator
     rm -f "$ROOT/current"
     echo 'No previous release available' >&2
   fi
@@ -114,6 +126,10 @@ trap rollback ERR HUP INT TERM
 for unit in fsp-api fsp-mock-api fsp-cliproxy fsp-bifrost; do
   install -m 644 "$DIR/infra/$unit.service" "$SYSTEM_ROOT/etc/systemd/system/$unit.service"
 done
+# Kept releases from before the HTTP simulator remain valid rollback targets.
+if [[ -f "$DIR/infra/fsp-simulator.service" ]]; then
+  install -m 644 "$DIR/infra/fsp-simulator.service" "$SYSTEM_ROOT/etc/systemd/system/fsp-simulator.service"
+fi
 public_ip="$(sed -n 's|^FSP_PUBLIC_WEB_URL=https://||p' "$CONFIG/rust-api.env")"
 [[ "$public_ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]
 sed "s/__PUBLIC_IP__/$public_ip/g" "$DIR/infra/nginx/fsp-demo.conf" \
@@ -122,6 +138,12 @@ install -m 644 "$DIR/infra/nginx/fsp-security-headers.conf" "$SYSTEM_ROOT/etc/ng
 nginx -t
 switch_link "$DIR"
 systemctl daemon-reload
+if [[ "$IMPL" == rust && -x "$DIR/bin/fsp-simulator" ]]; then
+  systemctl enable fsp-simulator
+  systemctl restart fsp-simulator
+else
+  systemctl disable --now fsp-simulator
+fi
 systemctl disable --now "$inactive"
 systemctl enable "$active"
 systemctl restart "$active"

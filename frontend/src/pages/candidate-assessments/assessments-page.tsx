@@ -99,21 +99,20 @@ export function CandidateAssessmentsPage() {
     .join('; ');
   return (
     <>
-      <PageHeader title="Проверки" subtitle="Практическая проверка определяет категорию, которую видят работодатели" />
+      <PageHeader title="Проверки" subtitle="Тест знаний по Rust и PostgreSQL · без написания кода" />
       <div className="split">
         <Card title="Как устроена проверка">
           <div className="stack">
             <ol className="stack" style={{ margin: 0, paddingLeft: '1.25rem' }}>
               <li>
-                <strong>Условие.</strong> Задача из семейства с несколькими вариантами и общей рубрикой — так сложность
-                сопоставима, а готовые ответы быстро теряют ценность.
+                <strong>Вопросы.</strong> 10 вопросов: по 5 на Rust и PostgreSQL. В каждом один верный ответ.
               </li>
               <li>
-                <strong>Решение.</strong> Код сохраняется как черновик на сервере, демонстрационные проверки можно
-                запускать сколько угодно раз.
+                <strong>Черновик.</strong> Выбранные ответы автоматически сохраняются на сервере.
               </li>
               <li>
-                <strong>Объяснение.</strong> Вы описываете решение, границы транзакции и поведение после ошибки.
+                <strong>Результат.</strong> Зачёт — от 8 из 10 и от 3 из 5 по каждой теме. После отправки доступен
+                разбор.
               </li>
             </ol>
             <ul className="stack small" style={{ margin: 0, paddingLeft: '1.25rem' }}>
@@ -133,11 +132,10 @@ export function CandidateAssessmentsPage() {
               <li>Проверка ниже уже подтверждённого грейда не проводится.</li>
               <li>Доступные направления: {scopes}.</li>
             </ul>
-            {!meta.capabilities.realCodeExecution && (
-              <p className="small muted">
-                В демонстрационном стенде код не исполняется, а результаты проверок и оценки берутся из сценария.
-              </p>
-            )}
+            <p className="small muted">
+              Уровень по этому тесту отражает знания выбранных тем, а не проверенный опыт разработки. Банк вопросов
+              версии knowledge-v1 открыт для изучения; ИИ и справочники разрешены.
+            </p>
           </div>
         </Card>
         <AssessmentNextStep profile={profile} />
