@@ -2,7 +2,8 @@
 
 The [private CI controller](../../infra/ci/README.md) checks admitted canonical PRs and main.
 `fsp/platform` covers TypeScript, the mock and frontend; `fsp/backend` covers real PostgreSQL and the exact
-systemd PDF sandbox; `fsp/compose` covers containers; `fsp/release-safety` covers deployment and backup recovery.
+systemd PDF sandbox; `fsp/compose` covers containers; `fsp/release-safety` covers deployment activation rollback.
+Backup creation and dump/restore checks are disabled by owner policy.
 `fsp/deployment` passes only after actual HTTPS/Resend browser acceptance. GitHub Actions is retired.
 
 | Suite | Runner | Where | Count | Command |
