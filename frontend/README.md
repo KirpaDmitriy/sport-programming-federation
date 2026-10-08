@@ -1,7 +1,7 @@
 # ФСП / Карьера — frontend
 
 The web application of the FSP reverse-hiring platform. A candidate confirms a specialization and grade with a
-practical assessment, enriches the profile from sources and receives salary-bearing invitations; an employer
+knowledge test, enriches the profile from sources and receives salary-bearing invitations; an employer
 describes needs, searches an anonymous bank of verified candidates, keeps shortlists and invites a specific person,
 whose contacts open only to that company after the candidate accepts. As an additional path, the employer can
 publish a need as a vacancy and the candidate can apply to it, choosing which contacts the company receives; and
@@ -87,8 +87,9 @@ The stand builds with `VITE_DEMO_STAND=1` and `VITE_DEMO_EMAIL_CODE=123456`
 
 ## Known limits
 
-- Development uses the mock; the stand uses Rust/PostgreSQL. Assessment evaluation and PDF import remain
-  simulated. Configured GitHub/Bifrost integrations do not establish professional qualification or authorship.
+- Development uses the mock; the stand uses Rust/PostgreSQL with deterministic knowledge tests and actual
+  isolated digital-PDF extraction/Bifrost analysis. FSP is a fictional HTTP provider. Email/OAuth setup is deferred.
+  Tests and configured AI integrations do not establish professional experience or authorship.
 - The candidate's «Для работодателей» preview is assembled from the non-identifying fields of their own profile;
   the contract has no endpoint that returns a candidate's own anonymous projection.
 - Every protected navigation revalidates the session with one `GET /api/v1/session`.

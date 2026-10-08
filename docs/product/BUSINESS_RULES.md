@@ -74,15 +74,17 @@ ones and the UI lists them on the overview, profile and settings pages:
   confirmations and removes superseded GitHub support. The mock uses synthetic evidence for empty profiles.
   Sources never create a confirmed grade: a technology in a repository is not proof of personal skill or
   level.
-- FSP is optional. The demo IDs `FSP-DEMO-024` and `FSP-DEMO-031` yield verified participation in a synthetic
-  competition; any other ID connects with no history, which is a valid state. Only verified participation counts
-  for the FSP filter and ranking.
+- FSP is optional. Rust calls the private HTTP simulator on both connect and sync. Fictional results distinguish
+  published, pending, disqualified and empty histories, individual and team scope, event dates and protocol references.
+  Only published results count as participation for filtering/ranking; team placement never confirms individual skills
+  or grades. Failed synchronization preserves the previous snapshot and timestamp alongside the error.
+  See [FSP fixtures and contract](../fsp-simulator.md).
 
 ### Skill states
 
 | State | Label | Meaning |
 | --- | --- | --- |
-| `confirmed` | «Проверено» | Confirmed by a practical assessment; `evidenceGrade` is the assessed grade |
+| `confirmed` | «Проверено» | Confirmed by a knowledge test; `evidenceGrade` is the assessed grade |
 | `evidence` | «Есть свидетельства» | Source material shows use; the level is not checked |
 | `observed` | «Найдено в работе» | The technology was found in a project; the level is not confirmed |
 | `insufficient` | «Недостаточно данных» | No usable evidence; a data gap, not a verdict |
@@ -94,11 +96,13 @@ are.
 
 ## 4. Assessments
 
-- Supported scope: backend, grades junior/middle/senior (`meta.assessmentPolicy.supportedScopes`). One task family,
-  «Идемпотентное создание заказа» in Rust, with a variant per grade (`orders-<grade>-a`), four acceptance criteria and
-  a shared rubric: Корректность (weight 4), Надёжность (3), Проверки (2), Объяснение решения (1).
-- AI is allowed at every stage, including external tools; the candidate may mark `externalAiUsed`. Code is stored as
-  text and never executed (`task.execution: "simulated"`).
+- Supported scope: backend, grades junior/middle/senior (`meta.assessmentPolicy.supportedScopes`). Each grade has
+  ten single-choice questions: five Rust and five PostgreSQL. The immutable `knowledge-v1` snapshot is checked
+  against the server bank before grading. Correct options and explanations are returned only in the final result.
+- Passing requires at least 8/10 overall and 3/5 in each subject. This measures knowledge on these questions,
+  not practical development experience. The bank is public study material, not a secure certification exam.
+- AI and references are allowed, including external tools (`externalAiUsed`). No code is written or executed;
+  `task.execution` is `questionnaire`. [Versioning and scoring](../knowledge-tests.md) define the full policy.
 
 ### Eligibility
 
@@ -108,7 +112,7 @@ starts.
 | Reason | When | Start error |
 | --- | --- | --- |
 | `onboarding_incomplete` | E-mail unverified, questionnaire incomplete or no processing consent | `409 onboarding_incomplete` |
-| `active_assessment` | An attempt is `draft`, `in_progress`, `submitted` or `evaluating`; one active attempt at a time | `409 assessment_active` |
+| `active_assessment` | A questionnaire is `draft`, `in_progress`, `submitted` or `evaluating`; one active test at a time | `409 assessment_active` |
 | `unsupported_scope` | The selected specialization is not backend | `422 assessment_scope_unavailable` |
 | `grade_downgrade` | The target is below the verified grade in the same specialization; such attempts are never run | `422 grade_downgrade_forbidden` |
 | `cooldown` | A grade-changing attempt within the cooldown after the last successful grade change | `409 grade_change_cooldown` |
@@ -122,17 +126,20 @@ The cooldown is 90 days by default (`FSP_GRADE_CHANGE_COOLDOWN_DAYS`, 0–365) a
 `draft` → (answer saved) `in_progress` → (submitted) `submitted` → `evaluating` → `passed` | `failed` |
 `service_error`.
 
-- Only `draft` and `in_progress` attempts are editable (`409 assessment_not_editable`). Submission needs non-empty
-  code and explanation (`422 answer_incomplete`) and makes the attempt immutable; another try is a new attempt.
-- Checks run as a job against the current answer revision. If the answer changes before the job finishes, the job
-  fails with `stale_input` and writes nothing. Each criterion is `passed`, `failed` or `not_run`.
-- The assistant returns a prepared answer marked as simulated; no model is called.
+- Only `draft` and `in_progress` questionnaires are editable (`409 assessment_not_editable`). Drafts may be partial;
+  submission requires one valid answer per question (`422 answer_incomplete`) and freezes the attempt. Unknown,
+  duplicate or foreign question/option IDs are rejected. New tests require empty legacy code/explanation fields.
+- Checks report completeness only; they do not reveal correctness before submission. Saving and submission serialize
+  on the candidate so overlapping changes cannot overwrite a final result. The UI queues saves and waits for acknowledgement.
+- The Rust assistant uses the task, saved responses and question through Bifrost, rechecks consent/editability after
+  I/O and never grades. Failures remain errors; the development mock labels its prepared answers.
+- Historical code attempts are read-only. Starting a new test retires any active legacy attempt with an archive
+  explanation and no grade effect. Old results are retained without representing them as knowledge-test evidence.
 
 ### Outcomes
 
-The mock chooses outcomes from scenarios (`baseline`/`qualified` pass, `assessment_failure` fails,
-`service_failure` is a service error). Rust completes a valid demo submission as passed. Neither evaluates
-the submitted program or demonstrates assessment validity.
+Rust and the ordinary mock scenario use the same versioned bank and deterministic thresholds. Explicit mock
+`assessment_failure` and `service_failure` scenarios force outcomes for UI testing and are labelled simulated.
 
 | Outcome | Effect |
 | --- | --- |
@@ -157,7 +164,7 @@ verification or «verified» badge.
   policy.
 - Salary is a whole-ruble range from 1 to 100 000 000 with `currency: RUB`, `period: month`, `taxBasis: gross`
   («До вычета налогов»); currency, period and tax basis are fixed, not chosen.
-- The evidence policy accepts any of practical assessments, GitHub work and FSP competitions; for FSP either
+- The evidence policy accepts any of knowledge tests, GitHub work and FSP competitions; for FSP either
   `system` (any catalog competition that covers the skill) or `selected` (listed competition IDs).
 - Validation on create, update and again when an invitation is sent (all `422`): `from ≤ to`
   (`salary_range_invalid`), unique skills (`duplicate_skill`), at least one required skill
@@ -214,7 +221,7 @@ answers `404`, except to a company the candidate applied to (section 10) until t
 
 ### Gap plan
 
-For a need, each requirement that does not meet gets an action: a practical assessment when the policy accepts
+For a need, each requirement that does not meet gets an action: a knowledge test when the policy accepts
 assessments (`assessmentAvailable` is true only for backend needs), otherwise «provide accepted evidence», plus the
 accepted catalog competitions when the policy accepts FSP. Employers get it for any visible candidate and their own need. Candidates get it only for
 needs from their own invitations, built from the invitation's snapshot, so other needs cannot be read by guessing
@@ -299,7 +306,7 @@ The specification's recurring short tasks keep a profile current and give employ
 - **Review** (the authoring company): `POST /task-responses/{id}/review` with `accepted` or `needs_work` and optional
   feedback, once (`409 task_response_reviewed` for a different verdict; repeating the same one returns the record).
 - **Freshness:** the profile's and the anonymous projection's `freshness` names the latest signal — the grade
-  confirmation (`assessment`) or a task answer the company did not mark `needs_work` (`task`) — and is `fresh` while
+  confirmation or latest successful same-grade knowledge test (`assessment`) or a task answer the company did not mark `needs_work` (`task`) — and is `fresh` while
   that signal is at most 90 days old («Профиль актуален» / «Давно не обновлялся»). It does not change search order.
 
 ## 12. Contact disclosure
@@ -339,11 +346,10 @@ while still marking demo features as simulated. Real LLM and GitHub OAuth flags 
 The stand currently enables Bifrost and leaves GitHub OAuth unconfigured. Development demo controls are absent
 from production bundles. The `live` mode does not turn fixed-code email verification into proof of email ownership.
 
-Both implementations simulate email delivery, FSP participation and assessment checks/evaluation.
-The mock also simulates PDF extraction and assistant replies. Rust uses the configured Bifrost gateway for
-contextual assistance and resume-field extraction, and exposes failures without fixed-response fallback. Rust persists actual application records and sessions; its candidate bank starts with a
-synthetic seed. GitHub calls are real only when configured. Graph output is validated against input skills and
-references; public IDs/labels/states are canonical and evidence nodes are removed for employers. An LLM relation
-is a model suggestion, not a measured prerequisite or a qualification verdict. Production identity verification,
-real execution require separate product work. The user has explicitly deferred email/OAuth setup and requests
-an HTTP simulator for FSP instead of a real external integration.
+Both implementations use demo email identity and fictional FSP participation. Knowledge tests have deterministic
+scoring; their public bank has no measured psychometric validity. Only the development mock simulates PDF extraction
+and assistant replies. Rust uses isolated Poppler extraction and Bifrost with validated evidence and no canned fallback.
+Rust persists application records and sessions; its initial candidate bank is synthetic. GitHub calls are real only
+when configured. Graph output is validated against input skills and references; employer projections remove evidence
+nodes. An LLM relation is a suggestion, not a qualification verdict. Email delivery and GitHub OAuth setup are explicitly
+deferred; official FSP integration and arbitrary code execution are outside the chosen product scope.

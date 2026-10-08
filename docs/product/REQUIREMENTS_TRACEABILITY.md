@@ -7,7 +7,7 @@ screens in [`frontend/docs/SCREENS.md`](../../frontend/docs/SCREENS.md); tests i
 [`mock-server/test/mock-api.test.ts`](../../mock-server/test/mock-api.test.ts), "e2e" to `frontend/e2e/`.
 
 Status: **done** — implemented in the frontend, Rust API and development mock; **done, simulated** — the workflow is implemented,
-the underlying data or evaluation is a fixture; **not implemented**. Evidence cells list the original UI/mock
+the underlying data or evaluation is a fixture; **partial** — a bounded implementation with a stated requirement gap; **not implemented**. Evidence cells list the original UI/mock
 cases; PostgreSQL regressions and delivery evidence are tracked in [the audit](../stability-audit.md).
 
 The specification supplies no FSP API, schema or dataset (§2, p2; §4, p6), so every FSP record here is synthetic.
@@ -22,12 +22,12 @@ The specification supplies no FSP API, schema or dataset (§2, p2; §4, p6), so 
 | OR-04 | Standardized PDF profile (§2.1, p3) | done | «Скачать PDF» on the overview and the assessment result; the server renders the current profile | e2e candidate «UI-10 UI-12 UI-05 … the PDF is real», mock test «PDF export…» |
 | OR-05 | Mandatory questionnaire with industry and specialization (§2, p1; §2.1, p3) | done | `/candidate/onboarding`; a new candidate lands there after sign-in | e2e candidate «UI-02 UI-07 …» |
 | OR-06 | The candidate selects the grade to test (§2, p1) | done | `selectedGrade` is the target, shown apart from the verified grade | unit `qualification/ui.test.tsx`, mock test «profile category is server-owned…» |
-| OR-07 | Testing with comparable difficulty and resistance to leaked tasks (§2, p1–2) | done, simulated | One task family with per-grade variants, a shared weighted rubric, server-side draft, checks, explanation, history. Code is not executed; the mock supports outcome scenarios, while Rust completes the demo assessment as passed | e2e candidate «UI-10…», «UI-13…», «UI-14…»; mock test «assessment workflow…» |
+| OR-07 | Testing with comparable difficulty and resistance to leaked tasks (§2, p1–2) | partial, revised scope | Versioned knowledge tests, 10 questions per grade, deterministic overall/per-subject thresholds, saved drafts and final answer review. Public study bank: resistance to leaked questions and calibrated difficulty are not established | e2e candidate «UI-10…», «UI-13…», «UI-14…»; mock test «assessment workflow…» |
 | OR-08 | Employer-visible category from questionnaire and passed assessment (§2, p1; p4) | done | Visibility needs verified e-mail, questionnaire, passed assessment and both consents | mock test «profile category is server-owned…», e2e «UI-02 UI-07…» |
 | OR-09 | No forced downgrade after a failure; lower or higher attempts by choice (§2, p2) | done | A failed attempt keeps the verified grade. Until a grade is verified any target can be chosen; after that, attempts below the verified grade are refused so the verified grade never drops | e2e «UI-13 a failed upgrade keeps the verified Junior grade», mock test «same-grade retry…» |
 | OR-10 | Time restriction on grade changes; interval chosen by the team (§2, p2; §2.1, p3) | done | 90 days after a successful grade change, configurable; same-grade retries and failures add none | e2e «UI-15 cooldown comes from the server», mock test «same-grade retry…» |
 | OR-11 | Current industry, specialization, grade and history (§2.1, p3) | done | Overview, «Профиль и цели», «Проверки» history with immutable results | e2e candidate suite |
-| OR-12 | Optional FSP ID; absence of history works (§2, p2; §2.1, p3) | done, simulated | FSP card on «Источники»; no history and a failed lookup are distinct states | e2e «UI-06 …» (two cases), mock test «scenario reset… no-FSP…» |
+| OR-12 | Optional FSP ID; absence of history works (§2, p2; §2.1, p3) | done, simulated | Private HTTP simulator with fictional published/pending/disqualified team or individual results, protocol references and preserved snapshots on failure | e2e «UI-06 …» (two cases), mock test «scenario reset… no-FSP…» |
 | OR-13 | Company profile with description, business area, contacts (§2.1, p3) | done | `/employer/company`; invitations need a complete profile | e2e employer suite |
 | OR-14 | Employer describes the need: work, stack, specialization, grade (§2.1, p3) | done | Need editor with requirements, criticality, minimum grade and evidence policy | e2e «UI-16 …», mock test «need CRUD…» |
 | OR-15 | Recommended categories and candidates with reasons (§2.1, p3; p4) | done | Recommended mode grouped by match status with per-requirement reasons; «Соответствие» tab on the profile | e2e «UI-18 required coverage…» |
@@ -58,7 +58,7 @@ The specification supplies no FSP API, schema or dataset (§2, p2; §4, p6), so 
 
 ## Outside the current code
 
-Real email delivery, an official FSP integration, sandboxed code execution, measured assessment/matching quality
-and a production security/compliance assessment remain outside the demo. GitHub OAuth is implemented but must
-be configured; Bifrost graph extraction is optional. These are explicit product boundaries
+Email delivery and GitHub OAuth setup are deferred by the user. An official FSP integration and code execution
+are outside the chosen scope. Measured assessment/matching quality and production security review remain limitations.
+Bifrost powers configured graph extraction, PDF-field analysis and contextual assistance. These are explicit product boundaries
 ([`BUSINESS_RULES.md` §15](BUSINESS_RULES.md#15-capabilities-and-simulation)).

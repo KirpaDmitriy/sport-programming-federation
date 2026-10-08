@@ -130,6 +130,18 @@ return `items`, `page`, `pageSize`, `total` and `hasNextPage`. Other lists are r
   Parser/content failures are `422`, unavailable/busy parser is `503`, and model failures are `502`; none
   changes the profile. The development mock remains a disclosed fixture parser with the same revision guard.
 
+## Knowledge tests and FSP snapshots
+
+New assessment tasks use `execution: questionnaire` and `questions`; drafts use `answer.responses` as
+`{ questionId, optionId }` entries. Legacy code/explanation fields remain for stored attempts, but must be empty
+for new tests. Questions/responses remain optional on the wire for old immutable records. Correct options and
+explanations appear only in final results. See [scoring/version rules](../docs/knowledge-tests.md).
+
+Sources include optional `fspResults` for historical-response compatibility. Current Rust responses always emit
+an array; old job replays may omit it. Published/pending/disqualified status, team scope and protocol references
+are synthetic data from the [private FSP simulator](../docs/fsp-simulator.md). An unavailable source produces an
+error without erasing the last successful snapshot or changing its timestamp. It never changes a grade.
+
 ## Time
 
 Timestamps are ISO 8601 UTC. `GET /api/v1/meta` returns `serverTime`; countdowns (code lifetime, `nextEligibleAt`)

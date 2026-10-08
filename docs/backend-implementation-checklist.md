@@ -20,9 +20,11 @@ Historical cutover commands for another contributor's server are not operating i
 ## Explicit demo limits
 
 - Email uses the public fixed code; this is not proof of ownership of a real mailbox.
-- FSP uses a synthetic adapter. No official API, authentication or dataset was supplied.
-- Assessment code is stored but never executed. Valid Rust demo submissions pass a simulated evaluation;
-  the mock additionally exercises failure and service-error scenarios. Assistant replies are prepared.
+- FSP uses a separate fictional HTTP provider with bounded validation, published/pending/disqualified results
+  and durable snapshots. No official API, identity verification or dataset is implied.
+- Knowledge tests use a versioned server-side bank and deterministic scoring. The public study bank is not
+  leak-resistant or professionally calibrated. Legacy simulated code attempts remain archived; no code executes.
+- Contextual assistant replies call Bifrost and never decide grades.
 - PDF import extracts digital text in a bounded Poppler sandbox; scans/OCR are unsupported. Bifrost fields require actual page excerpts and user confirmation.
 - Jobs complete inline in Rust; there is no durable background worker.
 - Repository/competition matching has an adapter port but no product workflow. Graph relations are model

@@ -3,7 +3,7 @@
 Baseline: live release `bf85cc4` (2026-10-08), issue #31. Backend ownership coordination is approved.
 The source code is the behavior reference. A configured integration is not proof of successful execution.
 
-## Inspected gaps and delivery order
+## Baseline gaps and delivery order
 
 1. **PDF import** — `http::import_profile` discards validated bytes; `PlatformService::import_profile`
    returns a fixed identity. Replace this with an injected PDF extraction adapter, bounded isolated process,
@@ -46,6 +46,11 @@ The source code is the behavior reference. A configured integration is not proof
 Repository-pinned Rust/TypeScript/Bun versions remain authoritative. The team skill's generic Python/Taskiq
 examples do not replace this project's Rust hexagonal architecture. PDF parsing stays outside the API process.
 
+- [Playwright auto-waiting](https://playwright.dev/docs/actionability): wait for the target questionnaire and
+  assert selected counts; generic groups can belong to the outgoing route.
+- [Compose readiness](https://docs.docker.com/compose/how-tos/startup-order/): explicit service health
+  dependencies gate API startup; a running container alone is not readiness.
+
 ## Progress
 
 - Source inspection and initial primary-source research complete.
@@ -64,3 +69,12 @@ examples do not replace this project's Rust hexagonal architecture. PDF parsing 
   count as participation; neither registration nor participation assigns a grade. Resync must actually call the
   simulator rather than only update the timestamp. Additive storage plus deployment/rollback health checks
   keep existing data and releases compatible.
+
+- FSP HTTP implementation complete: published/pending/empty/disqualified fixtures, bounded schema validation,
+  durable snapshots, failure preservation and source UI. Real local browser outage/recovery verified.
+- Regression gates: TypeScript/mock/components/build and complete Rust workspace passed; release fault tests
+  include unavailable FSP and rollback to a release without the helper. Final browser/CI/live delivery evidence
+  is maintained in [issue #31](https://github.com/KirpaDmitriy/sport-programming-federation/issues/31).
+- Deferred by explicit user decision: email delivery and GitHub OAuth configuration. No official FSP integration
+  or arbitrary code runner is planned. Remaining quality limits are public-bank calibration/leak resistance,
+  inline jobs, measured large-bank capacity and off-host backup automation; none is claimed implemented.
