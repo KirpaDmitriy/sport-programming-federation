@@ -5378,6 +5378,7 @@
                 "postgresql",
                 "docker",
                 "redis",
+                "typescript",
                 "react"
               ]
             }
@@ -7969,6 +7970,7 @@
                 "postgresql",
                 "docker",
                 "redis",
+                "typescript",
                 "react"
               ]
             }
@@ -12887,6 +12889,7 @@
                       "postgresql",
                       "docker",
                       "redis",
+                      "typescript",
                       "react"
                     ]
                   }
@@ -12917,6 +12920,7 @@
                     "postgresql",
                     "docker",
                     "redis",
+                    "typescript",
                     "react"
                   ]
                 },
@@ -13343,6 +13347,7 @@
                 "postgresql",
                 "docker",
                 "redis",
+                "typescript",
                 "react"
               ]
             },
@@ -13522,6 +13527,7 @@
                 "postgresql",
                 "docker",
                 "redis",
+                "typescript",
                 "react"
               ]
             },
@@ -13609,6 +13615,7 @@
                 "postgresql",
                 "docker",
                 "redis",
+                "typescript",
                 "react"
               ]
             }
@@ -13741,6 +13748,7 @@
               "postgresql",
               "docker",
               "redis",
+              "typescript",
               "react"
             ]
           },
@@ -13824,6 +13832,7 @@
               "postgresql",
               "docker",
               "redis",
+              "typescript",
               "react"
             ]
           },
@@ -13963,6 +13972,7 @@
                 "postgresql",
                 "docker",
                 "redis",
+                "typescript",
                 "react"
               ]
             }
@@ -14389,6 +14399,7 @@
                   "postgresql",
                   "docker",
                   "redis",
+                  "typescript",
                   "react"
                 ]
               },
@@ -14544,6 +14555,7 @@
               "postgresql",
               "docker",
               "redis",
+              "typescript",
               "react"
             ]
           },
@@ -14940,6 +14952,7 @@
               "postgresql",
               "docker",
               "redis",
+              "typescript",
               "react"
             ]
           },
@@ -15189,6 +15202,7 @@
               "postgresql",
               "docker",
               "redis",
+              "typescript",
               "react"
             ]
           },
@@ -15707,6 +15721,7 @@
               "postgresql",
               "docker",
               "redis",
+              "typescript",
               "react"
             ]
           },
@@ -16177,6 +16192,7 @@
               "postgresql",
               "docker",
               "redis",
+              "typescript",
               "react"
             ]
           },
@@ -16225,6 +16241,7 @@
               "postgresql",
               "docker",
               "redis",
+              "typescript",
               "react"
             ]
           },
@@ -16326,6 +16343,7 @@
               "postgresql",
               "docker",
               "redis",
+              "typescript",
               "react"
             ]
           },
@@ -16628,7 +16646,9 @@
             "type": "string",
             "enum": [
               "rust",
-              "postgresql"
+              "postgresql",
+              "typescript",
+              "react"
             ]
           },
           "prompt": {
@@ -16813,7 +16833,9 @@
           "language": {
             "type": "string",
             "enum": [
-              "rust"
+              "rust",
+              "backend",
+              "frontend"
             ]
           },
           "starterCode": {
