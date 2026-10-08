@@ -336,6 +336,13 @@ impl Commands {
         input: AssessmentStartInput,
     ) -> Result<AssessmentView, ApplicationError> {
         let candidate_id = candidate_id(session)?;
+        // Different command keys still compete for the same active-attempt slot.
+        // Read eligibility only after joining the candidate's write order.
+        self.service
+            .repository
+            .lock_candidate(candidate_id)
+            .await
+            .map_err(ApplicationError::storage)?;
         let candidate = self.service.candidate_index(candidate_id).await?;
         self.service
             .require_processing_consent(candidate_id)
