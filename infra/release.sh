@@ -9,6 +9,7 @@ SYSTEM_ROOT="${FSP_SYSTEM_ROOT:-}"
 CONFIG="$SYSTEM_ROOT/etc/fsp"
 DIR="$ROOT/releases/$SHA"
 STAGE="${2:-$DIR}"
+SCRIPTS="$(cd "$(dirname "$0")" && pwd)"
 [[ -d "$STAGE" && ! -L "$STAGE" ]] || { echo 'Missing release directory' >&2; exit 1; }
 
 # Shared by CI, manual deployments and rollbacks through build and health verification.
@@ -56,9 +57,18 @@ if [[ ! -d "$DIR" ]]; then
     install -D -m 755 "$ROOT/target-cache/release/fsp-simulator" "$STAGE/bin/fsp-simulator"
   fi
   mv "$STAGE" "$DIR"
+  if [[ "$SCRIPTS" == "$STAGE/infra" ]]; then SCRIPTS="$DIR/infra"; fi
 fi
 [[ -f "$DIR/frontend/dist/index.html" ]] || { echo 'Release has no frontend' >&2; exit 1; }
 [[ "$IMPL" != rust || -x "$DIR/bin/fsp-career-api" ]] || { echo 'Release has no API binary' >&2; exit 1; }
+
+# Validate before installing units, switching the symlink or changing the database.
+if [[ "$IMPL" == rust && -n "$PREV" && -x "$PREV/bin/fsp-career-api" ]]; then
+  bash "$SCRIPTS/check-schema-compatibility.sh" "$PREV" "$DIR"
+fi
+if [[ "$IMPL" == rust && "$(sed -n 's/^FSP_PDF_IMPORT=//p' "$CONFIG/rust-api.env")" == 1 ]]; then
+  bash "$SCRIPTS/tests/pdf-runtime.sh" "$DIR/bin/fsp-career-api" "$DIR/infra/fsp-api.service"
+fi
 
 PREV_ACTIVE=fsp-mock-api
 if systemctl is-active --quiet fsp-api; then PREV_ACTIVE=fsp-api; fi
@@ -126,7 +136,7 @@ trap rollback ERR HUP INT TERM
 for unit in fsp-api fsp-mock-api fsp-cliproxy fsp-bifrost; do
   install -m 644 "$DIR/infra/$unit.service" "$SYSTEM_ROOT/etc/systemd/system/$unit.service"
 done
-# Kept releases from before the HTTP simulator remain valid rollback targets.
+# Helper absence is supported only after the schema compatibility guard passes.
 if [[ -f "$DIR/infra/fsp-simulator.service" ]]; then
   install -m 644 "$DIR/infra/fsp-simulator.service" "$SYSTEM_ROOT/etc/systemd/system/fsp-simulator.service"
 fi

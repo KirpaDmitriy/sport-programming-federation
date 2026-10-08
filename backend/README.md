@@ -146,3 +146,15 @@ A stale preview returns `409 import_profile_changed`, so it cannot overwrite a l
 [Knowledge tests](../docs/knowledge-tests.md) document immutable versions, deterministic scoring and legacy retention.
 [FSP simulator](../docs/fsp-simulator.md) documents private HTTP fixtures, validation and source snapshot behavior.
 Neither team participation nor AI output certifies individual professional experience.
+
+### Runtime validation and schema rollback
+
+`fsp-career-api --check-pdf-runtime` extracts an embedded PDF without database or LLM access. Normal startup
+validates adapters, enabled PDF extraction and listener availability before opening/migrating PostgreSQL.
+Use `infra/tests/pdf-runtime.sh` as root to test the binary under the actual API unit restrictions.
+
+Storage permits unknown applied versions only above its embedded migration history, supporting rollback after
+reviewed additive schema changes. Known checksums, unknown older versions and dirty migrations still fail.
+A dedicated connection holds SQLx's advisory lock across validation/application and is closed on cancellation
+or error, never returning a locked session to the pool. The release marker and guard are documented in the
+[infrastructure runbook](../infra/README.md); they do not make destructive migrations safe to roll back.
