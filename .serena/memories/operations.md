@@ -1,7 +1,7 @@
 # Operations and delivery
 
 Public site https://nddev.link; existing origin 188.166.88.183. Domain/email cutover completed on October 8; #38 tracks proof;
-external CI migration in #40. Read those ledgers for actual cutover status, never infer it from desired config.
+external CI migration in #40. Both deliveries are complete; #50 rechecks consistency. See docs/current-state.md for current limits.
 Private stand/Resend state is in the original checkout's ignored .fsp-infra/; never print credentials.
 User explicitly authorized existing CI servers after canonical Actions billing failed and runner registration
 was denied. Project CI lives on server-gha-runner-2; other projects/runner slots are not part of this task.
@@ -30,4 +30,4 @@ Daily private PostgreSQL backups retain 14 days and have real isolated restore t
 before/after release; off-host scheduling is not automated. No OpenObserve exists: inspect systemd/nginx logs.
 GitHub OAuth remains deferred. No production DB reset, unrelated-host changes or unrequested credential rotation.
 
-Last commit: 5c00c2f185849cdff8dba0bb8701420eab4eb44a (verified implementation); integrated release receipt: issues #38/#40.
+Last commit: cd449516828977dd2627dabb094a2ff43600c501 (accepted baseline); consistency review and latest receipt: #50.

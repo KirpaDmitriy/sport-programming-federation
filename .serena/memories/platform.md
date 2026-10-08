@@ -24,6 +24,6 @@ Failed provider sync preserves snapshots. GitHub OAuth implementation exists but
 
 Limits: public study bank lacks demonstrated leak resistance/professional calibration; model suggestions never
 prove qualifications. Jobs finish inline; search ranks collections in memory. No OCR, durable worker, measured
-large-bank capacity or production load claim. Latest release evidence: issues #38/#40; prior product completion #31.
+large-bank capacity or production load claim. Current behavior/limits: docs/current-state.md; latest consistency evidence: #50; prior product completion #31.
 
-Last commit: 5c00c2f185849cdff8dba0bb8701420eab4eb44a (verified implementation); integrated release receipt: issues #38/#40.
+Last commit: cd449516828977dd2627dabb094a2ff43600c501 (accepted baseline); consistency review and latest receipt: #50.
