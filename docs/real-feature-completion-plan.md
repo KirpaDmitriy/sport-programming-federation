@@ -75,7 +75,8 @@ examples do not replace this project's Rust hexagonal architecture. PDF parsing 
 - Regression gates: TypeScript/mock/components/build and complete Rust workspace passed; release fault tests
   include unavailable FSP and rollback to a release without the helper. Final browser/CI/live delivery evidence
   is maintained in [issue #31](https://github.com/KirpaDmitriy/sport-programming-federation/issues/31).
-- Deferred by explicit user decision: email delivery and GitHub OAuth configuration. No official FSP integration
+- At completion of #31, email and GitHub OAuth were deferred. The owner subsequently authorized real
+  email in [#38](domain-email-plan.md); only GitHub OAuth remains deferred. No official FSP integration
   or arbitrary code runner is planned. Remaining quality limits are public-bank calibration/leak resistance,
   inline jobs, measured large-bank capacity and off-host backup automation; none is claimed implemented.
 

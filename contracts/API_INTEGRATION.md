@@ -18,11 +18,19 @@ implements and the frontend relies on; the backend has to keep it.
 ## Session
 
 1. `POST /api/v1/auth/email/challenges` with `{ email, role }` → `201 { challengeId, expiresAt, delivery }`
-   (`delivery: "mock_mailbox"` in the mock).
+   (`delivery: "mock_mailbox"` in the mock, `"email"` for real Resend delivery).
 2. `POST /api/v1/auth/email/verify` with `{ challengeId, code }` → `200 Session` and the session cookie.
 3. `GET /api/v1/session` → `Session` (`actorId`, `role`, `emailVerified`, `candidateId`, `companyId`,
    `displayName`) or `401`.
 4. `DELETE /api/v1/auth/session` → `204`, the cookie is cleared.
+
+`meta.capabilities.realEmail` reports configured real delivery, not provider health.
+The real-mail adapter generates random codes, stores challenge-bound keyed digests
+and sends Russian text/HTML mail. In real-mail mode, issuing requests are serialized
+per normalized email: one/minute and five/15 minutes, including failed sends.
+Excess sends return `429 rate_limited`; provider rejection returns
+`502 verification_delivery_failed`. Demo/local mailboxes keep their deterministic
+behavior. Switching the production auth key invalidates prior codes and sessions.
 
 Five incorrect codes exhaust the email's shared budget across all unused, unexpired challenges.
 The fifth incorrect code returns `400 invalid_code`; later verification and issuance return

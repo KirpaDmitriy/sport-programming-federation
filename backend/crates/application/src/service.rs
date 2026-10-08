@@ -11,6 +11,7 @@ use fsp_domain::{
     Account, CandidateIndexRecord, CandidateProfile, Company, Consents, EvidenceStatus, Grade,
     HiringNeedRecord, InteractionStatus, Requirement, Role, Specialization, rank_candidates, score,
 };
+use hmac::{Hmac, Mac};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
@@ -84,6 +85,7 @@ pub struct PlatformService {
     llm: Option<Arc<dyn LlmGateway>>,
     fsp: Option<Arc<dyn FspGateway>>,
     grade_cooldown_days: u16,
+    auth_key: Option<Vec<u8>>,
 }
 
 impl PlatformService {
@@ -99,7 +101,34 @@ impl PlatformService {
             pdf: None,
             fsp: None,
             grade_cooldown_days: 90,
+            auth_key: None,
         }
+    }
+
+    /// Rotating this key invalidates prior codes and sessions without deleting accounts.
+    pub fn with_auth_key(mut self, hex_key: &str) -> Result<Self, &'static str> {
+        if hex_key.len() != 64 || !hex_key.bytes().all(|c| c.is_ascii_hexdigit()) {
+            return Err("FSP_AUTH_KEY must be 32 random bytes encoded as 64 hex characters");
+        }
+        self.auth_key = Some(
+            (0..64)
+                .step_by(2)
+                .map(|i| u8::from_str_radix(&hex_key[i..i + 2], 16).expect("validated hex"))
+                .collect(),
+        );
+        Ok(self)
+    }
+
+    fn credential_hash(&self, kind: &str, context: &str, value: &str) -> String {
+        let Some(key) = &self.auth_key else {
+            return digest(value);
+        };
+        let mut mac = Hmac::<Sha256>::new_from_slice(key).expect("HMAC accepts any key size");
+        for field in [kind, context, value] {
+            mac.update(&(field.len() as u64).to_be_bytes());
+            mac.update(field.as_bytes());
+        }
+        format!("{:x}", mac.finalize().into_bytes())
     }
 
     #[must_use]
@@ -163,6 +192,11 @@ impl PlatformService {
     }
 
     #[must_use]
+    pub fn real_email_configured(&self) -> bool {
+        self.delivery.contract_name() == "email"
+    }
+
+    #[must_use]
     pub fn llm_configured(&self) -> bool {
         self.llm.is_some()
     }
@@ -192,13 +226,16 @@ impl PlatformService {
                 "Этот адрес зарегистрирован с другой ролью",
             ));
         }
-        let code = self.delivery.code_for();
+        let code = self.delivery.code_for().map_err(|error| {
+            ApplicationError::new(502, "verification_delivery_failed", error.message)
+        })?;
+        let challenge_id = format!("challenge-{}", Uuid::new_v4().simple());
         let expires_at = Utc::now() + Duration::minutes(15);
         let challenge = PendingChallenge {
-            id: format!("challenge-{}", Uuid::new_v4().simple()),
+            id: challenge_id.clone(),
             email: email.clone(),
             role: input.role,
-            code_hash: digest(&code),
+            code_hash: self.credential_hash("code", &challenge_id, &code),
             expires_at: expires_at.to_rfc3339(),
             attempts: 0,
             used: false,
@@ -208,18 +245,28 @@ impl PlatformService {
         // the cumulative five-attempt lockout across reissued codes.
         let issued = self
             .repository
-            .issue_challenge(&challenge)
+            .issue_challenge(&challenge, self.delivery.contract_name() == "email")
             .await
             .map_err(ApplicationError::storage)?;
-        if !issued {
-            return Err(ApplicationError::new(
-                429,
-                "challenge_locked",
-                "Создайте новый запрос подтверждения",
-            ));
+        match issued {
+            crate::IssueChallenge::Issued => {}
+            crate::IssueChallenge::Locked => {
+                return Err(ApplicationError::new(
+                    429,
+                    "challenge_locked",
+                    "Слишком много неверных попыток. Дождитесь истечения срока кода.",
+                ));
+            }
+            crate::IssueChallenge::RateLimited => {
+                return Err(ApplicationError::new(
+                    429,
+                    "rate_limited",
+                    "Подождите минуту перед повторной отправкой. Можно запросить не более пяти писем за 15 минут.",
+                ));
+            }
         }
         self.delivery
-            .deliver(&email, &code)
+            .deliver(&email, &code, &challenge.id)
             .await
             .map_err(|error| {
                 ApplicationError::new(502, "verification_delivery_failed", error.message)
@@ -247,7 +294,11 @@ impl PlatformService {
             .await
             .map_err(ApplicationError::storage)?;
         let (outcome, challenge) = tx
-            .consume_challenge(&input.challenge_id, &digest(&input.code), &now())
+            .consume_challenge(
+                &input.challenge_id,
+                &self.credential_hash("code", &input.challenge_id, &input.code),
+                &now(),
+            )
             .await
             .map_err(ApplicationError::storage)?;
         let challenge = match outcome {
@@ -315,7 +366,7 @@ impl PlatformService {
         account.email_verified = true;
         let raw_token = Uuid::new_v4().to_string();
         tx.create_session(
-            &digest(&raw_token),
+            &self.credential_hash("session", "", &raw_token),
             &account.id,
             &(Utc::now() + Duration::days(30)).to_rfc3339(),
         )
@@ -328,7 +379,7 @@ impl PlatformService {
     pub async fn session(&self, raw_token: &str) -> Result<SessionView, ApplicationError> {
         let account = self
             .repository
-            .account_for_session(&digest(raw_token), &now())
+            .account_for_session(&self.credential_hash("session", "", raw_token), &now())
             .await
             .map_err(ApplicationError::storage)?
             .ok_or_else(|| ApplicationError::new(401, "unauthenticated", "Войдите в аккаунт"))?;
@@ -337,7 +388,7 @@ impl PlatformService {
 
     pub async fn logout(&self, raw_token: &str) -> Result<(), ApplicationError> {
         self.repository
-            .delete_session(&digest(raw_token))
+            .delete_session(&self.credential_hash("session", "", raw_token))
             .await
             .map_err(ApplicationError::storage)
     }

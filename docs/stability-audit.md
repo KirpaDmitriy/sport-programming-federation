@@ -33,10 +33,10 @@ mutable documentation page is a historical snapshot. The project itself began on
 Stabilize the implemented platform and preserve the current contract. Demo authentication deliberately
 uses a disclosed fixed code. The original baseline simulated FSP, assessment evaluation and PDF extraction.
 The [follow-up implementation](real-feature-completion-plan.md) now uses knowledge tests, actual isolated PDF
-extraction/Bifrost analysis and a separate fictional FSP HTTP service. GitHub OAuth setup and email are deferred. Do not claim this
-is production identity verification or measured assessment quality. Adding a mail provider, an official
-FSP API, ATS, chat, anti-fraud or a sandboxed code executor is a separate product decision, not a
-prerequisite for correcting the present implementation. Do not silently enable third-party services.
+extraction/Bifrost analysis and a separate fictional FSP HTTP service. The subsequent
+[domain/email release](domain-email-plan.md) adds real Resend delivery with explicit owner authorization;
+GitHub OAuth remains deferred. Email proves mailbox access, not professional identity or measured assessment quality.
+No official FSP API, ATS, chat or sandboxed code executor is planned.
 
 Keep the existing Rust hexagonal architecture, TypeScript 7/Bun frontend, PostgreSQL, nginx and one
 stand. Avoid a replacement stack or speculative services. Preserve applied migrations and user data.
@@ -79,7 +79,7 @@ The ownership requirement in `AGENTS.md` is satisfied for the stabilization work
 | GitHub username/token binding | Confirmed and repaired: authenticated `/user` login must match the requested account. |
 | Request-derived integration errors/logs | Integration errors use stable public messages; GitHub error_description is not reflected. Live logs are part of delivery verification; no raw secrets or session transcripts are published. |
 | Source active-job marker and cold/full-table reads | Inline execution is explicit; stale/consent checks protect source writes. Indexed single-profile reads replace hot full scans; collection ranking remains in memory. |
-| Real email/FSP/assessment/PDF parsing | Superseded by [issue #31](real-feature-completion-plan.md): deterministic knowledge tests, real digital-PDF extraction/assistance, fictional HTTP FSP; email/OAuth setup deferred. |
+| Real email/FSP/assessment/PDF parsing | Superseded by [issue #31](real-feature-completion-plan.md): deterministic knowledge tests, real digital-PDF extraction/assistance, fictional HTTP FSP. Email is subsequently implemented in #38; GitHub OAuth remains deferred. |
 | Optional need graph UI, repository metrics UI, editable work modes | Separate product enhancements, not broken contract operations; keep their current limits explicit. |
 
 ## Research anchors

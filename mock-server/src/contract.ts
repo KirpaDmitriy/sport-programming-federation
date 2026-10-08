@@ -56,6 +56,7 @@ export const schemas = {
       Object.fromEntries(
         [
           'emailVerification',
+          'realEmail',
           'profilePdf',
           'profilePdfImport',
           'githubFixture',
@@ -1053,7 +1054,8 @@ const errorDescriptions = {
   413: 'Request body exceeds limit',
   415: 'Unsupported media type',
   422: 'Valid shape but invalid domain values',
-  429: 'Too many challenge attempts',
+  429: 'Verification, email delivery, or proxy request limit',
   500: 'Response conformance or unexpected server failure',
+  502: 'Verification provider failed to accept delivery',
   503: 'Deterministic upstream error scenario',
 } as const;

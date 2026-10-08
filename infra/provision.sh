@@ -155,7 +155,7 @@ fi
 sed -i '/^renew_before_expiry/d' /etc/letsencrypt/renewal/fsp-demo.conf
 sed -i '1i renew_before_expiry = 3 days' /etc/letsencrypt/renewal/fsp-demo.conf
 
-sed "s/__PUBLIC_IP__/$PUBLIC_IP/g" "$HERE/nginx/fsp-demo.conf" > /etc/nginx/sites-available/fsp-demo.conf
+bash "$HERE/render-nginx.sh" /etc/fsp/rust-api.env > /etc/nginx/sites-available/fsp-demo.conf
 ln -sfn /etc/nginx/sites-available/fsp-demo.conf /etc/nginx/sites-enabled/fsp-demo.conf
 nginx -t
 systemctl reload nginx

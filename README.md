@@ -5,10 +5,10 @@ versioned knowledge test; employers search anonymous profiles and send offers wi
 Candidates disclose selected contacts to a company by accepting its invitation or applying to its vacancy.
 Recurring company tasks provide a separate freshness signal.
 
-Demo stand: <https://188.166.88.183>. Email verification uses the disclosed demo code `123456`.
+Public stand: <https://nddev.link>. Email verification sends a single-use code from `login@auth.nddev.link` through Resend.
 Rust and PostgreSQL persist platform data. Knowledge tests are scored deterministically; digital PDF import and
 contextual assistance use isolated extraction and Bifrost. Seed candidates and the separate HTTP FSP provider
-are explicitly fictional. Email delivery and GitHub OAuth setup are deferred. Capability flags describe
+are explicitly fictional. GitHub OAuth setup is deferred. Capability flags describe
 configuration, not provider health. Knowledge results do not certify professional experience.
 See [knowledge tests](docs/knowledge-tests.md) and [FSP simulator](docs/fsp-simulator.md).
 
@@ -25,7 +25,8 @@ See [knowledge tests](docs/knowledge-tests.md) and [FSP simulator](docs/fsp-simu
 | [Stability audit](docs/stability-audit.md) | Session reconciliation, findings, plan and verification evidence |
 
 Ownership and contribution rules: [AGENTS.md](AGENTS.md). Feature PRs target `danil` or `dima`;
-checked cascades merge into `dev`, then `main`. Deployment ships the exact checked main commit.
+[Private-server CI](infra/ci/README.md) checks and merges integration PRs into `dev`, then `main`.
+Deployment ships verified main and runs the actual public browser journey; GitHub Actions is retired.
 
 ## Run
 
@@ -34,8 +35,8 @@ docker compose up --build       # http://localhost:8080; demo verification code 
 docker compose down            # keeps PostgreSQL data in pg-data
 ```
 
-Only nginx's application port is public; the API shares its loopback namespace. PostgreSQL's development
-port is bound to `127.0.0.1:5434`. Use `FSP_PORT=9090` for a different application port.
+The application binds to loopback by default (`FSP_BIND_IP` can explicitly change it); the API shares nginx's network namespace. PostgreSQL's development
+port is bound to `127.0.0.1:5434`. Use `FSP_PORT=9090` for a different application port and `FSP_DB_PORT` for a different local database port.
 `docker compose down --volumes` deliberately destroys local data; it is not an update or deployment step.
 
 ## Develop and verify

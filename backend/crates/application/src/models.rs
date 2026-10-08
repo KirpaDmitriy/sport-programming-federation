@@ -37,6 +37,13 @@ pub struct EmailVerifyInput {
     pub code: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IssueChallenge {
+    Issued,
+    Locked,
+    RateLimited,
+}
+
 #[derive(Debug, Clone)]
 pub struct PendingChallenge {
     pub id: String,

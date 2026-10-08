@@ -23,11 +23,16 @@ struct FixedDelivery;
 
 #[async_trait::async_trait]
 impl VerificationDelivery for FixedDelivery {
-    fn code_for(&self) -> String {
-        "123456".into()
+    fn code_for(&self) -> Result<String, fsp_application::IntegrationError> {
+        Ok("123456".into())
     }
 
-    async fn deliver(&self, _: &str, _: &str) -> Result<(), fsp_application::IntegrationError> {
+    async fn deliver(
+        &self,
+        _: &str,
+        _: &str,
+        _: &str,
+    ) -> Result<(), fsp_application::IntegrationError> {
         Ok(())
     }
 
