@@ -1,0 +1,17 @@
+[Unit]
+Description=FSP external CI and verified release controller
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /opt/fsp-ci/controller.py
+TimeoutStartSec=6h
+KillMode=control-group
+CPUQuota=400%
+MemoryMax=10G
+Nice=10
+UMask=0022
+# Tests run as fsp-ci, with an empty environment and no controller credentials.
+# Trusted private code can use Docker; Docker group is root-equivalent.
