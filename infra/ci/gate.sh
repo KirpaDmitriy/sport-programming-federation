@@ -23,11 +23,13 @@ case "${1:?gate required}" in
   backend)
     database="fsp-ci-backend-$$"
     trap 'docker rm -f "$database" >/dev/null 2>&1 || true' EXIT
+    export POSTGRES_PASSWORD
+    POSTGRES_PASSWORD="$(python3 -c 'import secrets; print(secrets.token_hex(24))')"
     docker run --detach --name "$database" --label fsp.ci=true --memory=1g \
-      -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres -p 127.0.0.1::5432 postgres:17-alpine
+      -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD -p 127.0.0.1::5432 postgres:17-alpine
     for _ in {1..60}; do docker exec "$database" pg_isready -U postgres && break; sleep 1; done
     port="$(docker port "$database" 5432/tcp)"
-    export FSP_TEST_DATABASE_URL="postgres://postgres:postgres@${port}/postgres"
+    export FSP_TEST_DATABASE_URL="postgres://postgres:${POSTGRES_PASSWORD}@${port}/postgres"
     cd backend
     cargo fmt --all --check
     cargo clippy --workspace --all-targets --locked -- -D warnings
