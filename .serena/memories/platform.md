@@ -19,4 +19,7 @@ GitHub OAuth is optional and currently unconfigured on the stand. LLM suggestion
 Jobs finish inline; there is no durable worker. Candidate search ranks complete collections in memory; measure
 capacity before introducing database ranking/caches. No production load or assessment-quality claim is made.
 
-Last commit: 1be7311 (implementation and regression snapshot).
+Assessment starts with different idempotency keys also serialize on the candidate row before reading eligibility
+and the active attempt; concurrent losers receive `409 assessment_active`, not a storage error.
+
+Last commit: 4c2e28a (implementation and regression snapshot).
