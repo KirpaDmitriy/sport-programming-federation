@@ -35,6 +35,7 @@ import {
   ButtonLink,
   Card,
   EmptyState,
+  ErrorState,
   Icon,
   LoadingState,
   panelId,
@@ -173,8 +174,8 @@ function SkillsTab({ candidateId }: { candidateId: string }) {
   const scope = useScope();
   const meta = useMeta();
   const candidate = useQuery(candidateQuery(scope, candidateId));
-  const graph = useQuery(candidateGraphQuery(scope, candidateId));
   const [view, setView] = useState<'list' | 'graph'>('list');
+  const graph = useQuery({ ...candidateGraphQuery(scope, candidateId), enabled: view === 'graph' });
   const [selected, setSelected] = useState<string | null>(null);
   const select = useCallback((id: string) => setSelected(id), []);
   if (!candidate.data) return <LoadingState />;
@@ -189,10 +190,26 @@ function SkillsTab({ candidateId }: { candidateId: string }) {
           { value: 'graph', label: 'Граф' },
         ]}
       />
-      {view === 'graph' && graph.data ? (
-        <Suspense fallback={<LoadingState label="Загружаем граф…" />}>
-          <CompetenceGraph graph={graph.data} selectedId={selected} onSelect={select} label="Граф навыков кандидата" />
-        </Suspense>
+      {view === 'graph' ? (
+        <>
+          {graph.isPending && <LoadingState label="Строим граф…" />}
+          {graph.isError && (
+            <>
+              <ErrorState error={graph.error} onRetry={() => graph.refetch()} retrying={graph.isFetching} />
+              <p className="small muted">Пока граф недоступен, используйте список.</p>
+            </>
+          )}
+          {graph.data && !graph.isError && (
+            <Suspense fallback={<LoadingState label="Загружаем граф…" />}>
+              <CompetenceGraph
+                graph={graph.data}
+                selectedId={selected}
+                onSelect={select}
+                label="Граф навыков кандидата"
+              />
+            </Suspense>
+          )}
+        </>
       ) : (
         <ul className="stack" style={{ margin: 0, padding: 0, listStyle: 'none' }}>
           {candidate.data.skills.map((skill) => (
