@@ -28,6 +28,7 @@ cat > "$fixture/bin/curl" <<'STUB'
 #!/usr/bin/env bash
 set -eu
 if [[ "${FSP_TEST_FAIL:-}" == health && "$(readlink -f "$FSP_RELEASE_ROOT/current")" == "$FSP_RELEASE_ROOT/releases/$FSP_TEST_NEW" ]]; then exit 1; fi
+if [[ "${FSP_TEST_FAIL:-}" == fsp_health && "$*" == *':4020/health'* && "$(readlink -f "$FSP_RELEASE_ROOT/current")" == "$FSP_RELEASE_ROOT/releases/$FSP_TEST_NEW" ]]; then exit 1; fi
 STUB
 cat > "$fixture/bin/nginx" <<'STUB'
 #!/usr/bin/env bash
@@ -56,6 +57,7 @@ mkdir "$FSP_RELEASE_ROOT/building"
 /bin/sleep 0.1
 mkdir -p "$CARGO_TARGET_DIR/release"
 printf '#!/bin/sh\nexit 0\n' > "$CARGO_TARGET_DIR/release/fsp-career-api"
+printf '#!/bin/sh\nexit 0\n' > "$CARGO_TARGET_DIR/release/fsp-simulator"
 rmdir "$FSP_RELEASE_ROOT/building"
 STUB
 chmod +x "$fixture/bin/"* "$FSP_RUSTUP_ROOT/toolchains/1.99.0-x86_64-unknown-linux-gnu/bin/cargo"
@@ -76,7 +78,9 @@ reset_previous() {
   rm -f "$FSP_RELEASE_ROOT/failed-once" "$FSP_TEST_COMMANDS"
 }
 make_release "$FSP_RELEASE_ROOT/releases/$old"
+rm "$FSP_RELEASE_ROOT/releases/$old/infra/fsp-simulator.service"
 make_release "$FSP_RELEASE_ROOT/releases/$new"
+cp "$FSP_RELEASE_ROOT/releases/$new/bin/fsp-career-api" "$FSP_RELEASE_ROOT/releases/$new/bin/fsp-simulator"
 reset_previous
 
 bash "$HERE/release.sh" "$old"
@@ -84,7 +88,7 @@ bash "$HERE/release.sh" "$old"
 [[ -f "$FSP_RELEASE_ROOT/releases/$old/frontend/dist/index.html" ]]
 echo 'PASS: active SHA is not rebuilt or restarted'
 
-for failure in restart health nginx; do
+for failure in restart health fsp_health nginx; do
   reset_previous
   if FSP_TEST_FAIL="$failure" bash "$HERE/release.sh" "$new" > "$fixture/output" 2>&1; then
     echo "Expected $failure failure" >&2; exit 1
@@ -124,4 +128,6 @@ done
 bash "$HERE/release.sh" "$old" >/dev/null
 [[ -d "$FSP_RELEASE_ROOT/releases/$old" ]]
 [[ -d "$FSP_RELEASE_ROOT/releases/$fourth" || -d "$FSP_RELEASE_ROOT/releases/$third" ]]
-echo 'PASS: rollback target and previous active release survive retention'
+rg_command='disable --now fsp-simulator'
+[[ "$(cat "$FSP_TEST_COMMANDS")" == *"$rg_command"* ]]
+echo 'PASS: legacy rollback stops the simulator and retains both releases'

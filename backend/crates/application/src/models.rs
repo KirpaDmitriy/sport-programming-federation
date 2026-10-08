@@ -884,6 +884,7 @@ pub struct SourceView {
     pub verified_participation: bool,
     pub competition_ids: Vec<String>,
     pub notice: String,
+    pub fsp_results: Vec<fsp_domain::FspResult>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1011,8 +1012,9 @@ pub fn source_view(record: SourceRecord) -> SourceView {
         observation_period,
         verified_participation: record.verified_participation,
         competition_ids: record.competition_ids,
+        fsp_results: record.fsp_results,
         notice: if record.synthetic {
-            "Демонстрационные данные ФСП".into()
+            "Вымышленные данные ФСП. Командный результат не подтверждает индивидуальные навыки или грейд.".into()
         } else if analysis.is_some() {
             "Метрики рассчитаны по данным GitHub".into()
         } else {

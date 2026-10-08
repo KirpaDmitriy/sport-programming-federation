@@ -12,7 +12,7 @@ import {
 } from '@/entities/source';
 import { ConnectSourceForm, useSourceProcessing } from '@/features/connect-source';
 import { describeError } from '@/shared/api';
-import { formatDate, formatDateTime, useDocumentTitle } from '@/shared/lib';
+import { formatDate, formatDateTime, pluralRu, useDocumentTitle } from '@/shared/lib';
 import {
   Button,
   Callout,
@@ -102,6 +102,7 @@ function RepositoryTable({ repositories }: { repositories: Repository[] }) {
 type Processing = ReturnType<typeof useSourceProcessing>;
 
 function GithubCard({ source, consent, processing }: { source: Source; consent: boolean; processing: Processing }) {
+  const meta = useMeta();
   const connected = source.status === 'connected';
   return (
     <Card>
@@ -130,7 +131,11 @@ function GithubCard({ source, consent, processing }: { source: Source; consent: 
                   provider="github"
                   label="Имя аккаунта GitHub"
                   submitLabel="Подключить GitHub"
-                  hint="Демо-подключение: владение аккаунтом не проверяется, данные синтетические."
+                  hint={
+                    meta.mode === 'mock'
+                      ? 'Демонстрационный аккаунт'
+                      : 'Для анализа требуется авторизация соответствующего аккаунта GitHub.'
+                  }
                 />
               ) : (
                 <Callout tone="neutral">Подключение доступно после согласия на обработку данных.</Callout>
@@ -191,11 +196,10 @@ function GithubCard({ source, consent, processing }: { source: Source; consent: 
 }
 
 function FspCard({ source, consent }: { source: Source; consent: boolean }) {
-  const meta = useMeta();
   const processing = useSourceProcessing(source);
   const [editing, setEditing] = useState(false);
   const connected = source.status === 'connected';
-  const competitions = meta.competitions.filter((item) => source.competitionIds.includes(item.id));
+
   return (
     <Card
       title="ФСП"
@@ -216,12 +220,12 @@ function FspCard({ source, consent }: { source: Source; consent: boolean }) {
             </Button>
           </>
         )}
-        {!connected && editing && (
+        {editing && (
           <ConnectSourceForm
             provider="fsp"
             label="ФСП ID"
             submitLabel="Подключить"
-            hint="Реальный реестр ФСП не подключён: данные демонстрационные."
+            hint="Вымышленные ID: FSP-DEMO-024 — результат команды; FSP-DEMO-031 — команда и личный зачёт; FSP-DEMO-PENDING — ждёт протокола; FSP-DEMO-EMPTY — пустая история."
             onConnected={() => setEditing(false)}
           />
         )}
@@ -231,31 +235,77 @@ function FspCard({ source, consent }: { source: Source; consent: boolean }) {
             {processing.lastFailure.message}. Это не означает отсутствие истории.
           </Callout>
         )}
-        {connected && !processing.processing && !processing.lastFailure && (
+        {connected && (
           <>
             <p>
               <strong>Подключена</strong>
               {source.accountLabel ? ` · ${source.accountLabel}` : ''}
             </p>
-            {source.verifiedParticipation ? (
-              <>
-                <StatusChip tone="success">Подтверждённое участие</StatusChip>
-                <ul className="stack small" style={{ margin: 0, paddingLeft: '1.25rem' }}>
-                  {competitions.map((competition) => (
-                    <li key={competition.id}>
-                      {competition.name} · {competition.discipline}
-                      {competition.synthetic && ' (синтетическое событие)'}
-                    </li>
-                  ))}
-                </ul>
-              </>
+            {source.verifiedParticipation && <StatusChip tone="success">Подтверждённое участие</StatusChip>}
+            {(source.fspResults ?? []).length > 0 ? (
+              <ul className="stack" style={{ margin: 0, paddingLeft: '1.25rem' }}>
+                {(source.fspResults ?? []).map((result) => (
+                  <li key={result.competitionId} className="stack" style={{ gap: '0.375rem' }}>
+                    <strong>{result.competitionName}</strong>
+                    <span className="small">
+                      {result.discipline} · {formatDate(result.startsAt)} — {formatDate(result.endsAt)}
+                    </span>
+                    <span>
+                      {result.scope === 'team'
+                        ? `Командный зачёт: ${result.teamName}, ${result.teamSize} ${pluralRu(result.teamSize ?? 0, 'участник', 'участника', 'участников')}`
+                        : 'Личный зачёт'}
+                    </span>
+                    <StatusChip
+                      tone={
+                        result.status === 'published' ? 'success' : result.status === 'pending' ? 'info' : 'warning'
+                      }
+                    >
+                      {result.status === 'published'
+                        ? `Место ${result.place} из ${result.fieldSize} · ${result.score} ${pluralRu(result.score ?? 0, 'балл', 'балла', 'баллов')}`
+                        : result.status === 'pending'
+                          ? 'Протокол ещё не опубликован'
+                          : 'Дисквалификация в демонстрационном сценарии'}
+                    </StatusChip>
+                    {result.protocolReference && (
+                      <span className="small muted">
+                        Протокол {result.protocolReference} · {result.publishedAt && formatDate(result.publishedAt)}
+                      </span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            ) : source.verifiedParticipation ? (
+              <Callout tone="neutral">
+                Сохранено участие из прежней демонстрационной версии. Нажмите «Обновить ФСП», чтобы получить подробный
+                результат.
+              </Callout>
             ) : (
               <Callout tone="neutral" title="Истории ФСП нет">
                 Это нормально: профиль, проверка и подбор работают без неё.
               </Callout>
             )}
+            {source.lastSyncedAt && <p className="small muted">Обновлено {formatDateTime(source.lastSyncedAt)}</p>}
           </>
         )}
+        {connected && (
+          <div className="row">
+            <Button
+              icon="refresh"
+              onClick={() => processing.sync.mutate()}
+              pending={processing.sync.isPending}
+              disabled={processing.processing || !consent}
+            >
+              Обновить ФСП
+            </Button>
+            <Button
+              onClick={() => setEditing((value) => !value)}
+              disabled={processing.processing || processing.sync.isPending || !consent}
+            >
+              {editing ? 'Скрыть форму' : 'Изменить ФСП ID'}
+            </Button>
+          </div>
+        )}
+        {processing.sync.error && <Callout tone="warning">{describeError(processing.sync.error).message}</Callout>}
         <p className="small muted" style={{ display: 'flex', gap: '0.5rem' }}>
           <Icon name="info" size={18} />
           {source.notice}
@@ -328,8 +378,8 @@ export function CandidateSourcesPage() {
       />
       {sources.simulation && (
         <Callout tone="info" title="Синтетические данные">
-          Репозитории и достижения в этом стенде подготовлены для демонстрации; реальный GitHub и реестр ФСП не
-          запрашиваются.
+          Некоторые источники содержат вымышленные данные и помечены отдельно. ФСП предоставляется демонстрационным
+          сервисом; официальный реестр не подключён.
         </Callout>
       )}
       {sync.sync.error && (
@@ -352,7 +402,7 @@ export function CandidateSourcesPage() {
           )}
         </div>
         <div className="stack-lg">
-          {fsp && <FspCard source={fsp} consent={consent} />}
+          {fsp && <FspCard key={fsp.accountLabel} source={fsp} consent={consent} />}
           <ObservationCard github={github} />
         </div>
       </div>

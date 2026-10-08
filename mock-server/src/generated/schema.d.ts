@@ -1629,6 +1629,28 @@ export interface components {
                 pushedAt: string | null;
             };
         };
+        FspResult: {
+            competitionId: string;
+            competitionName: string;
+            discipline: string;
+            /** Format: date-time */
+            startsAt: string;
+            /** Format: date-time */
+            endsAt: string;
+            /** @enum {string} */
+            scope: "individual" | "team";
+            teamName: string | null;
+            teamSize: number | null;
+            /** @enum {string} */
+            status: "published" | "pending" | "disqualified";
+            place: number | null;
+            fieldSize: number;
+            score: number | null;
+            protocolReference: string | null;
+            publishedAt: string | null;
+            /** @constant */
+            synthetic: true;
+        };
         Source: {
             id: string;
             /** @enum {string} */
@@ -1656,6 +1678,7 @@ export interface components {
             verifiedParticipation: boolean;
             competitionIds: string[];
             notice: string;
+            fspResults?: components["schemas"]["FspResult"][];
         };
         Sources: {
             items: components["schemas"]["Source"][];

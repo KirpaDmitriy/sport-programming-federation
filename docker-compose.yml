@@ -2,6 +2,24 @@
 name: fsp-career
 
 services:
+  fsp-simulator:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    command: ["/usr/local/bin/fsp-simulator"]
+    environment:
+      FSP_SIMULATOR_HOST: 0.0.0.0
+      FSP_SIMULATOR_PORT: 4020
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:4020/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
   db:
     image: postgres:17-alpine
     environment:
@@ -27,9 +45,12 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      fsp-simulator:
+        condition: service_healthy
     environment:
       HOST: 127.0.0.1
       PORT: 4010
+      FSP_SIMULATOR_URL: http://fsp-simulator:4020
       DATABASE_URL: postgres://${POSTGRES_USER:-fsp}:${POSTGRES_PASSWORD:-fsp}@db:5432/${POSTGRES_DB:-fsp}
       FSP_AUTH_MODE: ${FSP_AUTH_MODE:-demo}
       FSP_DEMO_EMAIL_CODE: ${FSP_DEMO_EMAIL_CODE:-123456}

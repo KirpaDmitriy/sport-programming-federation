@@ -9,7 +9,7 @@ use fsp_application::{
 };
 use fsp_http::HttpConfig;
 use fsp_integration_bifrost::BifrostGateway;
-use fsp_integration_fsp_synthetic::SyntheticFsp;
+use fsp_integration_fsp_synthetic::HttpFsp;
 use fsp_integration_github::GitHubApi;
 use fsp_storage_postgres::PostgresRepository;
 use tokio::net::TcpListener;
@@ -81,7 +81,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .unwrap_or(90);
     let mut platform = PlatformService::new(repository.clone(), delivery)
         .with_grade_cooldown_days(grade_cooldown_days)
-        .with_fsp(Arc::new(SyntheticFsp));
+        .with_fsp(Arc::new(
+            HttpFsp::new(
+                &env::var("FSP_SIMULATOR_URL").unwrap_or_else(|_| "http://127.0.0.1:4020".into()),
+            )
+            .map_err(|error| std::io::Error::other(error.message))?,
+        ));
     if let (Some(client_id), Some(client_secret)) = (
         nonempty_env("GITHUB_CLIENT_ID"),
         nonempty_env("GITHUB_CLIENT_SECRET"),

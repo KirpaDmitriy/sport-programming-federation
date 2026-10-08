@@ -13232,6 +13232,137 @@
         ],
         "additionalProperties": false
       },
+      "FspResult": {
+        "type": "object",
+        "properties": {
+          "competitionId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "pattern": "^[A-Za-z0-9_.:-]+$"
+          },
+          "competitionName": {
+            "type": "string"
+          },
+          "discipline": {
+            "type": "string"
+          },
+          "startsAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "endsAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "individual",
+              "team"
+            ]
+          },
+          "teamName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "teamSize": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 3,
+                "maximum": 6
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "published",
+              "pending",
+              "disqualified"
+            ]
+          },
+          "place": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "fieldSize": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "protocolReference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "publishedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "synthetic": {
+            "const": true,
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "competitionId",
+          "competitionName",
+          "discipline",
+          "startsAt",
+          "endsAt",
+          "scope",
+          "teamName",
+          "teamSize",
+          "status",
+          "place",
+          "fieldSize",
+          "score",
+          "protocolReference",
+          "publishedAt",
+          "synthetic"
+        ],
+        "additionalProperties": false
+      },
       "Source": {
         "type": "object",
         "properties": {
@@ -13376,6 +13507,12 @@
           },
           "notice": {
             "type": "string"
+          },
+          "fspResults": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FspResult"
+            }
           }
         },
         "required": [

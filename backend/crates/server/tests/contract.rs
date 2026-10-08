@@ -8,7 +8,7 @@ use axum::body::Body;
 use axum::http::{HeaderMap, Request, StatusCode, header};
 use fsp_application::{PlatformService, VerificationDelivery};
 use fsp_http::{HttpConfig, router};
-use fsp_integration_fsp_synthetic::SyntheticFsp;
+use fsp_integration_fsp_synthetic::HttpFsp;
 use fsp_storage_postgres::PostgresRepository;
 use http_body_util::BodyExt;
 use serde_json::{Value, json};
@@ -49,9 +49,16 @@ async fn test_app() -> axum::Router {
 }
 
 async fn app_with_repository(repository: PostgresRepository) -> axum::Router {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    tokio::spawn(async move {
+        axum::serve(listener, fsp_integration_fsp_synthetic::router())
+            .await
+            .unwrap();
+    });
     app_with_service(
         PlatformService::new(Arc::new(repository), Arc::new(FixedDelivery))
-            .with_fsp(Arc::new(SyntheticFsp)),
+            .with_fsp(Arc::new(HttpFsp::new(&url).unwrap())),
     )
     .await
 }
@@ -1818,4 +1825,65 @@ async fn new_test_archives_legacy_draft_without_issuing_a_grade() {
     assert_eq!(archived["result"]["outcome"], "service_error");
     assert_eq!(archived["result"]["gradeChanged"], false);
     assert_eq!(archived["result"]["confirmedGrade"], "junior");
+}
+
+#[tokio::test]
+async fn fsp_http_sync_preserves_snapshot_on_failure_and_never_changes_grade() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    let provider = tokio::spawn(async move {
+        axum::serve(listener, fsp_integration_fsp_synthetic::router())
+            .await
+            .unwrap();
+    });
+    let (repository, _database) =
+        PostgresRepository::connect_test_database(&test_admin_url()).await;
+    let app = app_with_service(
+        PlatformService::new(Arc::new(repository), Arc::new(FixedDelivery))
+            .with_fsp(Arc::new(HttpFsp::new(&url).unwrap())),
+    )
+    .await;
+    let candidate = login(&app, CANDIDATE_JUNIOR, "candidate").await;
+    let (status, linked) = send(
+        &app,
+        "POST",
+        "/api/v1/me/sources/fsp/connect",
+        Some(&candidate),
+        json!({"account":"fsp-demo-031"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{linked}");
+    assert_eq!(linked["fspResults"].as_array().unwrap().len(), 2);
+    assert_eq!(linked["fspResults"][0]["scope"], "team");
+    assert_eq!(linked["fspResults"][1]["status"], "pending");
+    assert_eq!(linked["competitionIds"].as_array().unwrap().len(), 1);
+    let (_, before) = get(&app, "/api/v1/me/sources", Some(&candidate)).await;
+    let before = before["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|s| s["provider"] == "fsp")
+        .unwrap()
+        .clone();
+    provider.abort();
+    let _ = provider.await;
+    let (status, job) = post(
+        &app,
+        &format!("/api/v1/me/sources/{}/sync", linked["id"].as_str().unwrap()),
+        Some(&candidate),
+    )
+    .await;
+    assert_eq!(status, StatusCode::ACCEPTED, "{job}");
+    assert_eq!(job["status"], "failed");
+    assert_eq!(job["error"]["code"], "fsp_unavailable");
+    let (_, sources) = get(&app, "/api/v1/me/sources", Some(&candidate)).await;
+    let unchanged = sources["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|s| s["provider"] == "fsp")
+        .unwrap();
+    assert_eq!(unchanged, &before);
+    let (_, profile) = get(&app, "/api/v1/me/profile", Some(&candidate)).await;
+    assert_eq!(profile["verifiedGrade"], "junior");
 }

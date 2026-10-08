@@ -24,6 +24,7 @@ import {
   type TaskRecord,
   type TaskResponse,
 } from './data.ts';
+import { fspResults } from './fsp-fixture.ts';
 import type { components } from './generated/schema.d.ts';
 import { knowledgeCompletion, knowledgeTask, scoreKnowledge, validKnowledgeAnswer } from './knowledge.ts';
 
@@ -1069,7 +1070,16 @@ const handlers: Handlers = {
             fspVerified: ctx.body.account === 'FSP-DEMO-024' || ctx.body.account === 'FSP-DEMO-031',
           });
     const connected = provider === 'github' ? github : fsp;
-    connected.accountLabel = ctx.body.account;
+    connected.accountLabel = provider === 'fsp' ? ctx.body.account.trim().toUpperCase() : ctx.body.account;
+    if (provider === 'fsp') {
+      if (!/^[A-Za-z0-9_-]+$/.test(connected.accountLabel))
+        fail(400, 'validation_error', 'Используйте буквы, цифры, дефис или подчёркивание в ФСП ID');
+      connected.fspResults = fspResults(connected.accountLabel);
+      connected.competitionIds = connected.fspResults
+        .filter((r) => r.status === 'published')
+        .map((r) => r.competitionId);
+      connected.verifiedParticipation = connected.competitionIds.length > 0;
+    }
     candidate.sources[index] = connected;
     startSourceSync(ctx.s, ctx.actor, candidate, connected);
     candidate.updatedAt = ctx.s.clock;

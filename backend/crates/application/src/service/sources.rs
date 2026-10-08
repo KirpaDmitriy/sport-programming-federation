@@ -14,6 +14,15 @@ impl PlatformService {
         if account.is_empty() || account.len() > 100 {
             return Err(validation("Проверьте идентификатор аккаунта"));
         }
+        if provider == "fsp"
+            && !account
+                .bytes()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, b'-' | b'_'))
+        {
+            return Err(validation(
+                "Используйте буквы, цифры, дефис или подчёркивание в ФСП ID",
+            ));
+        }
         let record = match provider {
             "github" => {
                 let token = self
@@ -44,6 +53,7 @@ impl PlatformService {
                     analysis: Some(analysis),
                     verified_participation: false,
                     competition_ids: Vec::new(),
+                    fsp_results: Vec::new(),
                 }
             }
             "fsp" => {
@@ -67,6 +77,7 @@ impl PlatformService {
                     analysis: None,
                     verified_participation: participation.verified,
                     competition_ids: participation.competition_ids,
+                    fsp_results: participation.results,
                 }
             }
             _ => {
@@ -162,11 +173,31 @@ impl PlatformService {
                         ..source
                     })
             }
-            fsp_domain::SourceProvider::Fsp => Ok(fsp_domain::SourceRecord {
-                last_synced_at: Some(now()),
-                active_job_id: None,
-                ..source
-            }),
+            fsp_domain::SourceProvider::Fsp => {
+                let account = source.account_label.as_deref().ok_or_else(|| {
+                    ApplicationError::new(
+                        409,
+                        "source_not_connected",
+                        "Сначала подключите источник",
+                    )
+                })?;
+                self.fsp
+                    .as_ref()
+                    .ok_or_else(|| {
+                        ApplicationError::new(503, "fsp_not_configured", "Источник ФСП недоступен")
+                    })?
+                    .participation(account)
+                    .await
+                    .map(|participation| fsp_domain::SourceRecord {
+                        account_label: Some(participation.account_label),
+                        verified_participation: participation.verified,
+                        competition_ids: participation.competition_ids,
+                        fsp_results: participation.results,
+                        last_synced_at: Some(now()),
+                        active_job_id: None,
+                        ..source
+                    })
+            }
         };
         match result {
             Ok(updated) => {

@@ -2458,8 +2458,8 @@ impl PlatformService {
         })
     }
 
-    /// The mock's `completeAssessment` happy path: confirm or raise the
-    /// verified grade, refresh the two demo skills and build the result.
+    /// Score the immutable knowledge test, preserve grades on failure and
+    /// attach successful results as evidence for the tested skills.
     /// Writes go through the caller's repository handle so the grade change and
     /// the assessment result commit in one transaction.
     async fn complete_assessment(
@@ -2992,6 +2992,7 @@ impl PlatformService {
                     analysis: None,
                     verified_participation: false,
                     competition_ids: Vec::new(),
+                    fsp_results: Vec::new(),
                 });
             }
         }

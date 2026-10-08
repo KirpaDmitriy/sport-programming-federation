@@ -208,7 +208,7 @@ pub struct TestDatabase {
 const ACCOUNT_COLUMNS: &str = "id,email,role,candidate_id,company_id,email_verified";
 const CANDIDATE_COLUMNS: &str = "id,alias,email,name,specialization,selected_grade,stack_json,team_role,experience_months,experience,soft_skills_json,processing_consent,publication_consent,verified_grade,verified_specialization,grade_confirmed_at,revision,updated_at";
 const NEED_COLUMNS: &str = "id,company_id,title,specialization,grade,work_mode,salary_from,salary_to,description,requirements_json,published,published_at,created_at,updated_at,revision";
-const SOURCE_COLUMNS: &str = "id,candidate_id,provider,synthetic,active_job_id,account_label,last_synced_at,analysis_json,verified_participation,competition_ids_json";
+const SOURCE_COLUMNS: &str = "id,candidate_id,provider,synthetic,active_job_id,account_label,last_synced_at,analysis_json,verified_participation,competition_ids_json,fsp_results_json";
 const JOB_COLUMNS: &str = "id,owner_id,kind,status,created_at,updated_at,candidate_id,assessment_id,input_revision,result_json,confirmed,result_source_id,error_code,error_message";
 const INVITATION_COLUMNS: &str = "id,company_id,candidate_id,candidate_alias,company_json,need_json,need_definition_json,message,status,created_at,viewed_at,responded_at,disclosure_json";
 const APPLICATION_COLUMNS: &str = "id,company_id,candidate_id,candidate_alias,company_json,vacancy_json,need_definition_json,message,status,created_at,viewed_at,responded_at,disclosure_json";
@@ -2651,9 +2651,9 @@ mod ops {
         source: &SourceRecord,
     ) -> Result<(), RepositoryError> {
         sqlx::query(
-            "INSERT INTO sources(id,candidate_id,provider,synthetic,active_job_id,account_label,last_synced_at,analysis_json,verified_participation,competition_ids_json) \
-             VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) \
-             ON CONFLICT(id) DO UPDATE SET active_job_id=excluded.active_job_id,account_label=excluded.account_label,last_synced_at=excluded.last_synced_at,analysis_json=excluded.analysis_json,verified_participation=excluded.verified_participation,competition_ids_json=excluded.competition_ids_json",
+            "INSERT INTO sources(id,candidate_id,provider,synthetic,active_job_id,account_label,last_synced_at,analysis_json,verified_participation,competition_ids_json,fsp_results_json) \
+             VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) \
+             ON CONFLICT(id) DO UPDATE SET active_job_id=excluded.active_job_id,account_label=excluded.account_label,last_synced_at=excluded.last_synced_at,analysis_json=excluded.analysis_json,verified_participation=excluded.verified_participation,competition_ids_json=excluded.competition_ids_json,fsp_results_json=excluded.fsp_results_json",
         )
         .bind(&source.id)
         .bind(&source.candidate_id)
@@ -2665,6 +2665,7 @@ mod ops {
         .bind(source.analysis.as_ref().map(serde_json::to_string).transpose().map_err(json_storage)?)
         .bind(source.verified_participation)
         .bind(serde_json::to_string(&source.competition_ids).map_err(json_storage)?)
+        .bind(serde_json::to_string(&source.fsp_results).map_err(json_storage)?)
         .execute(&mut *conn)
         .await
         .map_err(storage)?;
@@ -3092,6 +3093,10 @@ fn assessment_record(row: &PgRow) -> Result<fsp_domain::AssessmentRecord, Reposi
 
 fn source_record(row: &PgRow) -> Result<SourceRecord, RepositoryError> {
     Ok(SourceRecord {
+        fsp_results: parse_json(
+            &row.try_get::<String, _>("fsp_results_json")
+                .map_err(storage)?,
+        )?,
         id: row.try_get("id").map_err(storage)?,
         candidate_id: row.try_get("candidate_id").map_err(storage)?,
         provider: parse_source_provider(&row.try_get::<String, _>("provider").map_err(storage)?)?,

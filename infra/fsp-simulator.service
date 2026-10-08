@@ -1,0 +1,27 @@
+[Unit]
+Description=Fictional FSP participant results HTTP simulator
+After=network.target
+
+[Service]
+Type=simple
+User=fsp
+Group=fsp
+Environment=FSP_SIMULATOR_HOST=127.0.0.1
+Environment=FSP_SIMULATOR_PORT=4020
+ExecStart=/opt/fsp/current/bin/fsp-simulator
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+LockPersonality=yes
+MemoryMax=128M
+
+[Install]
+WantedBy=multi-user.target

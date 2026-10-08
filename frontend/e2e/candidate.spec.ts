@@ -145,7 +145,7 @@ test('UI-06 a verified FSP record appears as a labelled demo source', async ({ p
   await page.getByLabel('ФСП ID').fill('FSP-DEMO-024');
   await page.getByRole('button', { name: 'Подключить' }).click();
   await expect(page.getByText('Подтверждённое участие')).toBeVisible();
-  await expect(page.getByText(/синтетическое событие/)).toBeVisible();
+  await expect(page.getByText('DEMO-PROTOCOL-API-2026-01', { exact: false })).toBeVisible();
 });
 
 test('UI-08 UI-09 graph and list share one selection and the list is keyboard-operable', async ({ page }) => {
@@ -188,4 +188,23 @@ test('UI-04 PDF import previews fixture data and applies it only on confirmation
   await dialog.getByLabel('Имя и фамилия').fill('Алексей Морозов');
   await dialog.getByRole('button', { name: 'Применить к профилю' }).click();
   await expect(page.getByText('Данные из PDF применены к профилю')).toBeVisible();
+});
+
+test('FSP pending and empty histories stay distinct and never change the assessment grade', async ({ page }) => {
+  await resetMock('baseline');
+  await signIn(page, ALEXEY, 'candidate');
+  await page.goto('/candidate/sources');
+  const change = page.getByRole('button', { name: 'Изменить ФСП ID' });
+  if (await change.count()) await change.click();
+  else await page.getByRole('button', { name: 'Указать ФСП ID' }).click();
+  await page.getByLabel('ФСП ID', { exact: true }).fill('FSP-DEMO-PENDING');
+  await page.getByRole('button', { name: 'Подключить', exact: true }).click();
+  await expect(page.getByText('Протокол ещё не опубликован')).toBeVisible();
+  await expect(page.getByText('Подтверждённое участие', { exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Изменить ФСП ID' }).click();
+  await page.getByLabel('ФСП ID', { exact: true }).fill('FSP-DEMO-EMPTY');
+  await page.getByRole('button', { name: 'Подключить', exact: true }).click();
+  await expect(page.getByText('Истории ФСП нет', { exact: true })).toBeVisible();
+  await page.goto('/candidate/overview');
+  await expect(page.getByText('Джуниор подтверждён').first()).toBeVisible();
 });
