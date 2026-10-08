@@ -1,5 +1,5 @@
 import { expect, type Page } from '@playwright/test';
-import bank from '../../backend/crates/domain/data/knowledge-v1.json';
+import bank from '../../backend/crates/domain/data/knowledge-v1.json' with { type: 'json' };
 
 export async function answerKnowledgeTest(page: Page, correct = true) {
   // Wait for the questionnaire, not an outgoing onboarding form's group.
