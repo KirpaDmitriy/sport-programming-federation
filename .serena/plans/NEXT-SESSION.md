@@ -1,35 +1,41 @@
 # Project handoff
 
-Read AGENTS.md and current domain memories. Code/live evidence override older transcripts. Backend changes were
-explicitly approved by Dima. User authorized real domain/email and existing private CI servers; do not ask again.
-English engineering text, Russian UI; strict pinned toolchains; never expose secrets or reset production data.
+Read AGENTS.md and the domain memories. Code and current release evidence override older transcripts.
+Backend work was explicitly coordinated with Dima. User authorized nddev.link, Resend, real email tests and
+existing private CI servers; do not ask again. English engineering text, Russian UI, strict pinned toolchains.
+Never expose secrets, reset production data, rewrite shared history or change unrelated server slots.
 
-Active work: #38 domain/Resend, #40 replacement for billing-blocked GitHub Actions, draft PR #41 -> danil (supersedes #39 without rewriting its history).
-Worktree /tmp/fsp-domain-email, feat/40-private-ci-mail. Original checkout main is the previous verified 9a7681b.
-New commits implement random/HMAC OTPs, delivery limits, real Resend, Cloudflare/nginx support, actual inbox browser
-acceptance and private-server CI. Local Rust 67 tests and all TS gates passed; real-mail local browser passed.
-Local mock browser had disk-exhaustion failures; all five accessibility tests passed on rerun (34 other tests passed).
+## Current behavior
 
-CI installed on server-gha-runner-2 at /opt/fsp-ci with private /etc/fsp-ci, fsp-ci.timer active. The first server run passed 36 browser tests, all Rust tests, real systemd PDF and release/backup probes;
-Compose exposed a CI-user directory ownership defect now fixed. The final current-tree run must still pass. Deployment remains disabled until /etc/fsp-ci/deploy-enabled exists. Read logs and
-statuses; don't assume success. Canonical collaborator lacks admin rights to register Actions runners; user explicitly
-chose external CI in that case. Four fsp/* gates replace retired Actions; no historical result is fabricated.
+https://nddev.link serves Rust/PostgreSQL behind Cloudflare Full (strict); the old IP redirects to it.
+Real Resend OTP authentication is active, with HMAC-protected random codes, durable limits and secure cookies.
+Migration 0005 is additive. Runtime configuration is private on the host and in original .fsp-infra/.
+Knowledge tests replace code execution. FSP is intentionally a private fictional HTTP provider.
+Digital-PDF extraction and contextual assistance are real Bifrost flows. GitHub OAuth remains deferred.
 
-At this handoff update, stand still serves 9a7681b with IP/demo auth. Domain certificate exists and all Resend DNS
-records are verified. Apex A remains DNS-only until origin domain config is active. User confirmed first real mail
-at danil@nddev.ai arrived in inbox. Production runtime config is prepared privately, not applied. Cloudflare SSL
-strict/minTLS1.2 already set. Final release must enable domain/Resend, proxy and HTTPS redirect, then prove public
-actual-mail browser flow, code/session protections, renewal, logs and independent read-only verification.
+## Delivery and evidence
 
-Finish all real CI gates, fix actual failures, merge through checked PR chain, deploy main, cut over safely, update
-ledgers/docs/memories to final actual state, sync original/canonical/mirror/permanent refs and stand SHA, verify
-an off-host backup, clean owned local services/database. Never claim public success from local tests.
+#31 is the completed earlier product audit; do not restart it. #38 records domain/email; #40 records private CI.
+PR #41 replaced #39 without rewriting history; the old scanner finding concerned a disposable test password.
+GitGuardian passed the corrected history. PR #44 fixed Node 26 JSON-import test collection, then #45/#46
+integrated it. Implementation commit 5c00c2f passed all four CI gates; 1e7a215 passed the initial full wave.
+Domain cutover on 488fa91 passed real owner email login and both public browser scenarios; independent
+read-only verification passed. Both certificate renewal dry runs passed; no demo auth remains on the stand.
+Use the issue ledgers for final integrated SHA/synchronization, never a stale transcript or an older deployment.
 
-Memory index: platform.md (transactions/auth/knowledge/PDF/FSP), frontend.md (UI/browser evidence), operations.md
-(deploy/domain/mail/private CI/backups). Earlier product work #31 is closed and verified; do not repeat that audit.
-GitHub OAuth deferred; fictional FSP and knowledge tests were explicit product decisions, not unfinished integrations.
+CI: server-gha-runner-2, /opt/fsp-ci, private /etc/fsp-ci, active fsp-ci.timer. Four fsp/* statuses gate changes;
+independent security checks still apply. Reviewed installed controller files are separate from PR code. Every
+installed-script change invalidates cached evidence. Trusted private maintainers only; Docker is root-equivalent.
+Feature -> personal -> dev -> main uses checked PRs. Main deployment includes real mail/browser acceptance;
+/var/lib/fsp-ci/deployed.json exists only for an accepted SHA/configuration. Inspect failed logs before retrying.
+First 488fa91 acceptance failed during test-module loading; that historical failure remains, never relabel it.
 
-PR #39 was superseded because GitGuardian scans intermediate commits and flagged only its disposable `postgres`
-test password. New PR #41 includes random per-run database credentials from the first CI commit. No scanner skip,
-false success or global exclusion is used; preserve the old PR as evidence. Installed controller requires reviewed
-update to the final files before restarting its timer; do not interrupt another active service run.
+## Resume safely
+
+Compare canonical main, /opt/fsp/current and the CI accepted-release marker; read open #38/#40 items if any.
+Mirror/local permanent branches track their corresponding canonical refs individually, not a common reset SHA.
+Private logs, delivery proof and off-host archives are in original .fsp-infra/. Daily host backups retain 14 days;
+off-host copies are manual. Real isolated restore is tested. No OpenObserve is installed; inspect systemd/nginx.
+Full current limits are in product docs: no calibrated/leak-resistant exam, OCR, durable source queue or load claim.
+Domain memories: platform.md (auth/data/assessment), frontend.md (UI), operations.md (deployment/mail/CI/backups).
+Last commit: 5c00c2f185849cdff8dba0bb8701420eab4eb44a; exact final release and live proof: #38/#40.

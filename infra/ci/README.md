@@ -59,7 +59,9 @@ SHA or changed public URL/auth mode/inbox key starts a fresh acceptance cycle. `
 new cycles; stop the service separately only when deliberately interrupting a running check/release.
 
 For controller upgrades: stop the timer, wait for the current service to finish, review the diff, run `install-host.sh`
-from the reviewed release, then restart the timer. Controller content changes invalidate cached proof. Keep the
+from the reviewed release, then restart the timer. For a single script update, review and validate it,
+install it with the existing root ownership/mode while the service is inactive, and restart the timer.
+Controller content changes invalidate cached proof. Keep the
 stand's earlier compatible releases/backups; reverting CI never requires database changes. Do not re-enable retired
 Actions workflows without restoring billing/permissions and deliberately migrating the gate policy.
 
