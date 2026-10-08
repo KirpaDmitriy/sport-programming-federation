@@ -349,7 +349,7 @@ while still marking demo features as simulated. Real LLM and GitHub OAuth flags 
 The stand currently enables Bifrost and leaves GitHub OAuth unconfigured. Development demo controls are absent
 from production bundles. The `live` mode does not turn fixed-code email verification into proof of email ownership.
 
-Both implementations use demo email identity and fictional FSP participation. Knowledge tests have deterministic
+The development mock uses demo email identity; Rust uses actual Resend delivery when configured. Both use fictional FSP participation. Knowledge tests have deterministic
 scoring; their public bank has no measured psychometric validity. Only the development mock simulates PDF extraction
 and assistant replies. Rust uses isolated Poppler extraction and Bifrost with validated evidence and no canned fallback.
 Rust persists application records and sessions; its initial candidate bank is synthetic. GitHub calls are real only
