@@ -350,7 +350,8 @@ async fn meta(State(state): State<AppState>) -> Json<Value> {
             "serviceFailureCooldownDays": 0, "sameGradeRetryCooldownDays": 0,
             "aiAllowed": true, "externalAiAllowed": true,
             "supportedScopes": [
-                {"specialization":"backend","grades":["junior","middle","senior"]}
+                {"specialization":"backend","grades":["junior","middle","senior"]},
+                {"specialization":"frontend","grades":["junior","middle"]}
             ]
         },
         "competitions": [
@@ -359,7 +360,8 @@ async fn meta(State(state): State<AppState>) -> Json<Value> {
         ],
         "skills": [
             {"id":"rust","label":"Rust"},{"id":"postgresql","label":"PostgreSQL"},
-            {"id":"docker","label":"Docker"},{"id":"redis","label":"Redis"},{"id":"react","label":"React"}
+            {"id":"docker","label":"Docker"},{"id":"redis","label":"Redis"},
+            {"id":"typescript","label":"TypeScript"},{"id":"react","label":"React"}
         ]
     }))
 }
