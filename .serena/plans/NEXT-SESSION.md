@@ -1,54 +1,35 @@
 # Project handoff
 
-## Current law
+Read AGENTS.md and current domain memories. Code/live evidence override older transcripts. Backend changes were
+explicitly approved by Dima. User authorized real domain/email and existing private CI servers; do not ask again.
+English engineering text, Russian UI; strict pinned toolchains; never expose secrets or reset production data.
 
-Read AGENTS.md and subtree rules. Code is authoritative. English engineering text, Russian UI, pinned Rust/TS7/Bun.
-Backend changes in this audit were coordinated with Dima and explicitly authorized. Do not reset stand data,
-rotate credentials, create another droplet or touch unrelated hosts. Preserve the no-attribution preference.
-Feature -> danil -> dev -> main requires green checks; upstream is KirpaDmitriy, origin is the rldyourmnd mirror.
+Active work: #38 domain/Resend, #40 replacement for billing-blocked GitHub Actions, draft PR #41 -> danil (supersedes #39 without rewriting its history).
+Worktree /tmp/fsp-domain-email, feat/40-private-ci-mail. Original checkout main is the previous verified 9a7681b.
+New commits implement random/HMAC OTPs, delivery limits, real Resend, Cloudflare/nginx support, actual inbox browser
+acceptance and private-server CI. Local Rust 67 tests and all TS gates passed; real-mail local browser passed.
+Local mock browser had disk-exhaustion failures; all five accessibility tests passed on rerun (34 other tests passed).
 
-## Implemented
+CI installed on server-gha-runner-2 at /opt/fsp-ci with private /etc/fsp-ci, fsp-ci.timer active. The first server run passed 36 browser tests, all Rust tests, real systemd PDF and release/backup probes;
+Compose exposed a CI-user directory ownership defect now fixed. The final current-tree run must still pass. Deployment remains disabled until /etc/fsp-ci/deploy-enabled exists. Read logs and
+statuses; don't assume success. Canonical collaborator lacks admin rights to register Actions runners; user explicitly
+chose external CI in that case. Four fsp/* gates replace retired Actions; no historical result is fabricated.
 
-Earlier stabilization/browser/deadline work is recorded in closed issues #16, #23 and #27. Do not repeat it from
-old transcripts. Active delivery ledger: [issue #31](https://github.com/KirpaDmitriy/sport-programming-federation/issues/31).
+At this handoff update, stand still serves 9a7681b with IP/demo auth. Domain certificate exists and all Resend DNS
+records are verified. Apex A remains DNS-only until origin domain config is active. User confirmed first real mail
+at danil@nddev.ai arrived in inbox. Production runtime config is prepared privately, not applied. Cloudflare SSL
+strict/minTLS1.2 already set. Final release must enable domain/Resend, proxy and HTTPS redirect, then prove public
+actual-mail browser flow, code/session protections, renewal, logs and independent read-only verification.
 
-- 1b97338: real isolated digital-PDF extraction, validated/cited Bifrost fields, revision-safe confirmation and contextual assistance.
-- 8e0a6c1: immutable knowledge-v1 tests, deterministic scoring, grade/consent/response atomicity, legacy archives and Russian UI.
-- 6590b5a: separate fictional FSP HTTP provider, validated durable results, preserved snapshots on failure, private runtime and rollback.
-- 89f0a2b: browser helper waits for the questionnaire and result headings/checks wrap on mobile.
-- f1b4608: consistent knowledge-test vocabulary in candidate/employer evidence and vacancy flows.
-- a8fc70a: readable mobile criteria and truthful legacy-result presentation.
-- beb44d9: real successful PDF probe under exact systemd restrictions; no unused proc mount; runtime before migrations.
-- 2f110cc: future additive migration support with strict history validation; guarded activation and historical-archive rejection.
-- Documentation/knowledge follow-ups reconcile current rules, architecture, runbooks and screenshots.
+Finish all real CI gates, fix actual failures, merge through checked PR chain, deploy main, cut over safely, update
+ledgers/docs/memories to final actual state, sync original/canonical/mirror/permanent refs and stand SHA, verify
+an off-host backup, clean owned local services/database. Never claim public success from local tests.
 
-## Verification and delivery
+Memory index: platform.md (transactions/auth/knowledge/PDF/FSP), frontend.md (UI/browser evidence), operations.md
+(deploy/domain/mail/private CI/backups). Earlier product work #31 is closed and verified; do not repeat that audit.
+GitHub OAuth deferred; fictional FSP and knowledge tests were explicit product decisions, not unfinished integrations.
 
-Local TypeScript/mock/component/build and Rust workspace gates passed. Browser review used the actual local
-Rust API, isolated PostgreSQL and configured live Bifrost: cited PDF confirmation, real assistance, passing and
-failing knowledge tests, draft reload, mobile results, FSP HTTP published/pending/empty and outage/recovery.
-Release fault tests cover simulator outage, helper lifecycle, schema-compatible rollback, rejected old archives,
-staged-script relocation and PDF preflight failure. Rust workspace now passes 63 tests, fmt and clippy.
-A temporary fixed binary extracted a real PDF under exact stand systemd restrictions on October 8 at 03:47 UTC.
-The first deployment 954be581 had exposed a proc-mount failure plus SQLx rejection of a future migration during
-rollback; recovery retained all data and served 954be581 with PDF disabled. Do not mistake this historical
-recovery state for final verification. The follow-up release must enable PDF only after its exact binary probe;
-then repeat live browser proof and independent review before closing issue #31. Two final browser-test
-failures were traced to stale FSP copy and the helper matching an outgoing form, then corrected.
-
-Read issue #31 before resuming: it records final browser/CI results, PR/cascade/deployment SHA, independent live
-verification and canonical/mirror/local/stand synchronization. If still open, complete unchecked delivery steps.
-The issue closes only after these checks; local success never implies deployment. Private browser traces and
-reports live under the original checkout's ignored .fsp-infra/. No production reset is a verification step.
-
-## Scope and remaining limits
-
-The user explicitly chose knowledge tests instead of a code executor, a fictional HTTP FSP provider instead of
-an official federation integration, and deferred email/GitHub OAuth setup. None requires another approval now.
-The public study bank is not leak-resistant or professionally calibrated; passing proves these test answers,
-not practical work. OCR, durable background workers, measured large-bank scaling, off-host backup automation
-and production identity assurance are not claimed implemented.
-
-History audit covered current Codex, one Claude transcript and two Devin sessions in the available ten-day window.
-Grok/Cursor indexes had no local project match; remote/deleted history was unavailable. Original session logs
-remain intact. Update current project memories without overwriting user preferences or historical evidence.
+PR #39 was superseded because GitGuardian scans intermediate commits and flagged only its disposable `postgres`
+test password. New PR #41 includes random per-run database credentials from the first CI commit. No scanner skip,
+false success or global exclusion is used; preserve the old PR as evidence. Installed controller requires reviewed
+update to the final files before restarting its timer; do not interrupt another active service run.

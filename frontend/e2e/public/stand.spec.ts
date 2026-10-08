@@ -2,15 +2,19 @@ import { readFile } from 'node:fs/promises';
 import { type Browser, expect, type Page, test } from '@playwright/test';
 import { answerKnowledgeTest } from '../knowledge';
 
-const code = process.env.FSP_DEMO_CODE ?? '123456';
+import { testEmail, verificationCode } from './mail';
 
 async function signIn(page: Page, email: string, role: 'candidate' | 'employer') {
   await page.goto('/login');
   if (role === 'employer') await page.getByText('Работодатель', { exact: true }).click();
   await page.getByLabel('Электронная почта').fill(email);
   await page.getByRole('button', { name: 'Получить код' }).click();
-  await expect(page.getByText('Код для этого стенда')).toBeVisible();
-  await page.getByLabel('Код из письма').fill(code);
+  await expect(page.getByRole('heading', { name: 'Подтвердите почту' })).toBeVisible();
+  if (process.env.FSP_AUTH_MODE === 'resend') {
+    await expect(page.getByText('Код для этого стенда')).toHaveCount(0);
+    await expect(page.getByText('Мы отправили шестизначный код', { exact: false })).toBeVisible();
+  }
+  await page.getByLabel('Код из письма').fill(await verificationCode(email));
   await page.getByRole('button', { name: 'Подтвердить и войти' }).click();
   await page.waitForURL(new RegExp(`/${role}/`));
 }
@@ -26,16 +30,19 @@ test('HTTPS stand serves the app and deep links without mock controls', async ({
   expect(home.headers()['content-security-policy']).toContain("default-src 'self'");
   expect((await request.post('/__mock__/session', { data: { actor: 'candidate024' } })).status()).toBe(404);
   expect((await request.get('/__mock__/email-codes')).status()).toBe(404);
-  expect((await request.get('/api/v1/meta')).status()).toBe(200);
+  const metaResponse = await request.get('/api/v1/meta');
+  expect(metaResponse.status()).toBe(200);
+  expect((await metaResponse.json()).capabilities.realEmail).toBe(process.env.FSP_AUTH_MODE === 'resend');
+  expect(metaResponse.headers()['cache-control']).toContain('no-store');
   await page.goto('/employer/candidates?needId=need-001');
   await page.waitForURL(/\/login\?redirect=/);
   await expect(page.getByRole('heading', { name: 'Вход и регистрация' })).toBeVisible();
 });
 
 test('a new candidate and two companies complete the reverse-hiring flow', async ({ browser }) => {
-  test.setTimeout(180_000);
+  test.setTimeout(480_000);
   const candidate = await newPage(browser);
-  await signIn(candidate, `stand-${Date.now()}@example.com`, 'candidate');
+  await signIn(candidate, testEmail('candidate'), 'candidate');
   await candidate.waitForURL('**/candidate/onboarding');
   await candidate.getByLabel('Согласен на обработку данных').click();
   await expect(candidate.getByLabel('Согласен на обработку данных')).toBeChecked();
@@ -65,8 +72,10 @@ test('a new candidate and two companies complete the reverse-hiring flow', async
   expect((await readFile((await download.path()) as string)).subarray(0, 5).toString()).toBe('%PDF-');
 
   const companyA = await newPage(browser);
-  await signIn(companyA, 'hr@sever-tech.example', 'employer');
-  await companyA.goto(`/employer/candidates/${candidateId}?needId=need-001`);
+  await signIn(companyA, testEmail('employer-a'), 'employer');
+  await completeCompany(companyA, 'Проверка ФСП — компания А');
+  const needId = await createNeed(companyA);
+  await companyA.goto(`/employer/candidates/${candidateId}?needId=${needId}`);
   await expect(companyA.getByRole('heading', { name: alias })).toBeVisible();
   expect(await companyA.content()).not.toContain('Ирина');
   await companyA.getByRole('button', { name: 'Пригласить кандидата' }).click();
@@ -75,7 +84,7 @@ test('a new candidate and two companies complete the reverse-hiring flow', async
   await expect(companyA.getByText(/Ждём решения кандидата/)).toBeVisible();
 
   await candidate.goto('/candidate/invitations');
-  await candidate.getByRole('link', { name: /Север Тех/ }).click();
+  await candidate.getByRole('link', { name: /Проверка ФСП — компания А/ }).click();
   await expect(candidate.getByText('До вычета налогов').first()).toBeVisible();
   await candidate.getByRole('button', { name: 'Принять и открыть контакты' }).click();
   await expect(candidate.getByRole('heading', { name: 'Вы приняли приглашение' })).toBeVisible();
@@ -83,10 +92,39 @@ test('a new candidate and two companies complete the reverse-hiring flow', async
   await companyA.reload();
   await expect(companyA.getByText('Ирина Стендова')).toBeVisible();
   const companyB = await newPage(browser);
-  await signIn(companyB, 'hr@second-company.example', 'employer');
+  await signIn(companyB, testEmail('employer-b'), 'employer');
+  await completeCompany(companyB, 'Проверка ФСП — компания Б');
   const disclosure = await (await companyB.request.get(`/api/v1/candidates/${candidateId}/disclosure`)).json();
   expect(disclosure).toMatchObject({ granted: false, fields: {} });
   await companyB.goto(`/employer/candidates/${candidateId}`);
   await expect(companyB.getByRole('heading', { name: alias })).toBeVisible();
   expect(await companyB.content()).not.toContain('Ирина');
 });
+
+async function completeCompany(page: Page, name: string) {
+  await page.goto('/employer/company');
+  await expect(page.getByRole('heading', { name: 'Профиль компании', exact: true })).toBeVisible();
+  await page.getByRole('textbox', { name: 'Название', exact: true }).fill(name);
+  await page.getByLabel('Сфера деятельности').fill('Разработка ПО');
+  await page
+    .getByRole('textbox', { name: 'Описание', exact: true })
+    .fill('Синтетическая компания для проверки выпуска платформы.');
+  await page.getByRole('button', { name: 'Сохранить профиль' }).click();
+  await expect(page.getByText('Профиль компании сохранён')).toBeVisible();
+}
+
+async function createNeed(page: Page): Promise<string> {
+  await page.goto('/employer/needs/new');
+  await page.getByRole('textbox', { name: 'Название', exact: true }).fill('Проверка выпуска — Rust');
+  await page.getByLabel('Краткое описание').fill('Синтетическая потребность для автоматической проверки.');
+  await page.getByRole('combobox', { name: 'Грейд', exact: true }).selectOption('junior');
+  await page.getByLabel('От', { exact: true }).fill('80000');
+  await page.getByLabel('До', { exact: true }).fill('120000');
+  await page.getByLabel('Навык', { exact: true }).selectOption('rust');
+  await page.getByLabel('Уровень не ниже').selectOption('junior');
+  await page.getByRole('button', { name: 'Сохранить и найти кандидатов' }).click();
+  await page.waitForURL(/\/employer\/candidates\?.*mode=recommended/);
+  const id = new URL(page.url()).searchParams.get('needId');
+  if (!id) throw new Error('Created need has no id');
+  return id;
+}

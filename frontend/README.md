@@ -82,13 +82,15 @@ FSP_API_TARGET=http://127.0.0.1:8080 bun run dev
 | `VITE_DEMO_EMAIL_CODE` | Build | Shown next to the code field while the server delivers codes to the demo mailbox |
 | `VITE_API_ORIGIN` | Build, tests | Absolute API origin; empty (same origin) in the app, set by tests because Node cannot resolve relative URLs |
 
-The stand builds with `VITE_DEMO_STAND=1` and `VITE_DEMO_EMAIL_CODE=123456`
-([`../infra/README.md`](../infra/README.md)).
+The stand builds with `VITE_DEMO_STAND=1` to identify fictional data. When `capabilities.realEmail` is true,
+login hides seed-account hints and demo codes and explains actual inbox delivery. Public acceptance creates
+a candidate and two companies using real unique test inboxes; OTPs/cookies are excluded from traces/screenshots.
+See [the stand runbook](../infra/README.md) for private acceptance credentials.
 
 ## Known limits
 
 - Development uses the mock; the stand uses Rust/PostgreSQL with deterministic knowledge tests and actual
-  isolated digital-PDF extraction/Bifrost analysis. FSP is a fictional HTTP provider. Email/OAuth setup is deferred.
+  isolated digital-PDF extraction/Bifrost analysis. FSP is a fictional HTTP provider. Email uses Resend; GitHub OAuth setup is deferred.
   Tests and configured AI integrations do not establish professional experience or authorship.
 - The candidate's «Для работодателей» preview is assembled from the non-identifying fields of their own profile;
   the contract has no endpoint that returns a candidate's own anonymous projection.

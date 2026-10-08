@@ -512,6 +512,7 @@ dependencies = [
  "async-trait",
  "chrono",
  "fsp-domain",
+ "hmac",
  "serde",
  "serde_json",
  "sha2",
@@ -564,6 +565,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "fsp-integration-email"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "axum",
+ "fsp-application",
+ "getrandom 0.4.3",
+ "reqwest",
+ "serde_json",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "fsp-integration-fsp-synthetic"
 version = "0.1.0"
 dependencies = [
@@ -612,6 +627,7 @@ dependencies = [
  "fsp-domain",
  "fsp-http",
  "fsp-integration-bifrost",
+ "fsp-integration-email",
  "fsp-integration-fsp-synthetic",
  "fsp-integration-github",
  "fsp-integration-pdf",

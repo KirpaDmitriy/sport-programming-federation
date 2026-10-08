@@ -114,7 +114,7 @@
             }
           },
           "429": {
-            "description": "Too many challenge attempts",
+            "description": "Verification, email delivery, or proxy request limit",
             "content": {
               "application/json": {
                 "schema": {
@@ -125,6 +125,16 @@
           },
           "500": {
             "description": "Response conformance or unexpected server failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Verification provider failed to accept delivery",
             "content": {
               "application/json": {
                 "schema": {
@@ -247,7 +257,7 @@
             }
           },
           "429": {
-            "description": "Too many challenge attempts",
+            "description": "Verification, email delivery, or proxy request limit",
             "content": {
               "application/json": {
                 "schema": {
@@ -258,6 +268,16 @@
           },
           "500": {
             "description": "Response conformance or unexpected server failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Verification provider failed to accept delivery",
             "content": {
               "application/json": {
                 "schema": {
@@ -380,7 +400,7 @@
             }
           },
           "429": {
-            "description": "Too many challenge attempts",
+            "description": "Verification, email delivery, or proxy request limit",
             "content": {
               "application/json": {
                 "schema": {
@@ -391,6 +411,16 @@
           },
           "500": {
             "description": "Response conformance or unexpected server failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Verification provider failed to accept delivery",
             "content": {
               "application/json": {
                 "schema": {
@@ -523,7 +553,7 @@
             }
           },
           "429": {
-            "description": "Too many challenge attempts",
+            "description": "Verification, email delivery, or proxy request limit",
             "content": {
               "application/json": {
                 "schema": {
@@ -534,6 +564,16 @@
           },
           "500": {
             "description": "Response conformance or unexpected server failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Verification provider failed to accept delivery",
             "content": {
               "application/json": {
                 "schema": {
@@ -659,7 +699,7 @@
             }
           },
           "429": {
-            "description": "Too many challenge attempts",
+            "description": "Verification, email delivery, or proxy request limit",
             "content": {
               "application/json": {
                 "schema": {
@@ -670,6 +710,16 @@
           },
           "500": {
             "description": "Response conformance or unexpected server failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Verification provider failed to accept delivery",
             "content": {
               "application/json": {
                 "schema": {
@@ -796,7 +846,7 @@
             }
           },
           "429": {
-            "description": "Too many challenge attempts",
+            "description": "Verification, email delivery, or proxy request limit",
             "content": {
               "application/json": {
                 "schema": {
@@ -807,6 +857,16 @@
           },
           "500": {
             "description": "Response conformance or unexpected server failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Verification provider failed to accept delivery",
             "content": {
               "application/json": {
                 "schema": {
@@ -933,7 +993,7 @@
             }
           },
           "429": {
-            "description": "Too many challenge attempts",
+            "description": "Verification, email delivery, or proxy request limit",
             "content": {
               "application/json": {
                 "schema": {
@@ -944,6 +1004,16 @@
           },
           "500": {
             "description": "Response conformance or unexpected server failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Verification provider failed to accept delivery",
             "content": {
               "application/json": {
                 "schema": {
@@ -1068,7 +1138,7 @@
             }
           },
           "429": {
-            "description": "Too many challenge attempts",
+            "description": "Verification, email delivery, or proxy request limit",
             "content": {
               "application/json": {
                 "schema": {
@@ -1079,6 +1149,16 @@
           },
           "500": {
             "description": "Response conformance or unexpected server failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Verification provider failed to accept delivery",
             "content": {
               "application/json": {
                 "schema": {
@@ -1215,7 +1295,7 @@
             }
           },
           "429": {
-            "description": "Too many challenge attempts",
+            "description": "Verification, email delivery, or proxy request limit",
             "content": {
               "application/json": {
                 "schema": {
@@ -1226,6 +1306,16 @@
           },
           "500": {
             "description": "Response conformance or unexpected server failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Verification provider failed to accept delivery",
             "content": {
               "application/json": {
                 "schema": {
@@ -1373,7 +1463,7 @@
             }
           },
           "429": {
-            "description": "Too many challenge attempts",
+            "description": "Verification, email delivery, or proxy request limit",
             "content": {
               "application/json": {
                 "schema": {
@@ -1384,6 +1474,16 @@
           },
           "500": {
             "description": "Response conformance or unexpected server failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Verification provider failed to accept delivery",
             "content": {
               "application/json": {
                 "schema": {
@@ -1534,7 +1634,7 @@
             }
           },
           "429": {
-            "description": "Too many challenge attempts",
+            "description": "Verification, email delivery, or proxy request limit",
             "content": {
               "application/json": {
                 "schema": {
@@ -1545,6 +1645,16 @@
           },
           "500": {
             "description": "Response conformance or unexpected server failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Verification provider failed to accept delivery",
             "content": {
               "application/json": {
                 "schema": {
@@ -1671,7 +1781,7 @@
             }
           },
           "429": {
-            "description": "Too many challenge attempts",
+            "description": "Verification, email delivery, or proxy request limit",
             "content": {
               "application/json": {
                 "schema": {
@@ -1682,6 +1792,16 @@
           },
           "500": {
             "description": "Response conformance or unexpected server failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Verification provider failed to accept delivery",
             "content": {
               "application/json": {
                 "schema": {
@@ -1808,7 +1928,7 @@
             }
           },
           "429": {
-            "description": "Too many challenge attempts",
+            "description": "Verification, email delivery, or proxy request limit",
             "content": {
               "application/json": {
                 "schema": {
@@ -1819,6 +1939,16 @@
           },
           "500": {
             "description": "Response conformance or unexpected server failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Verification provider failed to accept delivery",
             "content": {
               "application/json": {
                 "schema": {
@@ -1945,7 +2075,7 @@
             }
           },
           "429": {
-            "description": "Too many challenge attempts",
+            "description": "Verification, email delivery, or proxy request limit",
             "content": {
               "application/json": {
                 "schema": {
@@ -1956,6 +2086,16 @@
           },
           "500": {
             "description": "Response conformance or unexpected server failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Verification provider failed to accept delivery",
             "content": {
               "application/json": {
                 "schema": {
@@ -2105,7 +2245,7 @@
             }
           },
           "429": {
-            "description": "Too many challenge attempts",
+            "description": "Verification, email delivery, or proxy request limit",
             "content": {
               "application/json": {
                 "schema": {
@@ -2116,6 +2256,16 @@
           },
           "500": {
             "description": "Response conformance or unexpected server failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Verification provider failed to accept delivery",
             "content": {
               "application/json": {
                 "schema": {
@@ -2255,7 +2405,7 @@
             }
           },
           "429": {
-            "description": "Too many challenge attempts",
+            "description": "Verification, email delivery, or proxy request limit",
             "content": {
               "application/json": {
                 "schema": {
@@ -2266,6 +2416,16 @@
           },
           "500": {
             "description": "Response conformance or unexpected server failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Verification provider failed to accept delivery",
             "content": {
               "application/json": {
                 "schema": {
@@ -2392,7 +2552,7 @@
             }
           },
           "429": {
-            "description": "Too many challenge attempts",
+            "description": "Verification, email delivery, or proxy request limit",
             "content": {
               "application/json": {
                 "schema": {
@@ -2403,6 +2563,16 @@
           },
           "500": {
             "description": "Response conformance or unexpected server failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Verification provider failed to accept delivery",
             "content": {
               "application/json": {
                 "schema": {
@@ -2529,7 +2699,7 @@
             }
           },
           "429": {
-            "description": "Too many challenge attempts",
+            "description": "Verification, email delivery, or proxy request limit",
             "content": {
               "application/json": {
                 "schema": {
@@ -2540,6 +2710,16 @@
           },
           "500": {
             "description": "Response conformance or unexpected server failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Verification provider failed to accept delivery",
             "content": {
               "application/json": {
                 "schema": {
@@ -2679,7 +2859,7 @@
             }
           },
           "429": {
-            "description": "Too many challenge attempts",
+            "description": "Verification, email delivery, or proxy request limit",
             "content": {
               "application/json": {
                 "schema": {
@@ -2690,6 +2870,16 @@
           },
           "500": {
             "description": "Response conformance or unexpected server failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Verification provider failed to accept delivery",
             "content": {
               "application/json": {
                 "schema": {
@@ -2814,7 +3004,7 @@
             }
           },
           "429": {
-            "description": "Too many challenge attempts",
+            "description": "Verification, email delivery, or proxy request limit",
             "content": {
               "application/json": {
                 "schema": {
@@ -2825,6 +3015,16 @@
           },
           "500": {
             "description": "Response conformance or unexpected server failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Verification provider failed to accept delivery",
             "content": {
               "application/json": {
                 "schema": {
@@ -2973,7 +3173,7 @@
             }
           },
           "429": {
-            "description": "Too many challenge attempts",
+            "description": "Verification, email delivery, or proxy request limit",
             "content": {
               "application/json": {
                 "schema": {
@@ -2984,6 +3184,16 @@
           },
           "500": {
             "description": "Response conformance or unexpected server failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Verification provider failed to accept delivery",
             "content": {
               "application/json": {
                 "schema": {
@@ -3123,7 +3333,7 @@
             }
           },
           "429": {
-            "description": "Too many challenge attempts",
+            "description": "Verification, email delivery, or proxy request limit",
             "content": {
               "application/json": {
                 "schema": {
@@ -3134,6 +3344,16 @@
           },
           "500": {
             "description": "Response conformance or unexpected server failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Verification provider failed to accept delivery",
             "content": {
               "application/json": {
                 "schema": {
@@ -3283,7 +3503,7 @@
             }
           },
           "429": {
-            "description": "Too many challenge attempts",
+            "description": "Verification, email delivery, or proxy request limit",
             "content": {
               "application/json": {
                 "schema": {
@@ -3294,6 +3514,16 @@
           },
           "500": {
             "description": "Response conformance or unexpected server failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Verification provider failed to accept delivery",
             "content": {
               "application/json": {
                 "schema": {
@@ -3433,7 +3663,7 @@
             }
           },
           "429": {
-            "description": "Too many challenge attempts",
+            "description": "Verification, email delivery, or proxy request limit",
             "content": {
               "application/json": {
                 "schema": {
@@ -3444,6 +3674,16 @@
           },
           "500": {
             "description": "Response conformance or unexpected server failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Verification provider failed to accept delivery",
             "content": {
               "application/json": {
                 "schema": {
@@ -3593,7 +3833,7 @@
             }
           },
           "429": {
-            "description": "Too many challenge attempts",
+            "description": "Verification, email delivery, or proxy request limit",
             "content": {
               "application/json": {
                 "schema": {
@@ -3604,6 +3844,16 @@
           },
           "500": {
             "description": "Response conformance or unexpected server failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Verification provider failed to accept delivery",
             "content": {
               "application/json": {
                 "schema": {
@@ -3753,7 +4003,7 @@
             }
           },
           "429": {
-            "description": "Too many challenge attempts",
+            "description": "Verification, email delivery, or proxy request limit",
             "content": {
               "application/json": {
                 "schema": {
@@ -3764,6 +4014,16 @@
           },
           "500": {
             "description": "Response conformance or unexpected server failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Verification provider failed to accept delivery",
             "content": {
               "application/json": {
                 "schema": {
@@ -3903,7 +4163,7 @@
             }
           },
           "429": {
-            "description": "Too many challenge attempts",
+            "description": "Verification, email delivery, or proxy request limit",
             "content": {
               "application/json": {
                 "schema": {
@@ -3914,6 +4174,16 @@
           },
           "500": {
             "description": "Response conformance or unexpected server failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Verification provider failed to accept delivery",
             "content": {
               "application/json": {
                 "schema": {
@@ -4040,7 +4310,7 @@
             }
           },
           "429": {
-            "description": "Too many challenge attempts",
+            "description": "Verification, email delivery, or proxy request limit",
             "content": {
               "application/json": {
                 "schema": {
@@ -4051,6 +4321,16 @@
           },
           "500": {
             "description": "Response conformance or unexpected server failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Verification provider failed to accept delivery",
             "content": {
               "application/json": {
                 "schema": {
@@ -4210,7 +4490,7 @@
             }
           },
           "429": {
-            "description": "Too many challenge attempts",
+            "description": "Verification, email delivery, or proxy request limit",
             "content": {
               "application/json": {
                 "schema": {
@@ -4221,6 +4501,16 @@
           },
           "500": {
             "description": "Response conformance or unexpected server failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Verification provider failed to accept delivery",
             "content": {
               "application/json": {
                 "schema": {
@@ -4347,7 +4637,7 @@
             }
           },
           "429": {
-            "description": "Too many challenge attempts",
+            "description": "Verification, email delivery, or proxy request limit",
             "content": {
               "application/json": {
                 "schema": {
@@ -4358,6 +4648,16 @@
           },
           "500": {
             "description": "Response conformance or unexpected server failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Verification provider failed to accept delivery",
             "content": {
               "application/json": {
                 "schema": {
@@ -4497,7 +4797,7 @@
             }
           },
           "429": {
-            "description": "Too many challenge attempts",
+            "description": "Verification, email delivery, or proxy request limit",
             "content": {
               "application/json": {
                 "schema": {
@@ -4508,6 +4808,16 @@
           },
           "500": {
             "description": "Response conformance or unexpected server failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Verification provider failed to accept delivery",
             "content": {
               "application/json": {
                 "schema": {
@@ -4647,7 +4957,7 @@
             }
           },
           "429": {
-            "description": "Too many challenge attempts",
+            "description": "Verification, email delivery, or proxy request limit",
             "content": {
               "application/json": {
                 "schema": {
@@ -4658,6 +4968,16 @@
           },
           "500": {
             "description": "Response conformance or unexpected server failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Verification provider failed to accept delivery",
             "content": {
               "application/json": {
                 "schema": {
@@ -4807,7 +5127,7 @@
             }
           },
           "429": {
-            "description": "Too many challenge attempts",
+            "description": "Verification, email delivery, or proxy request limit",
             "content": {
               "application/json": {
                 "schema": {
@@ -4818,6 +5138,16 @@
           },
           "500": {
             "description": "Response conformance or unexpected server failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Verification provider failed to accept delivery",
             "content": {
               "application/json": {
                 "schema": {
@@ -4957,7 +5287,7 @@
             }
           },
           "429": {
-            "description": "Too many challenge attempts",
+            "description": "Verification, email delivery, or proxy request limit",
             "content": {
               "application/json": {
                 "schema": {
@@ -4968,6 +5298,16 @@
           },
           "500": {
             "description": "Response conformance or unexpected server failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Verification provider failed to accept delivery",
             "content": {
               "application/json": {
                 "schema": {
@@ -5171,7 +5511,7 @@
             }
           },
           "429": {
-            "description": "Too many challenge attempts",
+            "description": "Verification, email delivery, or proxy request limit",
             "content": {
               "application/json": {
                 "schema": {
@@ -5182,6 +5522,16 @@
           },
           "500": {
             "description": "Response conformance or unexpected server failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Verification provider failed to accept delivery",
             "content": {
               "application/json": {
                 "schema": {
@@ -5321,7 +5671,7 @@
             }
           },
           "429": {
-            "description": "Too many challenge attempts",
+            "description": "Verification, email delivery, or proxy request limit",
             "content": {
               "application/json": {
                 "schema": {
@@ -5332,6 +5682,16 @@
           },
           "500": {
             "description": "Response conformance or unexpected server failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Verification provider failed to accept delivery",
             "content": {
               "application/json": {
                 "schema": {
@@ -5456,7 +5816,7 @@
             }
           },
           "429": {
-            "description": "Too many challenge attempts",
+            "description": "Verification, email delivery, or proxy request limit",
             "content": {
               "application/json": {
                 "schema": {
@@ -5467,6 +5827,16 @@
           },
           "500": {
             "description": "Response conformance or unexpected server failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Verification provider failed to accept delivery",
             "content": {
               "application/json": {
                 "schema": {
@@ -5615,7 +5985,7 @@
             }
           },
           "429": {
-            "description": "Too many challenge attempts",
+            "description": "Verification, email delivery, or proxy request limit",
             "content": {
               "application/json": {
                 "schema": {
@@ -5626,6 +5996,16 @@
           },
           "500": {
             "description": "Response conformance or unexpected server failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Verification provider failed to accept delivery",
             "content": {
               "application/json": {
                 "schema": {
@@ -5765,7 +6145,7 @@
             }
           },
           "429": {
-            "description": "Too many challenge attempts",
+            "description": "Verification, email delivery, or proxy request limit",
             "content": {
               "application/json": {
                 "schema": {
@@ -5776,6 +6156,16 @@
           },
           "500": {
             "description": "Response conformance or unexpected server failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Verification provider failed to accept delivery",
             "content": {
               "application/json": {
                 "schema": {
@@ -5915,7 +6305,7 @@
             }
           },
           "429": {
-            "description": "Too many challenge attempts",
+            "description": "Verification, email delivery, or proxy request limit",
             "content": {
               "application/json": {
                 "schema": {
@@ -5926,6 +6316,16 @@
           },
           "500": {
             "description": "Response conformance or unexpected server failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Verification provider failed to accept delivery",
             "content": {
               "application/json": {
                 "schema": {
@@ -6050,7 +6450,7 @@
             }
           },
           "429": {
-            "description": "Too many challenge attempts",
+            "description": "Verification, email delivery, or proxy request limit",
             "content": {
               "application/json": {
                 "schema": {
@@ -6061,6 +6461,16 @@
           },
           "500": {
             "description": "Response conformance or unexpected server failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Verification provider failed to accept delivery",
             "content": {
               "application/json": {
                 "schema": {
@@ -6197,7 +6607,7 @@
             }
           },
           "429": {
-            "description": "Too many challenge attempts",
+            "description": "Verification, email delivery, or proxy request limit",
             "content": {
               "application/json": {
                 "schema": {
@@ -6208,6 +6618,16 @@
           },
           "500": {
             "description": "Response conformance or unexpected server failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Verification provider failed to accept delivery",
             "content": {
               "application/json": {
                 "schema": {
@@ -6332,7 +6752,7 @@
             }
           },
           "429": {
-            "description": "Too many challenge attempts",
+            "description": "Verification, email delivery, or proxy request limit",
             "content": {
               "application/json": {
                 "schema": {
@@ -6343,6 +6763,16 @@
           },
           "500": {
             "description": "Response conformance or unexpected server failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Verification provider failed to accept delivery",
             "content": {
               "application/json": {
                 "schema": {
@@ -6479,7 +6909,7 @@
             }
           },
           "429": {
-            "description": "Too many challenge attempts",
+            "description": "Verification, email delivery, or proxy request limit",
             "content": {
               "application/json": {
                 "schema": {
@@ -6490,6 +6920,16 @@
           },
           "500": {
             "description": "Response conformance or unexpected server failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Verification provider failed to accept delivery",
             "content": {
               "application/json": {
                 "schema": {
@@ -6627,7 +7067,7 @@
             }
           },
           "429": {
-            "description": "Too many challenge attempts",
+            "description": "Verification, email delivery, or proxy request limit",
             "content": {
               "application/json": {
                 "schema": {
@@ -6638,6 +7078,16 @@
           },
           "500": {
             "description": "Response conformance or unexpected server failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Verification provider failed to accept delivery",
             "content": {
               "application/json": {
                 "schema": {
@@ -6778,7 +7228,7 @@
             }
           },
           "429": {
-            "description": "Too many challenge attempts",
+            "description": "Verification, email delivery, or proxy request limit",
             "content": {
               "application/json": {
                 "schema": {
@@ -6789,6 +7239,16 @@
           },
           "500": {
             "description": "Response conformance or unexpected server failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Verification provider failed to accept delivery",
             "content": {
               "application/json": {
                 "schema": {
@@ -6928,7 +7388,7 @@
             }
           },
           "429": {
-            "description": "Too many challenge attempts",
+            "description": "Verification, email delivery, or proxy request limit",
             "content": {
               "application/json": {
                 "schema": {
@@ -6939,6 +7399,16 @@
           },
           "500": {
             "description": "Response conformance or unexpected server failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Verification provider failed to accept delivery",
             "content": {
               "application/json": {
                 "schema": {
@@ -7078,7 +7548,7 @@
             }
           },
           "429": {
-            "description": "Too many challenge attempts",
+            "description": "Verification, email delivery, or proxy request limit",
             "content": {
               "application/json": {
                 "schema": {
@@ -7089,6 +7559,16 @@
           },
           "500": {
             "description": "Response conformance or unexpected server failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Verification provider failed to accept delivery",
             "content": {
               "application/json": {
                 "schema": {
@@ -7228,7 +7708,7 @@
             }
           },
           "429": {
-            "description": "Too many challenge attempts",
+            "description": "Verification, email delivery, or proxy request limit",
             "content": {
               "application/json": {
                 "schema": {
@@ -7239,6 +7719,16 @@
           },
           "500": {
             "description": "Response conformance or unexpected server failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Verification provider failed to accept delivery",
             "content": {
               "application/json": {
                 "schema": {
@@ -7378,7 +7868,7 @@
             }
           },
           "429": {
-            "description": "Too many challenge attempts",
+            "description": "Verification, email delivery, or proxy request limit",
             "content": {
               "application/json": {
                 "schema": {
@@ -7389,6 +7879,16 @@
           },
           "500": {
             "description": "Response conformance or unexpected server failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Verification provider failed to accept delivery",
             "content": {
               "application/json": {
                 "schema": {
@@ -7614,7 +8114,7 @@
             }
           },
           "429": {
-            "description": "Too many challenge attempts",
+            "description": "Verification, email delivery, or proxy request limit",
             "content": {
               "application/json": {
                 "schema": {
@@ -7625,6 +8125,16 @@
           },
           "500": {
             "description": "Response conformance or unexpected server failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Verification provider failed to accept delivery",
             "content": {
               "application/json": {
                 "schema": {
@@ -7775,7 +8285,7 @@
             }
           },
           "429": {
-            "description": "Too many challenge attempts",
+            "description": "Verification, email delivery, or proxy request limit",
             "content": {
               "application/json": {
                 "schema": {
@@ -7786,6 +8296,16 @@
           },
           "500": {
             "description": "Response conformance or unexpected server failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Verification provider failed to accept delivery",
             "content": {
               "application/json": {
                 "schema": {
@@ -7925,7 +8445,7 @@
             }
           },
           "429": {
-            "description": "Too many challenge attempts",
+            "description": "Verification, email delivery, or proxy request limit",
             "content": {
               "application/json": {
                 "schema": {
@@ -7936,6 +8456,16 @@
           },
           "500": {
             "description": "Response conformance or unexpected server failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Verification provider failed to accept delivery",
             "content": {
               "application/json": {
                 "schema": {
@@ -8086,7 +8616,7 @@
             }
           },
           "429": {
-            "description": "Too many challenge attempts",
+            "description": "Verification, email delivery, or proxy request limit",
             "content": {
               "application/json": {
                 "schema": {
@@ -8097,6 +8627,16 @@
           },
           "500": {
             "description": "Response conformance or unexpected server failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Verification provider failed to accept delivery",
             "content": {
               "application/json": {
                 "schema": {
@@ -8236,7 +8776,7 @@
             }
           },
           "429": {
-            "description": "Too many challenge attempts",
+            "description": "Verification, email delivery, or proxy request limit",
             "content": {
               "application/json": {
                 "schema": {
@@ -8247,6 +8787,16 @@
           },
           "500": {
             "description": "Response conformance or unexpected server failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Verification provider failed to accept delivery",
             "content": {
               "application/json": {
                 "schema": {
@@ -8371,7 +8921,7 @@
             }
           },
           "429": {
-            "description": "Too many challenge attempts",
+            "description": "Verification, email delivery, or proxy request limit",
             "content": {
               "application/json": {
                 "schema": {
@@ -8382,6 +8932,16 @@
           },
           "500": {
             "description": "Response conformance or unexpected server failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Verification provider failed to accept delivery",
             "content": {
               "application/json": {
                 "schema": {
@@ -8518,7 +9078,7 @@
             }
           },
           "429": {
-            "description": "Too many challenge attempts",
+            "description": "Verification, email delivery, or proxy request limit",
             "content": {
               "application/json": {
                 "schema": {
@@ -8529,6 +9089,16 @@
           },
           "500": {
             "description": "Response conformance or unexpected server failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Verification provider failed to accept delivery",
             "content": {
               "application/json": {
                 "schema": {
@@ -8666,7 +9236,7 @@
             }
           },
           "429": {
-            "description": "Too many challenge attempts",
+            "description": "Verification, email delivery, or proxy request limit",
             "content": {
               "application/json": {
                 "schema": {
@@ -8677,6 +9247,16 @@
           },
           "500": {
             "description": "Response conformance or unexpected server failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Verification provider failed to accept delivery",
             "content": {
               "application/json": {
                 "schema": {
@@ -8817,7 +9397,7 @@
             }
           },
           "429": {
-            "description": "Too many challenge attempts",
+            "description": "Verification, email delivery, or proxy request limit",
             "content": {
               "application/json": {
                 "schema": {
@@ -8828,6 +9408,16 @@
           },
           "500": {
             "description": "Response conformance or unexpected server failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Verification provider failed to accept delivery",
             "content": {
               "application/json": {
                 "schema": {
@@ -8967,7 +9557,7 @@
             }
           },
           "429": {
-            "description": "Too many challenge attempts",
+            "description": "Verification, email delivery, or proxy request limit",
             "content": {
               "application/json": {
                 "schema": {
@@ -8978,6 +9568,16 @@
           },
           "500": {
             "description": "Response conformance or unexpected server failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Verification provider failed to accept delivery",
             "content": {
               "application/json": {
                 "schema": {
@@ -9126,7 +9726,7 @@
             }
           },
           "429": {
-            "description": "Too many challenge attempts",
+            "description": "Verification, email delivery, or proxy request limit",
             "content": {
               "application/json": {
                 "schema": {
@@ -9137,6 +9737,16 @@
           },
           "500": {
             "description": "Response conformance or unexpected server failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Verification provider failed to accept delivery",
             "content": {
               "application/json": {
                 "schema": {
@@ -9287,7 +9897,7 @@
             }
           },
           "429": {
-            "description": "Too many challenge attempts",
+            "description": "Verification, email delivery, or proxy request limit",
             "content": {
               "application/json": {
                 "schema": {
@@ -9298,6 +9908,16 @@
           },
           "500": {
             "description": "Response conformance or unexpected server failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Verification provider failed to accept delivery",
             "content": {
               "application/json": {
                 "schema": {
@@ -9422,7 +10042,7 @@
             }
           },
           "429": {
-            "description": "Too many challenge attempts",
+            "description": "Verification, email delivery, or proxy request limit",
             "content": {
               "application/json": {
                 "schema": {
@@ -9433,6 +10053,16 @@
           },
           "500": {
             "description": "Response conformance or unexpected server failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Verification provider failed to accept delivery",
             "content": {
               "application/json": {
                 "schema": {
@@ -9581,7 +10211,7 @@
             }
           },
           "429": {
-            "description": "Too many challenge attempts",
+            "description": "Verification, email delivery, or proxy request limit",
             "content": {
               "application/json": {
                 "schema": {
@@ -9592,6 +10222,16 @@
           },
           "500": {
             "description": "Response conformance or unexpected server failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Verification provider failed to accept delivery",
             "content": {
               "application/json": {
                 "schema": {
@@ -9731,7 +10371,7 @@
             }
           },
           "429": {
-            "description": "Too many challenge attempts",
+            "description": "Verification, email delivery, or proxy request limit",
             "content": {
               "application/json": {
                 "schema": {
@@ -9742,6 +10382,16 @@
           },
           "500": {
             "description": "Response conformance or unexpected server failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Verification provider failed to accept delivery",
             "content": {
               "application/json": {
                 "schema": {
@@ -9881,7 +10531,7 @@
             }
           },
           "429": {
-            "description": "Too many challenge attempts",
+            "description": "Verification, email delivery, or proxy request limit",
             "content": {
               "application/json": {
                 "schema": {
@@ -9892,6 +10542,16 @@
           },
           "500": {
             "description": "Response conformance or unexpected server failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Verification provider failed to accept delivery",
             "content": {
               "application/json": {
                 "schema": {
@@ -10016,7 +10676,7 @@
             }
           },
           "429": {
-            "description": "Too many challenge attempts",
+            "description": "Verification, email delivery, or proxy request limit",
             "content": {
               "application/json": {
                 "schema": {
@@ -10027,6 +10687,16 @@
           },
           "500": {
             "description": "Response conformance or unexpected server failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Verification provider failed to accept delivery",
             "content": {
               "application/json": {
                 "schema": {
@@ -10163,7 +10833,7 @@
             }
           },
           "429": {
-            "description": "Too many challenge attempts",
+            "description": "Verification, email delivery, or proxy request limit",
             "content": {
               "application/json": {
                 "schema": {
@@ -10174,6 +10844,16 @@
           },
           "500": {
             "description": "Response conformance or unexpected server failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Verification provider failed to accept delivery",
             "content": {
               "application/json": {
                 "schema": {
@@ -10313,7 +10993,7 @@
             }
           },
           "429": {
-            "description": "Too many challenge attempts",
+            "description": "Verification, email delivery, or proxy request limit",
             "content": {
               "application/json": {
                 "schema": {
@@ -10324,6 +11004,16 @@
           },
           "500": {
             "description": "Response conformance or unexpected server failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Verification provider failed to accept delivery",
             "content": {
               "application/json": {
                 "schema": {
@@ -10463,7 +11153,7 @@
             }
           },
           "429": {
-            "description": "Too many challenge attempts",
+            "description": "Verification, email delivery, or proxy request limit",
             "content": {
               "application/json": {
                 "schema": {
@@ -10474,6 +11164,16 @@
           },
           "500": {
             "description": "Response conformance or unexpected server failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Verification provider failed to accept delivery",
             "content": {
               "application/json": {
                 "schema": {
@@ -10623,7 +11323,7 @@
             }
           },
           "429": {
-            "description": "Too many challenge attempts",
+            "description": "Verification, email delivery, or proxy request limit",
             "content": {
               "application/json": {
                 "schema": {
@@ -10634,6 +11334,16 @@
           },
           "500": {
             "description": "Response conformance or unexpected server failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Verification provider failed to accept delivery",
             "content": {
               "application/json": {
                 "schema": {
@@ -10773,7 +11483,7 @@
             }
           },
           "429": {
-            "description": "Too many challenge attempts",
+            "description": "Verification, email delivery, or proxy request limit",
             "content": {
               "application/json": {
                 "schema": {
@@ -10784,6 +11494,16 @@
           },
           "500": {
             "description": "Response conformance or unexpected server failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Verification provider failed to accept delivery",
             "content": {
               "application/json": {
                 "schema": {
@@ -10923,7 +11643,7 @@
             }
           },
           "429": {
-            "description": "Too many challenge attempts",
+            "description": "Verification, email delivery, or proxy request limit",
             "content": {
               "application/json": {
                 "schema": {
@@ -10934,6 +11654,16 @@
           },
           "500": {
             "description": "Response conformance or unexpected server failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Verification provider failed to accept delivery",
             "content": {
               "application/json": {
                 "schema": {
@@ -11073,7 +11803,7 @@
             }
           },
           "429": {
-            "description": "Too many challenge attempts",
+            "description": "Verification, email delivery, or proxy request limit",
             "content": {
               "application/json": {
                 "schema": {
@@ -11084,6 +11814,16 @@
           },
           "500": {
             "description": "Response conformance or unexpected server failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Verification provider failed to accept delivery",
             "content": {
               "application/json": {
                 "schema": {
@@ -11223,7 +11963,7 @@
             }
           },
           "429": {
-            "description": "Too many challenge attempts",
+            "description": "Verification, email delivery, or proxy request limit",
             "content": {
               "application/json": {
                 "schema": {
@@ -11234,6 +11974,16 @@
           },
           "500": {
             "description": "Response conformance or unexpected server failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Verification provider failed to accept delivery",
             "content": {
               "application/json": {
                 "schema": {
@@ -11369,7 +12119,7 @@
             }
           },
           "429": {
-            "description": "Too many challenge attempts",
+            "description": "Verification, email delivery, or proxy request limit",
             "content": {
               "application/json": {
                 "schema": {
@@ -11380,6 +12130,16 @@
           },
           "500": {
             "description": "Response conformance or unexpected server failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Verification provider failed to accept delivery",
             "content": {
               "application/json": {
                 "schema": {
@@ -11513,7 +12273,7 @@
             }
           },
           "429": {
-            "description": "Too many challenge attempts",
+            "description": "Verification, email delivery, or proxy request limit",
             "content": {
               "application/json": {
                 "schema": {
@@ -11524,6 +12284,16 @@
           },
           "500": {
             "description": "Response conformance or unexpected server failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Verification provider failed to accept delivery",
             "content": {
               "application/json": {
                 "schema": {
@@ -11657,7 +12427,7 @@
             }
           },
           "429": {
-            "description": "Too many challenge attempts",
+            "description": "Verification, email delivery, or proxy request limit",
             "content": {
               "application/json": {
                 "schema": {
@@ -11668,6 +12438,16 @@
           },
           "500": {
             "description": "Response conformance or unexpected server failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Verification provider failed to accept delivery",
             "content": {
               "application/json": {
                 "schema": {
@@ -11791,7 +12571,7 @@
             }
           },
           "429": {
-            "description": "Too many challenge attempts",
+            "description": "Verification, email delivery, or proxy request limit",
             "content": {
               "application/json": {
                 "schema": {
@@ -11802,6 +12582,16 @@
           },
           "500": {
             "description": "Response conformance or unexpected server failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Verification provider failed to accept delivery",
             "content": {
               "application/json": {
                 "schema": {
@@ -11944,6 +12734,9 @@
               "emailVerification": {
                 "type": "boolean"
               },
+              "realEmail": {
+                "type": "boolean"
+              },
               "profilePdf": {
                 "type": "boolean"
               },
@@ -11986,6 +12779,7 @@
             },
             "required": [
               "emailVerification",
+              "realEmail",
               "profilePdf",
               "profilePdfImport",
               "githubFixture",

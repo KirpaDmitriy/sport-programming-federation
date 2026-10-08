@@ -1404,6 +1404,7 @@ export interface components {
             scenario: string;
             capabilities: {
                 emailVerification: boolean;
+                realEmail: boolean;
                 profilePdf: boolean;
                 profilePdfImport: boolean;
                 githubFixture: boolean;
@@ -2408,7 +2409,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Too many challenge attempts */
+            /** @description Verification, email delivery, or proxy request limit */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -2419,6 +2420,15 @@ export interface operations {
             };
             /** @description Response conformance or unexpected server failure */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Verification provider failed to accept delivery */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2527,7 +2537,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Too many challenge attempts */
+            /** @description Verification, email delivery, or proxy request limit */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -2538,6 +2548,15 @@ export interface operations {
             };
             /** @description Response conformance or unexpected server failure */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Verification provider failed to accept delivery */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2650,7 +2669,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Too many challenge attempts */
+            /** @description Verification, email delivery, or proxy request limit */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -2661,6 +2680,15 @@ export interface operations {
             };
             /** @description Response conformance or unexpected server failure */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Verification provider failed to accept delivery */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2773,7 +2801,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Too many challenge attempts */
+            /** @description Verification, email delivery, or proxy request limit */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -2784,6 +2812,15 @@ export interface operations {
             };
             /** @description Response conformance or unexpected server failure */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Verification provider failed to accept delivery */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2890,7 +2927,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Too many challenge attempts */
+            /** @description Verification, email delivery, or proxy request limit */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -2901,6 +2938,15 @@ export interface operations {
             };
             /** @description Response conformance or unexpected server failure */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Verification provider failed to accept delivery */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3009,7 +3055,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Too many challenge attempts */
+            /** @description Verification, email delivery, or proxy request limit */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -3020,6 +3066,15 @@ export interface operations {
             };
             /** @description Response conformance or unexpected server failure */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Verification provider failed to accept delivery */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3128,7 +3183,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Too many challenge attempts */
+            /** @description Verification, email delivery, or proxy request limit */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -3139,6 +3194,15 @@ export interface operations {
             };
             /** @description Response conformance or unexpected server failure */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Verification provider failed to accept delivery */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3251,7 +3315,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Too many challenge attempts */
+            /** @description Verification, email delivery, or proxy request limit */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -3262,6 +3326,15 @@ export interface operations {
             };
             /** @description Response conformance or unexpected server failure */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Verification provider failed to accept delivery */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3380,7 +3453,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Too many challenge attempts */
+            /** @description Verification, email delivery, or proxy request limit */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -3391,6 +3464,15 @@ export interface operations {
             };
             /** @description Response conformance or unexpected server failure */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Verification provider failed to accept delivery */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3505,7 +3587,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Too many challenge attempts */
+            /** @description Verification, email delivery, or proxy request limit */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -3516,6 +3598,15 @@ export interface operations {
             };
             /** @description Response conformance or unexpected server failure */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Verification provider failed to accept delivery */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3624,7 +3715,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Too many challenge attempts */
+            /** @description Verification, email delivery, or proxy request limit */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -3635,6 +3726,15 @@ export interface operations {
             };
             /** @description Response conformance or unexpected server failure */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Verification provider failed to accept delivery */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3743,7 +3843,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Too many challenge attempts */
+            /** @description Verification, email delivery, or proxy request limit */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -3754,6 +3854,15 @@ export interface operations {
             };
             /** @description Response conformance or unexpected server failure */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Verification provider failed to accept delivery */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3862,7 +3971,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Too many challenge attempts */
+            /** @description Verification, email delivery, or proxy request limit */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -3873,6 +3982,15 @@ export interface operations {
             };
             /** @description Response conformance or unexpected server failure */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Verification provider failed to accept delivery */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3987,7 +4105,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Too many challenge attempts */
+            /** @description Verification, email delivery, or proxy request limit */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -3998,6 +4116,15 @@ export interface operations {
             };
             /** @description Response conformance or unexpected server failure */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Verification provider failed to accept delivery */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -4108,7 +4235,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Too many challenge attempts */
+            /** @description Verification, email delivery, or proxy request limit */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -4119,6 +4246,15 @@ export interface operations {
             };
             /** @description Response conformance or unexpected server failure */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Verification provider failed to accept delivery */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -4227,7 +4363,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Too many challenge attempts */
+            /** @description Verification, email delivery, or proxy request limit */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -4238,6 +4374,15 @@ export interface operations {
             };
             /** @description Response conformance or unexpected server failure */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Verification provider failed to accept delivery */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -4346,7 +4491,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Too many challenge attempts */
+            /** @description Verification, email delivery, or proxy request limit */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -4357,6 +4502,15 @@ export interface operations {
             };
             /** @description Response conformance or unexpected server failure */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Verification provider failed to accept delivery */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -4467,7 +4621,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Too many challenge attempts */
+            /** @description Verification, email delivery, or proxy request limit */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -4478,6 +4632,15 @@ export interface operations {
             };
             /** @description Response conformance or unexpected server failure */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Verification provider failed to accept delivery */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -4586,7 +4749,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Too many challenge attempts */
+            /** @description Verification, email delivery, or proxy request limit */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -4597,6 +4760,15 @@ export interface operations {
             };
             /** @description Response conformance or unexpected server failure */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Verification provider failed to accept delivery */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -4711,7 +4883,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Too many challenge attempts */
+            /** @description Verification, email delivery, or proxy request limit */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -4722,6 +4894,15 @@ export interface operations {
             };
             /** @description Response conformance or unexpected server failure */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Verification provider failed to accept delivery */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -4832,7 +5013,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Too many challenge attempts */
+            /** @description Verification, email delivery, or proxy request limit */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -4843,6 +5024,15 @@ export interface operations {
             };
             /** @description Response conformance or unexpected server failure */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Verification provider failed to accept delivery */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -4957,7 +5147,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Too many challenge attempts */
+            /** @description Verification, email delivery, or proxy request limit */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -4968,6 +5158,15 @@ export interface operations {
             };
             /** @description Response conformance or unexpected server failure */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Verification provider failed to accept delivery */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -5078,7 +5277,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Too many challenge attempts */
+            /** @description Verification, email delivery, or proxy request limit */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -5089,6 +5288,15 @@ export interface operations {
             };
             /** @description Response conformance or unexpected server failure */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Verification provider failed to accept delivery */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -5203,7 +5411,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Too many challenge attempts */
+            /** @description Verification, email delivery, or proxy request limit */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -5214,6 +5422,15 @@ export interface operations {
             };
             /** @description Response conformance or unexpected server failure */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Verification provider failed to accept delivery */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -5326,7 +5543,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Too many challenge attempts */
+            /** @description Verification, email delivery, or proxy request limit */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -5337,6 +5554,15 @@ export interface operations {
             };
             /** @description Response conformance or unexpected server failure */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Verification provider failed to accept delivery */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -5447,7 +5673,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Too many challenge attempts */
+            /** @description Verification, email delivery, or proxy request limit */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -5458,6 +5684,15 @@ export interface operations {
             };
             /** @description Response conformance or unexpected server failure */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Verification provider failed to accept delivery */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -5566,7 +5801,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Too many challenge attempts */
+            /** @description Verification, email delivery, or proxy request limit */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -5577,6 +5812,15 @@ export interface operations {
             };
             /** @description Response conformance or unexpected server failure */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Verification provider failed to accept delivery */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -5693,7 +5937,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Too many challenge attempts */
+            /** @description Verification, email delivery, or proxy request limit */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -5704,6 +5948,15 @@ export interface operations {
             };
             /** @description Response conformance or unexpected server failure */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Verification provider failed to accept delivery */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -5812,7 +6065,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Too many challenge attempts */
+            /** @description Verification, email delivery, or proxy request limit */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -5823,6 +6076,15 @@ export interface operations {
             };
             /** @description Response conformance or unexpected server failure */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Verification provider failed to accept delivery */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -5933,7 +6195,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Too many challenge attempts */
+            /** @description Verification, email delivery, or proxy request limit */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -5944,6 +6206,15 @@ export interface operations {
             };
             /** @description Response conformance or unexpected server failure */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Verification provider failed to accept delivery */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -6054,7 +6325,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Too many challenge attempts */
+            /** @description Verification, email delivery, or proxy request limit */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -6065,6 +6336,15 @@ export interface operations {
             };
             /** @description Response conformance or unexpected server failure */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Verification provider failed to accept delivery */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -6179,7 +6459,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Too many challenge attempts */
+            /** @description Verification, email delivery, or proxy request limit */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -6190,6 +6470,15 @@ export interface operations {
             };
             /** @description Response conformance or unexpected server failure */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Verification provider failed to accept delivery */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -6300,7 +6589,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Too many challenge attempts */
+            /** @description Verification, email delivery, or proxy request limit */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -6311,6 +6600,15 @@ export interface operations {
             };
             /** @description Response conformance or unexpected server failure */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Verification provider failed to accept delivery */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -6426,7 +6724,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Too many challenge attempts */
+            /** @description Verification, email delivery, or proxy request limit */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -6437,6 +6735,15 @@ export interface operations {
             };
             /** @description Response conformance or unexpected server failure */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Verification provider failed to accept delivery */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -6547,7 +6854,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Too many challenge attempts */
+            /** @description Verification, email delivery, or proxy request limit */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -6558,6 +6865,15 @@ export interface operations {
             };
             /** @description Response conformance or unexpected server failure */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Verification provider failed to accept delivery */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -6666,7 +6982,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Too many challenge attempts */
+            /** @description Verification, email delivery, or proxy request limit */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -6677,6 +6993,15 @@ export interface operations {
             };
             /** @description Response conformance or unexpected server failure */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Verification provider failed to accept delivery */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -6791,7 +7116,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Too many challenge attempts */
+            /** @description Verification, email delivery, or proxy request limit */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -6802,6 +7127,15 @@ export interface operations {
             };
             /** @description Response conformance or unexpected server failure */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Verification provider failed to accept delivery */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -6912,7 +7246,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Too many challenge attempts */
+            /** @description Verification, email delivery, or proxy request limit */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -6923,6 +7257,15 @@ export interface operations {
             };
             /** @description Response conformance or unexpected server failure */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Verification provider failed to accept delivery */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -7033,7 +7376,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Too many challenge attempts */
+            /** @description Verification, email delivery, or proxy request limit */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -7044,6 +7387,15 @@ export interface operations {
             };
             /** @description Response conformance or unexpected server failure */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Verification provider failed to accept delivery */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -7152,7 +7504,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Too many challenge attempts */
+            /** @description Verification, email delivery, or proxy request limit */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -7163,6 +7515,15 @@ export interface operations {
             };
             /** @description Response conformance or unexpected server failure */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Verification provider failed to accept delivery */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -7275,7 +7636,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Too many challenge attempts */
+            /** @description Verification, email delivery, or proxy request limit */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -7286,6 +7647,15 @@ export interface operations {
             };
             /** @description Response conformance or unexpected server failure */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Verification provider failed to accept delivery */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -7394,7 +7764,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Too many challenge attempts */
+            /** @description Verification, email delivery, or proxy request limit */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -7405,6 +7775,15 @@ export interface operations {
             };
             /** @description Response conformance or unexpected server failure */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Verification provider failed to accept delivery */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -7517,7 +7896,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Too many challenge attempts */
+            /** @description Verification, email delivery, or proxy request limit */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -7528,6 +7907,15 @@ export interface operations {
             };
             /** @description Response conformance or unexpected server failure */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Verification provider failed to accept delivery */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -7638,7 +8026,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Too many challenge attempts */
+            /** @description Verification, email delivery, or proxy request limit */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -7649,6 +8037,15 @@ export interface operations {
             };
             /** @description Response conformance or unexpected server failure */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Verification provider failed to accept delivery */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -7757,7 +8154,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Too many challenge attempts */
+            /** @description Verification, email delivery, or proxy request limit */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -7768,6 +8165,15 @@ export interface operations {
             };
             /** @description Response conformance or unexpected server failure */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Verification provider failed to accept delivery */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -7882,7 +8288,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Too many challenge attempts */
+            /** @description Verification, email delivery, or proxy request limit */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -7893,6 +8299,15 @@ export interface operations {
             };
             /** @description Response conformance or unexpected server failure */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Verification provider failed to accept delivery */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -8003,7 +8418,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Too many challenge attempts */
+            /** @description Verification, email delivery, or proxy request limit */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -8014,6 +8429,15 @@ export interface operations {
             };
             /** @description Response conformance or unexpected server failure */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Verification provider failed to accept delivery */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -8124,7 +8548,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Too many challenge attempts */
+            /** @description Verification, email delivery, or proxy request limit */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -8135,6 +8559,15 @@ export interface operations {
             };
             /** @description Response conformance or unexpected server failure */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Verification provider failed to accept delivery */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -8245,7 +8678,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Too many challenge attempts */
+            /** @description Verification, email delivery, or proxy request limit */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -8256,6 +8689,15 @@ export interface operations {
             };
             /** @description Response conformance or unexpected server failure */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Verification provider failed to accept delivery */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -8373,7 +8815,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Too many challenge attempts */
+            /** @description Verification, email delivery, or proxy request limit */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -8384,6 +8826,15 @@ export interface operations {
             };
             /** @description Response conformance or unexpected server failure */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Verification provider failed to accept delivery */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -8496,7 +8947,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Too many challenge attempts */
+            /** @description Verification, email delivery, or proxy request limit */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -8507,6 +8958,15 @@ export interface operations {
             };
             /** @description Response conformance or unexpected server failure */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Verification provider failed to accept delivery */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -8617,7 +9077,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Too many challenge attempts */
+            /** @description Verification, email delivery, or proxy request limit */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -8628,6 +9088,15 @@ export interface operations {
             };
             /** @description Response conformance or unexpected server failure */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Verification provider failed to accept delivery */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -8740,7 +9209,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Too many challenge attempts */
+            /** @description Verification, email delivery, or proxy request limit */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -8751,6 +9220,15 @@ export interface operations {
             };
             /** @description Response conformance or unexpected server failure */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Verification provider failed to accept delivery */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -8861,7 +9339,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Too many challenge attempts */
+            /** @description Verification, email delivery, or proxy request limit */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -8872,6 +9350,15 @@ export interface operations {
             };
             /** @description Response conformance or unexpected server failure */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Verification provider failed to accept delivery */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -8980,7 +9467,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Too many challenge attempts */
+            /** @description Verification, email delivery, or proxy request limit */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -8991,6 +9478,15 @@ export interface operations {
             };
             /** @description Response conformance or unexpected server failure */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Verification provider failed to accept delivery */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -9103,7 +9599,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Too many challenge attempts */
+            /** @description Verification, email delivery, or proxy request limit */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -9114,6 +9610,15 @@ export interface operations {
             };
             /** @description Response conformance or unexpected server failure */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Verification provider failed to accept delivery */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -9224,7 +9729,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Too many challenge attempts */
+            /** @description Verification, email delivery, or proxy request limit */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -9235,6 +9740,15 @@ export interface operations {
             };
             /** @description Response conformance or unexpected server failure */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Verification provider failed to accept delivery */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -9343,7 +9857,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Too many challenge attempts */
+            /** @description Verification, email delivery, or proxy request limit */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -9354,6 +9868,15 @@ export interface operations {
             };
             /** @description Response conformance or unexpected server failure */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Verification provider failed to accept delivery */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -9468,7 +9991,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Too many challenge attempts */
+            /** @description Verification, email delivery, or proxy request limit */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -9479,6 +10002,15 @@ export interface operations {
             };
             /** @description Response conformance or unexpected server failure */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Verification provider failed to accept delivery */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -9590,7 +10122,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Too many challenge attempts */
+            /** @description Verification, email delivery, or proxy request limit */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -9601,6 +10133,15 @@ export interface operations {
             };
             /** @description Response conformance or unexpected server failure */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Verification provider failed to accept delivery */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -9712,7 +10253,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Too many challenge attempts */
+            /** @description Verification, email delivery, or proxy request limit */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -9723,6 +10264,15 @@ export interface operations {
             };
             /** @description Response conformance or unexpected server failure */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Verification provider failed to accept delivery */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -9831,7 +10381,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Too many challenge attempts */
+            /** @description Verification, email delivery, or proxy request limit */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -9842,6 +10392,15 @@ export interface operations {
             };
             /** @description Response conformance or unexpected server failure */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Verification provider failed to accept delivery */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -9956,7 +10515,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Too many challenge attempts */
+            /** @description Verification, email delivery, or proxy request limit */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -9967,6 +10526,15 @@ export interface operations {
             };
             /** @description Response conformance or unexpected server failure */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Verification provider failed to accept delivery */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -10077,7 +10645,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Too many challenge attempts */
+            /** @description Verification, email delivery, or proxy request limit */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -10088,6 +10656,15 @@ export interface operations {
             };
             /** @description Response conformance or unexpected server failure */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Verification provider failed to accept delivery */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -10198,7 +10775,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Too many challenge attempts */
+            /** @description Verification, email delivery, or proxy request limit */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -10209,6 +10786,15 @@ export interface operations {
             };
             /** @description Response conformance or unexpected server failure */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Verification provider failed to accept delivery */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -10317,7 +10903,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Too many challenge attempts */
+            /** @description Verification, email delivery, or proxy request limit */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -10328,6 +10914,15 @@ export interface operations {
             };
             /** @description Response conformance or unexpected server failure */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Verification provider failed to accept delivery */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -10440,7 +11035,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Too many challenge attempts */
+            /** @description Verification, email delivery, or proxy request limit */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -10451,6 +11046,15 @@ export interface operations {
             };
             /** @description Response conformance or unexpected server failure */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Verification provider failed to accept delivery */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -10561,7 +11165,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Too many challenge attempts */
+            /** @description Verification, email delivery, or proxy request limit */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -10572,6 +11176,15 @@ export interface operations {
             };
             /** @description Response conformance or unexpected server failure */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Verification provider failed to accept delivery */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -10682,7 +11295,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Too many challenge attempts */
+            /** @description Verification, email delivery, or proxy request limit */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -10693,6 +11306,15 @@ export interface operations {
             };
             /** @description Response conformance or unexpected server failure */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Verification provider failed to accept delivery */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -10807,7 +11429,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Too many challenge attempts */
+            /** @description Verification, email delivery, or proxy request limit */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -10818,6 +11440,15 @@ export interface operations {
             };
             /** @description Response conformance or unexpected server failure */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Verification provider failed to accept delivery */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -10928,7 +11559,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Too many challenge attempts */
+            /** @description Verification, email delivery, or proxy request limit */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -10939,6 +11570,15 @@ export interface operations {
             };
             /** @description Response conformance or unexpected server failure */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Verification provider failed to accept delivery */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -11049,7 +11689,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Too many challenge attempts */
+            /** @description Verification, email delivery, or proxy request limit */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -11060,6 +11700,15 @@ export interface operations {
             };
             /** @description Response conformance or unexpected server failure */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Verification provider failed to accept delivery */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -11170,7 +11819,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Too many challenge attempts */
+            /** @description Verification, email delivery, or proxy request limit */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -11181,6 +11830,15 @@ export interface operations {
             };
             /** @description Response conformance or unexpected server failure */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Verification provider failed to accept delivery */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -11291,7 +11949,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Too many challenge attempts */
+            /** @description Verification, email delivery, or proxy request limit */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -11302,6 +11960,15 @@ export interface operations {
             };
             /** @description Response conformance or unexpected server failure */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Verification provider failed to accept delivery */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -11412,7 +12079,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Too many challenge attempts */
+            /** @description Verification, email delivery, or proxy request limit */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -11423,6 +12090,15 @@ export interface operations {
             };
             /** @description Response conformance or unexpected server failure */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Verification provider failed to accept delivery */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -11535,7 +12211,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Too many challenge attempts */
+            /** @description Verification, email delivery, or proxy request limit */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -11546,6 +12222,15 @@ export interface operations {
             };
             /** @description Response conformance or unexpected server failure */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Verification provider failed to accept delivery */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -11658,7 +12343,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Too many challenge attempts */
+            /** @description Verification, email delivery, or proxy request limit */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -11669,6 +12354,15 @@ export interface operations {
             };
             /** @description Response conformance or unexpected server failure */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Verification provider failed to accept delivery */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -11777,7 +12471,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Too many challenge attempts */
+            /** @description Verification, email delivery, or proxy request limit */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -11788,6 +12482,15 @@ export interface operations {
             };
             /** @description Response conformance or unexpected server failure */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Verification provider failed to accept delivery */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -11900,7 +12603,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Too many challenge attempts */
+            /** @description Verification, email delivery, or proxy request limit */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -11911,6 +12614,15 @@ export interface operations {
             };
             /** @description Response conformance or unexpected server failure */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Verification provider failed to accept delivery */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
