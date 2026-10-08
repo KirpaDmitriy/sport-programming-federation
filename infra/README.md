@@ -22,7 +22,7 @@ with 404. The mock runs with `FSP_MOCK_DEV_ROUTES=0` and the stand's origin in `
 (`/etc/fsp/mock-api.env`); the Rust service reads `/etc/fsp/rust-api.env` (`FSP_AUTH_MODE=resend`,
 `FSP_SECURE_COOKIE=1`, origins and the GitHub callback URL) plus `/etc/fsp/db.env` (`DATABASE_URL`) and
 `/etc/fsp/llm.env` (`BIFROST_*`). Build-time flags for the stand are in
-`/etc/fsp/frontend-build.env` (`VITE_DEMO_STAND=1`, `VITE_DEMO_EMAIL_CODE`). The host builds with Bun and Rust
+`/etc/fsp/frontend-build.env` (`VITE_DEMO_STAND=1`; omit the obsolete demo code in real-mail builds). The host builds with Bun and Rust
 (`/opt/rustup`, `/opt/cargo`); there is no Node.
 
 ## API implementation
@@ -46,7 +46,9 @@ ssh -F .fsp-infra/ssh/config fsp-demo 'echo mock > /etc/fsp/api-backend && syste
 builds [`../frontend/Dockerfile`](../frontend/Dockerfile) (the demo build served by unprivileged nginx with
 [`docker/nginx.conf`](docker/nginx.conf) and the stand's security headers). `web` shares the network namespace of
 `api`, so nginx reaches the API on `127.0.0.1:4010` exactly as on the stand and only port 8080 is published. Both
-containers run read-only as non-root users with every capability dropped. `FSP_PORT` changes the published port;
+containers run read-only as non-root users with every capability dropped. The application binds to loopback
+by default; `FSP_BIND_IP` explicitly changes the interface, `FSP_PORT` changes the port and `FSP_DB_PORT` the local DB port;
+`FSP_AUTH_MODE=resend` requires `FSP_AUTH_KEY`, `RESEND_API_KEY` and `FSP_EMAIL_FROM`.
 `FSP_ALLOWED_ORIGINS` lists browser origins when the demo is opened under another host name. A `db` service runs
 `postgres:17-alpine` on `127.0.0.1:5434` with a `pg_isready` healthcheck that `api` waits for; the `pg-data`
 volume persists the database across container restarts. An optional LLM chain reaches the host's Bifrost gateway
@@ -102,18 +104,15 @@ Recovery served the newer binary with PDF disabled; no schema or data was revert
 then validates against the active controller as well. Use current deployment tooling for rollback; directly
 running an archived pre-guard script is unsupported and bypasses these protections.
 
-`.github/workflows/deploy.yml` ships `main` as a gated pipeline on every push to the shared repository:
+The [external CI controller](ci/README.md) on the existing private CI fleet replaces GitHub Actions.
+It reports `fsp/platform`, `fsp/backend`, `fsp/compose` and `fsp/release-safety` for exact commits, retains
+private logs, and checks actual merged trees before automatically moving personal → dev → main.
 
-1. `platform`, `backend` and `infra` reusable jobs run the CI suites and deployment fault/backup tests — a red check blocks the release.
-2. `stand` deploys via `infra/deploy.sh` over SSH (secrets `FSP_DEPLOY_KEY`, `FSP_DEPLOY_KNOWN_HOSTS`; the
-   fork is skipped by a repository guard) and then runs a public smoke: HTTPS frontend, `/api/v1/meta`, an anonymous
-   session rejection and `/__mock__` staying 404. The job targets the GitHub `stand` environment, so releases
-   show up under Deployments.
-3. `public-e2e` runs the Playwright public suite (`e2e:public`) against the live stand and uploads test
-   results on failure.
-
-Deploys serialize through the `stand-deploy` concurrency group and the host-side `release.sh` keeps
-atomic switching plus automatic rollback on failed health checks.
+Verified current main is deployed with `infra/deploy.sh` over a pinned SSH connection. The controller then
+checks public HTTPS/meta/session/mock isolation and runs the actual Playwright journey with real delivered
+Resend codes. `fsp/deployment` passes only after browser acceptance. A single systemd service plus OS lock
+serializes controller runs, and `release.sh` independently locks the stand and recovers failed activations.
+Credentials are root-only on the CI host; neither PR jobs nor git contain deployment or email credentials.
 
 ## Backups and recovery
 
@@ -148,7 +147,7 @@ round trip and that a failed backup leaves the previous archive intact (`infra/t
 | Which API serves | `cat /etc/fsp/api-backend` |
 | Reset demo data (mock) | `systemctl restart fsp-mock-api` (state is in memory; seeded `baseline` scenario) |
 | Certificate | `certbot certificates`; renewal by `snap.certbot.renew.timer` three days before expiry, then `systemctl reload nginx` |
-| Renewal dry run | `certbot renew --cert-name fsp-demo --dry-run --no-random-sleep-on-renew` |
+| Renewal dry run | `certbot renew --cert-name nddev.link --dry-run --no-random-sleep-on-renew` |
 
 While the mock serves, the demo API is shared by every visitor and keeps state only until restart. It is not
 production authentication: codes are fixed, email codes remain publicly known, and fixture data

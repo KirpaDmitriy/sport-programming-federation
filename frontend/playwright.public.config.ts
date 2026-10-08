@@ -1,7 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 
 // Smoke checks against a deployed HTTPS stand. It has no /__mock__ controls, so tests only use
-// public flows and fresh accounts; FSP_PUBLIC_URL and FSP_DEMO_CODE come from the environment.
+// public flows and fresh accounts. The selected auth mode determines real inbox or local demo delivery.
 export default defineConfig({
   testDir: './e2e/public',
   outputDir: 'test-results/public',
