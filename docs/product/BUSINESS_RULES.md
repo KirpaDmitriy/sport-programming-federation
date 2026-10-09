@@ -29,7 +29,7 @@ name a state.
 
 | Owner | Fields |
 | --- | --- |
-| Candidate (editable) | `name`, `industry` (only `it`), `specialization` (`backend`/`frontend`/`fullstack`), `selectedGrade` (`junior`/`middle`/`senior`), `stack` (up to 5 of `rust`, `postgresql`, `docker`, `redis`, `react`), `teamRole`, `experienceMonths` (`null` unknown, `0` none, up to 1200), `experience`, `softSkills` (up to 12, self-assessed), `consents` |
+| Candidate (editable) | `name`, `industry` (only `it`), `specialization` (`backend`/`frontend`/`fullstack`), `selectedGrade` (`junior`/`middle`/`senior`), `stack` (up to 5 of `rust`, `postgresql`, `docker`, `redis`, `typescript`, `react`), `teamRole`, `experienceMonths` (`null` unknown, `0` none, up to 1200), `experience`, `softSkills` (up to 12, self-assessed), `consents` |
 | Server | `verifiedSpecialization`, `verifiedGrade`, `gradeConfirmedAt`, `category`, `onboarding`, `assessmentEligibility`, `revision` |
 
 - `selectedGrade` is only the target of the next assessment («Цель»). Changing it never changes `verifiedGrade`;
