@@ -174,7 +174,8 @@ function eligibility(s: State, candidate: Candidate): Schemas['GradeEligibility'
   const selectedReason =
     reason === 'onboarding_incomplete' || reason === 'active_assessment'
       ? reason
-      : candidate.specialization !== 'backend'
+      : candidate.specialization === 'fullstack' ||
+          (candidate.specialization === 'frontend' && candidate.selectedGrade === 'senior')
         ? 'unsupported_scope'
         : candidate.verifiedSpecialization === candidate.specialization &&
             rankOf(candidate.selectedGrade) < rankOf(candidate.verifiedGrade)
@@ -412,7 +413,9 @@ function gapPlan(candidate: Candidate, need: Need): Schemas['GapPlan'] {
             ? 'Пройдите тест знаний нужного уровня.'
             : 'Предоставьте свидетельство из источников, которые принимает работодатель.',
           acceptedCompetitionIds,
-          assessmentAvailable: policy.acceptAssessments && need.specialization === 'backend',
+          assessmentAvailable:
+            policy.acceptAssessments &&
+            (need.specialization === 'backend' || (need.specialization === 'frontend' && need.grade !== 'senior')),
         },
       ];
     }),
@@ -763,7 +766,7 @@ function startSourceSync(s: State, actor: Actor, candidate: Candidate, source: S
   return job;
 }
 function completeAssessment(s: State, candidate: Candidate, item: AssessmentRecord): JobResult {
-  const score = scoreKnowledge(item.grade, item.task, item.answer);
+  const score = scoreKnowledge(item.specialization, item.grade, item.task, item.answer);
   if (!score) return fail(422, 'answer_incomplete', 'Ответьте на все вопросы теста');
   const outcome =
     s.scenario === 'service_failure'
@@ -784,10 +787,14 @@ function completeAssessment(s: State, candidate: Candidate, item: AssessmentReco
       candidate.verifiedGrade = item.grade;
       candidate.verifiedSpecialization = item.specialization;
       if (gradeChanged) candidate.gradeConfirmedAt = s.clock;
-      for (const skillId of ['rust', 'postgresql'] as const) {
+      const confirmedSkills =
+        item.specialization === 'backend' ? (['rust', 'postgresql'] as const) : (['typescript', 'react'] as const);
+      for (const skillId of confirmedSkills) {
         const previous = candidate.skills.find((skill) => skill.skillId === skillId);
         const current = must(
-          makeSkills(candidate.id, true).find((skill) => skill.skillId === skillId),
+          makeSkills(candidate.id, true, false, item.specialization === 'frontend').find(
+            (skill) => skill.skillId === skillId,
+          ),
           `seed skill ${skillId}`,
         );
         const assessmentEvidence = {
@@ -927,7 +934,10 @@ const handlers: Handlers = {
       sameGradeRetryCooldownDays: 0,
       aiAllowed: true,
       externalAiAllowed: true,
-      supportedScopes: [{ specialization: 'backend', grades: ['junior', 'middle', 'senior'] }],
+      supportedScopes: [
+        { specialization: 'backend', grades: ['junior', 'middle', 'senior'] },
+        { specialization: 'frontend', grades: ['junior', 'middle'] },
+      ],
     },
     competitions: COMPETITIONS,
     skills: SKILLS,
@@ -1115,8 +1125,11 @@ const handlers: Handlers = {
     const form = onboarding(candidate);
     if (!form.emailVerified || !form.questionnaireComplete)
       fail(409, 'onboarding_incomplete', 'Подтвердите почту и заполните анкету');
-    if (ctx.body.specialization !== 'backend')
-      fail(422, 'assessment_scope_unavailable', 'Тесты знаний доступны только для бэкенда');
+    if (
+      ctx.body.specialization === 'fullstack' ||
+      (ctx.body.specialization === 'frontend' && ctx.body.grade === 'senior')
+    )
+      fail(422, 'assessment_scope_unavailable', 'Для выбранной специализации и грейда тест пока недоступен');
     if (
       [...ctx.s.assessments.values()].some(
         (item) =>
@@ -1163,13 +1176,18 @@ const handlers: Handlers = {
         };
       }
     }
+    const id = nextId(ctx.s, 'assessment');
+    const task = knowledgeTask(ctx.body.specialization, ctx.body.grade, id);
+    if (!task) {
+      return fail(422, 'assessment_scope_unavailable', 'Для выбранной специализации и грейда тест пока недоступен');
+    }
     const item: AssessmentRecord = {
-      id: nextId(ctx.s, 'assessment'),
+      id,
       candidateId: candidate.id,
       specialization: ctx.body.specialization,
       grade: ctx.body.grade,
       status: 'draft',
-      task: knowledgeTask(ctx.body.grade),
+      task,
       answer: { code: '', explanation: '', externalAiUsed: false, responses: [] },
       checks: [],
       result: null,
@@ -1227,7 +1245,7 @@ const handlers: Handlers = {
     processing(candidate);
     const item = assessmentFor(ctx, param(ctx, 'assessmentId'));
     mutableAssessment(item);
-    if (!scoreKnowledge(item.grade, item.task, item.answer))
+    if (!scoreKnowledge(item.specialization, item.grade, item.task, item.answer))
       fail(422, 'answer_incomplete', 'Ответьте на все вопросы теста');
     item.status = 'submitted';
     item.updatedAt = ctx.s.clock;

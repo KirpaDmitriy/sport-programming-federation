@@ -129,6 +129,7 @@ export const SKILLS: S['Meta']['skills'] = [
   { id: 'postgresql', label: 'PostgreSQL' },
   { id: 'docker', label: 'Docker' },
   { id: 'redis', label: 'Redis' },
+  { id: 'typescript', label: 'TypeScript' },
   { id: 'react', label: 'React' },
 ];
 export const COMPETITIONS: S['Meta']['competitions'] = [
@@ -307,7 +308,9 @@ export function makeSkills(
   missingPostgres = false,
   frontend = false,
 ): SelfSkill[] {
-  return SKILLS.filter((skill) => (frontend ? skill.id === 'react' : skill.id !== 'react')).map((skill) => {
+  return SKILLS.filter((skill) =>
+    frontend ? ['typescript', 'react'].includes(skill.id) : !['typescript', 'react'].includes(skill.id),
+  ).map((skill) => {
     const status: SkillStatus =
       frontend || skill.id === 'rust' || (skill.id === 'postgresql' && qualified && !missingPostgres)
         ? 'confirmed'

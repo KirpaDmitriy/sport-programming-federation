@@ -6,6 +6,7 @@ import { request as rawHttpRequest } from 'node:http';
 import test, { after, type TestContext } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import bank from '../../backend/crates/domain/data/knowledge-v1.json';
+import additions from '../../backend/crates/domain/data/knowledge-v2-additions.json';
 import { buildOpenApi, routes, routeTable } from '../src/contract.ts';
 import { createMockServer, type MockServerOptions } from '../src/server.ts';
 import { validators } from '../src/validation.ts';
@@ -83,14 +84,18 @@ async function setup(t: TestContext, options: MockServerOptions = {}) {
   }
   return { app, url, request, login, job, client };
 }
-const answer = {
+const answerKey = new Map(
+  [...bank.questions, ...additions.questions].map((question) => [question.id, question.correctOptionId]),
+);
+const assessmentAnswerFor = (task: Body) => ({
   code: '',
   explanation: '',
   externalAiUsed: true,
-  responses: bank.questions
-    .filter((q) => q.grade === 'middle')
-    .map((q) => ({ questionId: q.id, optionId: q.correctOptionId })),
-};
+  responses: task.questions.map((question: Body) => ({
+    questionId: question.id,
+    optionId: answerKey.get(question.id),
+  })),
+});
 const forbiddenKeys = new Set([
   'name',
   'email',
@@ -483,7 +488,10 @@ test('assessment workflow uses jobs, preserves unrelated evidence, and applies a
   });
   await request('GET', `/api/v1/me/assessments/${item.id}`, { actor: candidate });
   await request('POST', `/api/v1/me/assessments/${item.id}/submit`, { actor: candidate, status: 422 });
-  await request('PUT', `/api/v1/me/assessments/${item.id}/answer`, { actor: candidate, body: answer });
+  await request('PUT', `/api/v1/me/assessments/${item.id}/answer`, {
+    actor: candidate,
+    body: assessmentAnswerFor(item.task),
+  });
   const reply = (
     await request('POST', `/api/v1/me/assessments/${item.id}/assistant`, {
       actor: candidate,
@@ -528,9 +536,55 @@ test('assessment workflow uses jobs, preserves unrelated evidence, and applies a
     body: { specialization: 'backend', grade: 'senior' },
     status: 409,
   });
-  await request('PUT', `/api/v1/me/assessments/${item.id}/answer`, { actor: candidate, body: answer, status: 409 });
+  await request('PUT', `/api/v1/me/assessments/${item.id}/answer`, {
+    actor: candidate,
+    body: assessmentAnswerFor(item.task),
+    status: 409,
+  });
   const history = (await request('GET', '/api/v1/me/assessments', { actor: candidate })).body.items;
   assert.equal(history.length, 2);
+});
+
+test('frontend assessment confirms TypeScript and React for a supported grade', async (t) => {
+  const { request, login, job } = await setup(t);
+  const candidate = await login('candidate024');
+  await request('PATCH', '/api/v1/me/profile', {
+    actor: candidate,
+    body: {
+      specialization: 'frontend',
+      selectedGrade: 'middle',
+      stack: ['typescript', 'react'],
+    },
+  });
+  const item = (
+    await request('POST', '/api/v1/me/assessments', {
+      actor: candidate,
+      body: { specialization: 'frontend', grade: 'middle' },
+      status: 201,
+    })
+  ).body;
+  assert.deepEqual([...new Set(item.task.questions.map((question: Body) => question.skillId))].sort(), [
+    'react',
+    'typescript',
+  ]);
+  await request('PUT', `/api/v1/me/assessments/${item.id}/answer`, {
+    actor: candidate,
+    body: assessmentAnswerFor(item.task),
+  });
+  const submitted = (
+    await request('POST', `/api/v1/me/assessments/${item.id}/submit`, {
+      actor: candidate,
+      status: 202,
+    })
+  ).body;
+  const result = await job(submitted.id, candidate);
+  assert.equal(result.result.assessment.status, 'passed');
+  const profile = (await request('GET', '/api/v1/me/profile', { actor: candidate })).body;
+  assert.equal(profile.verifiedSpecialization, 'frontend');
+  assert.equal(profile.verifiedGrade, 'middle');
+  const skills = (await request('GET', '/api/v1/me/skills', { actor: candidate })).body.items;
+  for (const skillId of ['typescript', 'react'])
+    assert.equal(skills.find((skill: Body) => skill.skillId === skillId).status, 'confirmed');
 });
 
 test('failed and unavailable assessment scenarios preserve grades and allow retry without a penalty', async (t) => {
@@ -545,7 +599,10 @@ test('failed and unavailable assessment scenarios preserve grades and allow retr
           status: 201,
         })
       ).body;
-      await request('PUT', `/api/v1/me/assessments/${item.id}/answer`, { actor: candidate, body: answer });
+      await request('PUT', `/api/v1/me/assessments/${item.id}/answer`, {
+        actor: candidate,
+        body: assessmentAnswerFor(item.task),
+      });
       const submitted = (
         await request('POST', `/api/v1/me/assessments/${item.id}/submit`, { actor: candidate, status: 202 })
       ).body;
@@ -606,7 +663,10 @@ test('stale check jobs and revoked processing consent cannot write grades or out
   ).body;
   const pending = (await request('POST', `/api/v1/me/assessments/${item.id}/checks`, { actor: candidate, status: 202 }))
     .body;
-  await request('PUT', `/api/v1/me/assessments/${item.id}/answer`, { actor: candidate, body: answer });
+  await request('PUT', `/api/v1/me/assessments/${item.id}/answer`, {
+    actor: candidate,
+    body: assessmentAnswerFor(item.task),
+  });
   assert.equal((await job(pending.id, candidate)).error.code, 'stale_input');
   const submitted = (
     await request('POST', `/api/v1/me/assessments/${item.id}/submit`, { actor: candidate, status: 202 })

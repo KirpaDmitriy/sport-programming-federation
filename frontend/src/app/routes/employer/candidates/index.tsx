@@ -13,7 +13,7 @@ const searchSchema = z.object({
   mode: z.enum(['recommended', 'bank']).optional().catch(undefined),
   specialization: z.enum(['backend', 'frontend', 'fullstack']).optional().catch(undefined),
   grade: z.enum(['junior', 'middle', 'senior']).optional().catch(undefined),
-  skill: z.enum(['rust', 'postgresql', 'docker', 'redis', 'react']).optional().catch(undefined),
+  skill: z.enum(['rust', 'postgresql', 'docker', 'redis', 'typescript', 'react']).optional().catch(undefined),
   fsp: z.enum(['any', 'verified']).optional().catch(undefined),
   page: z.number().int().min(1).max(1000).optional().catch(undefined),
   shortlistId: id.optional().catch(undefined),

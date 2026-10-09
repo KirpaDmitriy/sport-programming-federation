@@ -1436,12 +1436,12 @@ export interface components {
                 id: string;
                 name: string;
                 synthetic: boolean;
-                skillIds: ("rust" | "postgresql" | "docker" | "redis" | "react")[];
+                skillIds: ("rust" | "postgresql" | "docker" | "redis" | "typescript" | "react")[];
                 discipline: string;
             }[];
             skills: {
                 /** @enum {string} */
-                id: "rust" | "postgresql" | "docker" | "redis" | "react";
+                id: "rust" | "postgresql" | "docker" | "redis" | "typescript" | "react";
                 label: string;
             }[];
         };
@@ -1515,7 +1515,7 @@ export interface components {
             specialization: "backend" | "frontend" | "fullstack";
             /** @enum {string} */
             selectedGrade: "junior" | "middle" | "senior";
-            stack: ("rust" | "postgresql" | "docker" | "redis" | "react")[];
+            stack: ("rust" | "postgresql" | "docker" | "redis" | "typescript" | "react")[];
             teamRole: string;
             experienceMonths: number | null;
             experience: string;
@@ -1543,7 +1543,7 @@ export interface components {
             specialization?: "backend" | "frontend" | "fullstack";
             /** @enum {string} */
             selectedGrade?: "junior" | "middle" | "senior";
-            stack?: ("rust" | "postgresql" | "docker" | "redis" | "react")[];
+            stack?: ("rust" | "postgresql" | "docker" | "redis" | "typescript" | "react")[];
             teamRole?: string;
             experienceMonths?: number | null;
             experience?: string;
@@ -1559,7 +1559,7 @@ export interface components {
             specialization: "backend" | "frontend" | "fullstack";
             /** @enum {string} */
             selectedGrade: "junior" | "middle" | "senior";
-            stack: ("rust" | "postgresql" | "docker" | "redis" | "react")[];
+            stack: ("rust" | "postgresql" | "docker" | "redis" | "typescript" | "react")[];
             teamRole: string;
             experienceMonths: number | null;
             experience: string;
@@ -1583,7 +1583,7 @@ export interface components {
         };
         Skill: {
             /** @enum {string} */
-            skillId: "rust" | "postgresql" | "docker" | "redis" | "react";
+            skillId: "rust" | "postgresql" | "docker" | "redis" | "typescript" | "react";
             label: string;
             /** @enum {string} */
             status: "confirmed" | "evidence" | "observed" | "insufficient";
@@ -1595,7 +1595,7 @@ export interface components {
         };
         SelfSkill: {
             /** @enum {string} */
-            skillId: "rust" | "postgresql" | "docker" | "redis" | "react";
+            skillId: "rust" | "postgresql" | "docker" | "redis" | "typescript" | "react";
             label: string;
             /** @enum {string} */
             status: "confirmed" | "evidence" | "observed" | "insufficient";
@@ -1619,7 +1619,7 @@ export interface components {
             name: string;
             /** Format: uri */
             url: string;
-            technologies: ("rust" | "postgresql" | "docker" | "redis" | "react")[];
+            technologies: ("rust" | "postgresql" | "docker" | "redis" | "typescript" | "react")[];
             /** @enum {string} */
             status: "processed" | "queued" | "unavailable";
             metrics: {
@@ -1693,7 +1693,7 @@ export interface components {
             /** @enum {string} */
             kind: "role" | "skill" | "evidence";
             label: string;
-            skillId: ("rust" | "postgresql" | "docker" | "redis" | "react") | null;
+            skillId: ("rust" | "postgresql" | "docker" | "redis" | "typescript" | "react") | null;
             status: ("confirmed" | "evidence" | "observed" | "insufficient") | null;
         };
         GraphEdge: {
@@ -1720,7 +1720,7 @@ export interface components {
         };
         Requirement: {
             /** @enum {string} */
-            skillId: "rust" | "postgresql" | "docker" | "redis" | "react";
+            skillId: "rust" | "postgresql" | "docker" | "redis" | "typescript" | "react";
             /** @enum {string} */
             criticality: "required" | "desired";
             /** @enum {string} */
@@ -1805,7 +1805,7 @@ export interface components {
         };
         MatchRequirement: {
             /** @enum {string} */
-            skillId: "rust" | "postgresql" | "docker" | "redis" | "react";
+            skillId: "rust" | "postgresql" | "docker" | "redis" | "typescript" | "react";
             /** @enum {string} */
             criticality: "required" | "desired";
             /** @enum {string} */
@@ -1854,7 +1854,7 @@ export interface components {
         };
         GapItem: {
             /** @enum {string} */
-            skillId: "rust" | "postgresql" | "docker" | "redis" | "react";
+            skillId: "rust" | "postgresql" | "docker" | "redis" | "typescript" | "react";
             /** @enum {string} */
             status: "needs_verification" | "not_evidenced";
             reason: string;
@@ -1954,7 +1954,7 @@ export interface components {
         };
         VacancyRequirement: {
             /** @enum {string} */
-            skillId: "rust" | "postgresql" | "docker" | "redis" | "react";
+            skillId: "rust" | "postgresql" | "docker" | "redis" | "typescript" | "react";
             /** @enum {string} */
             criticality: "required" | "desired";
             /** @enum {string} */
@@ -2045,7 +2045,7 @@ export interface components {
             title: string;
             prompt: string;
             /** @enum {string} */
-            skillId: "rust" | "postgresql" | "docker" | "redis" | "react";
+            skillId: "rust" | "postgresql" | "docker" | "redis" | "typescript" | "react";
             /** @enum {string} */
             grade: "junior" | "middle" | "senior";
             estimateMinutes: number;
@@ -2055,7 +2055,7 @@ export interface components {
             title: string;
             prompt: string;
             /** @enum {string} */
-            skillId: "rust" | "postgresql" | "docker" | "redis" | "react";
+            skillId: "rust" | "postgresql" | "docker" | "redis" | "typescript" | "react";
             /** @enum {string} */
             grade: "junior" | "middle" | "senior";
             estimateMinutes: number;
@@ -2077,7 +2077,7 @@ export interface components {
             title: string;
             prompt: string;
             /** @enum {string} */
-            skillId: "rust" | "postgresql" | "docker" | "redis" | "react";
+            skillId: "rust" | "postgresql" | "docker" | "redis" | "typescript" | "react";
             /** @enum {string} */
             grade: "junior" | "middle" | "senior";
             estimateMinutes: number;
@@ -2136,7 +2136,7 @@ export interface components {
         KnowledgeQuestion: {
             id: string;
             /** @enum {string} */
-            skillId: "rust" | "postgresql";
+            skillId: "rust" | "postgresql" | "typescript" | "react";
             prompt: string;
             options: {
                 id: string;
@@ -2176,7 +2176,7 @@ export interface components {
             title: string;
             prompt: string;
             /** @enum {string} */
-            language: "rust";
+            language: "rust" | "backend" | "frontend";
             starterCode: string;
             acceptanceCriteria: string[];
             rubric: components["schemas"]["RubricCriterion"][];
@@ -6633,7 +6633,7 @@ export interface operations {
                 specialization?: "backend" | "frontend" | "fullstack";
                 grade?: "junior" | "middle" | "senior";
                 workMode?: "remote" | "hybrid" | "office";
-                skill?: "rust" | "postgresql" | "docker" | "redis" | "react";
+                skill?: "rust" | "postgresql" | "docker" | "redis" | "typescript" | "react";
                 page?: number;
                 pageSize?: number;
             };
@@ -8723,7 +8723,7 @@ export interface operations {
                 mode?: "bank" | "recommended";
                 specialization?: "backend" | "frontend" | "fullstack";
                 grade?: "junior" | "middle" | "senior";
-                skill?: "rust" | "postgresql" | "docker" | "redis" | "react";
+                skill?: "rust" | "postgresql" | "docker" | "redis" | "typescript" | "react";
                 fsp?: "any" | "verified";
                 page?: number;
                 pageSize?: number;

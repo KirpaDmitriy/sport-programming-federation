@@ -8,6 +8,12 @@ import { formatDate, gradeLabel, pluralRu, specializationLabel, useDocumentTitle
 import { Card, EmptyState, ErrorState, Icon, LoadingState, PageHeader, TableWrap } from '@/shared/ui';
 import { AssessmentNextStep } from '@/widgets/assessment-next-step';
 
+/** The two topics of each specialization's knowledge bank, as the Rust evaluator defines them. */
+const assessmentTopics: Partial<Record<keyof typeof specializationLabel, string>> = {
+  backend: 'Rust и PostgreSQL',
+  frontend: 'TypeScript и React',
+};
+
 function categoryEffect(assessment: Assessment) {
   const result = assessment.result;
   if (!result) return 'Пока без изменений';
@@ -92,20 +98,22 @@ export function CandidateAssessmentsPage() {
   const { data: profile } = useSuspenseQuery(profileQuery(scope));
   const policy = meta.assessmentPolicy;
   const scopes = policy.supportedScopes
-    .map(
-      (item) =>
-        `${specializationLabel[item.specialization]}: ${item.grades.map((grade) => gradeLabel[grade]).join(', ')}`,
-    )
+    .map((item) => {
+      const topics = assessmentTopics[item.specialization];
+      const grades = item.grades.map((grade) => gradeLabel[grade]).join(', ');
+      return `${specializationLabel[item.specialization]}${topics ? ` (${topics})` : ''}: ${grades}`;
+    })
     .join('; ');
   return (
     <>
-      <PageHeader title="Проверки" subtitle="Тест знаний по Rust и PostgreSQL · без написания кода" />
+      <PageHeader title="Проверки" subtitle="Тест знаний с выбором ответов · без написания кода" />
       <div className="split">
         <Card title="Как устроена проверка">
           <div className="stack">
             <ol className="stack" style={{ margin: 0, paddingLeft: '1.25rem' }}>
               <li>
-                <strong>Вопросы.</strong> 10 вопросов: по 5 на Rust и PostgreSQL. В каждом один верный ответ.
+                <strong>Вопросы.</strong> 10 вопросов: по 5 на каждую из двух тем направления. В каждом один верный
+                ответ.
               </li>
               <li>
                 <strong>Черновик.</strong> Выбранные ответы автоматически сохраняются на сервере.
@@ -134,7 +142,7 @@ export function CandidateAssessmentsPage() {
             </ul>
             <p className="small muted">
               Уровень по этому тесту отражает знания выбранных тем, а не проверенный опыт разработки. Банк вопросов
-              версии knowledge-v1 открыт для изучения; ИИ и справочники разрешены.
+              открыт для изучения; ИИ и справочники разрешены.
             </p>
           </div>
         </Card>

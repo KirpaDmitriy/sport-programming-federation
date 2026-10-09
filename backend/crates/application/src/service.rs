@@ -2526,10 +2526,15 @@ impl PlatformService {
             .await
             .map_err(ApplicationError::storage)?
             .ok_or_else(|| ApplicationError::new(404, "not_found", "Кандидат не найден"))?;
-        let score = fsp_domain::score_knowledge(record.grade, &record.task, &record.answer)
-            .ok_or_else(|| {
-                ApplicationError::new(422, "answer_incomplete", "Ответьте на все вопросы теста")
-            })?;
+        let score = fsp_domain::score_knowledge(
+            record.specialization,
+            record.grade,
+            &record.task,
+            &record.answer,
+        )
+        .ok_or_else(|| {
+            ApplicationError::new(422, "answer_incomplete", "Ответьте на все вопросы теста")
+        })?;
         let previous_grade = candidate.profile.verified_grade;
         let grade_changed = score.passed
             && (candidate.profile.verified_grade != Some(record.grade)
@@ -2549,11 +2554,16 @@ impl PlatformService {
                 candidate.last_signal_at = candidate.profile.grade_confirmed_at.clone();
             }
             candidate.last_signal_at = Some(now());
-            for skill_id in ["rust", "postgresql"] {
+            let confirmed_skills: &[&str] = match record.specialization {
+                fsp_domain::Specialization::Backend => &["rust", "postgresql"],
+                fsp_domain::Specialization::Frontend => &["typescript", "react"],
+                fsp_domain::Specialization::Fullstack => &[],
+            };
+            for skill_id in confirmed_skills {
                 let skill = candidate
                     .skills
                     .iter_mut()
-                    .find(|item| item.skill_id == skill_id);
+                    .find(|item| item.skill_id == *skill_id);
                 match skill {
                     Some(item) => {
                         item.status = EvidenceStatus::Confirmed;
@@ -2566,7 +2576,7 @@ impl PlatformService {
                         }
                     }
                     None => candidate.skills.push(fsp_domain::SkillEvidence {
-                        skill_id: skill_id.into(),
+                        skill_id: (*skill_id).into(),
                         status: EvidenceStatus::Confirmed,
                         evidence_grade: Some(record.grade),
                         sources: vec![fsp_domain::EvidenceSource::Assessment],
@@ -3744,7 +3754,11 @@ fn gap_plan(candidate: &CandidateIndexRecord, need: &HiringNeedRecord) -> GapPla
                 },
                 accepted_competition_ids,
                 assessment_available: policy.accept_assessments
-                    && need.need.specialization == Specialization::Backend,
+                    && matches!(
+                        (need.need.specialization, need.need.grade),
+                        (Specialization::Backend, _)
+                            | (Specialization::Frontend, Grade::Junior | Grade::Middle)
+                    ),
             })
         })
         .collect();
@@ -3804,8 +3818,7 @@ fn profile_view(
     let processing_consent = profile.consents.processing;
     // Mirrors the mock's eligibility(): onboarding gates starting any check; a
     // successful verification freezes upgrades for the cooldown window; the
-    // selected scope additionally rejects non-backend specializations and
-    // downgrades.
+    // The selected scope additionally rejects unavailable assessment banks and downgrades.
     let onboarding_incomplete = !(email_verified && questionnaire_complete && processing_consent);
     let next_eligible_at = profile
         .grade_confirmed_at
@@ -3832,7 +3845,10 @@ fn profile_view(
         } else {
             "active_assessment"
         })
-    } else if profile.specialization != Specialization::Backend {
+    } else if profile.specialization == Specialization::Fullstack
+        || (profile.specialization == Specialization::Frontend
+            && profile.selected_grade == Grade::Senior)
+    {
         Some("unsupported_scope")
     } else if profile.verified_specialization == Some(profile.specialization)
         && profile
@@ -3998,7 +4014,14 @@ fn validate_profile_patch(patch: &ProfilePatch) -> Result<(), ApplicationError> 
         return Err(validation("Текстовое поле превышает допустимую длину"));
     }
     if let Some(stack) = &patch.stack {
-        let supported = ["rust", "postgresql", "docker", "redis", "react"];
+        let supported = [
+            "rust",
+            "postgresql",
+            "docker",
+            "redis",
+            "typescript",
+            "react",
+        ];
         if stack.len() > 5
             || stack
                 .iter()
@@ -4101,7 +4124,14 @@ fn validation(message: &'static str) -> ApplicationError {
 }
 
 /// Schema-level ids the contract enumerates.
-const CATALOG_SKILLS: &[&str] = &["rust", "postgresql", "docker", "redis", "react"];
+const CATALOG_SKILLS: &[&str] = &[
+    "rust",
+    "postgresql",
+    "docker",
+    "redis",
+    "typescript",
+    "react",
+];
 const WORK_MODES: &[&str] = &["remote", "hybrid", "office"];
 /// Competition ids the meta catalog advertises.
 const COMPETITION_IDS: &[&str] = &["competition-demo-api", "competition-demo-systems"];
