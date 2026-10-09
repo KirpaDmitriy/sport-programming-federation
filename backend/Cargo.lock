@@ -619,6 +619,7 @@ dependencies = [
  "fsp-domain",
  "reqwest",
  "serde",
+ "serde_json",
  "tokio",
 ]
 

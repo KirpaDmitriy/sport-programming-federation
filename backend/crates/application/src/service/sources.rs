@@ -25,36 +25,22 @@ impl PlatformService {
         }
         let record = match provider {
             "github" => {
-                let token = self
+                let login = fsp_domain::parse_github_login(account).ok_or_else(|| {
+                    ApplicationError::new(
+                        422,
+                        "github_login_invalid",
+                        "Укажите имя пользователя GitHub или ссылку на профиль",
+                    )
+                })?;
+                let previous = self
                     .repository
-                    .github_token(candidate_id)
+                    .sources(candidate_id)
                     .await
                     .map_err(ApplicationError::storage)?
-                    .ok_or_else(|| {
-                        ApplicationError::new(
-                            409,
-                            "github_authorization_required",
-                            "Сначала авторизуйте доступ к GitHub",
-                        )
-                    })?;
-                let analysis = self
-                    .github()?
-                    .analyze(account, &token)
-                    .await
-                    .map_err(integration_error)?;
-                fsp_domain::SourceRecord {
-                    id: format!("source-github-{candidate_id}"),
-                    candidate_id: candidate_id.into(),
-                    provider: fsp_domain::SourceProvider::Github,
-                    synthetic: false,
-                    active_job_id: None,
-                    account_label: Some(analysis.username.clone()),
-                    last_synced_at: Some(now()),
-                    analysis: Some(analysis),
-                    verified_participation: false,
-                    competition_ids: Vec::new(),
-                    fsp_results: Vec::new(),
-                }
+                    .into_iter()
+                    .find(|source| source.provider == fsp_domain::SourceProvider::Github);
+                self.github_record(candidate_id, &login, previous.as_ref(), false)
+                    .await?
             }
             "fsp" => {
                 let participation = self
@@ -104,7 +90,10 @@ impl PlatformService {
         let mut candidate = scoped.candidate_index(candidate_id).await?;
         scoped.save_source_evidence(&mut candidate, &record).await?;
         tx.commit().await.map_err(ApplicationError::storage)?;
-        Ok(source_view(record))
+        Ok(source_view(
+            record,
+            &self.github_ownership_code(candidate_id),
+        ))
     }
 
     pub async fn sync_source(
@@ -144,34 +133,17 @@ impl PlatformService {
         };
         let result = match source.provider {
             fsp_domain::SourceProvider::Github => {
-                let token = self
-                    .repository
-                    .github_token(candidate_id)
-                    .await
-                    .map_err(ApplicationError::storage)?
-                    .ok_or_else(|| {
-                        ApplicationError::new(
-                            409,
-                            "github_authorization_required",
-                            "Авторизуйте GitHub повторно",
-                        )
-                    })?;
-                let username = source.account_label.as_deref().ok_or_else(|| {
+                let login = source.account_label.clone().ok_or_else(|| {
                     ApplicationError::new(
                         409,
                         "source_not_connected",
                         "Сначала подключите источник",
                     )
                 })?;
-                self.github()?
-                    .analyze(username, &token)
+                // A configuration gap is a request error; provider failures become a failed job.
+                self.github_insights()?;
+                self.github_record(candidate_id, &login, Some(&source), true)
                     .await
-                    .map(|analysis| fsp_domain::SourceRecord {
-                        analysis: Some(analysis),
-                        last_synced_at: Some(now()),
-                        active_job_id: None,
-                        ..source
-                    })
             }
             fsp_domain::SourceProvider::Fsp => {
                 let account = source.account_label.as_deref().ok_or_else(|| {
@@ -197,6 +169,7 @@ impl PlatformService {
                         active_job_id: None,
                         ..source
                     })
+                    .map_err(integration_error)
             }
         };
         match result {
@@ -248,7 +221,10 @@ impl PlatformService {
                 job.result_source_id = Some(updated.id.clone());
                 job.result_json = Some(
                     serde_json::to_string(&JobResultView::SourceSync {
-                        source: source_view(updated.clone()),
+                        source: source_view(
+                            updated.clone(),
+                            &self.github_ownership_code(candidate_id),
+                        ),
                     })
                     .map_err(|_| {
                         ApplicationError::new(500, "internal_error", "Сервис временно недоступен")
@@ -256,7 +232,8 @@ impl PlatformService {
                 );
                 tx.save_job(&job).await.map_err(ApplicationError::storage)?;
                 tx.commit().await.map_err(ApplicationError::storage)?;
-                Ok(job_view(job, Some(source_view(updated))))
+                let view = source_view(updated, &self.github_ownership_code(candidate_id));
+                Ok(job_view(job, Some(view)))
             }
             Err(error) => {
                 job.status = "failed".into();
@@ -270,6 +247,126 @@ impl PlatformService {
                 Ok(job_view(job, None))
             }
         }
+    }
+
+    /// Analyzes a public GitHub account and decides ownership.
+    ///
+    /// Ownership is kept from an earlier proof for the same login, proven now by the ownership code
+    /// in the bio, or proven by an OAuth token of the same account. A login proven by another
+    /// candidate cannot be proven again.
+    async fn github_record(
+        &self,
+        candidate_id: &str,
+        login: &str,
+        previous: Option<&fsp_domain::SourceRecord>,
+        refresh: bool,
+    ) -> Result<fsp_domain::SourceRecord, ApplicationError> {
+        let code = self.github_ownership_code(candidate_id);
+        let insights = self
+            .github_insights()?
+            .report(login, Some(&code), refresh)
+            .await
+            .map_err(integration_error)?;
+        let report = insights.report;
+        let canonical = report.login.clone();
+        let same_login = |ownership: &&fsp_domain::GitHubOwnership| {
+            ownership.login.eq_ignore_ascii_case(&canonical)
+        };
+        let mut ownership = previous
+            .and_then(|source| source.analysis.as_ref())
+            .and_then(|analysis| analysis.ownership.as_ref())
+            .filter(same_login)
+            .cloned();
+        if ownership.is_none() && insights.ownership_code_found == Some(true) {
+            ownership = Some(fsp_domain::GitHubOwnership {
+                login: canonical.clone(),
+                method: fsp_domain::OwnershipMethod::ProfileCode,
+                verified_at: now(),
+            });
+        }
+        if ownership.is_none()
+            && let Some(github) = &self.github
+            && let Some(token) = self
+                .repository
+                .github_token(candidate_id)
+                .await
+                .map_err(ApplicationError::storage)?
+            && github
+                .authenticated_login(&token)
+                .await
+                .is_ok_and(|authenticated| authenticated.eq_ignore_ascii_case(&canonical))
+        {
+            ownership = Some(fsp_domain::GitHubOwnership {
+                login: canonical.clone(),
+                method: fsp_domain::OwnershipMethod::Oauth,
+                verified_at: now(),
+            });
+        }
+        if ownership.is_some() {
+            let claimed = self
+                .repository
+                .github_sources(&canonical)
+                .await
+                .map_err(ApplicationError::storage)?
+                .into_iter()
+                .any(|source| {
+                    source.candidate_id != candidate_id
+                        && source
+                            .analysis
+                            .as_ref()
+                            .and_then(|analysis| analysis.ownership.as_ref())
+                            .is_some_and(|other| other.login.eq_ignore_ascii_case(&canonical))
+                });
+            if claimed {
+                return Err(ApplicationError::new(
+                    409,
+                    "github_account_taken",
+                    "Владение этим аккаунтом GitHub уже подтвердил другой кандидат",
+                ));
+            }
+        }
+        // Skill evidence comes only from repositories the candidate substantially develops.
+        let repositories = report
+            .repositories
+            .iter()
+            .filter(|repository| {
+                !repository.fork && (repository.owned || repository.contributions >= 10)
+            })
+            .map(|repository| fsp_domain::AnalyzedRepository {
+                id: format!("github-{}", repository.name_with_owner),
+                name: repository.name_with_owner.clone(),
+                url: repository.url.clone(),
+                technologies: repository.technologies.clone(),
+                metrics: fsp_domain::RepositoryMetrics {
+                    stars: u64::from(repository.stars),
+                    forks: u64::from(repository.forks),
+                    open_issues: 0,
+                    size_kib: 0,
+                    pushed_at: repository.pushed_at.clone(),
+                },
+            })
+            .collect();
+        Ok(fsp_domain::SourceRecord {
+            id: format!("source-github-{candidate_id}"),
+            candidate_id: candidate_id.into(),
+            provider: fsp_domain::SourceProvider::Github,
+            synthetic: false,
+            active_job_id: None,
+            account_label: Some(canonical.clone()),
+            last_synced_at: Some(now()),
+            analysis: Some(fsp_domain::GitHubAnalysis {
+                username: canonical,
+                repositories,
+                active_days: report.activity.active_days_last_year,
+                observed_from: Some(report.coverage.from.clone()),
+                observed_to: Some(report.coverage.to.clone()),
+                report: Some(report),
+                ownership,
+            }),
+            verified_participation: false,
+            competition_ids: Vec::new(),
+            fsp_results: Vec::new(),
+        })
     }
 
     // Called only after locking the candidate inside the source write transaction.

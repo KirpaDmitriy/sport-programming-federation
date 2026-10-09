@@ -9,7 +9,7 @@ use fsp_http::HttpConfig;
 use fsp_integration_bifrost::BifrostGateway;
 use fsp_integration_email::{DemoDelivery, ResendDelivery};
 use fsp_integration_fsp_synthetic::HttpFsp;
-use fsp_integration_github::GitHubApi;
+use fsp_integration_github::{GitHubApi, HttpInsights};
 use fsp_storage_postgres::PostgresRepository;
 use tokio::net::TcpListener;
 use tokio::signal;
@@ -85,6 +85,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
         &env::var("FSP_SIMULATOR_URL").unwrap_or_else(|_| "http://127.0.0.1:4020".into()),
     )
     .map_err(|error| std::io::Error::other(error.message))?;
+    // Public GitHub analysis runs in the separate loopback insights service when configured.
+    let insights = nonempty_env("FSP_GITHUB_INSIGHTS_URL")
+        .map(|url| HttpInsights::new(&url))
+        .transpose()
+        .map_err(|error| format!("GitHub insights adapter: {}", error.message))?;
     let mut github_adapter = None;
     let mut llm_adapter = None;
     let mut pdf_adapter = None;
@@ -126,6 +131,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
     }
     if let Some(github) = github_adapter {
         platform = platform.with_github(github);
+    }
+    if let Some(insights) = insights {
+        platform = platform.with_github_insights(Arc::new(insights));
     }
     if let Some(llm) = llm_adapter {
         platform = platform.with_llm(llm);

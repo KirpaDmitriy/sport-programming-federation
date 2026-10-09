@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use fsp_domain::{
     Account, CandidateIndexRecord, CandidateProfile, Company, ExtractedGraph, FspParticipation,
-    GitHubAnalysis, GraphExtractionRequest, HiringNeedRecord, JobRecord, SourceRecord,
+    GitHubReport, GraphExtractionRequest, HiringNeedRecord, JobRecord, SourceRecord,
 };
 
 use crate::PendingChallenge;
@@ -310,6 +310,8 @@ pub trait PlatformRepository: Send + Sync {
     ) -> Result<(), RepositoryError>;
     async fn github_token(&self, candidate_id: &str) -> Result<Option<String>, RepositoryError>;
     async fn sources(&self, candidate_id: &str) -> Result<Vec<SourceRecord>, RepositoryError>;
+    /// GitHub sources of any candidate connected to `login`, compared case-insensitively.
+    async fn github_sources(&self, login: &str) -> Result<Vec<SourceRecord>, RepositoryError>;
     async fn save_source(&self, source: &SourceRecord) -> Result<(), RepositoryError>;
     async fn save_job(&self, job: &JobRecord) -> Result<(), RepositoryError>;
     /// Conditional job write: persists only while `confirmed` is still FALSE —
@@ -379,11 +381,25 @@ pub trait GitHubGateway: Send + Sync {
         redirect_uri: &str,
     ) -> Result<String, IntegrationError>;
     async fn exchange_code(&self, code: &str) -> Result<String, IntegrationError>;
-    async fn analyze(
+    /// The login the OAuth token belongs to; a match proves account ownership.
+    async fn authenticated_login(&self, token: &str) -> Result<String, IntegrationError>;
+}
+
+/// A public-activity report and whether the profile bio carried the ownership code.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GitHubInsights {
+    pub report: GitHubReport,
+    pub ownership_code_found: Option<bool>,
+}
+
+#[async_trait]
+pub trait GitHubInsightsGateway: Send + Sync {
+    async fn report(
         &self,
-        username: &str,
-        token: &str,
-    ) -> Result<GitHubAnalysis, IntegrationError>;
+        login: &str,
+        ownership_code: Option<&str>,
+        refresh: bool,
+    ) -> Result<GitHubInsights, IntegrationError>;
 }
 
 #[async_trait]

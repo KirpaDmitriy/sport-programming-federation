@@ -785,6 +785,8 @@ pub struct AnonymousCandidateView {
     pub fsp_verified: bool,
     pub freshness: FreshnessView,
     pub r#match: Option<CandidateMatchView>,
+    /// Anonymous public-GitHub signal: no login, names, links or calendars.
+    pub github: Option<fsp_domain::GitHubSignal>,
     pub simulation: bool,
 }
 
@@ -892,6 +894,27 @@ pub struct SourceView {
     pub competition_ids: Vec<String>,
     pub notice: String,
     pub fsp_results: Vec<fsp_domain::FspResult>,
+    /// GitHub only: ownership state, the public-activity report and the employer projection.
+    pub github: Option<GitHubSourceView>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitHubSourceView {
+    pub ownership: GitHubOwnershipView,
+    pub report: Option<fsp_domain::GitHubReport>,
+    /// Exactly what employers see before any disclosure.
+    pub employer_preview: Option<fsp_domain::GitHubSignal>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitHubOwnershipView {
+    pub verified: bool,
+    pub method: Option<fsp_domain::OwnershipMethod>,
+    pub verified_at: Option<String>,
+    /// The candidate's code; adding it to the GitHub bio proves ownership on the next update.
+    pub code: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -971,8 +994,28 @@ pub struct JobErrorView {
     pub retryable: bool,
 }
 
-pub fn source_view(record: SourceRecord) -> SourceView {
+pub fn source_view(record: SourceRecord, ownership_code: &str) -> SourceView {
     let analysis = record.analysis;
+    let github = (record.provider == SourceProvider::Github).then(|| {
+        let ownership = analysis
+            .as_ref()
+            .and_then(|analysis| analysis.ownership.clone());
+        let report = analysis
+            .as_ref()
+            .and_then(|analysis| analysis.report.clone());
+        GitHubSourceView {
+            employer_preview: report
+                .as_ref()
+                .map(|report| report.employer_signal(ownership.is_some())),
+            report,
+            ownership: GitHubOwnershipView {
+                verified: ownership.is_some(),
+                method: ownership.as_ref().map(|ownership| ownership.method),
+                verified_at: ownership.map(|ownership| ownership.verified_at),
+                code: ownership_code.into(),
+            },
+        }
+    });
     let repositories = analysis
         .as_ref()
         .map(|value| {
@@ -1023,10 +1066,11 @@ pub fn source_view(record: SourceRecord) -> SourceView {
         notice: if record.synthetic {
             "Вымышленные данные ФСП. Командный результат не подтверждает индивидуальные навыки или грейд.".into()
         } else if analysis.is_some() {
-            "Метрики рассчитаны по данным GitHub".into()
+            "Только публичные данные GitHub: приватные репозитории не анализируются. Метрики — сигналы активности, а не оценка навыков.".into()
         } else {
             String::new()
         },
+        github,
     }
 }
 
