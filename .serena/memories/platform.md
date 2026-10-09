@@ -13,7 +13,9 @@ Migration 0005 adds created_at/index; never edit earlier SQL. Mandatory producti
 migrations. Enabling/rotating FSP_AUTH_KEY invalidates old credentials without deleting accounts. Demo/mock delivery
 remains fixed and has no mailbox-ownership assurance. The realEmail capability describes configuration, not health.
 
-Knowledge-v1 contains 10 questions per backend grade; deterministic passing requires 8/10 and 3/5 per skill.
+New attempts use knowledge-v2: backend junior/middle/senior (Rust+PostgreSQL) and frontend junior/middle
+(TypeScript+React). The attempt id selects 5+5 of six questions per topic, so variants share at least 8/10.
+Passing requires 8/10 and 3/5 per topic. Fullstack and frontend senior return unsupported_scope. v1 stays immutable.
 Responses/snapshots are immutable at completion; legacy code attempts are archived and never execute.
 Assessment start races serialize on the candidate row. Grades, consent and response submission are transactional.
 PDF import uses bounded bwrap/prlimit/Poppler extraction, page-cited Bifrost fields and revision-safe confirmation.
