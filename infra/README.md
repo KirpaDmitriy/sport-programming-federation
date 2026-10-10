@@ -12,7 +12,7 @@ key, host key, droplet metadata) lives in the git-ignored `.fsp-infra/` at the r
 | `release.sh` | On the host: builds the release (frontend, mock, Rust backend), switches `/opt/fsp/current` atomically, runs the API implementation chosen by `/etc/fsp/api-backend`, health-checks and rolls back on failure |
 | `fsp-mock-api.service` | Hardened systemd unit for the mock API (user `fsp`, `127.0.0.1:4010`) |
 | `fsp-simulator.service` | Fictional participant-results HTTP service on private loopback 4020; released with the API, no public nginx route |
-| `fsp-github-insights.service` | Public GitHub analysis on private loopback 4030; reads `GITHUB_TOKEN` from root-private `/etc/fsp/github-insights.env`; released with the API, no public nginx route |
+| `fsp-github-insights.service` | Tokenless public GitHub analysis on private loopback 4030 with `git` clones in its `CacheDirectory`; an optional `GITHUB_TOKEN` in root-private `/etc/fsp/github-insights.env` only raises limits; released with the API, no public nginx route |
 | `fsp-api.service` | Hardened systemd unit for the Rust API (same user and port; `StateDirectory=fsp` gives it `/var/lib/fsp`) |
 | `nginx/` | Site config (SPA fallback, `/api/v1/` proxy, `/__mock__` → 404), ACME bootstrap config, security headers |
 
@@ -202,7 +202,7 @@ preview. If this fails, restore the flag before restarting. There is no unsandbo
 The release builds the three Rust binaries, installs/restarts `fsp-simulator.service` and
 `fsp-github-insights.service` before API activation and checks their loopback health together with API and nginx.
 Failed activation restores the previous units/release. Rolling back to a schema-compatible release without a helper
-stops that helper. The insights service answers health without a token and then reports `missing_token`; the API
+stops that helper. The insights service needs no token; the API
 enables GitHub connection only with `FSP_GITHUB_INSIGHTS_URL` in `rust-api.env`
 ([GitHub insights](../docs/github-insights.md#operation)). The schema guard runs first;
 helper lifecycle support alone does not make a historical binary a valid rollback target.
