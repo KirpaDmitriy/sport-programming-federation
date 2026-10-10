@@ -109,9 +109,12 @@ function sourceSummary(source: Source): { icon: IconName; text: string; busy: bo
       return { icon: 'minusCircle', text: 'Не подключён · необязательно', busy: false };
     const { found, processed, unavailable } = source.counts;
     if (source.activeJobId) {
+      const analysis = source.github?.analysis;
       return {
         icon: 'refresh',
-        text: `Анализ продолжается · разобрано ${processed} из ${found} репозиториев`,
+        text: analysis
+          ? `Идёт анализ · ${analysis.stage} · ${analysis.progress}%`
+          : `Анализ продолжается · разобрано ${processed} из ${found} репозиториев`,
         busy: true,
       };
     }
