@@ -47,8 +47,13 @@ function stableHash(value: string): number {
 export function knowledgeScopes(): { specialization: Specialization; grades: Grade[] }[] {
   return SPECIALIZATIONS.map((item) => ({
     specialization: item.id,
-    grades: GRADE_ORDER.filter((grade) => knowledgeTask(item.id, grade, 'availability') !== null),
+    grades: GRADE_ORDER.filter((grade) => knowledgeAvailable(item.id, grade)),
   })).filter((scope) => scope.grades.length > 0);
+}
+
+/** Whether the bank can test this specialization and grade, as the Rust `knowledge_available`. */
+export function knowledgeAvailable(specialization: Specialization, grade: Grade): boolean {
+  return knowledgeTask(specialization, grade, 'availability') !== null;
 }
 
 export function knowledgeTask(specialization: Specialization, grade: Grade, variantKey: string): Task | null {
