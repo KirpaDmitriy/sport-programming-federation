@@ -32,7 +32,9 @@ test('HTTPS stand serves the app and deep links without mock controls', async ({
   expect((await request.get('/__mock__/email-codes')).status()).toBe(404);
   const metaResponse = await request.get('/api/v1/meta');
   expect(metaResponse.status()).toBe(200);
-  expect((await metaResponse.json()).capabilities.realEmail).toBe(process.env.FSP_AUTH_MODE === 'resend');
+  const meta = await metaResponse.json();
+  expect(meta.capabilities.realEmail).toBe(process.env.FSP_AUTH_MODE === 'resend');
+  expect(meta.capabilities.graphInterviews).toBe(true);
   expect(metaResponse.headers()['cache-control']).toContain('no-store');
   await page.goto('/employer/candidates?needId=need-001');
   await page.waitForURL(/\/login\?redirect=/);
@@ -63,6 +65,15 @@ test('a new candidate and two companies complete the reverse-hiring flow', async
   await candidate.getByRole('button', { name: 'Отправить ответы' }).click();
   await candidate.getByRole('dialog').getByRole('button', { name: 'Отправить' }).click();
   await expect(candidate.getByRole('heading', { name: 'Джуниор подтверждён' })).toBeVisible();
+  await candidate.goto('/candidate/assessments');
+  await candidate.getByRole('button', { name: 'Начать собеседование' }).click();
+  await expect(candidate.getByLabel('Ваш ответ')).toBeVisible();
+  await candidate.getByLabel('Ваш ответ').fill('Сначала соберу логи и попробую воспроизвести проблему.');
+  await candidate.getByRole('button', { name: 'Ответить' }).click();
+  const interviews = await (await candidate.request.get('/api/v1/me/interviews')).json();
+  expect(interviews.items[0].currentQuestion.nodeId).toBe('backend.unique-operation');
+  await candidate.reload();
+  await expect(candidate.getByLabel('Ваш ответ')).toBeVisible();
   const profile = await (await candidate.request.get('/api/v1/me/profile')).json();
   const alias: string = profile.alias;
   const candidateId: string = profile.id;

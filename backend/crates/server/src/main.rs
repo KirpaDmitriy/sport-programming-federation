@@ -10,6 +10,7 @@ use fsp_integration_bifrost::BifrostGateway;
 use fsp_integration_email::{DemoDelivery, ResendDelivery};
 use fsp_integration_fsp_synthetic::HttpFsp;
 use fsp_integration_github::{GitHubApi, HttpInsights};
+use fsp_integration_interview::HttpInterviewGateway;
 use fsp_storage_postgres::PostgresRepository;
 use tokio::net::TcpListener;
 use tokio::signal;
@@ -140,6 +141,23 @@ async fn main() -> Result<(), Box<dyn Error>> {
     }
     if let Some(pdf) = pdf_adapter {
         platform = platform.with_pdf(pdf);
+    }
+    match (
+        nonempty_env("FSP_INTERVIEW_URL"),
+        nonempty_env("INTERVIEW_API_TOKEN"),
+    ) {
+        (Some(url), Some(token)) => {
+            platform = platform.with_interviews(Arc::new(
+                HttpInterviewGateway::new(&url, token)
+                    .map_err(|error| format!("Interview adapter: {}", error.message))?,
+            ));
+        }
+        (None, None) => {}
+        _ => {
+            return Err(
+                "FSP_INTERVIEW_URL and INTERVIEW_API_TOKEN must be configured together".into(),
+            );
+        }
     }
     let service = Arc::new(platform);
     service.initialize().await.map_err(|error| error.message)?;

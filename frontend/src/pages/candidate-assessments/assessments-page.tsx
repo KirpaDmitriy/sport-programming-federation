@@ -16,6 +16,7 @@ import {
 } from '@/shared/lib';
 import { Card, EmptyState, ErrorState, Icon, LoadingState, PageHeader, TableWrap } from '@/shared/ui';
 import { AssessmentNextStep } from '@/widgets/assessment-next-step';
+import { GraphInterview } from '@/widgets/graph-interview';
 
 /** The two catalog topics each specialization's knowledge test covers. */
 const assessmentTopics = Object.fromEntries(
@@ -117,6 +118,7 @@ export function CandidateAssessmentsPage() {
   return (
     <>
       <PageHeader title="Проверки" subtitle="Тест знаний с выбором ответов · без написания кода" />
+      <GraphInterview available={meta.capabilities.graphInterviews} />
       <div className="split">
         <Card title="Как устроена проверка">
           <div className="stack">
