@@ -325,7 +325,8 @@ impl PlatformService {
                 "Этот адрес зарегистрирован с другой ролью",
             ));
         }
-        let code = self.delivery.code_for().map_err(|error| {
+        let delivery = self.delivery.contract_name_for_email(&email);
+        let code = self.delivery.code_for_email(&email).map_err(|error| {
             ApplicationError::new(502, "verification_delivery_failed", error.message)
         })?;
         let challenge_id = format!("challenge-{}", Uuid::new_v4().simple());
@@ -344,7 +345,7 @@ impl PlatformService {
         // the cumulative five-attempt lockout across reissued codes.
         let issued = self
             .repository
-            .issue_challenge(&challenge, self.delivery.contract_name() == "email")
+            .issue_challenge(&challenge, delivery == "email")
             .await
             .map_err(ApplicationError::storage)?;
         match issued {
@@ -373,7 +374,7 @@ impl PlatformService {
         Ok(EmailChallengeView {
             challenge_id: challenge.id,
             expires_at: challenge.expires_at,
-            delivery: self.delivery.contract_name(),
+            delivery,
         })
     }
 

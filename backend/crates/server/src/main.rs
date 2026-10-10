@@ -7,7 +7,7 @@ use std::sync::Arc;
 use fsp_application::{PlatformRepository, PlatformService, VerificationDelivery};
 use fsp_http::HttpConfig;
 use fsp_integration_bifrost::BifrostGateway;
-use fsp_integration_email::{DemoDelivery, ResendDelivery};
+use fsp_integration_email::{DemoDelivery, HybridDelivery, ResendDelivery};
 use fsp_integration_fsp_synthetic::HttpFsp;
 use fsp_integration_github::{GitHubApi, HttpInsights};
 use fsp_integration_interview::HttpInterviewGateway;
@@ -60,13 +60,20 @@ async fn main() -> Result<(), Box<dyn Error>> {
             }
             Arc::new(DemoDelivery(code))
         }
-        "resend" => Arc::new(
-            ResendDelivery::new(
-                nonempty_env("RESEND_API_KEY").ok_or("RESEND_API_KEY is required")?,
-                nonempty_env("FSP_EMAIL_FROM").ok_or("FSP_EMAIL_FROM is required")?,
-            )
-            .map_err(|_| "Invalid Resend configuration")?,
-        ),
+        "resend" => {
+            let code = env::var("FSP_DEMO_EMAIL_CODE").unwrap_or_else(|_| "123456".into());
+            if code.len() != 6 || !code.bytes().all(|b| b.is_ascii_digit()) {
+                return Err("FSP_DEMO_EMAIL_CODE must contain six digits".into());
+            }
+            Arc::new(HybridDelivery::new(
+                code,
+                ResendDelivery::new(
+                    nonempty_env("RESEND_API_KEY").ok_or("RESEND_API_KEY is required")?,
+                    nonempty_env("FSP_EMAIL_FROM").ok_or("FSP_EMAIL_FROM is required")?,
+                )
+                .map_err(|_| "Invalid Resend configuration")?,
+            ))
+        }
         _ => return Err("FSP_AUTH_MODE must be demo or resend".into()),
     };
     if let Some(key) = &auth_key

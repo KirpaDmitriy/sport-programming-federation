@@ -361,7 +361,7 @@ export function LoginPage({ redirectTo, expired }: Props) {
           </form>
         )}
 
-        {isDemoStand && !meta.capabilities.realEmail && !challenge && (
+        {isDemoStand && !challenge && (
           <Callout tone="neutral" title="Демонстрационные аккаунты">
             <p style={{ margin: '0 0 0.5rem' }}>
               Данные стенда синтетические. Для полного пути кандидата укажите любой новый адрес.
