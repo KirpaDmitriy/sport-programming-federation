@@ -65,18 +65,22 @@ ones and the UI lists them on the overview, profile and settings pages:
 
 - Two providers, GitHub and FSP. In the mock both are synthetic (`synthetic: true`, links under
   `example.com/fixtures`), and the UI labels them «Демо-источник».
-- Connecting a source requires processing consent. The mock starts a `source_sync` timer job at once;
-  Rust performs bounded provider I/O and commits connected data inline. In both implementations there
+- Connecting a source requires processing consent. The mock starts a `source_sync` timer job at once.
+  Rust commits the FSP source inline; a GitHub analysis runs for minutes, so connecting or syncing GitHub records a
+  running `source_sync` job in `Source.activeJobId`, and polling the job applies the finished report in one
+  transaction (`Source.github.analysis` shows the stage and progress meanwhile). In both implementations there
   is no manual repository selection. A connected source can be synced again (`409 source_not_connected` otherwise);
-  the mock returns the same running job for overlapping syncs. Rust detects a source changed during its
+  both return the same running job for overlapping syncs. Rust detects a source changed during its
   provider call and returns a failed `stale_input` job instead of overwriting newer data. Disconnecting is not supported.
 - GitHub connects by login, `@login` or a profile link (`422 github_login_invalid` for repository links and other
-  hosts; `422 github_account_not_found`). The insights service analyzes **public** data only and returns a report
-  (`Source.github.report`): a 0–100 index with band and confidence, six dimensions with metrics, a public-activity
-  calendar, an estimated work rhythm in the author's time zone, collaboration validated by other people,
-  organizations, languages, technologies with their artifacts, repository practices and integrity flags. Time per
-  active day is an explicitly labelled estimate from commit timestamps, not worked hours. The method is in
-  [GitHub insights](../github-insights.md).
+  hosts; `github_account_not_found`). The insights service analyzes **public** data only, without a token, on our
+  server, and returns a report (`Source.github.report`): a developer portrait (summary, areas of work with evidence,
+  languages by the candidate's changed files, stack by category, topics, main projects), a 0–100 index with band and
+  confidence, seven dimensions with metrics, a commit calendar, yearly public commits, an estimated work rhythm in the
+  author's own time zone, own projects and organizations, collaboration validated by other people, repository
+  practices and integrity flags. Work in the candidate's own organizations counts as own work; collaboration counts
+  only work accepted or reviewed by others outside them. Time per active day and week is an explicitly labelled
+  estimate from commit timestamps, not worked hours. The method is in [GitHub insights](../github-insights.md).
 - Ownership: a login alone is a claim. Placing the candidate's code (`Source.github.ownership.code`) in the GitHub bio
   and syncing, or an OAuth token of the same account, proves it; a proven login belongs to one candidate
   (`409 github_account_taken`). Employers see whether ownership is proven.
@@ -227,8 +231,9 @@ FSP participation only breaks ties; its absence never disqualifies.
 Every employer response about a candidate (search, profile, graph) contains only: ID, alias, verified specialization
 and grade with confirmation date, work modes, `availableForOffers`, skills (state, evidence grade, source kinds,
 summary, evidence count, confirmation date — no evidence items), source kinds, verified FSP flag, profile freshness
-(section 11), the match and the anonymous GitHub signal (`github`: index, dimensions with rounded metrics, ownership
-state, languages, rhythm bands, highlights and warnings — no login, names, links, calendar or exact counts). It
+(section 11), the match and the anonymous GitHub signal (`github`: index, public summary, areas of work, dimensions
+with rounded metrics, ownership state, languages, technologies, rhythm bands, highlights and warnings — no login,
+names, links, calendar or exact counts). It
 never contains a name, e-mail, handles, repository names, links or evidence titles. A profile that is not visible
 answers `404`, except to a company the candidate applied to (section 10) until the application is withdrawn.
 
@@ -366,6 +371,6 @@ The development mock uses demo email identity; Rust uses actual Resend delivery 
 scoring; their public bank has no measured psychometric validity. Only the development mock simulates PDF extraction
 and assistant replies. Rust uses isolated Poppler extraction and Bifrost with validated evidence and no canned fallback.
 Rust persists application records and sessions; its initial candidate bank is synthetic. GitHub analysis is real
-when the insights service is configured; the mock returns a labelled fictional report. Graph output is validated against input skills and references; employer projections remove evidence
+when the insights service is configured; the mock returns the labelled fictional report of a synthetic account. Graph output is validated against input skills and references; employer projections remove evidence
 nodes. An LLM relation is a suggestion, not a qualification verdict. Real email delivery is implemented through Resend; GitHub OAuth setup remains
 deferred (ownership is proven by the bio code instead); official FSP integration and arbitrary code execution are outside the chosen product scope.

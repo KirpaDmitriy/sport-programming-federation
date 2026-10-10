@@ -8,8 +8,8 @@ Recurring company tasks provide a separate freshness signal.
 Public stand: <https://nddev.link>. Email verification sends a single-use code from `login@auth.nddev.link` through Resend.
 Rust and PostgreSQL persist platform data. Knowledge tests are scored deterministically; digital PDF import and
 contextual assistance use isolated extraction and Bifrost. Seed candidates and the separate HTTP FSP provider
-are explicitly fictional. A separate Rust service analyzes a candidate's public GitHub activity into an
-explainable signal; GitHub OAuth setup is deferred. Capability flags describe configuration, not provider health.
+are explicitly fictional. A separate Rust service analyzes a candidate's public GitHub work on our server, without a
+token, into a developer portrait and an explainable signal; GitHub OAuth setup is deferred. Capability flags describe configuration, not provider health.
 Knowledge results do not certify professional experience. See [knowledge tests](docs/knowledge-tests.md),
 [GitHub insights](docs/github-insights.md) and [FSP simulator](docs/fsp-simulator.md).
 
