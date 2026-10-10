@@ -456,7 +456,19 @@ async fn connecting_github_builds_the_profile_and_an_estimated_category() {
         )
         .await
         .unwrap();
-    let profile = service.profile(&session).await.unwrap();
+    // The rules apply with the source; the LLM review joins them in the background.
+    let mut profile = service.profile(&session).await.unwrap();
+    for _ in 0..100 {
+        if profile
+            .estimate
+            .as_ref()
+            .is_some_and(|estimate| estimate.review.is_some())
+        {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        profile = service.profile(&session).await.unwrap();
+    }
     assert_eq!(profile.name, "Иван Петров");
     assert_eq!(profile.specialization, Specialization::Backend);
     assert_eq!(profile.selected_grade, Grade::Senior);
@@ -494,7 +506,18 @@ async fn connecting_github_builds_the_profile_and_an_estimated_category() {
         )
         .await
         .unwrap();
-    let refreshed = service.refresh_estimate(&session).await.unwrap();
+    let mut refreshed = service.refresh_estimate(&session).await.unwrap();
+    for _ in 0..100 {
+        if refreshed
+            .estimate
+            .as_ref()
+            .is_some_and(|estimate| estimate.review.is_some())
+        {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        refreshed = service.profile(&session).await.unwrap();
+    }
     assert_eq!(refreshed.team_role, "Тимлид");
     assert!(
         !refreshed
