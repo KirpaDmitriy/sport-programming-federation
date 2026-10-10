@@ -82,7 +82,14 @@ junior–senior structure.
 ## Delivery phases
 
 1. Catalog v2: data file, generated contract enums, Rust enums, labels, GitHub skill mapping, the mock image fix.
-2. Estimate, automatic profile, estimated category, LLM review, onboarding and employer UI.
+   Delivered in PR #73.
+2. Estimate, automatic profile, estimated category, LLM review, onboarding and employer UI. Delivered on
+   `feat/auto-profile`: `ProfileEstimate`, `autoFields` and `category.source/confidence` in the profile; the
+   anonymous candidate carries the category, its source and confidence and the score with factor points;
+   `POST /me/profile/estimate` recomputes; the bank filters by `categorySource`; applications and weekly tasks need a
+   category (`category` reason); migration 0006 adds the estimate and auto-field columns. The LLM review runs before
+   the source transaction with a 20-second limit; the transaction recomputes the rules from the sources it reads and
+   applies the review. The mock serves Rust-generated golden estimates.
 3. Question banks for every specialization and grade, delivered by specialization groups.
 
 Each phase goes through the usual gates and deployment; business rules, traceability and screenshots change with it.
