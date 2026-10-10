@@ -2,11 +2,11 @@ import { useForm } from '@tanstack/react-form';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRef, useState } from 'react';
 import { type Job, useJob } from '@/entities/job';
-import { type SkillId, useMeta } from '@/entities/meta';
+import type { SkillId } from '@/entities/meta';
 import { profileKey } from '@/entities/profile';
 import { useScope } from '@/entities/session';
 import { type components, describeError, isApiError } from '@/shared/api';
-import { gradeLabel, gradeOrder, specializationLabel, specializationOrder } from '@/shared/lib';
+import { gradeLabel, gradeOrder, skillOptions, specializationOptions } from '@/shared/lib';
 import {
   Button,
   Callout,
@@ -15,8 +15,8 @@ import {
   SelectField,
   TextareaField,
   TextField,
-  ToggleGroup,
   TokenInput,
+  TokenPicker,
   useToast,
 } from '@/shared/ui';
 import { confirmProfileImport, importProfilePdf, validatePdf } from './api';
@@ -36,7 +36,6 @@ const fieldLabels: Record<string, string> = {
 type ImportResult = Extract<NonNullable<Job['result']>, { kind: 'profile_import' }>;
 
 function PreviewForm({ jobId, result, onDone }: { jobId: string; result: ImportResult; onDone: () => void }) {
-  const meta = useMeta();
   const scope = useScope();
   const queryClient = useQueryClient();
   const toast = useToast();
@@ -121,7 +120,7 @@ function PreviewForm({ jobId, result, onDone }: { jobId: string; result: ImportR
               label="Специализация"
               value={field.state.value}
               onValueChange={field.handleChange}
-              options={specializationOrder.map((value) => ({ value, label: specializationLabel[value] }))}
+              options={specializationOptions}
             />
           )}
         </form.Field>
@@ -155,11 +154,12 @@ function PreviewForm({ jobId, result, onDone }: { jobId: string; result: ImportR
         <div className="full">
           <form.Field name="stack">
             {(field) => (
-              <ToggleGroup<SkillId>
+              <TokenPicker<SkillId>
                 id="import-stack"
                 label="Стек"
-                max={5}
-                options={meta.skills.map((skill) => ({ value: skill.id, label: skill.label }))}
+                max={12}
+                placeholder="Найти технологию"
+                options={skillOptions}
                 selected={field.state.value}
                 onChange={field.handleChange}
               />

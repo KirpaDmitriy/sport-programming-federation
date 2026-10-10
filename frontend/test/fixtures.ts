@@ -1,4 +1,5 @@
 import type { components } from '@/shared/api';
+import { CATALOG_VERSION, GRADES, SKILL_CATEGORIES, SKILLS, SPECIALIZATIONS } from '@/shared/api';
 
 type S = components['schemas'];
 
@@ -141,10 +142,11 @@ export const meta: S['Meta'] = {
     supportedScopes: [{ specialization: 'backend', grades: ['junior', 'middle', 'senior'] }],
   },
   competitions: [],
-  skills: [
-    { id: 'rust', label: 'Rust' },
-    { id: 'postgresql', label: 'PostgreSQL' },
-  ],
+  catalogVersion: CATALOG_VERSION,
+  grades: [...GRADES],
+  specializations: SPECIALIZATIONS.map(({ id, label, short, group }) => ({ id, label, short, group })),
+  skillCategories: [...SKILL_CATEGORIES],
+  skills: [...SKILLS],
 };
 
 export function assessment(overrides: Partial<S['Assessment']> = {}): S['Assessment'] {

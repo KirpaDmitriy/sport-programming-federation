@@ -15,7 +15,14 @@ import {
   SkillStatusChip,
 } from '@/entities/skill';
 import { isDemoReference } from '@/entities/source';
-import { evidenceSourceLabel, formatDate, gradeLabel, specializationLabel, useDocumentTitle } from '@/shared/lib';
+import {
+  evidenceSourceLabel,
+  formatDate,
+  gradeLabel,
+  gradeRank,
+  specializationLabel,
+  useDocumentTitle,
+} from '@/shared/lib';
 import {
   ButtonLink,
   Card,
@@ -142,7 +149,7 @@ function SkillInspector({ skill, profile }: { skill: SelfSkill; profile: Profile
   );
 }
 
-const gradeOrderIndex = (grade: Profile['selectedGrade']) => ['junior', 'middle', 'senior'].indexOf(grade);
+const gradeOrderIndex = (grade: Profile['selectedGrade']) => gradeRank(grade);
 
 function EvidenceNodeInspector({ graph, nodeId, skills }: { graph: Graph; nodeId: string; skills: SelfSkill[] }) {
   const evidence = skills
