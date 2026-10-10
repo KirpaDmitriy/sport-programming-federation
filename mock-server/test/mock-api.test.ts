@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { readdirSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { readFile, writeFile } from 'node:fs/promises';
 import { request as rawHttpRequest } from 'node:http';
 import test, { after, type TestContext } from 'node:test';
@@ -84,8 +84,22 @@ async function setup(t: TestContext, options: MockServerOptions = {}) {
   }
   return { app, url, request, login, job, client };
 }
+const dataDirectory = new URL('../../backend/crates/domain/data/', import.meta.url);
+// The topic banks (knowledge-v3-*.json) serve every specialization tested on their topics.
+const topicQuestions = readdirSync(dataDirectory)
+  .filter((name) => name.startsWith('knowledge-v3-'))
+  .flatMap(
+    (name) =>
+      JSON.parse(readFileSync(new URL(name, dataDirectory), 'utf8')).questions as {
+        id: string;
+        correctOptionId: string;
+      }[],
+  );
 const answerKey = new Map(
-  [...bank.questions, ...additions.questions].map((question) => [question.id, question.correctOptionId]),
+  [...bank.questions, ...additions.questions, ...topicQuestions].map((question) => [
+    question.id,
+    question.correctOptionId,
+  ]),
 );
 const assessmentAnswerFor = (task: Body) => ({
   code: '',
@@ -913,6 +927,60 @@ test('connecting GitHub builds the profile and an estimated category; edited ans
   const confirmed = (await request('GET', '/api/v1/candidates?categorySource=assessment', { actor: employer })).body;
   assert.ok(confirmed.items.length > 0);
   assert.ok(confirmed.items.every((item: Body) => item.categorySource === 'assessment' && item.estimate === null));
+});
+
+test('every catalog specialization is testable; a 1C test confirms the category', async (t) => {
+  const { request, client, job } = await setup(t);
+  const meta = (await request('GET', '/api/v1/meta')).body;
+  assert.equal(meta.assessmentPolicy.supportedScopes.length, 25);
+  for (const scope of meta.assessmentPolicy.supportedScopes)
+    assert.deepEqual(scope.grades, ['intern', 'junior', 'middle', 'senior', 'lead']);
+  const challenge = (
+    await request('POST', '/api/v1/auth/email/challenges', {
+      body: { email: 'onec-developer@example.com', role: 'candidate' },
+      status: 201,
+    })
+  ).body;
+  const candidate = client();
+  await request('POST', '/api/v1/auth/email/verify', {
+    actor: candidate,
+    body: { challengeId: challenge.challengeId, code: '123456' },
+  });
+  await request('PATCH', '/api/v1/me/profile', {
+    actor: candidate,
+    body: {
+      name: 'Ольга Смирнова',
+      specialization: 'onec',
+      selectedGrade: 'middle',
+      stack: ['onec_language', 'onec_queries'],
+      teamRole: 'Разработчик 1С',
+      experience: 'Доработки 1С:ERP и обмены данными.',
+      consents: { processing: true, publication: true },
+    },
+  });
+  const item = (
+    await request('POST', '/api/v1/me/assessments', {
+      actor: candidate,
+      body: { specialization: 'onec', grade: 'middle' },
+      status: 201,
+    })
+  ).body;
+  assert.equal(item.task.title, 'Тест знаний: Встроенный язык 1С и Язык запросов 1С');
+  assert.equal(item.task.questions.length, 10);
+  await request('PUT', `/api/v1/me/assessments/${item.id}/answer`, {
+    actor: candidate,
+    body: assessmentAnswerFor(item.task),
+  });
+  const submitted = (
+    await request('POST', `/api/v1/me/assessments/${item.id}/submit`, { actor: candidate, status: 202 })
+  ).body;
+  assert.equal((await job(submitted.id, candidate)).result.assessment.status, 'passed');
+  const profile = (await request('GET', '/api/v1/me/profile', { actor: candidate })).body;
+  assert.equal(profile.verifiedSpecialization, 'onec');
+  assert.deepEqual(
+    [profile.category.specialization, profile.category.grade, profile.category.source],
+    ['onec', 'middle', 'assessment'],
+  );
 });
 
 test('candidate bank is anonymous, deterministic and distinguishes qualification from skill evidence', async (t) => {

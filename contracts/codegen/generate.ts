@@ -366,7 +366,7 @@ const catalogUrl = new URL('../../backend/crates/domain/data/catalog.json', impo
 const catalogSource = JSON.parse(await readFile(catalogUrl, 'utf8')) as {
   version: string;
   grades: { id: string; label: string; description: string }[];
-  specializations: { id: string; label: string; short: string; role: string; group: string }[];
+  specializations: { id: string; label: string; short: string; role: string; group: string; testTopics: string[] }[];
   specializationGroups: { id: string; label: string }[];
   skillCategories: { id: string; label: string }[];
   skills: { id: string; label: string; category: string }[];
@@ -379,7 +379,14 @@ const catalogModule = [
   constant('GRADES', catalogSource.grades),
   constant(
     'SPECIALIZATIONS',
-    catalogSource.specializations.map(({ id, label, short, role, group }) => ({ id, label, short, role, group })),
+    catalogSource.specializations.map(({ id, label, short, role, group, testTopics }) => ({
+      id,
+      label,
+      short,
+      role,
+      group,
+      testTopics,
+    })),
   ),
   constant('SPECIALIZATION_GROUPS', catalogSource.specializationGroups),
   constant('SKILL_CATEGORIES', catalogSource.skillCategories),

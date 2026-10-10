@@ -5,6 +5,7 @@ import {
   SKILL_CATEGORIES,
   SPECIALIZATIONS,
   specializationShort,
+  testTopics,
 } from './catalog.ts';
 import type { OperationId, Route } from './contract.ts';
 import {
@@ -25,6 +26,7 @@ import {
   type Need,
   nextId,
   type Scenario,
+  type SelfSkill,
   SKILLS,
   type Source,
   type State,
@@ -864,16 +866,9 @@ function completeAssessment(s: State, candidate: Candidate, item: AssessmentReco
       candidate.verifiedGrade = item.grade;
       candidate.verifiedSpecialization = item.specialization;
       if (gradeChanged) candidate.gradeConfirmedAt = s.clock;
-      const confirmedSkills =
-        item.specialization === 'backend' ? (['rust', 'postgresql'] as const) : (['typescript', 'react'] as const);
-      for (const skillId of confirmedSkills) {
+      // The two catalog topics of the test become confirmed skills, as in the Rust service.
+      for (const [skillId, label] of testTopics(item.specialization)) {
         const previous = candidate.skills.find((skill) => skill.skillId === skillId);
-        const current = must(
-          makeSkills(candidate.id, true, false, item.specialization === 'frontend').find(
-            (skill) => skill.skillId === skillId,
-          ),
-          `seed skill ${skillId}`,
-        );
         const assessmentEvidence = {
           ...must(evidenceFor(candidate.id, skillId, 'confirmed')[0], 'assessment evidence'),
           id: `evidence-${item.id}-${skillId}`,
@@ -881,8 +876,11 @@ function completeAssessment(s: State, candidate: Candidate, item: AssessmentReco
           observedAt: s.clock,
         };
         const evidence = [...(previous?.evidence ?? []), assessmentEvidence];
-        const updated = {
-          ...current,
+        const updated: SelfSkill = {
+          skillId,
+          label,
+          status: 'confirmed',
+          summary: 'Подтверждено проверкой платформы',
           evidenceGrade: item.grade,
           confirmedAt: s.clock,
           evidence,

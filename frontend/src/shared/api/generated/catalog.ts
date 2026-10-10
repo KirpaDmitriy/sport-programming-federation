@@ -36,175 +36,275 @@ export const SPECIALIZATIONS = [
     "label": "Бэкенд-разработка",
     "short": "Бэкенд",
     "role": "Бэкенд-разработчик",
-    "group": "development"
+    "group": "development",
+    "testTopics": [
+      "rust",
+      "postgresql"
+    ]
   },
   {
     "id": "frontend",
     "label": "Фронтенд-разработка",
     "short": "Фронтенд",
     "role": "Фронтенд-разработчик",
-    "group": "development"
+    "group": "development",
+    "testTopics": [
+      "typescript",
+      "react"
+    ]
   },
   {
     "id": "fullstack",
     "label": "Фулстек-разработка",
     "short": "Фулстек",
     "role": "Фулстек-разработчик",
-    "group": "development"
+    "group": "development",
+    "testTopics": [
+      "http_api",
+      "sql"
+    ]
   },
   {
     "id": "ios",
     "label": "iOS-разработка",
     "short": "iOS",
     "role": "iOS-разработчик",
-    "group": "mobile"
+    "group": "mobile",
+    "testTopics": [
+      "swift",
+      "ios_platform"
+    ]
   },
   {
     "id": "android",
     "label": "Android-разработка",
     "short": "Android",
     "role": "Android-разработчик",
-    "group": "mobile"
+    "group": "mobile",
+    "testTopics": [
+      "kotlin",
+      "android_platform"
+    ]
   },
   {
     "id": "mobile_crossplatform",
     "label": "Кросс-платформенная мобильная разработка",
     "short": "Кросс-платформа",
     "role": "Мобильный разработчик",
-    "group": "mobile"
+    "group": "mobile",
+    "testTopics": [
+      "flutter",
+      "mobile_development"
+    ]
   },
   {
     "id": "devops",
     "label": "DevOps и SRE",
     "short": "DevOps",
     "role": "DevOps-инженер",
-    "group": "infrastructure"
+    "group": "infrastructure",
+    "testTopics": [
+      "linux",
+      "kubernetes"
+    ]
   },
   {
     "id": "data_engineering",
     "label": "Инженерия данных",
     "short": "Data Engineering",
     "role": "Инженер данных",
-    "group": "data"
+    "group": "data",
+    "testTopics": [
+      "sql",
+      "etl"
+    ]
   },
   {
     "id": "data_science",
     "label": "Data Science и машинное обучение",
     "short": "Data Science",
     "role": "Data Scientist",
-    "group": "data"
+    "group": "data",
+    "testTopics": [
+      "python",
+      "machine_learning"
+    ]
   },
   {
     "id": "ml_engineering",
     "label": "ML-инженерия и MLOps",
     "short": "MLOps",
     "role": "ML-инженер",
-    "group": "data"
+    "group": "data",
+    "testTopics": [
+      "machine_learning",
+      "mlops"
+    ]
   },
   {
     "id": "qa_manual",
     "label": "Ручное тестирование",
     "short": "QA",
     "role": "Тестировщик",
-    "group": "quality"
+    "group": "quality",
+    "testTopics": [
+      "test_design",
+      "web_testing"
+    ]
   },
   {
     "id": "qa_automation",
     "label": "Автоматизация тестирования",
     "short": "Автотесты",
     "role": "Инженер по автоматизации тестирования",
-    "group": "quality"
+    "group": "quality",
+    "testTopics": [
+      "test_design",
+      "test_automation"
+    ]
   },
   {
     "id": "security",
     "label": "Информационная безопасность",
     "short": "ИБ",
     "role": "Специалист по информационной безопасности",
-    "group": "security"
+    "group": "security",
+    "testTopics": [
+      "web_security",
+      "network_security"
+    ]
   },
   {
     "id": "embedded",
     "label": "Встраиваемые системы и IoT",
     "short": "Embedded",
     "role": "Embedded-разработчик",
-    "group": "systems"
+    "group": "systems",
+    "testTopics": [
+      "c",
+      "microcontrollers"
+    ]
   },
   {
     "id": "systems",
     "label": "Системное программирование",
     "short": "Системное ПО",
     "role": "Системный программист",
-    "group": "systems"
+    "group": "systems",
+    "testTopics": [
+      "cpp",
+      "operating_systems"
+    ]
   },
   {
     "id": "gamedev",
     "label": "Разработка игр",
     "short": "Геймдев",
     "role": "Разработчик игр",
-    "group": "systems"
+    "group": "systems",
+    "testTopics": [
+      "csharp",
+      "game_development"
+    ]
   },
   {
     "id": "onec",
     "label": "Разработка на 1С",
     "short": "1С",
     "role": "Разработчик 1С",
-    "group": "enterprise"
+    "group": "enterprise",
+    "testTopics": [
+      "onec_language",
+      "onec_queries"
+    ]
   },
   {
     "id": "erp",
     "label": "ERP и SAP",
     "short": "ERP",
     "role": "ERP-консультант и разработчик",
-    "group": "enterprise"
+    "group": "enterprise",
+    "testTopics": [
+      "erp_systems",
+      "abap"
+    ]
   },
   {
     "id": "system_analysis",
     "label": "Системный анализ",
     "short": "Системный анализ",
     "role": "Системный аналитик",
-    "group": "analysis"
+    "group": "analysis",
+    "testTopics": [
+      "requirements",
+      "uml_bpmn"
+    ]
   },
   {
     "id": "business_analysis",
     "label": "Бизнес-анализ",
     "short": "Бизнес-анализ",
     "role": "Бизнес-аналитик",
-    "group": "analysis"
+    "group": "analysis",
+    "testTopics": [
+      "requirements",
+      "business_processes"
+    ]
   },
   {
     "id": "data_analytics",
     "label": "Аналитика данных и BI",
     "short": "Аналитика",
     "role": "Аналитик данных",
-    "group": "analysis"
+    "group": "analysis",
+    "testTopics": [
+      "sql",
+      "statistics"
+    ]
   },
   {
     "id": "dba",
     "label": "Администрирование баз данных",
     "short": "DBA",
     "role": "Администратор баз данных",
-    "group": "infrastructure"
+    "group": "infrastructure",
+    "testTopics": [
+      "sql",
+      "database_administration"
+    ]
   },
   {
     "id": "sysadmin",
     "label": "Системное и сетевое администрирование",
     "short": "Сисадмин",
     "role": "Системный администратор",
-    "group": "infrastructure"
+    "group": "infrastructure",
+    "testTopics": [
+      "linux",
+      "computer_networks"
+    ]
   },
   {
     "id": "design",
     "label": "UI/UX-дизайн",
     "short": "Дизайн",
     "role": "UI/UX-дизайнер",
-    "group": "design"
+    "group": "design",
+    "testTopics": [
+      "ui_design",
+      "ux_design"
+    ]
   },
   {
     "id": "management",
     "label": "Управление продуктом и проектами",
     "short": "Менеджмент",
     "role": "Менеджер продукта или проекта",
-    "group": "management"
+    "group": "management",
+    "testTopics": [
+      "agile",
+      "project_management"
+    ]
   }
 ] as const;
 

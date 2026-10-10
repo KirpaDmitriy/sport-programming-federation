@@ -828,7 +828,7 @@ export const schemas = {
   KnowledgeResponse: obj({ questionId: id, optionId: id }),
   KnowledgeQuestion: obj({
     id,
-    skillId: en('rust', 'postgresql', 'typescript', 'react'),
+    skillId,
     prompt: str(),
     options: arr(obj({ id, label: str() }), { minItems: 2, maxItems: 6 }),
   }),
