@@ -154,6 +154,23 @@ test('UI-06 UI-07 GitHub connects by login with a public report; empty FSP histo
   await expect(page.getByText('Истории ФСП нет')).toBeVisible();
 });
 
+test('UI-06 a new candidate adds GitHub right from onboarding and opens the report', async ({ page }) => {
+  await resetMock('baseline');
+  const email = `github-${Date.now()}@example.com`;
+  await requestCode(page, email, 'candidate');
+  await page.getByLabel('Код из письма').fill(await latestCode(email));
+  await page.getByRole('button', { name: 'Подтвердить и войти' }).click();
+  await page.waitForURL('**/candidate/onboarding');
+  await expect(page.getByText('Подключение GitHub доступно после согласия на обработку данных.')).toBeVisible();
+  await page.getByLabel('Согласен на обработку данных').click();
+  await expect(page.getByLabel('Согласен на обработку данных')).toBeChecked();
+  await page.getByLabel('Ник или ссылка на профиль GitHub').fill('@octo-cat');
+  await page.getByRole('button', { name: 'Подключить GitHub' }).click();
+  await expect(page.getByText(/GitHub «octo-cat» подключён/)).toBeVisible();
+  await page.getByRole('link', { name: 'Открыть отчёт GitHub' }).click();
+  await expect(page.getByRole('heading', { name: 'Портрет разработчика' })).toBeVisible();
+});
+
 test('UI-06 a verified FSP record appears as a labelled demo source', async ({ page }) => {
   await resetMock('baseline');
   await signIn(page, ALEXEY, 'candidate');

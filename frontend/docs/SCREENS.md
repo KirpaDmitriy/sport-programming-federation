@@ -38,7 +38,8 @@ Navigation: Обзор, Профиль, Источники, Навыки, Про
 ![Onboarding](screenshots/15-onboarding.png)
 
 Five steps with done markers: e-mail confirmed; consents (processing and publication as separate controls);
-questionnaire (the profile form, or «Заполнить из PDF» after processing consent); optional sources; level check.
+questionnaire (the profile form, or «Заполнить из PDF» after processing consent); optional sources, where GitHub can
+be connected right away by login or profile link after processing consent (then «Открыть отчёт GitHub»); level check.
 The last step offers «Подтвердить уровень» for the saved target when the server allows it, otherwise the reason
 (unsupported specialization, active attempt, cooldown, downgrade).
 
@@ -50,7 +51,8 @@ The last step offers «Подтвердить уровень» for the saved tar
   («Цель: Мидл») when it differs, profile freshness once a grade is verified, stack, «Скачать PDF», and the visibility line: the alias employers see, or the
   blockers that keep the profile out of search.
 - «Начните с анкеты» while the questionnaire is incomplete.
-- «Мои компетенции»: skills with state, confirmed level and evidence sources, plus a summary of GitHub and FSP.
+- «Мои компетенции»: skills with state, confirmed level and evidence sources, plus a summary of GitHub (the running
+  analysis stage, then the index, band and ownership state) and FSP.
 - «Следующий шаг» (shared with «Проверки»): continue the questionnaire, continue an active attempt, open an
   evaluating one, start a check for the target, or the reason why not, with the date the cooldown ends.
 - «История проверок»: the last three attempts.
