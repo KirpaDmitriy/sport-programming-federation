@@ -118,8 +118,12 @@ FSP_SECURE_COOKIE=1
 FSP_ALLOWED_ORIGINS=https://$PUBLIC_IP
 FSP_PUBLIC_WEB_URL=https://$PUBLIC_IP
 GITHUB_CALLBACK_URL=https://$PUBLIC_IP/api/v1/integrations/github/callback
+FSP_GITHUB_INSIGHTS_URL=http://127.0.0.1:4030
 EOF
 fi
+# The public GitHub analysis token is a host secret: create /etc/fsp/github-insights.env with
+# GITHUB_TOKEN=<read-only token> (root:fsp, 640). Without it the service reports missing_token.
+install -m 644 "$HERE/fsp-github-insights.service" /etc/systemd/system/fsp-github-insights.service
 chown root:fsp /etc/fsp/{mock-api,rust-api,frontend-build}.env
 chmod 640 /etc/fsp/{mock-api,rust-api,frontend-build}.env
 [ -f /etc/fsp/api-backend ] || echo mock > /etc/fsp/api-backend
