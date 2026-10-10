@@ -315,19 +315,16 @@ async fn an_account_is_analyzed_in_the_background_from_public_data() {
         .unwrap();
     assert_eq!(again["state"], "done");
 
-    let missing: Value = http
+    // A mistyped login is rejected at once instead of after a queued analysis.
+    let missing = http
         .post(format!("{base}/v1/analyses"))
         .json(&json!({ "login": "ghost" }))
         .send()
         .await
-        .unwrap()
-        .json()
-        .await
         .unwrap();
-    assert!(missing["report"].is_null());
-    let failed = finished(&http, &base, "ghost", "fsp-0123456789").await;
-    assert_eq!(failed["state"], "failed");
-    assert_eq!(failed["error"]["code"], "github_account_not_found");
+    assert_eq!(missing.status(), reqwest::StatusCode::UNPROCESSABLE_ENTITY);
+    let missing: Value = missing.json().await.unwrap();
+    assert_eq!(missing["code"], "github_account_not_found");
 
     let invalid = http
         .post(format!("{base}/v1/analyses"))

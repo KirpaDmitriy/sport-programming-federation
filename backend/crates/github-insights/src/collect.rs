@@ -36,7 +36,7 @@ pub struct Limits {
 impl Default for Limits {
     fn default() -> Self {
         Self {
-            repositories: 50,
+            repositories: 80,
             manifests_per_repository: 12,
             clone_concurrency: 6,
             max_repository_kib: 1_500_000,
@@ -261,9 +261,9 @@ impl Collector {
         let targets = self.clone_targets(&snapshot);
         if targets.len() < snapshot.sampled.len() {
             snapshot.notes.push(format!(
-                "Проанализированы {} репозиториев с наибольшим вкладом из {} найденных.",
+                "Разобраны репозитории с наибольшим вкладом: {} из {} найденных.",
                 targets.len(),
-                snapshot.sampled.len().max(targets.len())
+                snapshot.sampled.len()
             ));
         }
         let total = targets.len().max(1);
@@ -291,10 +291,23 @@ impl Collector {
         if failed > 0 {
             snapshot.partial = true;
             snapshot.notes.push(format!(
-                "{failed} репозиториев не удалось склонировать за отведённое время."
+                "Не удалось склонировать за отведённое время репозиториев: {failed}."
             ));
         }
-        snapshot.analyzed = analyzed.into_iter().flatten().collect();
+        // Repositories cloned on spec (busy organizations) count only where the account has commits.
+        let login = snapshot.login.clone();
+        snapshot.analyzed = analyzed
+            .into_iter()
+            .flatten()
+            .filter(|repository| {
+                repository.user_commits() > 0
+                    || repository
+                        .full_name
+                        .split('/')
+                        .next()
+                        .is_some_and(|owner| owner.eq_ignore_ascii_case(&login))
+            })
+            .collect();
 
         // Manifests of the analyzed repositories.
         progress("Манифесты и зависимости", 82);
@@ -475,7 +488,27 @@ impl Collector {
             .filter(|meta| snapshot.is_self(&meta.owner) && fits(&meta.full_name))
             .collect::<Vec<_>>();
         owned.sort_by_key(|meta| std::cmp::Reverse(meta.pushed_at));
-        for meta in owned {
+        // Repositories pushed within two years in owners where the account has at least twenty public
+        // commits: newest-first samples miss older projects of busy organizations.
+        let since = snapshot.now - Duration::days(730);
+        let busy = |owner: &str| {
+            snapshot
+                .totals
+                .owner_commits
+                .iter()
+                .any(|(known, total)| known.eq_ignore_ascii_case(owner) && *total >= 20)
+        };
+        let mut organizational = snapshot
+            .repositories
+            .values()
+            .filter(|meta| {
+                busy(&meta.owner)
+                    && meta.pushed_at.is_some_and(|at| at >= since)
+                    && fits(&meta.full_name)
+            })
+            .collect::<Vec<_>>();
+        organizational.sort_by_key(|meta| std::cmp::Reverse(meta.pushed_at));
+        for meta in owned.into_iter().chain(organizational) {
             if targets.len() >= self.limits.repositories {
                 break;
             }
@@ -901,6 +934,64 @@ mod tests {
         assert_eq!(windows[11].range, "2019-01-01..2019-12-31");
         assert_eq!(windows[12].range, "<2019-01-01");
         assert_eq!(windows[12].kind, WindowKind::Earlier);
+    }
+
+    #[test]
+    fn clone_targets_add_owned_and_busy_organization_repositories() {
+        let now = "2026-10-10T00:00:00Z".parse::<DateTime<Utc>>().unwrap();
+        let meta = |name: &str, days: i64, fork: bool| RepositoryMeta {
+            full_name: name.into(),
+            owner: name.split('/').next().unwrap().into(),
+            fork,
+            size_kib: 100,
+            pushed_at: Some(now - Duration::days(days)),
+            ..RepositoryMeta::default()
+        };
+        let mut snapshot = Snapshot {
+            login: "dev".into(),
+            now,
+            ..Snapshot::default()
+        };
+        snapshot.sampled.insert(
+            "acme/api".into(),
+            SampledRepository {
+                commits: 9,
+                owner: "acme".into(),
+                organization: true,
+            },
+        );
+        snapshot.totals.owner_commits.insert("acme".into(), 400);
+        snapshot.totals.owner_commits.insert("quiet".into(), 3);
+        for item in [
+            meta("acme/api", 1, false),
+            meta("acme/old-tool", 400, false),
+            meta("acme/ancient", 1000, false),
+            meta("acme/vendor", 5, true),
+            meta("quiet/lib", 2, false),
+            meta("dev/site", 30, false),
+        ] {
+            snapshot.repositories.insert(item.full_name.clone(), item);
+        }
+        let collector = Collector {
+            client: Arc::new(
+                GitHubClient::with_endpoints(
+                    None,
+                    "http://127.0.0.1:9".into(),
+                    "http://127.0.0.1:9".into(),
+                )
+                .unwrap(),
+            ),
+            git: Arc::new(Git {
+                base_url: String::new(),
+                scratch: std::env::temp_dir(),
+                clone_timeout: std::time::Duration::from_secs(1),
+            }),
+            limits: Limits::default(),
+        };
+        assert_eq!(
+            collector.clone_targets(&snapshot),
+            ["acme/api", "dev/site", "acme/old-tool"]
+        );
     }
 
     #[test]

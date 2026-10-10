@@ -25,8 +25,9 @@ use crate::collect::{CollectError, Collector};
 
 const FRESH: Duration = Duration::from_secs(6 * 60 * 60);
 const FAILED_RETRY: Duration = Duration::from_secs(5 * 60);
-/// A bio read more recently than this is reused for the ownership check.
-const BIO_FRESH: Duration = Duration::from_secs(120);
+/// A bio read more recently than this is reused for the ownership check; a candidate who just
+/// added the code is checked against a fresh read.
+const BIO_FRESH: Duration = Duration::from_secs(10);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -118,7 +119,7 @@ async fn submit(
     State(state): State<Arc<InsightsState>>,
     Json(request): Json<SubmitRequest>,
 ) -> Result<Json<StatusResponse>, ServiceError> {
-    let login = parse_github_login(&request.login).ok_or(ServiceError::InvalidLogin)?;
+    let mut login = parse_github_login(&request.login).ok_or(ServiceError::InvalidLogin)?;
     let collector = state.collector.clone().ok_or(ServiceError::NotConfigured)?;
     let key = login.to_ascii_lowercase();
     let existing = state.jobs.lock().await.get(&key).cloned();
@@ -138,6 +139,13 @@ async fn submit(
         if reuse {
             return respond(&collector, &job, request.ownership_code.as_deref()).await;
         }
+    }
+    // One REST request rejects a mistyped login or an organization at once rather than after a
+    // queued analysis; on a rate limit or outage the analysis itself retries in the background.
+    match collector.profile(&login).await {
+        Err(CollectError::UnknownAccount) => return Err(ServiceError::UnknownAccount),
+        Ok((canonical, _)) => login = canonical,
+        Err(_) => {}
     }
     let job = Arc::new(Mutex::new(Job {
         login: login.clone(),
@@ -290,6 +298,7 @@ async fn run(
 #[derive(Debug)]
 enum ServiceError {
     InvalidLogin,
+    UnknownAccount,
     NotConfigured,
     UnknownJob,
 }
@@ -301,6 +310,11 @@ impl IntoResponse for ServiceError {
                 StatusCode::BAD_REQUEST,
                 "github_login_invalid",
                 "Укажите имя пользователя GitHub или ссылку на профиль",
+            ),
+            Self::UnknownAccount => (
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "github_account_not_found",
+                "Пользователь GitHub не найден",
             ),
             Self::NotConfigured => (
                 StatusCode::SERVICE_UNAVAILABLE,
