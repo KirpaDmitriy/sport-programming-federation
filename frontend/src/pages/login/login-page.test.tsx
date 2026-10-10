@@ -70,6 +70,22 @@ describe('email sign-in', () => {
     expect(screen.getByRole('button', { name: 'Отправить новый код' })).toBeTruthy();
   });
 
+  it('shows the fixed code only for a seeded demo account', async () => {
+    server.use(
+      unauthenticated,
+      http.post(`${API}/api/v1/auth/email/challenges`, () =>
+        HttpResponse.json(
+          { challengeId: 'challenge-demo', expiresAt: '2026-10-05T12:15:00.000Z', delivery: 'mock_mailbox' },
+          { status: 201 },
+        ),
+      ),
+    );
+    await renderLogin(true);
+    await userEvent.click(screen.getByRole('button', { name: 'Подставить alexey@example.com' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Получить код' }));
+    expect(await screen.findByText('123456')).toBeTruthy();
+  });
+
   it('tells the user that an existing account cannot change its role', async () => {
     server.use(
       unauthenticated,
