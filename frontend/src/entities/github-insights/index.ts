@@ -1,9 +1,11 @@
 export {
   bandLabel,
   bandTone,
+  byStackCategory,
   confidenceLabel,
   formatMinutes,
   formatOffset,
+  type GitHubAnalysis,
   type GitHubDimension,
   type GitHubFlag,
   type GitHubIndex,
@@ -12,6 +14,8 @@ export {
   type GitHubSource,
   type HygieneSignal,
   hygieneLabel,
+  type StackCategory,
+  stackCategoryLabel,
   weekdayShortLabel,
   yearsLabel,
 } from './model';

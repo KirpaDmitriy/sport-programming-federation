@@ -27,7 +27,7 @@ import {
   TagList,
   type Tone,
 } from '@/shared/ui';
-import { GitHubReportView, GitHubSignalCard } from '@/widgets/github-insights';
+import { AnalysisProgress, GitHubReportView, GitHubSignalCard } from '@/widgets/github-insights';
 import styles from './sources-page.module.css';
 
 const PAGE_SIZE = 6;
@@ -203,7 +203,11 @@ function GithubCard({ source, consent, processing }: { source: Source; consent: 
           {connected && (
             <>
               {processing.processing ? (
-                <InlineStatus>Анализ GitHub продолжается. Уже найденные данные доступны.</InlineStatus>
+                github?.analysis ? (
+                  <AnalysisProgress analysis={github.analysis} />
+                ) : (
+                  <InlineStatus>Анализ GitHub продолжается. Уже найденные данные доступны.</InlineStatus>
+                )
               ) : (
                 source.lastSyncedAt && <p className="small muted">Обновлено {formatDateTime(source.lastSyncedAt)}</p>
               )}
@@ -234,7 +238,7 @@ function GithubCard({ source, consent, processing }: { source: Source; consent: 
                   </Button>
                 </div>
               )}
-              {!github?.report && (
+              {!github?.report && !processing.processing && (
                 <Callout tone="info">
                   Отчёт ещё не построен: нажмите «Обновить», чтобы проанализировать аккаунт.
                 </Callout>
@@ -374,14 +378,15 @@ function ObservationCard() {
         <li>
           <Icon name="lock" />
           <span>
-            Только публичные репозитории. Приватную работу GitHub показывает лишь числом, и в индекс она не входит.
+            Только публичные данные, без токена: поиск GitHub, публичные профили и копии публичных репозиториев на нашем
+            сервере. Приватные репозитории не анализируются.
           </span>
         </li>
         <li>
           <Icon name="branch" />
           <span>
-            Технология засчитывается по артефакту в проектах, которые вы ведёте. Это свидетельство использования, а не
-            подтверждённый навык: грейд подтверждает только тест.
+            Языки и технологии — по вашим собственным изменениям и манифестам проектов, где вы работаете. Это
+            свидетельство использования, а не подтверждённый навык: грейд подтверждает только тест.
           </span>
         </li>
         <li>
@@ -391,8 +396,8 @@ function ObservationCard() {
         <li>
           <Icon name="users" />
           <span>
-            Совместная работа засчитывается, только если изменения приняли или отревьюили другие люди вне ваших
-            организаций.
+            Ваши организации и проекты, которые вы ведёте, засчитываются как собственная работа. Совместная работа — это
+            изменения, принятые или проверенные другими людьми вне ваших организаций.
           </span>
         </li>
         <li>
@@ -407,7 +412,11 @@ function ObservationCard() {
 export function CandidateSourcesPage() {
   useDocumentTitle('Источники профиля');
   const scope = useScope();
-  const { data: sources } = useSuspenseQuery(mySourcesQuery(scope));
+  // The stage and progress of a running GitHub analysis refresh with the source list.
+  const { data: sources } = useSuspenseQuery({
+    ...mySourcesQuery(scope),
+    refetchInterval: (query) => (query.state.data?.items.some((item) => item.github?.analysis) ? 3_000 : false),
+  });
   const { data: profile } = useSuspenseQuery(profileQuery(scope));
   const github = sources.items.find((item) => item.provider === 'github');
   const fsp = sources.items.find((item) => item.provider === 'fsp');

@@ -11,6 +11,8 @@ export type GitHubIndex = S['GitHubIndex'];
 export type GitHubFlag = S['GitHubFlag'];
 export type GitHubDimension = S['GitHubDimension'];
 export type HygieneSignal = GitHubReport['repositories'][number]['hygiene'][number];
+export type StackCategory = S['GitHubStackItem']['category'];
+export type GitHubAnalysis = NonNullable<GitHubSource['analysis']>;
 
 export const bandLabel: Record<GitHubIndex['band'], string> = {
   weak: 'Слабый сигнал',
@@ -43,6 +45,26 @@ export const hygieneLabel: Record<HygieneSignal, string> = {
   container: 'Контейнер',
   description: 'Описание',
 };
+
+/** Display order and Russian names of stack categories. */
+export const stackCategoryLabel: Record<StackCategory, string> = {
+  language: 'Языки',
+  backend: 'Бэкенд',
+  frontend: 'Фронтенд',
+  data: 'Данные и хранилища',
+  ai: 'AI',
+  infrastructure: 'Инфраструктура и DevOps',
+  quality: 'Качество',
+  mobile: 'Мобильная разработка',
+  tooling: 'Инструменты',
+};
+
+/** Groups items by category in the order of `stackCategoryLabel`, skipping empty categories. */
+export function byStackCategory<T extends { category: StackCategory }>(items: T[]) {
+  return (Object.keys(stackCategoryLabel) as StackCategory[])
+    .map((category) => ({ category, items: items.filter((item) => item.category === category) }))
+    .filter((group) => group.items.length > 0);
+}
 
 export const weekdayShortLabel = ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс'] as const;
 

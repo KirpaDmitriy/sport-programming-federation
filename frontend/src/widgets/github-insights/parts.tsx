@@ -2,13 +2,16 @@ import type { CSSProperties, ReactNode } from 'react';
 import {
   bandLabel,
   bandTone,
+  byStackCategory,
   confidenceLabel,
   type GitHubFlag,
   type GitHubIndex,
+  type StackCategory,
+  stackCategoryLabel,
   weekdayShortLabel,
 } from '@/entities/github-insights';
 import { formatShortDate } from '@/shared/lib';
-import { Callout, StatusChip } from '@/shared/ui';
+import { Callout, StatusChip, TagList } from '@/shared/ui';
 import styles from './github-insights.module.css';
 
 const vars = (values: Record<string, number>) =>
@@ -91,7 +94,7 @@ export function Numbers({ items }: { items: [string, ReactNode][] }) {
   );
 }
 
-/** Contribution heatmap, Monday first; screen readers get the summary and the monthly table. */
+/** Commit heatmap, Monday first; screen readers get the summary and the monthly table. */
 export function ActivityCalendar({ days }: { days: { date: string; count: number }[] }) {
   if (!days.length) return null;
   const nonZero = days
@@ -111,7 +114,7 @@ export function ActivityCalendar({ days }: { days: { date: string; count: number
       <div
         className={styles.calendar}
         role="img"
-        aria-label={`Публичный вклад за год: ${total}, активных дней ${nonZero.length}`}
+        aria-label={`Коммиты за год по дням: ${total}, активных дней ${nonZero.length}`}
       >
         {Array.from({ length: leading }, (_, index) => (
           <span key={`empty-${String(index)}`} className={styles.cell} data-empty="" />
@@ -126,13 +129,13 @@ export function ActivityCalendar({ days }: { days: { date: string; count: number
         ))}
       </div>
       <details>
-        <summary className="small">Вклад по месяцам таблицей</summary>
+        <summary className="small">Коммиты по месяцам таблицей</summary>
         <div className="table-wrap">
           <table className="table">
             <thead>
               <tr>
                 <th scope="col">Месяц</th>
-                <th scope="col">Вклад</th>
+                <th scope="col">Коммиты</th>
               </tr>
             </thead>
             <tbody>
@@ -196,7 +199,9 @@ export function WeekdayChart({ weekdays }: { weekdays: number[] }) {
   );
 }
 
-export function LanguageBar({ languages }: { languages: { language: string; percent: number }[] }) {
+type LanguageShare = { language: string; percent: number; filesChanged?: number };
+
+export function LanguageBar({ languages }: { languages: LanguageShare[] }) {
   if (!languages.length) return <p className="small muted">Языки не определены.</p>;
   return (
     <div className="stack" style={{ gap: '0.5rem' }}>
@@ -209,10 +214,65 @@ export function LanguageBar({ languages }: { languages: { language: string; perc
         {languages.map((item) => (
           <li key={item.language}>
             {item.language} — {item.percent}%
+            {item.filesChanged !== undefined && (
+              <span className="muted"> ({item.filesChanged.toLocaleString('ru-RU')} изм. файлов)</span>
+            )}
           </li>
         ))}
       </ul>
     </div>
+  );
+}
+
+type ArchetypeShare = { id: string; label: string; percent: number; evidence?: string[] };
+
+/** Areas of work by share of the candidate's own changed files, with the evidence behind each. */
+export function Archetypes({ archetypes }: { archetypes: ArchetypeShare[] }) {
+  if (!archetypes.length) return null;
+  return (
+    <ul className={styles.dimensions}>
+      {archetypes.map((archetype) => (
+        <li key={archetype.id}>
+          <div className={styles.dimensionHead}>
+            <span>{archetype.label}</span>
+            <span>{archetype.percent}%</span>
+          </div>
+          <div className={styles.bar} aria-hidden="true">
+            <span className={styles.barFill} style={vars({ value: archetype.percent })} />
+          </div>
+          {archetype.evidence && archetype.evidence.length > 0 && (
+            <span className="small muted">{archetype.evidence.join(' · ')}</span>
+          )}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/**
+ * Technologies grouped by category; the language category is shown by the language bar instead.
+ * `compact` puts each category above its technologies for narrow columns.
+ */
+export function StackGroups({
+  stack,
+  compact = false,
+}: {
+  stack: { name: string; category: StackCategory }[];
+  compact?: boolean;
+}) {
+  const groups = byStackCategory(stack.filter((item) => item.category !== 'language'));
+  if (!groups.length) return <p className="small muted">Технологии не определены.</p>;
+  return (
+    <dl className={styles.stack} data-compact={compact || undefined}>
+      {groups.map((group) => (
+        <div key={group.category}>
+          <dt>{stackCategoryLabel[group.category]}</dt>
+          <dd>
+            <TagList items={group.items.map((item) => item.name)} />
+          </dd>
+        </div>
+      ))}
+    </dl>
   );
 }
 

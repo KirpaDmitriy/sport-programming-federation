@@ -1,11 +1,13 @@
 import type { ReactNode } from 'react';
-import { formatMinutes, formatOffset, type GitHubReport, hygieneLabel, yearsLabel } from '@/entities/github-insights';
+import { formatMinutes, formatOffset, type GitHubReport, hygieneLabel } from '@/entities/github-insights';
 import { skillLabel, useMeta } from '@/entities/meta';
 import { isDemoReference } from '@/entities/source';
 import { formatDate, pluralRu } from '@/shared/lib';
 import { Card, StatusChip, TableWrap, TagList } from '@/shared/ui';
+import styles from './github-insights.module.css';
 import {
   ActivityCalendar,
+  Archetypes,
   DimensionList,
   Flags,
   HourChart,
@@ -13,10 +15,13 @@ import {
   LanguageBar,
   Numbers,
   plainListClass,
+  StackGroups,
   WeekdayChart,
 } from './parts';
 
 const count = (value: number) => value.toLocaleString('ru-RU');
+const share = (value: number | null | undefined) => (value === null || value === undefined ? '—' : `${value}%`);
+const repositories = (value: number) => `${value} ${pluralRu(value, 'репозиторий', 'репозитория', 'репозиториев')}`;
 
 /** Fixture links identify synthetic data and are not hosted pages. */
 function ExternalLink({ href, children }: { href: string; children: ReactNode }) {
@@ -27,17 +32,60 @@ function ExternalLink({ href, children }: { href: string; children: ReactNode })
     </a>
   );
 }
-const share = (value: number | null | undefined) => (value === null || value === undefined ? '—' : `${value}%`);
+
+function Portrait({ report }: { report: GitHubReport }) {
+  const { profile } = report;
+  return (
+    <Card title="Портрет разработчика" subtitle="По вашим собственным изменениям в публичных репозиториях">
+      <div className="stack">
+        <p style={{ margin: 0 }}>{profile.summary}</p>
+        <Archetypes archetypes={profile.archetypes} />
+        <div className="stack" style={{ gap: '0.5rem' }}>
+          <strong className="small">Языки — по изменённым вами файлам</strong>
+          <LanguageBar languages={report.languages} />
+        </div>
+        {profile.focusTopics.length > 0 && (
+          <div className="stack" style={{ gap: '0.5rem' }}>
+            <strong className="small">Темы проектов</strong>
+            <TagList items={profile.focusTopics} label="Темы проектов" />
+          </div>
+        )}
+        {profile.topProjects.length > 0 && (
+          <div className="stack" style={{ gap: '0.5rem' }}>
+            <strong className="small">Главные проекты</strong>
+            <ul className={styles.projects}>
+              {profile.topProjects.map((project) => (
+                <li key={project.nameWithOwner}>
+                  <ExternalLink href={project.url}>{project.nameWithOwner}</ExternalLink>
+                  {project.description && <span className="small">{project.description}</span>}
+                  <span className="small muted">
+                    {project.primaryLanguage ?? 'язык не указан'} · ★ {count(project.stars)} · ваших коммитов{' '}
+                    {count(project.userCommits)} ({project.userSharePercent}% истории)
+                    {project.lastCommitAt ? ` · последний ${formatDate(project.lastCommitAt)}` : ''}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+    </Card>
+  );
+}
 
 function Rhythm({ rhythm }: { rhythm: NonNullable<GitHubReport['rhythm']> }) {
   const sessions = rhythm.sessionsPerActiveDayTenths / 10;
   return (
-    <Card title="Ритм работы" subtitle={`По ${count(rhythm.sampleSize)} коммитам выборки, местное время автора`}>
+    <Card title="Ритм работы" subtitle={`По ${count(rhythm.sampleSize)} коммитам, местное время автора`}>
       <div className="stack">
         <Numbers
           items={[
             ['время в активный день, медиана', formatMinutes(rhythm.medianMinutesPerActiveDay)],
             ['в напряжённые дни (90-й перцентиль)', formatMinutes(rhythm.p90MinutesPerActiveDay)],
+            [
+              'в активную неделю, медиана',
+              rhythm.medianMinutesPerActiveWeek === null ? '—' : formatMinutes(rhythm.medianMinutesPerActiveWeek),
+            ],
             ['сессий в активный день', sessions.toLocaleString('ru-RU')],
             ['самая длинная сессия', formatMinutes(rhythm.longestSessionMinutes)],
             ['будни 9:00–19:00', share(rhythm.officeHoursPercent)],
@@ -57,13 +105,10 @@ function Rhythm({ rhythm }: { rhythm: NonNullable<GitHubReport['rhythm']> }) {
           </div>
         </div>
         <p className="small muted">
-          {rhythm.timezoneInferred
-            ? `Часовой пояс из заголовков коммитов: ${rhythm.timezoneOffsets
-                .map((item) => `${formatOffset(item.offsetMinutes)} (${item.percent}%)`)
-                .join(', ')}.`
-            : 'Часовой пояс не определён: время показано в UTC.'}{' '}
-          Сессия — коммиты с перерывами не больше двух часов плюс 30 минут до первого коммита. Это оценка по отметкам
-          времени, а не учёт рабочего времени.
+          Часовой пояс — из отметок времени самих коммитов:{' '}
+          {rhythm.timezoneOffsets.map((item) => `${formatOffset(item.offsetMinutes)} (${item.percent}%)`).join(', ')}.
+          Сессия — коммиты с перерывами не больше двух часов плюс 30 минут до первого коммита; сессия через полночь
+          делится между днями. Это оценка по отметкам времени, а не учёт рабочего времени.
         </p>
       </div>
     </Card>
@@ -73,22 +118,23 @@ function Rhythm({ rhythm }: { rhythm: NonNullable<GitHubReport['rhythm']> }) {
 /** The candidate's full report: exact values, names and links stay with the candidate. */
 export function GitHubReportView({ report }: { report: GitHubReport }) {
   const meta = useMeta();
-  const { activity, collaboration, craft, coverage } = report;
+  const { activity, collaboration, craft, coverage, ownership } = report;
   return (
     <div className="stack-lg">
       <Card title="Индекс публичной активности GitHub" subtitle={`Алгоритм ${report.algorithmVersion}`}>
         <div className="stack">
           <IndexSummary index={report.index}>
             <span className="small">
-              Объём, регулярность и качество публичных свидетельств за {yearsLabel(coverage.yearsAnalyzed)}. Это не
-              оценка навыков: грейд подтверждает только тест знаний.
+              Регулярность, вовлечённость, собственные проекты, совместная работа и инженерная культура по публичным
+              данным. Это не оценка навыков: грейд подтверждает только тест знаний.
             </span>
           </IndexSummary>
           <p className="small muted">
-            Выборка: {count(coverage.commitsSampled)} коммитов из {coverage.repositoriesAnalyzed}{' '}
-            {pluralRu(coverage.repositoriesAnalyzed, 'репозитория', 'репозиториев', 'репозиториев')}, всего публичных
-            коммитов по счётчику GitHub — {count(coverage.commitContributions)}. Обновлено{' '}
-            {formatDate(report.generatedAt)}
+            Проанализировано {count(coverage.commitsAnalyzed)} ваших коммитов в{' '}
+            {repositories(coverage.repositoriesAnalyzed)}. За год GitHub насчитывает{' '}
+            {count(coverage.commitsLastYearTotal)} публичных коммитов
+            {coverage.coveragePercent === null ? '' : `, в анализе — ${coverage.coveragePercent}% из них`}; всего за всё
+            время — {count(coverage.commitsPublicTotal)}. Обновлено {formatDate(report.generatedAt)}
           </p>
           {coverage.notes.length > 0 && (
             <ul className={`${plainListClass} small muted`}>
@@ -101,15 +147,18 @@ export function GitHubReportView({ report }: { report: GitHubReport }) {
         </div>
       </Card>
 
+      <Portrait report={report} />
+
       <Card title="Из чего складывается индекс" subtitle="Пороговые правила, одинаковые для всех кандидатов">
         <DimensionList dimensions={report.dimensions} />
       </Card>
 
-      <Card title="Активность" subtitle="Только вклад в публичные репозитории">
+      <Card title="Активность" subtitle="Публичные коммиты и pull request’ы">
         <div className="stack">
           <Numbers
             items={[
-              ['вклад за год', count(activity.contributionsLastYear)],
+              ['коммитов за год', count(activity.commitsLastYear)],
+              ['PR за год', count(activity.pullRequestsLastYear)],
               ['активных дней за год', count(activity.activeDaysLastYear)],
               ['активных недель из 52', activity.activeWeeksLastYear],
               ['дней подряд, рекорд', activity.longestDailyStreak],
@@ -120,27 +169,22 @@ export function GitHubReportView({ report }: { report: GitHubReport }) {
                 'динамика за полгода',
                 activity.trendPercent === null
                   ? '—'
-                  : `${activity.trendPercent > 0 ? '+' : ''}${activity.trendPercent}%`,
+                  : `${activity.trendPercent > 0 ? '+' : ''}${count(activity.trendPercent)}%`,
               ],
             ]}
           />
           <ActivityCalendar days={activity.calendar} />
-          {activity.privateContributionsLastYear > 0 && (
-            <p className="small muted">
-              GitHub показывает ещё {count(activity.privateContributionsLastYear)} приватных вкладов за год. Их нельзя
-              проверить, поэтому они не входят в индекс.
-            </p>
-          )}
+          <p className="small muted">
+            Календарь и активные дни строятся по проанализированным репозиториям; коммиты по годам — по поиску GitHub во
+            всех публичных репозиториях.
+          </p>
           <div className="table-wrap">
             <table className="table">
-              <caption className="visually-hidden">Публичный вклад по годам</caption>
+              <caption className="visually-hidden">Публичные коммиты по годам</caption>
               <thead>
                 <tr>
                   <th scope="col">Год</th>
-                  <th scope="col">Вклад</th>
                   <th scope="col">Коммиты</th>
-                  <th scope="col">PR</th>
-                  <th scope="col">Ревью</th>
                   <th scope="col">Активных дней</th>
                 </tr>
               </thead>
@@ -148,10 +192,7 @@ export function GitHubReportView({ report }: { report: GitHubReport }) {
                 {activity.yearly.map((year) => (
                   <tr key={year.year}>
                     <td>{year.year}</td>
-                    <td>{count(year.contributions)}</td>
                     <td>{count(year.commits)}</td>
-                    <td>{count(year.pullRequests)}</td>
-                    <td>{count(year.reviews)}</td>
                     <td>{year.activeDays}</td>
                   </tr>
                 ))}
@@ -169,20 +210,77 @@ export function GitHubReportView({ report }: { report: GitHubReport }) {
         </Card>
       )}
 
+      <Card title="Собственные проекты и организации" subtitle="Проекты, которые вы ведёте, и ваши организации">
+        <div className="stack">
+          <Numbers
+            items={[
+              ['ведёте проектов', ownership.ledRepositories],
+              ['из них с коммитами за год', ownership.maintainedRepositories],
+              ['своих организаций', ownership.ownOrganizations],
+              ['репозиториев в своих организациях', ownership.ownOrganizationRepositories],
+              ['репозиториев с прямыми пушами', ownership.directPushRepositories],
+            ]}
+          />
+          <div className="split-even">
+            <div className="stack" style={{ gap: '0.5rem' }}>
+              <strong className="small">Вклад в организации</strong>
+              {report.organizations.contributed.length ? (
+                <ul className={plainListClass}>
+                  {report.organizations.contributed.map((organization) => (
+                    <li key={organization.login}>
+                      <ExternalLink href={organization.url}>{organization.login}</ExternalLink>{' '}
+                      <span className="small muted">
+                        · {repositories(organization.repositories)} в анализе, {count(organization.commits)} коммитов
+                      </span>{' '}
+                      {organization.affiliated && (
+                        <StatusChip tone="neutral" icon={null}>
+                          своя
+                        </StatusChip>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="small muted">Вклада в репозитории организаций не найдено.</p>
+              )}
+            </div>
+            <div className="stack" style={{ gap: '0.5rem' }}>
+              <strong className="small">Публичное членство</strong>
+              {report.organizations.memberships.length ? (
+                <ul className={plainListClass}>
+                  {report.organizations.memberships.map((organization) => (
+                    <li key={organization.login}>
+                      <ExternalLink href={organization.url}>{organization.login}</ExternalLink>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="small muted">
+                  Публичных членств нет: GitHub по умолчанию скрывает членство. Свои организации определяются по
+                  коммитам, прямым пушам и принятию своих PR.
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      </Card>
+
       <Card
         title="Совместная работа"
-        subtitle="Засчитывается только работа, проверенная другими людьми вне ваших организаций"
+        subtitle="Засчитывается работа, принятая или проверенная другими людьми вне ваших организаций"
       >
         <div className="stack">
           <Numbers
             items={[
               ['PR всего', count(collaboration.pullRequestsTotal)],
-              ['ревью всего', count(collaboration.reviewsTotal)],
-              ['PR в независимые проекты', collaboration.externalPullRequests],
-              ['из них принято', collaboration.externalMerged],
+              ['PR одобрено другими', count(collaboration.approvedPullRequests)],
+              ['ревью чужих PR', count(collaboration.reviewsOfOthers)],
+              ['ревью в независимых проектах', count(collaboration.independentReviews)],
+              ['issues', count(collaboration.issuesTotal)],
+              ['PR в независимые проекты', count(collaboration.externalPullRequests)],
+              ['из них принято', count(collaboration.externalMerged)],
               ['доля принятых', share(collaboration.externalMergeRatePercent)],
               ['независимых репозиториев', collaboration.externalRepositories],
-              ['своих организаций', collaboration.affiliatedOrganizations],
             ]}
           />
           {collaboration.notableContributions.length > 0 && (
@@ -193,9 +291,8 @@ export function GitHubReportView({ report }: { report: GitHubReport }) {
                   <tr>
                     <th scope="col">Проект</th>
                     <th scope="col">Звёзды</th>
-                    <th scope="col">Коммиты</th>
                     <th scope="col">Принятые PR</th>
-                    <th scope="col">Ревью</th>
+                    <th scope="col">Коммиты в анализе</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -205,9 +302,8 @@ export function GitHubReportView({ report }: { report: GitHubReport }) {
                         <ExternalLink href={item.url}>{item.repository}</ExternalLink>
                       </td>
                       <td>{count(item.stars)}</td>
-                      <td>{item.commits}</td>
                       <td>{item.mergedPullRequests}</td>
-                      <td>{item.reviews}</td>
+                      <td>{item.commits || '—'}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -217,74 +313,27 @@ export function GitHubReportView({ report }: { report: GitHubReport }) {
         </div>
       </Card>
 
-      <Card title="Организации" subtitle="Публичное членство и организации, в чьи репозитории есть вклад">
-        <div className="split-even">
-          <div className="stack" style={{ gap: '0.5rem' }}>
-            <strong className="small">Публичное членство</strong>
-            {report.organizations.memberships.length ? (
+      <Card title="Технологии" subtitle="Из манифестов, файлов и истории проектов, где вы работаете">
+        <div className="stack">
+          <StackGroups stack={report.stack} />
+          {report.technologies.length > 0 && (
+            <details>
+              <summary className="small">Навыки каталога с доказательствами</summary>
               <ul className={plainListClass}>
-                {report.organizations.memberships.map((organization) => (
-                  <li key={organization.login}>
-                    <ExternalLink href={organization.url}>{organization.name ?? organization.login}</ExternalLink>{' '}
+                {report.technologies.map((technology) => (
+                  <li key={technology.skillId}>
+                    <strong>{skillLabel(meta, technology.skillId)}</strong>{' '}
                     <span className="small muted">
-                      · {organization.members} участников, {organization.publicRepositories} репозиториев
+                      · {repositories(technology.repositories)}: {technology.signals.join('; ')}
                     </span>
                   </li>
                 ))}
               </ul>
-            ) : (
-              <p className="small muted">
-                Публичных членств нет. GitHub по умолчанию скрывает членство в организациях.
-              </p>
-            )}
-          </div>
-          <div className="stack" style={{ gap: '0.5rem' }}>
-            <strong className="small">Вклад в организации</strong>
-            {report.organizations.contributed.length ? (
-              <ul className={plainListClass}>
-                {report.organizations.contributed.map((organization) => (
-                  <li key={organization.login}>
-                    <ExternalLink href={organization.url}>{organization.login}</ExternalLink>{' '}
-                    <span className="small muted">
-                      · {organization.repositories} репоз., {count(organization.contributions)} вкладов
-                    </span>{' '}
-                    {organization.affiliated && (
-                      <StatusChip tone="neutral" icon={null}>
-                        своя
-                      </StatusChip>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="small muted">Вклада в репозитории организаций не найдено.</p>
-            )}
-          </div>
-        </div>
-      </Card>
-
-      <Card title="Языки и технологии" subtitle="Языки взвешены по вашему вкладу в каждый репозиторий">
-        <div className="stack">
-          <LanguageBar languages={report.languages} />
-          {report.technologies.length > 0 ? (
-            <ul className={plainListClass}>
-              {report.technologies.map((technology) => (
-                <li key={technology.skillId}>
-                  <strong>{skillLabel(meta, technology.skillId)}</strong>{' '}
-                  <span className="small muted">
-                    · {technology.repositories}{' '}
-                    {pluralRu(technology.repositories, 'репозиторий', 'репозитория', 'репозиториев')}:{' '}
-                    {technology.signals.join('; ')}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="small muted">Технологии каталога не найдены в публичных репозиториях.</p>
+            </details>
           )}
           <p className="small muted">
-            Технология засчитывается только по артефакту: доле кода, зависимости в манифесте, Dockerfile или теме
-            репозитория. Это свидетельство использования, а не подтверждённый навык.
+            Технология засчитывается только по артефакту: зависимости в манифесте, файлу конфигурации или вашим
+            изменениям кода. Это свидетельство использования, а не подтверждённый навык.
           </p>
         </div>
       </Card>
@@ -299,10 +348,16 @@ export function GitHubReportView({ report }: { report: GitHubReport }) {
               ['тесты', share(craft.testsPercent)],
               ['lock-файл', share(craft.lockfilePercent)],
               ['линтеры', share(craft.lintPercent)],
+              ['обновление зависимостей', share(craft.dependencyUpdatesPercent)],
+              ['контейнеры', share(craft.containerPercent)],
               ['содержательные коммиты', share(craft.descriptiveMessagesPercent)],
               ['Conventional Commits', share(craft.conventionalCommitsPercent)],
-              ['подписанные коммиты', share(craft.signedCommitsPercent)],
-              ['медианный коммит', craft.medianCommitLines === null ? '—' : `${craft.medianCommitLines} строк`],
+              [
+                'файлов в коммите, медиана',
+                craft.medianFilesPerCommit === null ? '—' : count(craft.medianFilesPerCommit),
+              ],
+              ['крупные коммиты', share(craft.largeCommitsPercent)],
+              ['merge-коммиты', share(craft.mergeCommitsPercent)],
             ]}
           />
           {report.repositories.length > 0 && (
@@ -311,7 +366,8 @@ export function GitHubReportView({ report }: { report: GitHubReport }) {
                 <thead>
                   <tr>
                     <th scope="col">Репозиторий</th>
-                    <th scope="col">Ваш вклад</th>
+                    <th scope="col">Ваши коммиты</th>
+                    <th scope="col">Стек</th>
                     <th scope="col">Практики</th>
                   </tr>
                 </thead>
@@ -322,11 +378,17 @@ export function GitHubReportView({ report }: { report: GitHubReport }) {
                         <ExternalLink href={repository.url}>{repository.nameWithOwner}</ExternalLink>
                         <div className="small muted">
                           {repository.primaryLanguage ?? 'язык не указан'} · ★ {count(repository.stars)}
-                          {repository.owned ? ' · ваш' : ''}
+                          {repository.owned ? ' · ваш' : repository.led ? ' · ведёте' : ''}
                           {repository.archived ? ' · в архиве' : ''}
                         </div>
                       </td>
-                      <td>{count(repository.contributions)}</td>
+                      <td>
+                        {count(repository.userCommits)}
+                        <div className="small muted">
+                          {repository.userSharePercent}% из {count(repository.totalCommits)}
+                        </div>
+                      </td>
+                      <td>{repository.stack.length ? <TagList items={repository.stack} /> : '—'}</td>
                       <td>
                         {repository.hygiene.length ? (
                           <TagList items={repository.hygiene.map((signal) => hygieneLabel[signal])} />

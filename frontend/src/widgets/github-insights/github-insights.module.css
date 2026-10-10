@@ -206,6 +206,65 @@
   background: var(--fsp-color-neutral);
 }
 
+.stack {
+  display: grid;
+  gap: var(--fsp-space-3);
+  margin: 0;
+}
+
+.stack div {
+  display: grid;
+  grid-template-columns: minmax(8rem, 12rem) minmax(0, 1fr);
+  gap: var(--fsp-space-3);
+  align-items: baseline;
+}
+
+.stack[data-compact] div {
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--fsp-space-1);
+}
+
+.stack dt {
+  color: var(--fsp-color-text-secondary);
+  font-size: var(--fsp-font-size-small);
+}
+
+.stack dd {
+  margin: 0;
+}
+
+.projects {
+  display: grid;
+  gap: var(--fsp-space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.projects li {
+  display: grid;
+  gap: 2px;
+  padding: var(--fsp-space-3);
+  border-radius: var(--fsp-radius-control);
+  background: var(--fsp-color-surface-subtle);
+}
+
+.progress {
+  height: 0.5rem;
+  overflow: hidden;
+  border-radius: var(--fsp-radius-pill);
+  background: var(--fsp-color-surface-subtle);
+}
+
+.progress span {
+  display: block;
+  width: calc(var(--value) * 1%);
+  height: 100%;
+  border-radius: inherit;
+  background: var(--fsp-color-primary);
+  transition: width 0.4s ease;
+}
+
 .code {
   padding: 2px var(--fsp-space-2);
   border-radius: var(--fsp-radius-sm);
@@ -221,7 +280,14 @@
 }
 
 @media (max-width: 760px) {
-  .summary {
+  .summary,
+  .stack div {
     grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .progress span {
+    transition: none;
   }
 }

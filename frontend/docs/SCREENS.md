@@ -73,11 +73,13 @@ profile invalidates an old preview. Rust uses isolated extraction and Bifrost; m
 ![Sources](screenshots/03-profile-sources.png)
 
 - GitHub connects by login or profile link (repository links are rejected). The card shows the account, ownership
-  state with the bio code and a copy button, synchronization, errors and «Подключить другой аккаунт». The report
-  follows: the index with band and confidence, the dimensions with exact metrics, public activity with a calendar
-  heatmap (and a monthly table), the estimated rhythm in the author's time zone, collaboration, organizations,
-  languages and technologies with their artifacts, repository practices and integrity flags. «Как вас видит
-  работодатель» shows the anonymous projection. The development mock returns a labelled fictional report.
+  state with the bio code and a copy button, the stage and progress of a running analysis, errors and «Подключить
+  другой аккаунт». The report follows: the index with band, confidence and coverage, the developer portrait (summary,
+  areas with evidence, languages by changed files, topics, main projects), the dimensions with exact metrics,
+  activity with a commit heatmap (and a monthly table) and yearly commits, the estimated rhythm in the author's time
+  zone, own projects and organizations, collaboration, the stack by category, repository practices and integrity
+  flags. «Как вас видит работодатель» shows the anonymous projection. The development mock returns the labelled
+  fictional report of a synthetic account.
 - FSP accepts a fictional participant ID, offers refresh and ID replacement, and displays event dates, discipline,
   team/individual scope, publication status, place, points and protocol reference. Pending, disqualified and empty
   histories are distinct. The card labels all data fictional and does not turn team results into individual skills.

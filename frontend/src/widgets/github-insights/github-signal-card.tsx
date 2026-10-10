@@ -1,6 +1,15 @@
 import type { GitHubSignal } from '@/entities/github-insights';
 import { Card, StatusChip } from '@/shared/ui';
-import { DimensionList, Flags, IndexSummary, LanguageBar, Numbers, plainListClass } from './parts';
+import {
+  Archetypes,
+  DimensionList,
+  Flags,
+  IndexSummary,
+  LanguageBar,
+  Numbers,
+  plainListClass,
+  StackGroups,
+} from './parts';
 
 type Props = { signal: GitHubSignal; title?: string; subtitle?: string };
 
@@ -22,13 +31,15 @@ export function GitHubSignalCard({
             )}
           </div>
         </IndexSummary>
+        <p style={{ margin: 0 }}>{signal.summary}</p>
         <p className="small muted">
           Сигнал публичной активности по правилам {signal.algorithmVersion} на {signal.generatedAt}. Он не подтверждает
           навыки и грейд и не влияет на порядок выдачи.
-          {signal.mostlyPrivate &&
-            ' Основная работа кандидата — в приватных репозиториях, поэтому сигнал может быть занижен.'}
         </p>
         <Flags flags={signal.flags} />
+        <Archetypes archetypes={signal.archetypes} />
+        <LanguageBar languages={signal.languages} />
+        <StackGroups compact stack={signal.stack.map((item) => ({ name: item.technology, category: item.category }))} />
         {signal.highlights.length > 0 && (
           <ul className={`${plainListClass} small`}>
             {signal.highlights.map((item) => (
@@ -36,17 +47,17 @@ export function GitHubSignalCard({
             ))}
           </ul>
         )}
-        <DimensionList dimensions={signal.dimensions} />
         {signal.rhythm && (
           <Numbers
             items={[
               ['время в активный день', signal.rhythm.hoursPerActiveDay],
+              ['в активную неделю', signal.rhythm.hoursPerActiveWeek ?? '—'],
               ['будни 9:00–19:00', `≈${signal.rhythm.officeHoursPercent}%`],
               ['выходные', `≈${signal.rhythm.weekendPercent}%`],
             ]}
           />
         )}
-        <LanguageBar languages={signal.languages} />
+        <DimensionList dimensions={signal.dimensions} />
       </div>
     </Card>
   );

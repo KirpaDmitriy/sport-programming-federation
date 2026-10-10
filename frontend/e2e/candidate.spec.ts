@@ -125,7 +125,8 @@ test('UI-06 UI-07 GitHub connects by login with a public report; empty FSP histo
   await expect(page.getByRole('heading', { name: 'Индекс публичной активности GitHub' })).toBeVisible();
   await expect(page.getByText('Владение подтверждено', { exact: false })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Как вас видит работодатель' })).toBeVisible();
-  await expect(page.getByRole('img', { name: /Публичный вклад за год/ })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Портрет разработчика' })).toBeVisible();
+  await expect(page.getByRole('img', { name: /Коммиты за год по дням/ })).toBeVisible();
 
   await page.getByRole('button', { name: 'Подключить другой аккаунт' }).click();
   const login = page.getByLabel('Ник или ссылка на профиль GitHub');
@@ -134,7 +135,9 @@ test('UI-06 UI-07 GitHub connects by login with a public report; empty FSP histo
   await expect(page.getByText('Укажите имя пользователя GitHub или ссылку на профиль')).toBeVisible();
   await login.fill('https://github.com/octo-cat');
   await page.getByRole('button', { name: 'Подключить другой аккаунт' }).click();
+  // The analysis runs as a background job; the report and the employer preview arrive with it.
   await expect(page.getByText('Владение аккаунтом не подтверждено').first()).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Портрет разработчика' })).toBeVisible();
   await expect(page.getByText(/^fsp-demo/)).toBeVisible();
 
   await page.getByRole('button', { name: 'Указать ФСП ID' }).click();
