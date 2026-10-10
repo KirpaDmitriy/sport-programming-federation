@@ -73,13 +73,15 @@ profile invalidates an old preview. Rust uses isolated extraction and Bifrost; m
 ![Sources](screenshots/03-profile-sources.png)
 
 - GitHub connects by login or profile link (repository links are rejected). The card shows the account, ownership
-  state with the bio code and a copy button, the stage and progress of a running analysis, errors and «Подключить
-  другой аккаунт». The report follows: the index with band, confidence and coverage, the developer portrait (summary,
-  areas with evidence, languages by changed files, topics, main projects), the dimensions with exact metrics,
-  activity with a commit heatmap (and a monthly table) and yearly commits, the estimated rhythm in the author's time
-  zone, own projects and organizations, collaboration, the stack by category, repository practices and integrity
-  flags. «Как вас видит работодатель» shows the anonymous projection. The development mock returns the labelled
-  fictional report of a synthetic account.
+  state with three steps to prove it by the bio code («Проверить код»), the stage and progress of a running
+  analysis, errors and «Подключить другой аккаунт»; a mistyped login is rejected at once. The report follows in tabs
+  kept in the URL (`?tab=`): «Обзор» (index, coverage, flags, the developer portrait with highlights, areas with
+  evidence, languages by changed files, topics, main projects), «Активность» (counts, commit heatmap with a monthly
+  table, yearly commits, the estimated rhythm in the author's time zone), «Проекты и вклад» (own projects,
+  organizations, collaboration, notable independent projects), «Технологии» (stack by category, catalog evidence,
+  engineering practices), «Репозитории» (ten per page with stack and practices) and «Оценка» (dimensions with exact
+  metrics). «Как вас видит работодатель» shows the anonymous projection with collapsible metrics. The development
+  mock returns the labelled fictional report of a synthetic account.
 - FSP accepts a fictional participant ID, offers refresh and ID replacement, and displays event dates, discipline,
   team/individual scope, publication status, place, points and protocol reference. Pending, disqualified and empty
   histories are distinct. The card labels all data fictional and does not turn team results into individual skills.
@@ -246,7 +248,7 @@ gets a warning with a link, since invitations need it.
 ![Disclosed contacts](screenshots/12-employer-disclosed-contacts.png)
 
 Alias, verified specialization and grade with date, profile freshness, work modes, FSP participation; «Потребность для сравнения»;
-the «GitHub: публичная активность» card with the anonymous rounded signal and the ownership state when the candidate connected GitHub;
+the «GitHub: публичная активность» card with the anonymous rounded signal and the ownership state when the candidate connected GitHub (the candidate list shows its index, band and ownership state in the qualification column);
 tabs «Соответствие» (per requirement: result, evidence state, reason, gap plan), «Навыки» (list or graph without
 evidence details) and «Проверки». The contacts card says «Контакты и ссылки скрыты до согласия кандидата» until the
 candidate accepts this company's invitation, then shows only the fields they chose. «Пригласить кандидата» opens the

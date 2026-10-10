@@ -48,7 +48,14 @@ type DimensionItem = {
   metrics: { id: string; label: string; display: string }[];
 };
 
-export function DimensionList({ dimensions }: { dimensions: DimensionItem[] }) {
+/** Dimensions with their scores; `collapsible` hides each dimension's metrics behind a disclosure. */
+export function DimensionList({
+  dimensions,
+  collapsible = false,
+}: {
+  dimensions: DimensionItem[];
+  collapsible?: boolean;
+}) {
   return (
     <ul className={styles.dimensions}>
       {dimensions.map((dimension) => (
@@ -67,14 +74,27 @@ export function DimensionList({ dimensions }: { dimensions: DimensionItem[] }) {
             {dimension.summary}
             {dimension.weight !== undefined && ` · вес в индексе ${dimension.weight}%`}
           </span>
-          <ul className={styles.metrics}>
-            {dimension.metrics.map((metric) => (
-              <li key={metric.id}>
-                <span className="muted">{metric.label}</span>
-                <span>{metric.display}</span>
-              </li>
-            ))}
-          </ul>
+          {collapsible ? (
+            <details className={styles.details}>
+              <summary>Показатели: {dimension.metrics.length}</summary>
+              <Metrics metrics={dimension.metrics} />
+            </details>
+          ) : (
+            <Metrics metrics={dimension.metrics} />
+          )}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function Metrics({ metrics }: { metrics: DimensionItem['metrics'] }) {
+  return (
+    <ul className={styles.metrics}>
+      {metrics.map((metric) => (
+        <li key={metric.id}>
+          <span className="muted">{metric.label}</span>
+          <span>{metric.display}</span>
         </li>
       ))}
     </ul>

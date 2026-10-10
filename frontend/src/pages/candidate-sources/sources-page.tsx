@@ -27,7 +27,7 @@ import {
   TagList,
   type Tone,
 } from '@/shared/ui';
-import { AnalysisProgress, GitHubReportView, GitHubSignalCard } from '@/widgets/github-insights';
+import { AnalysisProgress, type GitHubReportTab, GitHubReportView } from '@/widgets/github-insights';
 import styles from './sources-page.module.css';
 
 const PAGE_SIZE = 6;
@@ -103,7 +103,15 @@ function RepositoryTable({ repositories }: { repositories: Repository[] }) {
 
 type Processing = ReturnType<typeof useSourceProcessing>;
 
-function OwnershipBlock({ github }: { github: GitHubSource }) {
+function OwnershipBlock({
+  github,
+  processing,
+  consent,
+}: {
+  github: GitHubSource;
+  processing: Processing;
+  consent: boolean;
+}) {
   const [copied, setCopied] = useState(false);
   if (github.ownership.verified) {
     return (
@@ -118,11 +126,14 @@ function OwnershipBlock({ github }: { github: GitHubSource }) {
   return (
     <Callout tone="warning" title="Владение аккаунтом не подтверждено">
       <div className="stack" style={{ gap: '0.5rem' }}>
-        <span>
-          Работодатель увидит отметку «не подтверждено». Чтобы подтвердить, что аккаунт ваш, временно добавьте код{' '}
-          <code>{github.ownership.code}</code> в поле Bio профиля GitHub и нажмите «Обновить». После проверки код можно
-          удалить.
-        </span>
+        <span>Работодатель увидит отметку «не подтверждено». Подтверждение занимает минуту:</span>
+        <ol className={styles.steps}>
+          <li>
+            Скопируйте код <code>{github.ownership.code}</code>.
+          </li>
+          <li>Вставьте его в поле Bio профиля GitHub и сохраните профиль.</li>
+          <li>Нажмите «Проверить код». После проверки код из Bio можно удалить.</li>
+        </ol>
         <div className="row">
           <Button
             size="sm"
@@ -139,7 +150,18 @@ function OwnershipBlock({ github }: { github: GitHubSource }) {
           <a className="small" href="https://github.com/settings/profile" target="_blank" rel="noreferrer noopener">
             Открыть настройки профиля GitHub
           </a>
+          <Button
+            size="sm"
+            variant="primary"
+            icon="check"
+            onClick={() => processing.sync.mutate()}
+            pending={processing.sync.isPending}
+            disabled={processing.processing || !consent}
+          >
+            Проверить код
+          </Button>
         </div>
+        {processing.processing && <span className="small muted">Проверить код можно после завершения анализа.</span>}
       </div>
     </Callout>
   );
@@ -183,7 +205,7 @@ function GithubCard({ source, consent, processing }: { source: Source; consent: 
               'Укажите ник или ссылку на профиль. Анализируются только публичные данные: репозитории, коммиты, pull request’ы, ревью и организации. Приватные репозитории не анализируются.'
             )}
           </p>
-          {connected && github && <OwnershipBlock github={github} />}
+          {connected && github && <OwnershipBlock github={github} processing={processing} consent={consent} />}
           {showForm && (
             <div style={{ maxWidth: '32rem' }}>
               {consent ? (
@@ -209,7 +231,12 @@ function GithubCard({ source, consent, processing }: { source: Source; consent: 
                   <InlineStatus>Анализ GitHub продолжается. Уже найденные данные доступны.</InlineStatus>
                 )
               ) : (
-                source.lastSyncedAt && <p className="small muted">Обновлено {formatDateTime(source.lastSyncedAt)}</p>
+                source.lastSyncedAt && (
+                  <p className="small muted">
+                    Проверено {formatDateTime(source.lastSyncedAt)}. Повторный анализ GitHub — не чаще раза в шесть
+                    часов, код владения проверяется сразу.
+                  </p>
+                )
               )}
               {processing.lastFailure && (
                 <Callout
@@ -409,7 +436,9 @@ function ObservationCard() {
   );
 }
 
-export function CandidateSourcesPage() {
+type Props = { tab: GitHubReportTab; onTabChange: (tab: GitHubReportTab) => void };
+
+export function CandidateSourcesPage({ tab, onTabChange }: Props) {
   useDocumentTitle('Источники профиля');
   const scope = useScope();
   // The stage and progress of a running GitHub analysis refresh with the source list.
@@ -456,26 +485,26 @@ export function CandidateSourcesPage() {
       <div className="stack-lg" style={{ marginTop: '1.5rem' }}>
         {github && <GithubCard source={github} consent={consent} processing={sync} />}
       </div>
+      {github?.github?.report ? (
+        <div style={{ marginTop: '1.5rem' }}>
+          <GitHubReportView
+            report={github.github.report}
+            preview={github.github.employerPreview}
+            tab={tab}
+            onTabChange={onTabChange}
+          />
+        </div>
+      ) : (
+        github?.status === 'connected' &&
+        github.repositories.length > 0 && (
+          <div style={{ marginTop: '1.5rem' }}>
+            <RepositoryTable repositories={github.repositories} />
+          </div>
+        )
+      )}
       <div className={styles.grid}>
-        <div className="stack-lg">
-          {github?.github?.report ? (
-            <GitHubReportView report={github.github.report} />
-          ) : (
-            github?.status === 'connected' &&
-            github.repositories.length > 0 && <RepositoryTable repositories={github.repositories} />
-          )}
-        </div>
-        <div className="stack-lg">
-          {github?.github?.employerPreview && (
-            <GitHubSignalCard
-              signal={github.github.employerPreview}
-              title="Как вас видит работодатель"
-              subtitle="Этот обезличенный блок показывается в карточке кандидата"
-            />
-          )}
-          {fsp && <FspCard key={fsp.accountLabel} source={fsp} consent={consent} />}
-          <ObservationCard />
-        </div>
+        {fsp && <FspCard key={fsp.accountLabel} source={fsp} consent={consent} />}
+        <ObservationCard />
       </div>
     </>
   );

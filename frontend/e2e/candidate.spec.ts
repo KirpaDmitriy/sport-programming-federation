@@ -122,11 +122,19 @@ test('UI-06 UI-07 GitHub connects by login with a public report; empty FSP histo
   await resetMock('baseline');
   await signIn(page, ALEXEY, 'candidate');
   await page.goto('/candidate/sources');
-  await expect(page.getByRole('heading', { name: 'Индекс публичной активности GitHub' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Отчёт GitHub' })).toBeVisible();
   await expect(page.getByText('Владение подтверждено', { exact: false })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Как вас видит работодатель' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Портрет разработчика' })).toBeVisible();
+  // Report sections are tabs kept in the URL, so a reload returns to the same section.
+  await page.getByRole('tab', { name: 'Активность' }).click();
+  await expect(page).toHaveURL(/tab=activity/);
+  await page.reload();
   await expect(page.getByRole('img', { name: /Коммиты за год по дням/ })).toBeVisible();
+  await page.getByRole('tab', { name: 'Для работодателя' }).click();
+  await expect(
+    page.getByText('Этот обезличенный блок работодатель видит в карточке кандидата', { exact: false }),
+  ).toBeVisible();
+  await page.getByRole('tab', { name: 'Обзор' }).click();
 
   await page.getByRole('button', { name: 'Подключить другой аккаунт' }).click();
   const login = page.getByLabel('Ник или ссылка на профиль GitHub');

@@ -1,4 +1,5 @@
 import { screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 import type { GitHubReport, GitHubSignal } from '@/entities/github-insights';
 import { metaQueryOptions } from '@/entities/meta';
@@ -15,28 +16,39 @@ const fullReport = report as GitHubReport;
 const employerSignal = signal as GitHubSignal;
 
 describe('GitHub insights', () => {
-  it('shows the candidate the full report with its portrait, calendar, rhythm and repositories', async () => {
+  it('shows the candidate the full report in tabs: portrait, activity, own work and repositories', async () => {
+    const user = userEvent.setup();
     await renderWithProviders(<GitHubReportView report={fullReport} />, {
       prefill: (client) => client.setQueryData(metaQueryOptions().queryKey, meta),
     });
     expect(screen.getByText(`Индекс ${fullReport.index.score} из 100`)).toBeTruthy();
     expect(screen.getByRole('heading', { name: 'Портрет разработчика' })).toBeTruthy();
     expect(screen.getByText(fullReport.profile.summary)).toBeTruthy();
+
+    await user.click(screen.getByRole('tab', { name: 'Активность' }));
     expect(screen.getByRole('img', { name: /Коммиты за год по дням/ })).toBeTruthy();
     expect(screen.getByRole('heading', { name: 'Ритм работы' })).toBeTruthy();
     expect(screen.getByText(/это оценка по\s+отметкам времени, а не учёт рабочего времени/i)).toBeTruthy();
-    expect(screen.getByRole('heading', { name: 'Собственные проекты и организации' })).toBeTruthy();
-    const repositories = screen.getByRole('region', { name: 'Проанализированные репозитории' });
+
+    await user.click(screen.getByRole('tab', { name: 'Проекты и вклад' }));
+    expect(screen.getByRole('heading', { name: 'Собственные проекты' })).toBeTruthy();
+    expect(screen.getByText('acme-labs')).toBeTruthy();
+
+    await user.click(screen.getByRole('tab', { name: /Репозитории/ }));
+    const repositories = screen.getByRole('region', { name: 'Разобранные репозитории' });
     expect(within(repositories).getByRole('link', { name: 'owner/project' }).getAttribute('href')).toBe(
       'https://github.com/owner/project',
     );
+
+    await user.click(screen.getByRole('tab', { name: 'Оценка' }));
+    expect(screen.getByText(fullReport.dimensions[0]?.label ?? '')).toBeTruthy();
   });
 
   it('shows employers a rounded anonymous signal without names, links or a calendar', async () => {
     await renderWithProviders(<GitHubSignalCard signal={employerSignal} />);
     expect(screen.getByText('Владение аккаунтом подтверждено')).toBeTruthy();
     expect(screen.getByText(/не подтверждает\s+навыки и грейд/)).toBeTruthy();
-    expect(screen.queryByRole('img', { name: /Публичный вклад за год/ })).toBeNull();
+    expect(screen.queryByRole('img', { name: /Коммиты за год по дням/ })).toBeNull();
     expect(screen.queryAllByRole('link')).toHaveLength(0);
     expect(screen.getByText(employerSignal.summary)).toBeTruthy();
     for (const hidden of ['owner/project', 'acme-labs', 'other/library'])
