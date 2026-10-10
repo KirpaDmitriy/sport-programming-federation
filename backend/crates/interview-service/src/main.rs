@@ -5,6 +5,8 @@ use std::sync::Arc;
 use fsp_interview_service::engine::InterviewService;
 use fsp_interview_service::http;
 use fsp_interview_service::model::{BifrostInterviewModel, InterviewModel, OfflineModel};
+use fsp_interview_service::storage::PostgresInterviewRepository;
+use sqlx::postgres::PgConnectOptions;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -29,7 +31,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
         tracing::warn!("BIFROST_CHAT_URL is unset; using the explicit offline rubric model");
         Arc::new(OfflineModel)
     };
-    let service = Arc::new(InterviewService::new(model));
+    let repository = Arc::new(
+        PostgresInterviewRepository::connect_with(database_options()?)
+            .await
+            .map_err(|_| "interview database is unavailable")?,
+    );
+    let service = Arc::new(InterviewService::with_repository(model, repository));
     let listener = tokio::net::TcpListener::bind((host.as_str(), port)).await?;
     tracing::info!(address = %listener.local_addr()?, "fsp-interview-service listening");
     axum::serve(listener, http::router(service, api_token))
@@ -38,6 +45,25 @@ async fn main() -> Result<(), Box<dyn Error>> {
         })
         .await?;
     Ok(())
+}
+
+fn database_options() -> Result<PgConnectOptions, Box<dyn Error>> {
+    if let Some(database_url) = optional_env("DATABASE_URL") {
+        return database_url.parse().map_err(Into::into);
+    }
+
+    let port = optional_env("PGPORT")
+        .unwrap_or_else(|| "5432".into())
+        .parse()?;
+    let username = required_env("PGUSER")?;
+    let password = optional_env("PGPASSWORD").unwrap_or_else(|| username.clone());
+    let options = PgConnectOptions::new()
+        .host(&required_env("PGHOST")?)
+        .port(port)
+        .username(&username)
+        .password(&password)
+        .database(&required_env("PGDATABASE")?);
+    Ok(options)
 }
 
 fn optional_env(name: &str) -> Option<String> {

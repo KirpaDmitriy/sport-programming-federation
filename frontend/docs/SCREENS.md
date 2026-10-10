@@ -117,9 +117,15 @@ Without skills: an empty state with «Подключить GitHub» and «Про
 
 ### `/candidate/assessments` — «Проверки»
 
-«Как устроена проверка» (versioned knowledge tests, server draft, scoring thresholds, AI allowed, failure and service-error
-rules, cooldown length from the server, no checks below the verified grade, supported scopes), «Следующий шаг», and
-«История попыток»: date, target and variant, status, effect on the category («Джуниор → Мидл», «Грейд сохранён»,
+When `graphInterviews` is enabled, «Собеседование по графу навыков» starts or resumes an authenticated interview.
+The dependency tree marks the current competency and confirmed gaps; its nested-list structure remains available to
+assistive technology. The adjacent dialogue keeps the text question and answer as the required path, with optional
+local Russian speech playback. A weak composite answer moves to an unresolved prerequisite, evidence remains visible,
+the session survives reloads, and a completed session can be followed by a new one.
+
+Below it, «Как устроена проверка» describes versioned knowledge tests, server drafts, scoring thresholds, allowed AI,
+failure and service-error rules, the server cooldown, grade restrictions and supported scopes. «Следующий шаг» and
+«История попыток» show date, target and variant, status, effect on the category («Джуниор → Мидл», «Грейд сохранён»,
 «Без изменений, штрафа и ожидания нет»), «Продолжить» or «Подробнее».
 
 ### `/candidate/assessments/{id}/workspace` — knowledge test

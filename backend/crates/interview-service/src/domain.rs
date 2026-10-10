@@ -100,7 +100,7 @@ impl InterviewBlueprint {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct InterviewQuestion {
     pub id: String,
@@ -110,20 +110,20 @@ pub struct InterviewQuestion {
     pub delivery: QuestionDelivery,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct QuestionDelivery {
     pub speech_text: String,
     pub avatar_cue: AvatarCue,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AvatarCue {
     Speaking,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct InterviewEvidence {
     pub node_id: String,
@@ -132,17 +132,17 @@ pub struct InterviewEvidence {
     pub answer_excerpt: String,
     pub rationale: String,
     pub evaluator: String,
-    pub rubric_version: &'static str,
+    pub rubric_version: String,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum InterviewStatus {
     Active,
     Completed,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct InterviewSession {
     pub id: String,
@@ -213,6 +213,12 @@ pub struct InterviewView {
     pub nodes: Vec<InterviewNodeView>,
     pub evidence: Vec<InterviewEvidence>,
     pub model_mode: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InterviewListView {
+    pub items: Vec<InterviewView>,
 }
 
 const IDEMPOTENCY_CONCEPTS: &[&[&str]] = &[

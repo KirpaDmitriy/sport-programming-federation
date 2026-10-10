@@ -30,6 +30,10 @@ Generated from [`openapi.json`](openapi.json) by `codegen/generate.ts`. Do not e
 | `runAssessmentChecks` | POST | `/api/v1/me/assessments/{assessmentId}/checks` | 202 | Application |
 | `askAssessmentAssistant` | POST | `/api/v1/me/assessments/{assessmentId}/assistant` | 200 | Application |
 | `submitAssessment` | POST | `/api/v1/me/assessments/{assessmentId}/submit` | 202 | Application |
+| `listMyInterviews` | GET | `/api/v1/me/interviews` | 200 | Application |
+| `startInterview` | POST | `/api/v1/me/interviews` | 201 | Application |
+| `getInterview` | GET | `/api/v1/me/interviews/{interviewId}` | 200 | Application |
+| `answerInterview` | POST | `/api/v1/me/interviews/{interviewId}/answers` | 200 | Application |
 | `getJob` | GET | `/api/v1/jobs/{jobId}` | 200 | Application |
 | `getMyTasks` | GET | `/api/v1/me/tasks` | 200 | Application |
 | `respondToTask` | POST | `/api/v1/me/tasks/{taskId}/responses` | 201 | Application |
@@ -85,4 +89,4 @@ Generated from [`openapi.json`](openapi.json) by `codegen/generate.ts`. Do not e
 | `mockEmailCodes` | GET | `/__mock__/email-codes` | 200 | Development only |
 | `mockAdvanceClock` | POST | `/__mock__/clock` | 200 | Development only |
 
-Total documented operations: 80. Development controls are not production application endpoints.
+Total documented operations: 84. Development controls are not production application endpoints.

@@ -55,6 +55,20 @@ test('UI-02 UI-07 a new candidate fills the questionnaire by hand and confirms a
   await expect(page.getByText(/Для работодателей:/)).toBeVisible();
 });
 
+test('a graph interview follows a missing prerequisite and survives reload', async ({ page }) => {
+  await resetMock('baseline');
+  await signIn(page, ALEXEY, 'candidate');
+  await page.goto('/candidate/assessments');
+  await page.getByRole('button', { name: 'Начать собеседование' }).click();
+  await expect(page.getByText(/Клиент повторяет POST-запрос/)).toBeVisible();
+  await page.getByLabel('Ваш ответ').fill('Сначала посмотрю логи и воспроизведу проблему.');
+  await page.getByRole('button', { name: 'Ответить' }).click();
+  await expect(page.getByText(/Как сформировать и ограничить область действия ключа операции/)).toBeVisible();
+  await expect(page.getByText('Определяет уникальность операции').first()).toBeVisible();
+  await page.reload();
+  await expect(page.getByText(/Как сформировать и ограничить область действия ключа операции/)).toBeVisible();
+});
+
 test('UI-10 UI-12 UI-05 draft survives reload, upgrade updates every view and the PDF is real', async ({ page }) => {
   await resetMock('baseline');
   await signIn(page, ALEXEY, 'candidate');
