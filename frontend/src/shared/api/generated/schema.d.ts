@@ -1409,6 +1409,7 @@ export interface components {
                 profilePdfImport: boolean;
                 githubFixture: boolean;
                 githubOAuth: boolean;
+                githubInsights: boolean;
                 fspFixture: boolean;
                 matching: boolean;
                 directInvitations: boolean;
@@ -1630,6 +1631,236 @@ export interface components {
                 pushedAt: string | null;
             };
         };
+        GitHubIndex: {
+            score: number;
+            /** @enum {string} */
+            band: "weak" | "moderate" | "strong" | "very_strong";
+            /** @enum {string} */
+            confidence: "low" | "medium" | "high";
+        };
+        GitHubFlag: {
+            id: string;
+            /** @enum {string} */
+            severity: "info" | "warning";
+            title: string;
+            detail: string;
+        };
+        GitHubLanguageShare: {
+            language: string;
+            percent: number;
+        };
+        GitHubMetric: {
+            id: string;
+            label: string;
+            value: number;
+            display: string;
+            publicDisplay: string;
+            score: number;
+        };
+        GitHubDimension: {
+            /** @enum {string} */
+            id: "consistency" | "engagement" | "longevity" | "collaboration" | "craft" | "impact";
+            label: string;
+            score: number;
+            weight: number;
+            summary: string;
+            metrics: components["schemas"]["GitHubMetric"][];
+        };
+        GitHubReport: {
+            /** @enum {string} */
+            algorithmVersion: "github-insights-v1";
+            /** Format: date-time */
+            generatedAt: string;
+            login: string;
+            /** Format: uri */
+            profileUrl: string;
+            accountCreatedAt: string;
+            coverage: {
+                /** Format: date-time */
+                from: string;
+                /** Format: date-time */
+                to: string;
+                yearsAnalyzed: number;
+                commitContributions: number;
+                commitsSampled: number;
+                repositoriesAnalyzed: number;
+                timezoneSamples: number;
+                partial: boolean;
+                notes: string[];
+            };
+            index: components["schemas"]["GitHubIndex"];
+            dimensions: components["schemas"]["GitHubDimension"][];
+            activity: {
+                activeYears: number;
+                contributionsLastYear: number;
+                privateContributionsLastYear: number;
+                activeDaysLastYear: number;
+                activeWeeksLastYear: number;
+                longestDailyStreak: number;
+                currentDailyStreak: number;
+                longestWeeklyStreak: number;
+                currentWeeklyStreak: number;
+                longestGapDaysLastYear: number;
+                lastActiveOn: string | null;
+                trendPercent: number | null;
+                calendar: {
+                    /** Format: date */
+                    date: string;
+                    count: number;
+                }[];
+                yearly: {
+                    year: number;
+                    contributions: number;
+                    commits: number;
+                    pullRequests: number;
+                    reviews: number;
+                    issues: number;
+                    privateContributions: number;
+                    activeDays: number;
+                }[];
+            };
+            rhythm: {
+                sampleSize: number;
+                timezoneInferred: boolean;
+                timezoneOffsets: {
+                    offsetMinutes: number;
+                    percent: number;
+                }[];
+                hourlyPercent: number[];
+                weekdayPercent: number[];
+                officeHoursPercent: number;
+                eveningPercent: number;
+                nightPercent: number;
+                weekendPercent: number;
+                activeDays: number;
+                medianMinutesPerActiveDay: number;
+                p90MinutesPerActiveDay: number;
+                sessionsPerActiveDayTenths: number;
+                longestSessionMinutes: number;
+            } | null;
+            collaboration: {
+                pullRequestsTotal: number;
+                reviewsTotal: number;
+                issuesTotal: number;
+                pullRequestsSampled: number;
+                externalPullRequests: number;
+                externalMerged: number;
+                externalMergeRatePercent: number | null;
+                medianPullRequestLines: number | null;
+                externalRepositories: number;
+                organizationRepositories: number;
+                affiliatedOrganizations: number;
+                notableContributions: {
+                    repository: string;
+                    /** Format: uri */
+                    url: string;
+                    stars: number;
+                    commits: number;
+                    mergedPullRequests: number;
+                    reviews: number;
+                }[];
+            };
+            organizations: {
+                memberships: {
+                    login: string;
+                    name: string | null;
+                    /** Format: uri */
+                    url: string;
+                    members: number;
+                    publicRepositories: number;
+                }[];
+                contributed: {
+                    login: string;
+                    /** Format: uri */
+                    url: string;
+                    repositories: number;
+                    contributions: number;
+                    affiliated: boolean;
+                }[];
+            };
+            languages: components["schemas"]["GitHubLanguageShare"][];
+            technologies: {
+                /** @enum {string} */
+                skillId: "rust" | "postgresql" | "docker" | "redis" | "typescript" | "react";
+                repositories: number;
+                signals: string[];
+                lastPushedAt: string | null;
+            }[];
+            craft: {
+                substantiveRepositories: number;
+                readmePercent: number;
+                licensePercent: number;
+                ciPercent: number;
+                testsPercent: number;
+                lockfilePercent: number;
+                lintPercent: number;
+                dependencyUpdatesPercent: number;
+                containerPercent: number;
+                conventionalCommitsPercent: number | null;
+                descriptiveMessagesPercent: number | null;
+                medianCommitLines: number | null;
+                largeCommitsPercent: number | null;
+                signedCommitsPercent: number | null;
+                mergeCommitsPercent: number | null;
+            };
+            repositories: {
+                nameWithOwner: string;
+                /** Format: uri */
+                url: string;
+                owned: boolean;
+                fork: boolean;
+                archived: boolean;
+                stars: number;
+                forks: number;
+                primaryLanguage: string | null;
+                pushedAt: string | null;
+                contributions: number;
+                sampledCommits: number;
+                hygiene: ("readme" | "license" | "ci" | "tests" | "lockfile" | "lint" | "dependency_updates" | "container" | "description")[];
+                technologies: ("rust" | "postgresql" | "docker" | "redis" | "typescript" | "react")[];
+            }[];
+            flags: components["schemas"]["GitHubFlag"][];
+            highlights: string[];
+        };
+        GitHubSignal: {
+            /** @enum {string} */
+            algorithmVersion: "github-insights-v1";
+            /** Format: date */
+            generatedAt: string;
+            ownershipVerified: boolean;
+            index: components["schemas"]["GitHubIndex"];
+            dimensions: {
+                /** @enum {string} */
+                id: "consistency" | "engagement" | "longevity" | "collaboration" | "craft" | "impact";
+                label: string;
+                score: number;
+                summary: string;
+                metrics: {
+                    id: string;
+                    label: string;
+                    display: string;
+                }[];
+            }[];
+            languages: components["schemas"]["GitHubLanguageShare"][];
+            rhythm: {
+                hoursPerActiveDay: string;
+                officeHoursPercent: number;
+                weekendPercent: number;
+            } | null;
+            highlights: string[];
+            flags: components["schemas"]["GitHubFlag"][];
+            mostlyPrivate: boolean;
+        };
+        GitHubSource: {
+            ownership: {
+                verified: boolean;
+                method: ("profile_code" | "oauth") | null;
+                verifiedAt: string | null;
+                code: string;
+            };
+            report: components["schemas"]["GitHubReport"] | null;
+            employerPreview: components["schemas"]["GitHubSignal"] | null;
+        };
         FspResult: {
             competitionId: string;
             competitionName: string;
@@ -1680,6 +1911,7 @@ export interface components {
             competitionIds: string[];
             notice: string;
             fspResults?: components["schemas"]["FspResult"][];
+            github: components["schemas"]["GitHubSource"] | null;
         };
         Sources: {
             items: components["schemas"]["Source"][];
@@ -1843,6 +2075,7 @@ export interface components {
             fspVerified: boolean;
             freshness: components["schemas"]["Freshness"];
             match: components["schemas"]["Match"] | null;
+            github: components["schemas"]["GitHubSignal"] | null;
             simulation: boolean;
         };
         CandidatePage: {

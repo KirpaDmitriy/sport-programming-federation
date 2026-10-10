@@ -72,8 +72,12 @@ profile invalidates an old preview. Rust uses isolated extraction and Bifrost; m
 
 ![Sources](screenshots/03-profile-sources.png)
 
-- GitHub uses OAuth when configured; the current stand shows that setup is deferred. Only the development mock
-  accepts fictional account names. Connected sources show repository counts, synchronization and errors.
+- GitHub connects by login or profile link (repository links are rejected). The card shows the account, ownership
+  state with the bio code and a copy button, synchronization, errors and «Подключить другой аккаунт». The report
+  follows: the index with band and confidence, the dimensions with exact metrics, public activity with a calendar
+  heatmap (and a monthly table), the estimated rhythm in the author's time zone, collaboration, organizations,
+  languages and technologies with their artifacts, repository practices and integrity flags. «Как вас видит
+  работодатель» shows the anonymous projection. The development mock returns a labelled fictional report.
 - FSP accepts a fictional participant ID, offers refresh and ID replacement, and displays event dates, discipline,
   team/individual scope, publication status, place, points and protocol reference. Pending, disqualified and empty
   histories are distinct. The card labels all data fictional and does not turn team results into individual skills.
@@ -240,6 +244,7 @@ gets a warning with a link, since invitations need it.
 ![Disclosed contacts](screenshots/12-employer-disclosed-contacts.png)
 
 Alias, verified specialization and grade with date, profile freshness, work modes, FSP participation; «Потребность для сравнения»;
+the «GitHub: публичная активность» card with the anonymous rounded signal and the ownership state when the candidate connected GitHub;
 tabs «Соответствие» (per requirement: result, evidence state, reason, gap plan), «Навыки» (list or graph without
 evidence details) and «Проверки». The contacts card says «Контакты и ссылки скрыты до согласия кандидата» until the
 candidate accepts this company's invitation, then shows only the fields they chose. «Пригласить кандидата» opens the
