@@ -880,8 +880,8 @@ test('connecting GitHub builds the profile and an estimated category; edited ans
   assert.equal(profile.specialization, 'backend');
   assert.equal(profile.selectedGrade, 'senior');
   assert.equal(profile.stack.length, 12);
-  assert.equal(profile.experienceMonths, 44);
-  assert.equal(profile.estimate.version, 'estimate-v1');
+  assert.equal(profile.experienceMonths, 45);
+  assert.equal(profile.estimate.version, 'estimate-v2');
   assert.deepEqual([...profile.autoFields].sort(), [
     'experience',
     'experienceMonths',

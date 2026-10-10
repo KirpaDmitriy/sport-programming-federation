@@ -38,7 +38,7 @@ the mock; the frontend receives labels through the generated types and `/meta`.
 - GitHub detection maps its technologies and languages (including `.bsl`/`.os` 1C sources and 1C configuration
   dumps) to catalog skills, so evidence covers the whole catalog.
 
-## Estimate (`estimate-v1`)
+## Estimate (`estimate-v2`)
 
 A pure domain function turns the GitHub report, FSP results and optional imported experience into an estimate:
 
@@ -49,7 +49,8 @@ A pure domain function turns the GitHub report, FSP results and optional importe
   maintained projects and own organizations, engineering practices, accepted work in independent projects and
   reviews of others, breadth and depth of the stack, consistency and volume (capped so volume alone never reaches
   senior), and FSP results (finals, places, individual versus team). Bands: < 20 intern, 20–39 junior, 40–59 middle,
-  60–79 senior, ≥ 80 lead.
+  60–79 senior, ≥ 80 lead. Senior needs 24 months of public work or stated experience and lead 48, counted in
+  months (`estimate-v2`; `estimate-v1` counted calendar years, so thirteen months across a new year passed as two).
 - **Confidence** follows the amount and coverage of evidence; with too little public data the estimate says so and
   gives no category until a test or more evidence.
 - **Profile answers:** industry IT, specialization, target grade = estimated grade, stack (top evidenced catalog

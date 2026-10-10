@@ -13,7 +13,7 @@ export type Category = {
 };
 
 /**
- * Behavior fixture for the development API; the Rust backend computes estimates with `estimate-v1`.
+ * Behavior fixture for the development API; the Rust backend computes estimates with `estimate-v2`.
  *
  * The mock's evidence is fixed: one GitHub fixture report and one fictional published FSP result.
  * The Rust rules wrote their estimates to `contracts/fixtures/profile-estimates.json`, so the mock
