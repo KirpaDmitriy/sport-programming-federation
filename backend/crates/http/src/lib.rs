@@ -179,6 +179,8 @@ pub fn router(config: HttpConfig, service: Arc<PlatformService>) -> Router {
         .route("/api/v1/me/profile/export", get(export_profile))
         .route("/api/v1/me/profile/estimate", post(refresh_estimate))
         .route("/api/v1/me/assessments", get(get_my_assessments))
+        .route("/api/v1/me/interviews", get(get_my_interviews))
+        .route("/api/v1/me/interviews/{interview_id}", get(get_interview))
         .route(
             "/api/v1/me/assessments/{assessment_id}",
             get(get_assessment),
@@ -224,6 +226,11 @@ pub fn router(config: HttpConfig, service: Arc<PlatformService>) -> Router {
             post(connect_source),
         )
         .route("/api/v1/me/assessments", post(start_assessment))
+        .route("/api/v1/me/interviews", post(start_interview))
+        .route(
+            "/api/v1/me/interviews/{interview_id}/answers",
+            post(answer_interview),
+        )
         .route(
             "/api/v1/me/assessments/{assessment_id}/answer",
             put(save_assessment_answer),
@@ -374,7 +381,8 @@ async fn meta(State(state): State<AppState>) -> Json<Value> {
             "vacancyPublication": true, "selfApplication": true, "chat": false,
             "recurringTasks": true, "realCodeExecution": false, "realLlm": state.service.llm_configured(),
             "githubOAuth": state.service.github_configured(),
-            "githubInsights": state.service.github_insights_configured()
+            "githubInsights": state.service.github_insights_configured(),
+            "graphInterviews": state.service.interviews_configured()
         },
         "assessmentPolicy": {
             "successfulGradeChangeCooldownDays": state.service.grade_cooldown_days(), "failedAttemptCooldownDays": 0,
@@ -1269,6 +1277,66 @@ async fn get_my_assessments(
     state
         .service
         .my_assessments(&session)
+        .await
+        .map(Json)
+        .map_err(api_error)
+}
+
+async fn get_my_interviews(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<fsp_application::InterviewsView>, ApiError> {
+    let session = authenticated(&state, &headers).await?;
+    require_role(&session, "candidate")?;
+    state
+        .service
+        .my_interviews(&session)
+        .await
+        .map(Json)
+        .map_err(api_error)
+}
+
+async fn start_interview(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ContractJson(input): ContractJson<fsp_application::InterviewStartInput>,
+) -> Result<(StatusCode, Json<fsp_application::InterviewView>), ApiError> {
+    let session = authenticated(&state, &headers).await?;
+    require_role(&session, "candidate")?;
+    state
+        .service
+        .start_interview(&session, input)
+        .await
+        .map(|interview| (StatusCode::CREATED, Json(interview)))
+        .map_err(api_error)
+}
+
+async fn get_interview(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ContractPath(interview_id): ContractPath<String>,
+) -> Result<Json<fsp_application::InterviewView>, ApiError> {
+    let session = authenticated(&state, &headers).await?;
+    require_role(&session, "candidate")?;
+    state
+        .service
+        .get_interview(&session, &interview_id)
+        .await
+        .map(Json)
+        .map_err(api_error)
+}
+
+async fn answer_interview(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ContractPath(interview_id): ContractPath<String>,
+    ContractJson(input): ContractJson<fsp_application::InterviewAnswerInput>,
+) -> Result<Json<fsp_application::InterviewView>, ApiError> {
+    let session = authenticated(&state, &headers).await?;
+    require_role(&session, "candidate")?;
+    state
+        .service
+        .answer_interview(&session, &interview_id, input)
         .await
         .map(Json)
         .map_err(api_error)

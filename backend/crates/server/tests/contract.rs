@@ -6,7 +6,10 @@ use std::sync::Arc;
 
 use axum::body::Body;
 use axum::http::{HeaderMap, Request, StatusCode, header};
-use fsp_application::{PlatformService, VerificationDelivery};
+use fsp_application::{
+    InterviewAnswerInput, InterviewGateway, InterviewStartInput, InterviewStatusView,
+    InterviewView, InterviewsView, PlatformService, VerificationDelivery,
+};
 use fsp_http::{HttpConfig, router};
 use fsp_integration_fsp_synthetic::HttpFsp;
 use fsp_storage_postgres::PostgresRepository;
@@ -22,6 +25,59 @@ fn test_admin_url() -> String {
 }
 
 struct FixedDelivery;
+
+struct FixedInterview;
+
+#[async_trait::async_trait]
+impl InterviewGateway for FixedInterview {
+    async fn list(
+        &self,
+        _candidate_id: &str,
+    ) -> Result<InterviewsView, fsp_application::IntegrationError> {
+        Ok(InterviewsView { items: Vec::new() })
+    }
+
+    async fn start(
+        &self,
+        candidate_id: &str,
+        input: &InterviewStartInput,
+    ) -> Result<InterviewView, fsp_application::IntegrationError> {
+        Ok(interview_fixture(candidate_id, &input.blueprint_id, 0))
+    }
+
+    async fn get(
+        &self,
+        _interview_id: &str,
+    ) -> Result<InterviewView, fsp_application::IntegrationError> {
+        Ok(interview_fixture("candidate024", "backend-middle-v1", 0))
+    }
+
+    async fn answer(
+        &self,
+        _interview_id: &str,
+        input: &InterviewAnswerInput,
+    ) -> Result<InterviewView, fsp_application::IntegrationError> {
+        Ok(interview_fixture(
+            "candidate024",
+            "backend-middle-v1",
+            input.revision + 1,
+        ))
+    }
+}
+
+fn interview_fixture(candidate_id: &str, blueprint_id: &str, revision: u32) -> InterviewView {
+    InterviewView {
+        id: "interview-test".into(),
+        candidate_id: candidate_id.into(),
+        blueprint_id: blueprint_id.into(),
+        status: InterviewStatusView::Active,
+        revision,
+        current_question: None,
+        nodes: Vec::new(),
+        evidence: Vec::new(),
+        model_mode: "fixture".into(),
+    }
+}
 
 #[async_trait::async_trait]
 impl VerificationDelivery for FixedDelivery {
@@ -987,6 +1043,54 @@ async fn assessments_full_flow_and_grade_change() {
                 .unwrap()
                 .iter()
                 .any(|e| e["reference"] == assessment_id && e["synthetic"] == false))
+    );
+}
+
+#[tokio::test]
+async fn graph_interview_is_scoped_to_the_authenticated_candidate() {
+    let (repository, _database) =
+        PostgresRepository::connect_test_database(&test_admin_url()).await;
+    let app = app_with_service(
+        PlatformService::new(Arc::new(repository), Arc::new(FixedDelivery))
+            .with_interviews(Arc::new(FixedInterview)),
+    )
+    .await;
+    let candidate = login(&app, CANDIDATE_JUNIOR, "candidate").await;
+    let (status, interview) = send(
+        &app,
+        "POST",
+        "/api/v1/me/interviews",
+        Some(&candidate),
+        json!({"blueprintId":"backend-middle-v1","maxTurns":10}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{interview}");
+    assert_eq!(interview["candidateId"], "candidate024");
+    let (status, _) = send(
+        &app,
+        "POST",
+        "/api/v1/me/interviews/interview-test/answers",
+        Some(&candidate),
+        json!({"questionId":"question-1","answer":"Ответ","revision":0}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        get(&app, "/api/v1/me/interviews", Some(&candidate)).await.0,
+        StatusCode::OK
+    );
+    let other_candidate = login(&app, CANDIDATE, "candidate").await;
+    let (status, body) = get(
+        &app,
+        "/api/v1/me/interviews/interview-test",
+        Some(&other_candidate),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
+    let employer = login(&app, EMPLOYER, "employer").await;
+    assert_eq!(
+        get(&app, "/api/v1/me/interviews", Some(&employer)).await.0,
+        StatusCode::FORBIDDEN
     );
 }
 
