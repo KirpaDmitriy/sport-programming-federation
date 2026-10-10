@@ -308,7 +308,7 @@ function FspCard({ source, consent }: { source: Source; consent: boolean }) {
             provider="fsp"
             label="ФСП ID"
             submitLabel="Подключить"
-            hint="Вымышленные ID: FSP-DEMO-024 — результат команды; FSP-DEMO-031 — команда и личный зачёт; FSP-DEMO-PENDING — ждёт протокола; FSP-DEMO-EMPTY — пустая история."
+            hint="Вымышленные ID: FSP-DEMO-024 — результат команды; FSP-DEMO-031 — история побед в командном и личном зачёте; FSP-DEMO-PENDING — ждёт протокола; FSP-DEMO-EMPTY — пустая история."
             onConnected={() => setEditing(false)}
           />
         )}
