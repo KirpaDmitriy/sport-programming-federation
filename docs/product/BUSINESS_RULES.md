@@ -27,9 +27,15 @@ name a state.
 
 ## 2. Candidate profile
 
+The catalog (`backend/crates/domain/data/catalog.json`, version `catalog-v2`) is shared by the Rust API, the contract
+generator and the development mock: five ordered grades (стажёр, джуниор, мидл, сеньор, лид), 25 specializations in
+eleven groups with the two topics of their knowledge test, and 255 skills in 17 categories, including the 1C ecosystem,
+ERP/SAP, analysis, design and management. `/meta` returns it with labels; requirements, stacks and filters accept any
+catalog skill. GitHub evidence maps languages and technologies onto catalog skills.
+
 | Owner | Fields |
 | --- | --- |
-| Candidate (editable) | `name`, `industry` (only `it`), `specialization` (`backend`/`frontend`/`fullstack`), `selectedGrade` (`junior`/`middle`/`senior`), `stack` (up to 5 of `rust`, `postgresql`, `docker`, `redis`, `typescript`, `react`), `teamRole`, `experienceMonths` (`null` unknown, `0` none, up to 1200), `experience`, `softSkills` (up to 12, self-assessed), `consents` |
+| Candidate (editable) | `name`, `industry` (only `it`), `specialization` (one of 25 catalog specializations), `selectedGrade` (`intern`/`junior`/`middle`/`senior`/`lead`), `stack` (up to 12 catalog skills), `teamRole`, `experienceMonths` (`null` unknown, `0` none, up to 1200), `experience`, `softSkills` (up to 12, self-assessed), `consents` |
 | Server | `verifiedSpecialization`, `verifiedGrade`, `gradeConfirmedAt`, `category`, `onboarding`, `assessmentEligibility`, `revision` |
 
 - `selectedGrade` is only the target of the next assessment («Цель»). Changing it never changes `verifiedGrade`;
@@ -130,7 +136,7 @@ starts.
 | --- | --- | --- |
 | `onboarding_incomplete` | E-mail unverified, questionnaire incomplete or no processing consent | `409 onboarding_incomplete` |
 | `active_assessment` | A questionnaire is `draft`, `in_progress`, `submitted` or `evaluating`; one active test at a time | `409 assessment_active` |
-| `unsupported_scope` | Fullstack, or frontend senior, has no assessment bank | `422 assessment_scope_unavailable` |
+| `unsupported_scope` | The bank holds no test for the specialization and grade (see `meta.assessmentPolicy.supportedScopes`) | `422 assessment_scope_unavailable` |
 | `grade_downgrade` | The target is below the verified grade in the same specialization; such attempts are never run | `422 grade_downgrade_forbidden` |
 | `cooldown` | A grade-changing attempt within the cooldown after the last successful grade change | `409 grade_change_cooldown` |
 

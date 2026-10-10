@@ -1,5 +1,6 @@
 //! Pure domain types and rules for the reverse-hiring platform.
 
+pub mod catalog;
 mod documents;
 mod github;
 mod knowledge;
@@ -21,28 +22,174 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Grade {
+    Intern,
     Junior,
     Middle,
     Senior,
+    Lead,
 }
 
 impl Grade {
+    pub const ALL: [Self; 5] = [
+        Self::Intern,
+        Self::Junior,
+        Self::Middle,
+        Self::Senior,
+        Self::Lead,
+    ];
+
     #[must_use]
     pub fn as_str(self) -> &'static str {
         match self {
+            Self::Intern => "intern",
             Self::Junior => "junior",
             Self::Middle => "middle",
             Self::Senior => "senior",
+            Self::Lead => "lead",
         }
+    }
+
+    /// The catalog label, e.g. «Мидл».
+    #[must_use]
+    pub fn label(self) -> &'static str {
+        catalog::grade_label(self)
     }
 }
 
+/// The catalog's specializations (`data/catalog.json`), in its order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
+#[serde(rename_all = "snake_case")]
 pub enum Specialization {
     Backend,
     Frontend,
     Fullstack,
+    Ios,
+    Android,
+    MobileCrossplatform,
+    Devops,
+    DataEngineering,
+    DataScience,
+    MlEngineering,
+    QaManual,
+    QaAutomation,
+    Security,
+    Embedded,
+    Systems,
+    Gamedev,
+    Onec,
+    Erp,
+    SystemAnalysis,
+    BusinessAnalysis,
+    DataAnalytics,
+    Dba,
+    Sysadmin,
+    Design,
+    Management,
+}
+
+impl Specialization {
+    pub const ALL: [Self; 25] = [
+        Self::Backend,
+        Self::Frontend,
+        Self::Fullstack,
+        Self::Ios,
+        Self::Android,
+        Self::MobileCrossplatform,
+        Self::Devops,
+        Self::DataEngineering,
+        Self::DataScience,
+        Self::MlEngineering,
+        Self::QaManual,
+        Self::QaAutomation,
+        Self::Security,
+        Self::Embedded,
+        Self::Systems,
+        Self::Gamedev,
+        Self::Onec,
+        Self::Erp,
+        Self::SystemAnalysis,
+        Self::BusinessAnalysis,
+        Self::DataAnalytics,
+        Self::Dba,
+        Self::Sysadmin,
+        Self::Design,
+        Self::Management,
+    ];
+
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Backend => "backend",
+            Self::Frontend => "frontend",
+            Self::Fullstack => "fullstack",
+            Self::Ios => "ios",
+            Self::Android => "android",
+            Self::MobileCrossplatform => "mobile_crossplatform",
+            Self::Devops => "devops",
+            Self::DataEngineering => "data_engineering",
+            Self::DataScience => "data_science",
+            Self::MlEngineering => "ml_engineering",
+            Self::QaManual => "qa_manual",
+            Self::QaAutomation => "qa_automation",
+            Self::Security => "security",
+            Self::Embedded => "embedded",
+            Self::Systems => "systems",
+            Self::Gamedev => "gamedev",
+            Self::Onec => "onec",
+            Self::Erp => "erp",
+            Self::SystemAnalysis => "system_analysis",
+            Self::BusinessAnalysis => "business_analysis",
+            Self::DataAnalytics => "data_analytics",
+            Self::Dba => "dba",
+            Self::Sysadmin => "sysadmin",
+            Self::Design => "design",
+            Self::Management => "management",
+        }
+    }
+
+    /// The catalog label, e.g. «Разработка на 1С».
+    #[must_use]
+    pub fn label(self) -> &'static str {
+        catalog::specialization(self).label.as_str()
+    }
+
+    /// The short catalog label, e.g. «1С».
+    #[must_use]
+    pub fn short_label(self) -> &'static str {
+        catalog::specialization(self).short.as_str()
+    }
+}
+
+impl std::str::FromStr for Specialization {
+    type Err = UnknownValue;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        Self::ALL
+            .into_iter()
+            .find(|item| item.as_str() == value)
+            .ok_or_else(|| UnknownValue(value.to_owned()))
+    }
+}
+
+impl std::str::FromStr for Grade {
+    type Err = UnknownValue;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        Self::ALL
+            .into_iter()
+            .find(|item| item.as_str() == value)
+            .ok_or_else(|| UnknownValue(value.to_owned()))
+    }
+}
+
+/// A grade or specialization id outside the catalog.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnknownValue(pub String);
+
+impl std::fmt::Display for UnknownValue {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(formatter, "unknown catalog value: {}", self.0)
+    }
 }
 
 /// An account has exactly one role, fixed at registration.

@@ -1,5 +1,7 @@
 // The contract's single source: JSON Schemas and the route table. scripts/build-contract.ts writes them to
 // contracts/openapi.json; the server validates requests and responses against the same schemas.
+// Grades, specializations and skills come from the catalog shared with the Rust domain.
+import catalog from '../../backend/crates/domain/data/catalog.json';
 
 export type JsonSchema = { readonly [keyword: string]: unknown };
 
@@ -20,9 +22,10 @@ const id = str({ minLength: 1, maxLength: 100, pattern: '^[A-Za-z0-9_.:-]+$' });
 const email = str({ format: 'email', maxLength: 254 });
 const url = str({ format: 'uri', maxLength: 2048 });
 const companyUrl = str({ format: 'uri', maxLength: 2048, pattern: '^https?://[^/?#\\s]+(?:[/?#][^\\s]*)?$' });
-const grade = en('junior', 'middle', 'senior');
-const specialization = en('backend', 'frontend', 'fullstack');
-const skillId = en('rust', 'postgresql', 'docker', 'redis', 'typescript', 'react');
+const grade = en(...catalog.grades.map((item) => item.id));
+const specialization = en(...catalog.specializations.map((item) => item.id));
+const skillId = en(...catalog.skills.map((item) => item.id));
+const skillCategory = en(...catalog.skillCategories.map((item) => item.id));
 const skillStatus = en('confirmed', 'evidence', 'observed', 'insufficient');
 const provider = en('github', 'fsp');
 const sourceKind = en('github', 'fsp', 'assessment');
@@ -64,7 +67,7 @@ const profileEditable = {
   industry: en('it'),
   specialization,
   selectedGrade: grade,
-  stack: arr(skillId, { uniqueItems: true, maxItems: 5 }),
+  stack: arr(skillId, { uniqueItems: true, maxItems: 12 }),
   teamRole: str({ maxLength: 120 }),
   experienceMonths: nullable(num({ minimum: 0, maximum: 1200 })),
   experience: str({ maxLength: 4000 }),
@@ -112,7 +115,11 @@ export const schemas = {
       supportedScopes: arr(obj({ specialization, grades: arr(grade) })),
     }),
     competitions: arr(obj({ id, name: str(), synthetic: bool, skillIds: arr(skillId), discipline: str() })),
-    skills: arr(obj({ id: skillId, label: str() })),
+    catalogVersion: str(),
+    grades: arr(obj({ id: grade, label: str(), description: str() })),
+    specializations: arr(obj({ id: specialization, label: str(), short: str(), group: str() })),
+    skillCategories: arr(obj({ id: skillCategory, label: str() })),
+    skills: arr(obj({ id: skillId, label: str(), category: skillCategory })),
   }),
   Session: obj({
     actorId: id,
@@ -803,7 +810,8 @@ export const schemas = {
       variantId: str(),
       title: str(),
       prompt: str(),
-      language: en('rust', 'backend', 'frontend'),
+      // `rust` names the retired code task; knowledge tests carry their specialization.
+      language: en('rust', ...catalog.specializations.map((item) => item.id)),
       starterCode: str(),
       acceptanceCriteria: arr(str()),
       rubric: arr(ref('RubricCriterion')),

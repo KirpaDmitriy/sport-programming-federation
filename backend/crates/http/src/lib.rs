@@ -333,6 +333,35 @@ pub fn idempotent_response<T: Serialize>(
 }
 
 async fn meta(State(state): State<AppState>) -> Json<Value> {
+    let catalog = fsp_domain::catalog::catalog();
+    let scopes = fsp_domain::knowledge_scopes()
+        .into_iter()
+        .map(|(specialization, grades)| {
+            json!({ "specialization": specialization, "grades": grades })
+        })
+        .collect::<Vec<_>>();
+    let skills = catalog
+        .skills
+        .iter()
+        .map(|item| json!({ "id": item.id, "label": item.label, "category": item.category }))
+        .collect::<Vec<_>>();
+    let specializations = catalog
+        .specializations
+        .iter()
+        .map(|item| {
+            json!({ "id": item.id, "label": item.label, "short": item.short, "group": item.group })
+        })
+        .collect::<Vec<_>>();
+    let grades = catalog
+        .grades
+        .iter()
+        .map(|item| json!({ "id": item.id, "label": item.label, "description": item.description }))
+        .collect::<Vec<_>>();
+    let categories = catalog
+        .skill_categories
+        .iter()
+        .map(|item| json!({ "id": item.id, "label": item.label }))
+        .collect::<Vec<_>>();
     Json(json!({
         "contractVersion": "0.1.0",
         "mode": "live",
@@ -350,20 +379,17 @@ async fn meta(State(state): State<AppState>) -> Json<Value> {
             "successfulGradeChangeCooldownDays": state.service.grade_cooldown_days(), "failedAttemptCooldownDays": 0,
             "serviceFailureCooldownDays": 0, "sameGradeRetryCooldownDays": 0,
             "aiAllowed": true, "externalAiAllowed": true,
-            "supportedScopes": [
-                {"specialization":"backend","grades":["junior","middle","senior"]},
-                {"specialization":"frontend","grades":["junior","middle"]}
-            ]
+            "supportedScopes": scopes
         },
         "competitions": [
             {"id":"competition-demo-api","name":"Демо: проектирование надёжного API","synthetic":true,"skillIds":["rust","postgresql"],"discipline":"Продуктовое программирование"},
             {"id":"competition-demo-systems","name":"Демо: распределённые системы","synthetic":true,"skillIds":["docker","redis"],"discipline":"Продуктовое программирование"}
         ],
-        "skills": [
-            {"id":"rust","label":"Rust"},{"id":"postgresql","label":"PostgreSQL"},
-            {"id":"docker","label":"Docker"},{"id":"redis","label":"Redis"},
-            {"id":"typescript","label":"TypeScript"},{"id":"react","label":"React"}
-        ]
+        "catalogVersion": catalog.version,
+        "grades": grades,
+        "specializations": specializations,
+        "skillCategories": categories,
+        "skills": skills
     }))
 }
 

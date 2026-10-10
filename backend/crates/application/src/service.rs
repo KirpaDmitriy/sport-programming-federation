@@ -2181,7 +2181,7 @@ impl PlatformService {
         if !(1..=160).contains(&input.title.chars().count())
             || !(1..=4000).contains(&input.prompt.chars().count())
             || !(5..=120).contains(&input.estimate_minutes)
-            || !CATALOG_SKILLS.contains(&input.skill_id.as_str())
+            || !fsp_domain::catalog::is_skill(&input.skill_id)
         {
             return Err(validation("Запрос не соответствует контракту"));
         }
@@ -2573,16 +2573,14 @@ impl PlatformService {
                 candidate.last_signal_at = candidate.profile.grade_confirmed_at.clone();
             }
             candidate.last_signal_at = Some(now());
-            let confirmed_skills: &[&str] = match record.specialization {
-                fsp_domain::Specialization::Backend => &["rust", "postgresql"],
-                fsp_domain::Specialization::Frontend => &["typescript", "react"],
-                fsp_domain::Specialization::Fullstack => &[],
-            };
+            // A passed test confirms the two topics it covers.
+            let confirmed_skills =
+                &fsp_domain::catalog::specialization(record.specialization).test_topics;
             for skill_id in confirmed_skills {
                 let skill = candidate
                     .skills
                     .iter_mut()
-                    .find(|item| item.skill_id == *skill_id);
+                    .find(|item| &item.skill_id == skill_id);
                 match skill {
                     Some(item) => {
                         item.status = EvidenceStatus::Confirmed;
@@ -2595,7 +2593,7 @@ impl PlatformService {
                         }
                     }
                     None => candidate.skills.push(fsp_domain::SkillEvidence {
-                        skill_id: (*skill_id).into(),
+                        skill_id: skill_id.clone(),
                         status: EvidenceStatus::Confirmed,
                         evidence_grade: Some(record.grade),
                         sources: vec![fsp_domain::EvidenceSource::Assessment],
@@ -3834,11 +3832,7 @@ fn gap_plan(candidate: &CandidateIndexRecord, need: &HiringNeedRecord) -> GapPla
                 },
                 accepted_competition_ids,
                 assessment_available: policy.accept_assessments
-                    && matches!(
-                        (need.need.specialization, need.need.grade),
-                        (Specialization::Backend, _)
-                            | (Specialization::Frontend, Grade::Junior | Grade::Middle)
-                    ),
+                    && fsp_domain::knowledge_available(need.need.specialization, need.need.grade),
             })
         })
         .collect();
@@ -3925,10 +3919,7 @@ fn profile_view(
         } else {
             "active_assessment"
         })
-    } else if profile.specialization == Specialization::Fullstack
-        || (profile.specialization == Specialization::Frontend
-            && profile.selected_grade == Grade::Senior)
-    {
+    } else if !fsp_domain::knowledge_available(profile.specialization, profile.selected_grade) {
         Some("unsupported_scope")
     } else if profile.verified_specialization == Some(profile.specialization)
         && profile
@@ -4093,23 +4084,14 @@ fn validate_profile_patch(patch: &ProfilePatch) -> Result<(), ApplicationError> 
     {
         return Err(validation("Текстовое поле превышает допустимую длину"));
     }
-    if let Some(stack) = &patch.stack {
-        let supported = [
-            "rust",
-            "postgresql",
-            "docker",
-            "redis",
-            "typescript",
-            "react",
-        ];
-        if stack.len() > 5
+    if let Some(stack) = &patch.stack
+        && (stack.len() > MAX_STACK
             || stack
                 .iter()
-                .any(|value| !supported.contains(&value.as_str()))
-            || unique_count(stack) != stack.len()
-        {
-            return Err(validation("Проверьте технологии в стеке"));
-        }
+                .any(|value| !fsp_domain::catalog::is_skill(value))
+            || unique_count(stack) != stack.len())
+    {
+        return Err(validation("Проверьте технологии в стеке"));
     }
     if patch.soft_skills.as_ref().is_some_and(|values| {
         values.len() > 12
@@ -4203,15 +4185,8 @@ fn validation(message: &'static str) -> ApplicationError {
     ApplicationError::new(400, "validation_error", message)
 }
 
-/// Schema-level ids the contract enumerates.
-const CATALOG_SKILLS: &[&str] = &[
-    "rust",
-    "postgresql",
-    "docker",
-    "redis",
-    "typescript",
-    "react",
-];
+/// Technologies a profile lists; evidence fills them automatically, so a broad stack fits.
+const MAX_STACK: usize = 12;
 const WORK_MODES: &[&str] = &["remote", "hybrid", "office"];
 /// Competition ids the meta catalog advertises.
 const COMPETITION_IDS: &[&str] = &["competition-demo-api", "competition-demo-systems"];
@@ -4239,7 +4214,7 @@ fn validate_requirements_schema(
     requirements: &[fsp_domain::Requirement],
 ) -> Result<(), ApplicationError> {
     let invalid = requirements.iter().any(|item| {
-        !CATALOG_SKILLS.contains(&item.skill_id.as_str())
+        !fsp_domain::catalog::is_skill(&item.skill_id)
             || !matches!(
                 item.evidence_policy.competition_selection.as_str(),
                 "system" | "selected"

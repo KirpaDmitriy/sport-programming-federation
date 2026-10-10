@@ -2051,11 +2051,16 @@
       ],
       "stars": 12,
       "technologies": [
+        "actix",
         "docker",
+        "github_actions",
         "postgresql",
         "react",
         "rust",
-        "typescript"
+        "tanstack",
+        "tokio",
+        "typescript",
+        "vite"
       ],
       "totalCommits": 748,
       "url": "https://github.com/owner/project",
@@ -2088,7 +2093,11 @@
         "SQLAlchemy"
       ],
       "stars": 40,
-      "technologies": [],
+      "technologies": [
+        "fastapi",
+        "github_actions",
+        "sqlalchemy"
+      ],
       "totalCommits": 80,
       "url": "https://github.com/acme-labs/platform",
       "userCommits": 60,
@@ -2338,10 +2347,34 @@
       "lastPushedAt": "2026-10-07T08:20:00Z",
       "repositories": 1,
       "signals": [
+        "Cargo.toml: axum"
+      ],
+      "skillId": "actix"
+    },
+    {
+      "lastPushedAt": "2026-10-07T08:20:00Z",
+      "repositories": 1,
+      "signals": [
         "1 файлов Dockerfile",
         "Dockerfile"
       ],
       "skillId": "docker"
+    },
+    {
+      "lastPushedAt": "2026-05-22T16:53:00Z",
+      "repositories": 1,
+      "signals": [
+        "pyproject.toml: fastapi"
+      ],
+      "skillId": "fastapi"
+    },
+    {
+      "lastPushedAt": "2026-10-07T08:20:00Z",
+      "repositories": 2,
+      "signals": [
+        "workflow GitHub Actions"
+      ],
+      "skillId": "github_actions"
     },
     {
       "lastPushedAt": "2026-10-07T08:20:00Z",
@@ -2368,12 +2401,44 @@
       "skillId": "rust"
     },
     {
+      "lastPushedAt": "2026-05-22T16:53:00Z",
+      "repositories": 1,
+      "signals": [
+        "pyproject.toml: sqlalchemy"
+      ],
+      "skillId": "sqlalchemy"
+    },
+    {
+      "lastPushedAt": "2026-10-07T08:20:00Z",
+      "repositories": 1,
+      "signals": [
+        "package.json: @tanstack/react-query"
+      ],
+      "skillId": "tanstack"
+    },
+    {
+      "lastPushedAt": "2026-10-07T08:20:00Z",
+      "repositories": 1,
+      "signals": [
+        "Cargo.toml: tokio"
+      ],
+      "skillId": "tokio"
+    },
+    {
       "lastPushedAt": "2026-10-07T08:20:00Z",
       "repositories": 1,
       "signals": [
         "package.json: typescript"
       ],
       "skillId": "typescript"
+    },
+    {
+      "lastPushedAt": "2026-10-07T08:20:00Z",
+      "repositories": 1,
+      "signals": [
+        "package.json: vite"
+      ],
+      "skillId": "vite"
     }
   ]
 }

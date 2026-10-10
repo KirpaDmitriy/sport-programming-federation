@@ -65,12 +65,13 @@ static V2_ADDITIONS: LazyLock<Bank> = LazyLock::new(|| {
 
 const V2_VERSION: &str = "knowledge-v2";
 
-fn topics(specialization: crate::Specialization) -> Option<[(&'static str, &'static str); 2]> {
-    match specialization {
-        crate::Specialization::Backend => Some([("rust", "Rust"), ("postgresql", "PostgreSQL")]),
-        crate::Specialization::Frontend => Some([("typescript", "TypeScript"), ("react", "React")]),
-        crate::Specialization::Fullstack => None,
-    }
+/// The two catalog topics of a specialization's test with their labels.
+fn topics(specialization: crate::Specialization) -> [(&'static str, &'static str); 2] {
+    let [first, second] = &crate::catalog::specialization(specialization).test_topics;
+    [
+        (first.as_str(), crate::catalog::skill_label(first)),
+        (second.as_str(), crate::catalog::skill_label(second)),
+    ]
 }
 
 fn stable_hash(value: &str) -> u64 {
@@ -84,7 +85,7 @@ fn v2_questions(
     grade: Grade,
     variant_key: &str,
 ) -> Option<Vec<KnowledgeQuestion>> {
-    let topics = topics(specialization)?;
+    let topics = topics(specialization);
     let mut selected = Vec::with_capacity(10);
     for (topic_id, _) in topics {
         let mut questions = BANK
@@ -134,23 +135,15 @@ fn build_task(
     variant_id: String,
     questions: Vec<KnowledgeQuestion>,
 ) -> AssessmentTask {
-    let topic_list = topics(specialization).expect("supported assessment specialization");
-    let specialization_id = match specialization {
-        crate::Specialization::Backend => "backend",
-        crate::Specialization::Frontend => "frontend",
-        crate::Specialization::Fullstack => unreachable!(),
-    };
-    let title = match specialization {
-        crate::Specialization::Backend => "Тест знаний: Rust и PostgreSQL",
-        crate::Specialization::Frontend => "Тест знаний: TypeScript и React",
-        crate::Specialization::Fullstack => unreachable!(),
-    };
+    let topic_list = topics(specialization);
+    let specialization_id = specialization.as_str();
+    let title = format!("Тест знаний: {} и {}", topic_list[0].1, topic_list[1].1);
     AssessmentTask {
         id: format!("knowledge-{specialization_id}-{}-{version}", grade.as_str()),
         family: format!("{specialization_id}-knowledge"),
         version,
         variant_id,
-        title: title.into(),
+        title,
         prompt: "Выберите один ответ в каждом из 10 вопросов. Для зачёта нужны минимум 8 верных ответов из 10 и минимум 3 из 5 по каждой теме. ИИ и справочники разрешены. Результат показывает знания по этому тесту, а не опыт написания кода.".into(),
         language: specialization_id.into(),
         starter_code: String::new(),
@@ -165,6 +158,27 @@ fn build_task(
     }
 }
 
+/// Whether the bank holds a test for this specialization and grade: five questions per topic.
+#[must_use]
+pub fn knowledge_available(specialization: crate::Specialization, grade: Grade) -> bool {
+    v2_questions(specialization, grade, "availability").is_some()
+}
+
+/// Every specialization and grade the bank can test, in catalog order.
+#[must_use]
+pub fn knowledge_scopes() -> Vec<(crate::Specialization, Vec<Grade>)> {
+    crate::Specialization::ALL
+        .into_iter()
+        .filter_map(|specialization| {
+            let grades = Grade::ALL
+                .into_iter()
+                .filter(|grade| knowledge_available(specialization, *grade))
+                .collect::<Vec<_>>();
+            (!grades.is_empty()).then_some((specialization, grades))
+        })
+        .collect()
+}
+
 #[must_use]
 pub fn knowledge_task(
     specialization: crate::Specialization,
@@ -175,11 +189,7 @@ pub fn knowledge_task(
     let fingerprint = questions.iter().fold(0xcbf29ce484222325, |hash, question| {
         (hash ^ stable_hash(&question.id)).wrapping_mul(0x100000001b3)
     });
-    let specialization_id = match specialization {
-        crate::Specialization::Backend => "backend",
-        crate::Specialization::Frontend => "frontend",
-        crate::Specialization::Fullstack => return None,
-    };
+    let specialization_id = specialization.as_str();
     Some(build_task(
         specialization,
         grade,
@@ -257,7 +267,7 @@ pub fn score_knowledge(
         }
         &BANK.questions
     } else if task.version == V2_VERSION {
-        let topic_list = topics(specialization)?;
+        let topic_list = topics(specialization);
         let selected = task
             .questions
             .iter()
@@ -311,7 +321,7 @@ fn score_selected(
     if !valid_knowledge_answer(task, answer) || answer.responses.len() != 10 {
         return None;
     }
-    let topic_list = topics(specialization)?;
+    let topic_list = topics(specialization);
     let mut topic_scores = [0_u32; 2];
     let checks = questions
         .into_iter()
@@ -455,7 +465,7 @@ mod tests {
             assert_eq!(first, repeated);
             assert_ne!(first.variant_id, second.variant_id);
             assert_eq!(first.questions.len(), 10);
-            for (topic, _) in topics(specialization).unwrap() {
+            for (topic, _) in topics(specialization) {
                 assert_eq!(
                     first
                         .questions

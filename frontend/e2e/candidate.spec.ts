@@ -32,7 +32,8 @@ test('UI-02 UI-07 a new candidate completes the questionnaire and gets a verifie
 
   await page.getByLabel('Имя и фамилия').fill('Мария Новикова');
   await page.getByLabel('Грейд для проверки').selectOption('junior');
-  await page.getByRole('button', { name: 'Rust' }).click();
+  await page.getByRole('combobox', { name: 'Стек' }).fill('Rust');
+  await page.getByRole('option', { name: /^Rust/ }).click();
   await page.getByLabel('Стаж, месяцев').fill('0');
   await page.getByRole('textbox', { name: 'Опыт', exact: true }).fill('Учебные проекты на Rust.');
   await page.getByLabel('Роль в команде').fill('Разработчик');
