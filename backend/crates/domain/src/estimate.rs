@@ -12,10 +12,12 @@ use crate::{
     Archetype, FspResult, GitHubDimensionId, GitHubReport, Grade, SignalConfidence, Specialization,
 };
 
-pub const ESTIMATE_VERSION: &str = "estimate-v2";
+pub const ESTIMATE_VERSION: &str = "estimate-v3";
 
 /// Stack items an automatic profile fills in.
 const STACK_LIMIT: usize = 12;
+/// Soft skills an automatic profile fills in (the questionnaire allows twelve).
+const SOFT_SKILL_LIMIT: usize = 12;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -38,6 +40,9 @@ pub struct ProfileEstimate {
     pub sources: Vec<String>,
     /// Why there is no grade, when there is none.
     pub insufficient: Option<String>,
+    /// How tenure and caps shaped the grade and what would raise it, in plain words.
+    #[serde(default)]
+    pub notes: Vec<String>,
     pub review: Option<EstimateReview>,
 }
 
@@ -66,6 +71,9 @@ pub struct EstimateAnswers {
     pub experience: String,
     pub team_role: String,
     pub name: Option<String>,
+    /// Working habits the evidence shows: documentation, reviews, ownership, teamwork.
+    #[serde(default)]
+    pub soft_skills: Vec<String>,
 }
 
 /// The LLM's second opinion, validated against the catalog.
@@ -90,7 +98,7 @@ pub struct ProfileReviewReply {
     pub team_role: String,
 }
 
-/// Anonymized evidence for the LLM: no login, names or links.
+/// Anonymized evidence for the LLM: no login, names, organizations or links.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProfileReviewRequest {
@@ -99,9 +107,34 @@ pub struct ProfileReviewRequest {
     pub rule_grade: Option<Grade>,
     pub score: u8,
     pub factors: Vec<EstimateFactor>,
+    pub notes: Vec<String>,
     pub stack: Vec<String>,
-    pub experience_months: Option<u32>,
+    /// Months of public work the analysis sees.
+    pub public_experience_months: Option<u32>,
+    /// Months the candidate stated; not verified.
+    pub stated_experience_months: Option<u32>,
+    /// The team role the candidate stated; not verified.
+    pub stated_team_role: Option<String>,
     pub fsp_results: Vec<String>,
+    /// Engineering areas with their shares and evidence.
+    pub areas: Vec<String>,
+    /// Detected technologies by system layer.
+    pub technologies: Vec<String>,
+    /// The main projects without names or links.
+    pub projects: Vec<ReviewProject>,
+    /// Every report metric as «label: value», by dimension.
+    pub metrics: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReviewProject {
+    pub description: String,
+    pub language: Option<String>,
+    pub stars: u32,
+    pub own_commits: u32,
+    pub own_share_percent: u8,
+    pub technologies: Vec<String>,
 }
 
 pub struct EstimateInput<'a> {
@@ -109,6 +142,8 @@ pub struct EstimateInput<'a> {
     pub fsp: &'a [FspResult],
     /// Experience the candidate stated or imported from a résumé, in months.
     pub stated_experience_months: Option<u32>,
+    /// The team role the candidate typed, not one an estimate filled in.
+    pub stated_team_role: Option<&'a str>,
     pub now: &'a str,
 }
 
@@ -129,12 +164,40 @@ pub fn estimate_profile(input: &EstimateInput<'_>) -> ProfileEstimate {
     }
     let specializations = specialization_shares(input.github, &published);
     let specialization = specializations.first().map(|share| share.id);
+    let stated_months = input.stated_experience_months;
+    let public_months = input.github.and_then(public_experience_months);
+    let experience_months = match (stated_months, public_months) {
+        (Some(stated), Some(public)) => Some(stated.max(public)),
+        (stated, public) => stated.or(public),
+    };
 
     let mut factors = Vec::new();
+    let mut notes = Vec::new();
     let mut base = 0.0;
     if let Some(report) = input.github {
         for (id, label, weight) in DIMENSION_WEIGHTS {
-            let score = dimension(report, id);
+            let mut score = dimension(report, id);
+            let mut detail = report
+                .dimensions
+                .iter()
+                .find(|item| item.id == id)
+                .map_or_else(String::new, |item| item.summary.clone());
+            // Stated experience may stand in for public tenure but never lowers it: private work
+            // is invisible on GitHub, and a typo must not cost a strong profile its evidence.
+            if id == GitHubDimensionId::Longevity
+                && let Some(stated) = stated_months
+            {
+                let stated_score =
+                    (ramp(f64::from(stated), 0.0, TENURE_FULL_MONTHS) * 100.0).round() as u8;
+                if stated_score > score {
+                    score = stated_score;
+                    detail = format!(
+                        "По анкете — {}; публично видно {}",
+                        duration(stated),
+                        public_months.map_or_else(|| "—".to_owned(), duration)
+                    );
+                }
+            }
             let points = (f64::from(score) * weight).round();
             base += points;
             factors.push(EstimateFactor {
@@ -142,33 +205,26 @@ pub fn estimate_profile(input: &EstimateInput<'_>) -> ProfileEstimate {
                 label: label.into(),
                 points: points as u8,
                 max: (100.0 * weight).round() as u8,
-                detail: report
-                    .dimensions
-                    .iter()
-                    .find(|item| item.id == id)
-                    .map_or_else(String::new, |item| item.summary.clone()),
+                detail,
             });
         }
-    }
-    let public_months = input.github.and_then(public_experience_months);
-    let experience_months = match (input.stated_experience_months, public_months) {
-        (Some(stated), Some(public)) => Some(stated.max(public)),
-        (stated, public) => stated.or(public),
-    };
-    if let Some(stated) = input.stated_experience_months {
-        // Stated experience covers private work the public evidence cannot see.
-        let points = (ramp(f64::from(stated), 0.0, 96.0) * 30.0).round();
-        if input.github.is_some() {
-            base = base * 0.7 + points;
-        } else {
-            base = points;
+        if report.algorithm_version != crate::GITHUB_INSIGHTS_VERSION {
+            notes.push(
+                "Отчёт GitHub построен прошлой версией анализа: нажмите «Пересчитать», анализ \
+                 обновится, и оценка учтёт все факторы"
+                    .to_owned(),
+            );
         }
+    } else if let Some(stated) = stated_months {
+        // Without public evidence, stated experience is the only measure of work.
+        let points = (ramp(f64::from(stated), 0.0, 96.0) * 30.0).round();
+        base = points;
         factors.push(EstimateFactor {
             id: "stated_experience".into(),
             label: "Опыт по анкете или резюме".into(),
             points: points as u8,
             max: 30,
-            detail: format!("{} мес. опыта", stated),
+            detail: format!("{} опыта", duration(stated)),
         });
     }
     let fsp_points = fsp_points(&published);
@@ -182,7 +238,7 @@ pub fn estimate_profile(input: &EstimateInput<'_>) -> ProfileEstimate {
         });
     }
     // Competition results alone show skill but not work experience: they reach junior at most.
-    let fsp_weight = if input.github.is_none() && input.stated_experience_months.is_none() {
+    let fsp_weight = if input.github.is_none() && stated_months.is_none() {
         2.0
     } else {
         1.0
@@ -191,9 +247,10 @@ pub fn estimate_profile(input: &EstimateInput<'_>) -> ProfileEstimate {
         .round()
         .clamp(0.0, 100.0) as u8;
 
+    let mut from_answers = false;
     let (grade, insufficient) = if input.github.is_none()
         && published.is_empty()
-        && input.stated_experience_months.is_none()
+        && stated_months.is_none()
     {
         (
             None,
@@ -201,7 +258,7 @@ pub fn estimate_profile(input: &EstimateInput<'_>) -> ProfileEstimate {
         )
     } else if input.github.is_some_and(|report| {
         report.index.confidence == SignalConfidence::Low && report.coverage.commits_analyzed < 30
-    }) && input.stated_experience_months.is_none()
+    }) && stated_months.is_none()
         && published.is_empty()
     {
         (
@@ -209,13 +266,84 @@ pub fn estimate_profile(input: &EstimateInput<'_>) -> ProfileEstimate {
             Some("Публичных данных пока мало для оценки уровня".into()),
         )
     } else {
-        (
-            Some(cap_grade(band(score), experience_months.unwrap_or(0))),
-            None,
-        )
+        let mut grade = band(score);
+        // The catalog's lead «ведёт направление и людей»: scope shows the direction, and working
+        // with people needs confirmed public collaboration or a leading role the candidate states.
+        let mut people_note = None;
+        let mut role_from_answers = false;
+        if grade == Grade::Lead
+            && let Some(report) = input.github
+        {
+            let collaboration = dimension(report, GitHubDimensionId::Collaboration);
+            if collaboration < LEAD_COLLABORATION {
+                if input.stated_team_role.is_some_and(leading_role) {
+                    role_from_answers = true;
+                    people_note = Some(format!(
+                        "Руководящая роль взята из анкеты: публичных следов работы с людьми мало \
+                         («Совместная работа» — {collaboration} из 100), поэтому уверенность оценки — \
+                         не выше средней, пока уровень не подтверждён тестом"
+                    ));
+                } else {
+                    grade = Grade::Senior;
+                    people_note = Some(format!(
+                        "Баллы соответствуют уровню «Лид», но он означает, что человек ведёт \
+                         направление и людей, а публичных следов работы с людьми мало («Совместная \
+                         работа» — {collaboration} из 100, нужно от {LEAD_COLLABORATION}). Если вы \
+                         руководите людьми, укажите это в роли в команде или подтвердите уровень тестом"
+                    ));
+                }
+            }
+        }
+        let months = experience_months.unwrap_or(0);
+        let capped = cap_grade(grade, months);
+        if capped != grade {
+            notes.push(format!(
+                // Two and four years both read «от 2 лет», «от 4 лет».
+                "Баллы соответствуют уровню «{}», но он требует от {} лет опыта{}; учтено {} {}, \
+                 поэтому уровень — «{}». Укажите общий стаж в анкете или подтвердите уровень тестом",
+                grade.label(),
+                required_months(grade) / 12,
+                if grade == Grade::Lead && capped == Grade::Middle {
+                    ", а «Сеньор» — от 2"
+                } else {
+                    ""
+                },
+                duration(months),
+                if stated_months.is_some_and(|stated| stated >= months) {
+                    "по анкете"
+                } else {
+                    "по публичной активности"
+                },
+                capped.label()
+            ));
+        } else if input.github.is_some() && cap_grade(grade, public_months.unwrap_or(0)) != grade {
+            // Only the stated experience lifts the cap: say so and keep confidence moderate.
+            from_answers = true;
+            notes.push(format!(
+                "Стаж {} взят из анкеты (публично видно {}): пока уровень не подтверждён тестом, \
+                 уверенность оценки — не выше средней",
+                duration(months),
+                public_months.map_or_else(|| "меньше месяца".to_owned(), duration)
+            ));
+        }
+        // A stated leading role matters only when the grade stays lead.
+        if role_from_answers && capped != Grade::Lead {
+            people_note = None;
+        }
+        from_answers |= role_from_answers && capped == Grade::Lead;
+        notes.extend(people_note);
+        if input.github.is_some()
+            && let Some(note) = next_band_note(score, &factors)
+        {
+            notes.push(note);
+        }
+        (Some(capped), None)
     };
-    let confidence = confidence(input, &published, grade.is_some());
-    let answers = answers(input.github, specialization, experience_months);
+    let mut confidence = confidence(input, &published, grade.is_some());
+    if from_answers && confidence == SignalConfidence::High {
+        confidence = SignalConfidence::Medium;
+    }
+    let answers = answers(input.github, &published, specialization, experience_months);
     ProfileEstimate {
         version: ESTIMATE_VERSION.into(),
         computed_at: input.now.into(),
@@ -228,12 +356,48 @@ pub fn estimate_profile(input: &EstimateInput<'_>) -> ProfileEstimate {
         answers,
         sources,
         insufficient,
+        notes,
         review: None,
     }
 }
 
+/// What the next band needs and which factors have the most points left.
+fn next_band_note(score: u8, factors: &[EstimateFactor]) -> Option<String> {
+    let (next, threshold) = match band(score) {
+        Grade::Intern => (Grade::Junior, 20),
+        Grade::Junior => (Grade::Middle, 40),
+        Grade::Middle => (Grade::Senior, 60),
+        Grade::Senior => (Grade::Lead, 80),
+        Grade::Lead => return None,
+    };
+    let mut open = factors
+        .iter()
+        .filter(|factor| factor.max > factor.points)
+        .collect::<Vec<_>>();
+    open.sort_by(|a, b| {
+        (b.max - b.points)
+            .cmp(&(a.max - a.points))
+            .then(a.id.cmp(&b.id))
+    });
+    let open = open
+        .iter()
+        .take(2)
+        .map(|factor| format!("«{}» (ещё до {})", factor.label, factor.max - factor.points))
+        .collect::<Vec<_>>();
+    if open.is_empty() {
+        return None;
+    }
+    Some(format!(
+        "До уровня «{}» не хватает {} {}; больше всего можно добавить в {}",
+        next.label(),
+        threshold - score,
+        plural(u32::from(threshold - score), ("балла", "баллов", "баллов")),
+        open.join(" и ")
+    ))
+}
+
 /// Questionnaire fields an estimate may answer, by their contract names.
-pub const AUTO_FIELDS: [&str; 7] = [
+pub const AUTO_FIELDS: [&str; 8] = [
     "name",
     "specialization",
     "selectedGrade",
@@ -241,12 +405,21 @@ pub const AUTO_FIELDS: [&str; 7] = [
     "experienceMonths",
     "experience",
     "teamRole",
+    "softSkills",
 ];
 
 /// The name a new account starts with; an estimate may replace it.
 pub const DEFAULT_CANDIDATE_NAME: &str = "Новый кандидат";
 
 impl crate::CandidateProfile {
+    /// The team role the candidate typed, not the one an estimate filled in.
+    #[must_use]
+    pub fn stated_team_role(&self) -> Option<&str> {
+        let role = self.team_role.trim();
+        (!role.is_empty() && !self.auto_fields.iter().any(|field| field == "teamRole"))
+            .then_some(role)
+    }
+
     /// The experience the candidate stated (typed or imported), not the one an estimate filled in.
     #[must_use]
     pub fn stated_experience_months(&self) -> Option<u32> {
@@ -258,11 +431,32 @@ impl crate::CandidateProfile {
         })
     }
 
+    /// Hands every answer except the name back to the evidence, at the candidate's request: the
+    /// next estimate rewrites them, and the stated experience no longer counts. A test-confirmed
+    /// category still keeps its specialization and target grade.
+    pub fn release_answers(&mut self) {
+        let name = self.auto_fields.iter().any(|field| field == "name");
+        self.auto_fields = AUTO_FIELDS
+            .iter()
+            .filter(|field| **field != "name" || name)
+            .map(|field| (*field).to_owned())
+            .collect();
+    }
+
+    /// Answers every released field from the estimate; a field the estimate cannot answer goes
+    /// back to the candidate.
+    pub fn rebuild_from_estimate(&mut self, estimate: ProfileEstimate) {
+        let filled = self.apply_estimate(estimate);
+        self.auto_fields
+            .retain(|field| filled.iter().any(|item| item == field));
+    }
+
     /// Stores the estimate and answers the questionnaire fields the candidate has not answered:
     /// empty ones, ones an earlier estimate filled, and the specialization and target grade while
     /// the questionnaire is incomplete. A field the candidate edits is never overwritten, and a
-    /// test-confirmed category keeps its specialization and target grade.
-    pub fn apply_estimate(&mut self, estimate: ProfileEstimate) {
+    /// test-confirmed category keeps its specialization and target grade. Returns the fields
+    /// this estimate answered.
+    pub fn apply_estimate(&mut self, estimate: ProfileEstimate) -> Vec<&'static str> {
         let incomplete = !self.questionnaire_complete();
         let confirmed = self.verified_grade.is_some();
         let auto =
@@ -313,12 +507,24 @@ impl crate::CandidateProfile {
             self.team_role = answers.team_role.chars().take(120).collect();
             filled.push("teamRole");
         }
-        for field in filled {
+        if !answers.soft_skills.is_empty()
+            && (auto(self, "softSkills") || self.soft_skills.is_empty())
+        {
+            self.soft_skills = answers
+                .soft_skills
+                .iter()
+                .take(SOFT_SKILL_LIMIT)
+                .map(|skill| skill.chars().take(100).collect())
+                .collect();
+            filled.push("softSkills");
+        }
+        for field in &filled {
             if !auto(self, field) {
-                self.auto_fields.push(field.to_owned());
+                self.auto_fields.push((*field).to_owned());
             }
         }
         self.estimate = Some(estimate);
+        filled
     }
 }
 
@@ -369,20 +575,29 @@ pub fn review_request(
     estimate: &ProfileEstimate,
     github: Option<&GitHubReport>,
     fsp: &[FspResult],
+    stated_experience_months: Option<u32>,
+    stated_team_role: Option<&str>,
 ) -> ProfileReviewRequest {
+    let names = github.map(private_names).unwrap_or_default();
+    let anonymous = |text: &str, limit: usize| anonymize(text, &names, limit);
     ProfileReviewRequest {
-        summary: github.map_or_else(String::new, |report| report.profile.public_summary.clone()),
+        summary: github
+            .and_then(|report| anonymous(&report.profile.public_summary, 1200))
+            .unwrap_or_default(),
         specializations: estimate.specializations.clone(),
         rule_grade: estimate.grade,
         score: estimate.score,
         factors: estimate.factors.clone(),
+        notes: estimate.notes.clone(),
         stack: estimate
             .answers
             .stack
             .iter()
             .map(|skill| crate::catalog::skill_label(skill).to_owned())
             .collect(),
-        experience_months: estimate.answers.experience_months,
+        public_experience_months: github.and_then(public_experience_months),
+        stated_experience_months,
+        stated_team_role: stated_team_role.and_then(|role| anonymous(role, 120)),
         fsp_results: fsp
             .iter()
             .filter(|result| result.status == "published")
@@ -397,19 +612,216 @@ pub fn review_request(
                 )
             })
             .collect(),
+        areas: github.map_or_else(Vec::new, |report| {
+            report
+                .profile
+                .archetypes
+                .iter()
+                .filter_map(|area| {
+                    anonymous(
+                        &format!(
+                            "{} — {}%: {}",
+                            area.label,
+                            area.percent,
+                            area.evidence.join("; ")
+                        ),
+                        300,
+                    )
+                })
+                .collect()
+        }),
+        technologies: github.map_or_else(Vec::new, technology_layers),
+        projects: github.map_or_else(Vec::new, |report| {
+            report
+                .repositories
+                .iter()
+                .filter(|repository| repository.led && !repository.fork)
+                .take(8)
+                .map(|repository| ReviewProject {
+                    description: repository
+                        .description
+                        .as_deref()
+                        .and_then(|text| anonymous(text, 200))
+                        .unwrap_or_default(),
+                    language: repository.primary_language.clone(),
+                    stars: repository.stars,
+                    own_commits: repository.user_commits,
+                    own_share_percent: repository.user_share_percent,
+                    technologies: repository.stack.iter().take(8).cloned().collect(),
+                })
+                .collect()
+        }),
+        metrics: github.map_or_else(Vec::new, |report| {
+            report
+                .dimensions
+                .iter()
+                .flat_map(|dimension| {
+                    dimension.metrics.iter().map(move |metric| {
+                        format!("{} / {}: {}", dimension.label, metric.label, metric.display)
+                    })
+                })
+                .collect()
+        }),
     }
 }
 
-/// Seniority weights of the GitHub dimensions; volume and rhythm together stay at 20%.
-const DIMENSION_WEIGHTS: [(GitHubDimensionId, &str, f64); 7] = [
-    (GitHubDimensionId::Longevity, "Стаж публичной работы", 0.20),
-    (GitHubDimensionId::Ownership, "Собственные проекты", 0.20),
+/// The login, display name and organizations a review must not see.
+fn private_names(report: &GitHubReport) -> Vec<String> {
+    let mut names = vec![report.login.clone()];
+    names.extend(report.display_name.iter().flat_map(|name| {
+        name.split_whitespace()
+            .filter(|part| part.chars().count() >= 3)
+            .map(str::to_owned)
+            .collect::<Vec<_>>()
+    }));
+    names.extend(
+        report
+            .organizations
+            .memberships
+            .iter()
+            .map(|organization| organization.login.clone()),
+    );
+    names.extend(
+        report
+            .organizations
+            .contributed
+            .iter()
+            .map(|organization| organization.login.clone()),
+    );
+    names.extend(report.repositories.iter().flat_map(|repository| {
+        repository
+            .name_with_owner
+            .split('/')
+            .map(str::to_owned)
+            .collect::<Vec<_>>()
+    }));
+    names.retain(|name| name.chars().count() >= 3);
+    names.sort_by_key(|name| std::cmp::Reverse(name.chars().count()));
+    names.dedup();
+    names
+}
+
+/// Text without the private names (replaced by «…»), links and addresses; `None` when empty.
+fn anonymize(text: &str, names: &[String], limit: usize) -> Option<String> {
+    let mut text = text.to_owned();
+    for name in names {
+        text = replace_ignoring_case(&text, name, "…");
+    }
+    clean_text(&text, limit)
+}
+
+/// Replaces whole-word occurrences of `needle`, ignoring case: «api» stays inside «rapid».
+fn replace_ignoring_case(text: &str, needle: &str, replacement: &str) -> String {
+    let word = |c: char| c.is_alphanumeric() || c == '_';
+    let lower = text.to_lowercase();
+    let needle = needle.to_lowercase();
+    if needle.is_empty() || lower.len() != text.len() {
+        // Case folding changed byte lengths; leave the text to the link filter.
+        return text.to_owned();
+    }
+    let mut result = String::with_capacity(text.len());
+    let mut position = 0;
+    let mut from = 0;
+    while let Some(found) = lower[from..].find(&needle) {
+        let start = from + found;
+        let end = start + needle.len();
+        let before = lower[..start].chars().next_back();
+        let after = lower[end..].chars().next();
+        if before.is_some_and(word) || after.is_some_and(word) {
+            from = start + lower[start..].chars().next().map_or(1, char::len_utf8);
+            continue;
+        }
+        result.push_str(&text[position..start]);
+        result.push_str(replacement);
+        position = end;
+        from = end;
+    }
+    result.push_str(&text[position..]);
+    result
+}
+
+/// Detected technologies grouped by system layer, most used first.
+fn technology_layers(report: &GitHubReport) -> Vec<String> {
+    let mut layers: BTreeMap<crate::StackCategory, Vec<&crate::GitHubStackItem>> = BTreeMap::new();
+    for item in &report.stack {
+        layers.entry(item.category).or_default().push(item);
+    }
+    layers
+        .into_iter()
+        .map(|(category, mut items)| {
+            items.sort_by(|a, b| {
+                b.repositories
+                    .cmp(&a.repositories)
+                    .then(a.name.cmp(&b.name))
+            });
+            format!(
+                "{}: {}",
+                layer_label(category),
+                items
+                    .iter()
+                    .take(12)
+                    .map(|item| format!("{} ({})", item.name, item.repositories))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
+        })
+        .collect()
+}
+
+fn layer_label(category: crate::StackCategory) -> &'static str {
+    match category {
+        crate::StackCategory::Language => "Языки",
+        crate::StackCategory::Backend => "Бэкенд",
+        crate::StackCategory::Frontend => "Фронтенд",
+        crate::StackCategory::Data => "Данные",
+        crate::StackCategory::Infrastructure => "Инфраструктура",
+        crate::StackCategory::Quality => "Качество",
+        crate::StackCategory::Ai => "ИИ",
+        crate::StackCategory::Mobile => "Мобильная разработка",
+        crate::StackCategory::Tooling => "Инструменты",
+    }
+}
+
+/// Seniority weights of the GitHub dimensions after the axes of engineering level frameworks:
+/// scope and complexity, tenure, ownership, technical quality, influence and impact. Volume and
+/// rhythm together stay at a tenth: they show sustained practice, not level.
+const DIMENSION_WEIGHTS: [(GitHubDimensionId, &str, f64); 8] = [
+    (GitHubDimensionId::Scope, "Масштаб и сложность", 0.20),
+    (GitHubDimensionId::Longevity, "Стаж", 0.15),
+    (GitHubDimensionId::Ownership, "Собственные проекты", 0.15),
     (GitHubDimensionId::Craft, "Инженерная культура", 0.15),
     (GitHubDimensionId::Collaboration, "Совместная работа", 0.15),
     (GitHubDimensionId::Impact, "Признание", 0.10),
-    (GitHubDimensionId::Engagement, "Вовлечённость", 0.10),
-    (GitHubDimensionId::Consistency, "Регулярность", 0.10),
+    (GitHubDimensionId::Engagement, "Вовлечённость", 0.05),
+    (GitHubDimensionId::Consistency, "Регулярность", 0.05),
 ];
+
+/// Stated experience that counts as full tenure, in months.
+const TENURE_FULL_MONTHS: f64 = 72.0;
+
+/// Collaboration score from which the report calls collaboration confirmed («Есть подтверждённая
+/// совместная работа»); lead needs it unless the candidate states a leading role.
+const LEAD_COLLABORATION: u8 = 50;
+
+/// A stated team role that leads people or technical direction.
+fn leading_role(role: &str) -> bool {
+    let lower = role.to_lowercase();
+    [
+        "лид",
+        "lead",
+        "руковод",
+        "head",
+        "cto",
+        "архитект",
+        "architect",
+        "principal",
+        "staff",
+        "директор",
+        "director",
+    ]
+    .iter()
+    .any(|key| lower.contains(key))
+}
 
 const FSP_MAX: u8 = 15;
 
@@ -422,6 +834,7 @@ fn dimension_key(id: GitHubDimensionId) -> &'static str {
         GitHubDimensionId::Ownership => "ownership",
         GitHubDimensionId::Craft => "craft",
         GitHubDimensionId::Impact => "impact",
+        GitHubDimensionId::Scope => "scope",
     }
 }
 
@@ -452,9 +865,41 @@ fn band(score: u8) -> Grade {
 /// years: thirteen months across a new year are not two years of work.
 fn cap_grade(grade: Grade, experience_months: u32) -> Grade {
     match grade {
-        Grade::Lead if experience_months < 48 => cap_grade(Grade::Senior, experience_months),
-        Grade::Senior if experience_months < 24 => Grade::Middle,
+        Grade::Lead if experience_months < required_months(Grade::Lead) => {
+            cap_grade(Grade::Senior, experience_months)
+        }
+        Grade::Senior if experience_months < required_months(Grade::Senior) => Grade::Middle,
         other => other,
+    }
+}
+
+fn required_months(grade: Grade) -> u32 {
+    match grade {
+        Grade::Lead => 48,
+        Grade::Senior => 24,
+        _ => 0,
+    }
+}
+
+/// Months in words: «5 мес.», «2 года», «1 год 9 мес.».
+fn duration(months: u32) -> String {
+    let (years, rest) = (months / 12, months % 12);
+    match (years, rest) {
+        (0, rest) => format!("{rest} мес."),
+        (years, 0) => format!("{years} {}", plural(years, ("год", "года", "лет"))),
+        (years, rest) => format!(
+            "{years} {} {rest} мес.",
+            plural(years, ("год", "года", "лет"))
+        ),
+    }
+}
+
+fn plural(value: u32, forms: (&'static str, &'static str, &'static str)) -> &'static str {
+    match (value % 10, value % 100) {
+        (_, 11..=14) => forms.2,
+        (1, _) => forms.0,
+        (2..=4, _) => forms.1,
+        _ => forms.2,
     }
 }
 
@@ -477,6 +922,10 @@ fn confidence(
         Some(report) => {
             let mut level = report.index.confidence;
             if report.coverage.partial {
+                level = lower(level);
+            }
+            // A report of an earlier analysis version misses factors until it is re-analyzed.
+            if report.algorithm_version != crate::GITHUB_INSIGHTS_VERSION {
                 level = lower(level);
             }
             level
@@ -700,6 +1149,7 @@ fn discipline_specializations(discipline: &str) -> Vec<Specialization> {
 /// Questionnaire answers: the strongest catalog skills, experience and role.
 fn answers(
     github: Option<&GitHubReport>,
+    published: &[&FspResult],
     specialization: Option<Specialization>,
     experience_months: Option<u32>,
 ) -> EstimateAnswers {
@@ -774,7 +1224,64 @@ fn answers(
         experience,
         team_role,
         name,
+        soft_skills: soft_skills(github, published),
     }
+}
+
+/// Working habits with public evidence behind them; nothing is inferred from personality.
+fn soft_skills(github: Option<&GitHubReport>, published: &[&FspResult]) -> Vec<String> {
+    let mut skills = Vec::new();
+    if let Some(report) = github {
+        let craft = &report.craft;
+        let ownership = &report.ownership;
+        let collaboration = &report.collaboration;
+        let evidence = [
+            (
+                craft.substantive_repositories >= 3 && craft.readme_percent >= 80,
+                "Документирует свои проекты",
+            ),
+            (
+                craft
+                    .descriptive_messages_percent
+                    .is_some_and(|value| value >= 80),
+                "Понятно описывает изменения в коммитах",
+            ),
+            (
+                ownership.led_repositories >= 3,
+                "Самостоятельно ведёт проекты от идеи до поддержки",
+            ),
+            (
+                ownership.own_organizations >= 1 && ownership.own_organization_repositories >= 5,
+                "Организует работу нескольких связанных проектов",
+            ),
+            (
+                collaboration.reviews_of_others >= 20,
+                "Ревьюит код других разработчиков",
+            ),
+            (
+                collaboration.external_merged >= 5,
+                "Доводит изменения до принятия в чужих проектах",
+            ),
+            (
+                collaboration.issues_total >= 20,
+                "Ведёт задачи и обсуждения в issues",
+            ),
+        ];
+        skills.extend(
+            evidence
+                .into_iter()
+                .filter(|(shown, _)| *shown)
+                .map(|(_, skill)| skill.to_owned()),
+        );
+    }
+    if published.iter().any(|result| result.scope == "team") {
+        skills.push("Работает в команде на соревнованиях".to_owned());
+    }
+    if !published.is_empty() {
+        skills.push("Решает задачи в ограниченное время".to_owned());
+    }
+    skills.truncate(SOFT_SKILL_LIMIT);
+    skills
 }
 
 fn language_skill(language: &str) -> Option<&'static str> {
@@ -840,6 +1347,7 @@ mod tests {
             github,
             fsp,
             stated_experience_months: None,
+            stated_team_role: None,
             now: "2026-10-10T00:00:00Z",
         }
     }
@@ -851,7 +1359,7 @@ mod tests {
         assert_eq!(estimate.version, ESTIMATE_VERSION);
         assert_eq!(estimate.specialization, Some(Specialization::Backend));
         assert!(estimate.grade.is_some());
-        assert_eq!(estimate.factors.len(), 7);
+        assert_eq!(estimate.factors.len(), DIMENSION_WEIGHTS.len());
         assert_eq!(
             estimate
                 .factors
@@ -871,7 +1379,24 @@ mod tests {
         );
         assert!(!estimate.answers.experience.is_empty());
         assert!(!estimate.answers.team_role.is_empty());
+        assert!(!estimate.answers.soft_skills.is_empty());
+        assert!(estimate.answers.soft_skills.len() <= SOFT_SKILL_LIMIT);
         assert_eq!(estimate.sources, ["github"]);
+        // A report of an earlier analysis version says so and lowers the confidence.
+        let mut outdated = report.clone();
+        outdated.algorithm_version = "github-insights-v2".into();
+        let outdated = estimate_profile(&input(Some(&outdated), &[]));
+        assert!(outdated.notes[0].starts_with("Отчёт GitHub построен прошлой версией анализа"));
+        assert_eq!(outdated.confidence, lower(estimate.confidence));
+        // Below lead the notes say what the next band needs.
+        assert!(
+            estimate
+                .notes
+                .iter()
+                .any(|note| note.starts_with("До уровня")),
+            "{:?}",
+            estimate.notes
+        );
         assert_eq!(
             estimate,
             estimate_profile(&input(Some(&report), &[])),
@@ -925,6 +1450,11 @@ mod tests {
         let estimate = estimate_profile(&input(Some(&report), &[]));
         assert_eq!(estimate.score, 100);
         assert_eq!(estimate.grade, Some(Grade::Middle));
+        assert!(
+            estimate.notes[0].contains("«Лид»") && estimate.notes[0].contains("4 лет"),
+            "{:?}",
+            estimate.notes
+        );
         // Sustained activity found by search reaches back further than the analyzed commits.
         report.activity.yearly.push(crate::GitHubYear {
             year: 2021,
@@ -935,6 +1465,131 @@ mod tests {
         let estimate = estimate_profile(&input(Some(&report), &[]));
         assert_eq!(estimate.answers.experience_months, Some(69));
         assert_eq!(estimate.grade, Some(Grade::Lead));
+    }
+
+    #[test]
+    fn stated_experience_never_lowers_public_evidence() {
+        let report = report();
+        let public = estimate_profile(&input(Some(&report), &[]));
+        // Five months typed instead of five years costs nothing.
+        let mut typo = input(Some(&report), &[]);
+        typo.stated_experience_months = Some(5);
+        let typo = estimate_profile(&typo);
+        assert_eq!(typo.score, public.score);
+        assert_eq!(typo.grade, public.grade);
+        assert_eq!(
+            typo.answers.experience_months,
+            public.answers.experience_months
+        );
+
+        // Longer stated experience stands in for tenure only, never for the other evidence.
+        let mut long = input(Some(&report), &[]);
+        long.stated_experience_months = Some(120);
+        let long = estimate_profile(&long);
+        let tenure = |estimate: &ProfileEstimate| {
+            estimate
+                .factors
+                .iter()
+                .find(|factor| factor.id == "github_longevity")
+                .unwrap()
+                .clone()
+        };
+        assert_eq!(tenure(&long).points, tenure(&long).max);
+        assert!(tenure(&long).detail.starts_with("По анкете — 10 лет"));
+        assert_eq!(
+            u32::from(long.score) - u32::from(public.score),
+            u32::from(tenure(&long).points - tenure(&public).points)
+        );
+        assert_eq!(long.answers.experience_months, Some(120));
+    }
+
+    #[test]
+    fn a_cap_lifted_only_by_stated_experience_keeps_confidence_moderate() {
+        let mut report = report();
+        for dimension in &mut report.dimensions {
+            dimension.score = 100;
+        }
+        report.activity.yearly.retain(|year| year.year >= 2025);
+        report.coverage.from = "2025-09-01T00:00:00Z".into();
+        report.coverage.to = "2026-10-01T00:00:00Z".into();
+        for year in &mut report.activity.yearly {
+            year.active_days = 9;
+        }
+        report.index.confidence = SignalConfidence::High;
+        let mut stated = input(Some(&report), &[]);
+        stated.stated_experience_months = Some(60);
+        let estimate = estimate_profile(&stated);
+        assert_eq!(estimate.grade, Some(Grade::Lead));
+        assert_eq!(estimate.confidence, SignalConfidence::Medium);
+        assert!(
+            estimate.notes[0]
+                .starts_with("Стаж 5 лет взят из анкеты (публично видно 1 год 1 мес.)"),
+            "{:?}",
+            estimate.notes
+        );
+    }
+
+    #[test]
+    fn lead_needs_work_with_people_in_public_or_a_stated_leading_role() {
+        let mut report = report();
+        for dimension in &mut report.dimensions {
+            dimension.score = if dimension.id == GitHubDimensionId::Collaboration {
+                38
+            } else {
+                100
+            };
+        }
+        report.index.confidence = SignalConfidence::High;
+        report.activity.yearly.push(crate::GitHubYear {
+            year: 2019,
+            commits: 300,
+            active_days: 120,
+            pull_requests: None,
+        });
+        let solo = estimate_profile(&input(Some(&report), &[]));
+        assert!(solo.score >= 80, "{}", solo.score);
+        assert_eq!(solo.grade, Some(Grade::Senior));
+        assert!(solo.notes[0].contains("«Совместная работа» — 38 из 100"));
+        // Without the tenure a stated role changes nothing, confidence included.
+        let mut young = report.clone();
+        young.activity.yearly.retain(|year| year.year >= 2025);
+        young.coverage.from = "2025-09-01T00:00:00Z".into();
+        let mut stated = input(Some(&young), &[]);
+        stated.stated_team_role = Some("Архитектор");
+        let stated = estimate_profile(&stated);
+        assert_eq!(stated.grade, Some(Grade::Middle));
+        assert_eq!(stated.confidence, SignalConfidence::High);
+        assert!(
+            stated.notes[0].contains("поэтому уровень — «Мидл»"),
+            "{:?}",
+            stated.notes
+        );
+        let mut developer = input(Some(&report), &[]);
+        developer.stated_team_role = Some("Разработчик");
+        assert_eq!(estimate_profile(&developer).grade, Some(Grade::Senior));
+        let mut lead = input(Some(&report), &[]);
+        lead.stated_team_role = Some("Тимлид платформы");
+        let lead = estimate_profile(&lead);
+        assert_eq!(lead.grade, Some(Grade::Lead));
+        assert_eq!(lead.confidence, SignalConfidence::Medium);
+        assert!(lead.notes[0].starts_with("Руководящая роль взята из анкеты"));
+        // Confirmed public collaboration needs no stated role.
+        for dimension in &mut report.dimensions {
+            dimension.score = 100;
+        }
+        let open = estimate_profile(&input(Some(&report), &[]));
+        assert_eq!(open.grade, Some(Grade::Lead));
+        assert_eq!(open.confidence, SignalConfidence::High);
+    }
+
+    #[test]
+    fn durations_read_as_years_and_months() {
+        assert_eq!(duration(5), "5 мес.");
+        assert_eq!(duration(12), "1 год");
+        assert_eq!(duration(21), "1 год 9 мес.");
+        assert_eq!(duration(24), "2 года");
+        assert_eq!(duration(60), "5 лет");
+        assert_eq!(duration(134), "11 лет 2 мес.");
     }
 
     #[test]
@@ -1068,6 +1723,25 @@ mod tests {
         assert_eq!(profile.team_role, "Тимлид");
         assert_eq!(profile.selected_grade, Grade::Senior);
 
+        // Rebuilding hands every answer but an edited name back to the evidence.
+        profile.name = "Анна".into();
+        profile.auto_fields.retain(|field| field != "name");
+        profile.soft_skills = vec!["Своё".into()];
+        profile.auto_fields.retain(|field| field != "softSkills");
+        profile.release_answers();
+        assert_eq!(profile.stated_experience_months(), None);
+        profile.rebuild_from_estimate(estimate.clone());
+        assert_eq!(profile.team_role, estimate.answers.team_role);
+        assert_eq!(profile.soft_skills, estimate.answers.soft_skills);
+        assert_eq!(profile.name, "Анна");
+        assert!(!profile.auto_fields.iter().any(|field| field == "name"));
+        assert!(
+            profile
+                .auto_fields
+                .iter()
+                .any(|field| field == "softSkills")
+        );
+
         // A test-confirmed category keeps its specialization and target grade.
         profile.verified_grade = Some(Grade::Lead);
         profile.verified_specialization = Some(Specialization::Devops);
@@ -1082,8 +1756,14 @@ mod tests {
     fn the_review_request_carries_no_names_or_links() {
         let report = report();
         let estimate = estimate_profile(&input(Some(&report), &[]));
-        let request =
-            serde_json::to_string(&review_request(&estimate, Some(&report), &[])).unwrap();
+        let request = serde_json::to_string(&review_request(
+            &estimate,
+            Some(&report),
+            &[],
+            Some(60),
+            Some("Тимлид"),
+        ))
+        .unwrap();
         for private in ["owner/", "acme-labs", "github.com", "Иван"] {
             assert!(!request.contains(private), "{private}");
         }

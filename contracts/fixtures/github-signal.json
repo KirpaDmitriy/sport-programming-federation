@@ -1,5 +1,5 @@
 {
-  "algorithmVersion": "github-insights-v2",
+  "algorithmVersion": "github-insights-v3",
   "archetypes": [
     {
       "id": "backend",
@@ -253,6 +253,34 @@
       ],
       "score": 44,
       "summary": "Небольшое признание сообщества"
+    },
+    {
+      "id": "scope",
+      "label": "Масштаб и сложность",
+      "metrics": [
+        {
+          "display": "1",
+          "id": "sustained_systems",
+          "label": "Своих проектов, которые развивает полгода и дольше"
+        },
+        {
+          "display": "2",
+          "id": "engineering_areas",
+          "label": "Направлений разработки с долей от 15%"
+        },
+        {
+          "display": "1",
+          "id": "system_layers",
+          "label": "Слоёв системы, используемых в двух и более проектах"
+        },
+        {
+          "display": "1",
+          "id": "design_artifacts",
+          "label": "Проектов с архитектурными решениями, контрактами API или миграциями"
+        }
+      ],
+      "score": 29,
+      "summary": "Масштаб работы пока ограничен"
     }
   ],
   "flags": [],
@@ -268,7 +296,7 @@
   "index": {
     "band": "strong",
     "confidence": "high",
-    "score": 66
+    "score": 61
   },
   "languages": [
     {

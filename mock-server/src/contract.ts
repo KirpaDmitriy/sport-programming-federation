@@ -34,11 +34,29 @@ const fields = arr(en('name', 'email', 'sourceLinks'), { minItems: 1, uniqueItem
 const share = num({ minimum: 0, maximum: 100 });
 const count = num({ minimum: 0 });
 const day = str({ format: 'date' });
-const githubDimensionId = en('consistency', 'engagement', 'longevity', 'collaboration', 'ownership', 'craft', 'impact');
-const githubVersion = en('github-insights-v2');
+const githubDimensionId = en(
+  'consistency',
+  'engagement',
+  'longevity',
+  'collaboration',
+  'ownership',
+  'craft',
+  'impact',
+  'scope',
+);
+const githubVersion = en('github-insights-v2', 'github-insights-v3');
 const confidence = en('low', 'medium', 'high');
 const categorySource = en('assessment', 'estimate');
-const autoField = en('name', 'specialization', 'selectedGrade', 'stack', 'experienceMonths', 'experience', 'teamRole');
+const autoField = en(
+  'name',
+  'specialization',
+  'selectedGrade',
+  'stack',
+  'experienceMonths',
+  'experience',
+  'teamRole',
+  'softSkills',
+);
 const stackCategory = en(
   'language',
   'backend',
@@ -165,7 +183,7 @@ export const schemas = {
   }),
   EstimateFactor: obj({ id: str(), label: str(), points: share, max: share, detail: str() }),
   ProfileEstimate: obj({
-    version: en('estimate-v1', 'estimate-v2'),
+    version: en('estimate-v1', 'estimate-v2', 'estimate-v3'),
     computedAt: dt,
     specialization: nullable(specialization),
     specializations: arr(obj({ id: specialization, percent: share })),
@@ -179,9 +197,11 @@ export const schemas = {
       experience: str(),
       teamRole: str(),
       name: nullable(str()),
+      softSkills: arr(str({ maxLength: 100 }), { maxItems: 12 }),
     }),
     sources: arr(provider, { uniqueItems: true }),
     insufficient: nullable(str()),
+    notes: arr(str()),
     review: nullable(obj({ specialization, grade, rationale: str(), agrees: bool })),
   }),
   EmployerEstimate: obj({
@@ -1083,7 +1103,10 @@ export const routes = [
     auth: 'candidate',
     body: 'ImportConfirmInput',
   }),
-  route('post', '/api/v1/me/profile/estimate', 'refreshMyEstimate', 'Profile', { auth: 'candidate' }),
+  route('post', '/api/v1/me/profile/estimate', 'refreshMyEstimate', 'Profile', {
+    auth: 'candidate',
+    parameters: [query('answers', en('keep', 'replace'))],
+  }),
   route('get', '/api/v1/me/profile/export', 'exportMyProfile', null, { auth: 'candidate', pdf: true }),
   route('get', '/api/v1/integrations/github/authorize', 'authorizeGitHub', 'GitHubAuthorization', {
     auth: 'candidate',

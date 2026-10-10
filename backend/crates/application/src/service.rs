@@ -527,14 +527,31 @@ impl PlatformService {
         // Optimistic concurrency: re-read and reapply once if a concurrent
         // writer bumped the revision between our read and guarded write.
         let mut attempts = 0;
-        let profile = loop {
+        let (profile, reestimated) = loop {
             let mut profile = self
                 .repository
                 .candidate(id)
                 .await
                 .map_err(ApplicationError::storage)?
                 .ok_or_else(|| ApplicationError::new(404, "not_found", "Профиль не найден"))?;
+            let stated = (
+                profile.stated_experience_months(),
+                profile.stated_team_role().map(str::to_owned),
+            );
             apply_profile_patch(&mut profile, patch.clone())?;
+            // The estimate's tenure and lead rules depend on the stated experience and role.
+            let mut reestimated = false;
+            if profile.estimate.is_some()
+                && profile.consents.processing
+                && (
+                    profile.stated_experience_months(),
+                    profile.stated_team_role().map(str::to_owned),
+                ) != stated
+                && let Some(estimate) = self.answer_estimate(&profile).await?
+            {
+                profile.apply_estimate(estimate);
+                reestimated = true;
+            }
             let base_revision = profile.revision;
             profile.revision += 1;
             profile.updated_at = now();
@@ -543,13 +560,16 @@ impl PlatformService {
                 .save_candidate_guarded(&profile, base_revision)
                 .await
             {
-                Ok(()) => break profile,
+                Ok(()) => break (profile, reestimated),
                 Err(RepositoryError::NotFound) if attempts == 0 => {
                     attempts += 1;
                 }
                 Err(error) => return Err(ApplicationError::storage(error)),
             }
         };
+        if reestimated {
+            self.spawn_estimate_review(&profile.id);
+        }
         let signals = self
             .freshness_signals(&profile.id, profile.grade_confirmed_at.as_deref())
             .await?;
@@ -4159,7 +4179,9 @@ fn apply_profile_patch(
         profile.experience = value;
     }
     if let Some(value) = patch.soft_skills {
-        profile.soft_skills = unique(value);
+        let value = unique(value);
+        claim_field(profile, "softSkills", profile.soft_skills != value);
+        profile.soft_skills = value;
     }
     if let Some(value) = patch.consents {
         profile.consents = value;
