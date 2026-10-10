@@ -36,6 +36,127 @@ const fn skill(name: &'static str, category: StackCategory, id: &'static str) ->
     }
 }
 
+impl Tech {
+    /// The platform catalog skill this technology is evidence for, if any.
+    pub fn catalog_skill(&self) -> Option<&'static str> {
+        self.skill.or_else(|| catalog_skill(self.name))
+    }
+}
+
+/// Catalog skills (`fsp_domain::catalog`) for detected technology and language names.
+pub fn catalog_skill(name: &str) -> Option<&'static str> {
+    Some(match name {
+        "Python" => "python",
+        "Java" => "java",
+        "JavaScript" => "javascript",
+        "TypeScript" => "typescript",
+        "C#" => "csharp",
+        "C++" => "cpp",
+        "C" => "c",
+        "Go" => "go",
+        "Rust" => "rust",
+        "Kotlin" => "kotlin",
+        "Swift" => "swift",
+        "Objective-C" => "objective_c",
+        "PHP" => "php",
+        "Ruby" => "ruby",
+        "Scala" => "scala",
+        "Elixir" => "elixir",
+        "Erlang" => "erlang",
+        "Haskell" => "haskell",
+        "Clojure" => "clojure",
+        "F#" => "fsharp",
+        "OCaml" => "ocaml",
+        "Dart" => "dart",
+        "Lua" => "lua",
+        "Perl" => "perl",
+        "R" => "r",
+        "Julia" => "julia",
+        "SQL" => "sql",
+        "PL/SQL" => "plsql",
+        "1C Enterprise" => "onec_language",
+        "ABAP" => "abap",
+        "Delphi" => "delphi",
+        "COBOL" => "cobol",
+        "Fortran" => "fortran",
+        "Assembly" => "assembly",
+        "Verilog" => "verilog",
+        "VHDL" => "vhdl",
+        "Solidity" => "solidity",
+        "Zig" => "zig",
+        "Groovy" => "groovy",
+        "Shell" => "bash",
+        "PowerShell" => "powershell",
+        "Visual Basic" => "visual_basic",
+        "HTML" | "CSS" | "SCSS" => "html_css",
+        "Vue" => "vue",
+        "Svelte" | "SvelteKit" => "svelte",
+        "GraphQL" => "graphql",
+        "gRPC / Protocol Buffers" => "grpc",
+        "Shaders" => "shaders",
+        "GDScript" => "godot",
+        "Tokio" => "tokio",
+        "Axum" | "Actix Web" => "actix",
+        "Gin" | "Echo" | "Fiber" | "chi" => "gin",
+        "Django" => "django",
+        "FastAPI" => "fastapi",
+        "Flask" => "flask",
+        "Express" | "Koa" | "Fastify" | "Hono" => "express",
+        "NestJS" => "nestjs",
+        "SQLAlchemy" => "sqlalchemy",
+        "Celery" => "celery",
+        "Socket.IO" => "websocket",
+        "React" => "react",
+        "Angular" => "angular",
+        "Next.js" => "nextjs",
+        "Nuxt" => "nuxt",
+        "Redux" | "Zustand" => "redux",
+        "TanStack Query" | "TanStack Router" => "tanstack",
+        "Tailwind CSS" => "tailwind",
+        "Vite" => "vite",
+        "webpack" => "webpack",
+        "Three.js" => "threejs",
+        "Electron" | "Tauri" => "electron",
+        "React Native" => "react_native",
+        "PostgreSQL" => "postgresql",
+        "SQLite" => "sqlite",
+        "MongoDB" => "mongodb",
+        "Redis" => "redis",
+        "pandas / Polars" => "pandas",
+        "NumPy / SciPy" => "numpy",
+        "scikit-learn" => "scikit_learn",
+        "PyTorch" => "pytorch",
+        "TensorFlow" | "JAX" => "tensorflow",
+        "Hugging Face Transformers" => "nlp",
+        "LangChain" | "LlamaIndex" => "langchain",
+        "OpenAI API" | "Anthropic API" | "Vercel AI SDK" | "LLM и AI-агенты" => "llm",
+        "Docker" | "Docker Compose" => "docker",
+        "Kubernetes" => "kubernetes",
+        "Helm" => "helm",
+        "Terraform" => "terraform",
+        "Ansible" => "ansible",
+        "GitHub Actions" => "github_actions",
+        "GitLab CI" => "gitlab_ci",
+        "Nginx" => "nginx",
+        "Prometheus" => "prometheus",
+        "systemd" => "linux",
+        "Playwright" => "playwright",
+        "Cypress" => "cypress",
+        "Jest" | "Vitest" | "Testing Library" => "jest",
+        "pytest" => "pytest",
+        "Сбор веб-данных" => "etl",
+        "1С:Предприятие 8" | "OneScript" => "onec_enterprise",
+        "1C:EDT" => "onec_edt",
+        "1С-Битрикс" => "bitrix",
+        "Unity" => "unity",
+        "Unreal Engine" => "unreal",
+        "Godot" => "godot",
+        "Flutter" => "flutter",
+        "Arduino" | "PlatformIO" => "arduino",
+        _ => return None,
+    })
+}
+
 /// Detected technology → reasons.
 pub type Detected = BTreeMap<Tech, BTreeSet<String>>;
 
@@ -97,7 +218,20 @@ pub fn language_of(path: &str) -> Option<&'static str> {
         "nix" => "Nix",
         "proto" => "Protocol Buffers",
         "graphql" | "gql" => "GraphQL",
-        "wgsl" | "glsl" => "Shaders",
+        "wgsl" | "glsl" | "hlsl" | "shader" => "Shaders",
+        "bsl" | "os" => "1C Enterprise",
+        "abap" => "ABAP",
+        "pas" | "dpr" | "dpk" | "lpr" => "Delphi",
+        "cob" | "cbl" | "cpy" => "COBOL",
+        "f" | "f90" | "f95" | "f03" | "for" => "Fortran",
+        "asm" | "s" | "nasm" => "Assembly",
+        "v" | "sv" | "svh" => "Verilog",
+        "vhd" | "vhdl" => "VHDL",
+        "m" | "mm" => "Objective-C",
+        "vb" | "bas" | "vba" => "Visual Basic",
+        "pks" | "pkb" | "plsql" => "PL/SQL",
+        "gd" => "GDScript",
+        "ino" => "C++",
         _ => return None,
     })
 }
@@ -288,6 +422,47 @@ fn file_signals(path: &str, name: &str) -> Vec<(Tech, &'static str)> {
         }
         ".mcp.json" => push(tech("MCP", Ai), ".mcp.json"),
         _ => {}
+    }
+    // 1C:Enterprise: configuration dumps, EDT projects and OneScript packages.
+    if name == "configdumpinfo.xml"
+        || name == "configuration.mdo"
+        || name == "configuration.xml" && path.contains("src/")
+    {
+        push(
+            tech("1С:Предприятие 8", Backend),
+            "выгрузка конфигурации 1С",
+        );
+    }
+    if name.ends_with(".bsl") {
+        push(tech("1С:Предприятие 8", Backend), "модули 1С (.bsl)");
+    }
+    if name.ends_with(".mdo") {
+        push(tech("1C:EDT", Tooling), "проект 1C:EDT");
+    }
+    if name == "packagedef" || name.ends_with(".os") {
+        push(tech("OneScript", Tooling), "сценарии OneScript");
+    }
+    if path.contains("bitrix/") && name.ends_with(".php") {
+        push(tech("1С-Битрикс", Backend), "модули 1С-Битрикс");
+    }
+    // Game engines and native mobile or embedded toolchains.
+    if name == "projectsettings.asset" || name.ends_with(".unity") {
+        push(tech("Unity", Tooling), "проект Unity");
+    }
+    if name.ends_with(".uproject") {
+        push(tech("Unreal Engine", Tooling), "проект Unreal Engine");
+    }
+    if name == "project.godot" {
+        push(tech("Godot", Tooling), "project.godot");
+    }
+    if name == "pubspec.yaml" {
+        push(tech("Flutter", Mobile), "pubspec.yaml");
+    }
+    if name == "platformio.ini" {
+        push(tech("PlatformIO", Tooling), "platformio.ini");
+    }
+    if name.ends_with(".ino") {
+        push(tech("Arduino", Tooling), "скетчи Arduino");
     }
     if path.starts_with(".claude/") || path.starts_with(".cursor/") || path.starts_with(".codex/") {
         push(
@@ -637,6 +812,146 @@ mod tests {
 
     fn names(found: &Detected) -> Vec<&'static str> {
         found.keys().map(|technology| technology.name).collect()
+    }
+
+    #[test]
+    fn every_catalog_mapping_names_a_catalog_skill() {
+        let names = [
+            "Python",
+            "Java",
+            "JavaScript",
+            "TypeScript",
+            "C#",
+            "C++",
+            "C",
+            "Go",
+            "Rust",
+            "Kotlin",
+            "Swift",
+            "Objective-C",
+            "PHP",
+            "Ruby",
+            "Scala",
+            "Elixir",
+            "Erlang",
+            "Haskell",
+            "Clojure",
+            "F#",
+            "OCaml",
+            "Dart",
+            "Lua",
+            "Perl",
+            "R",
+            "Julia",
+            "SQL",
+            "PL/SQL",
+            "1C Enterprise",
+            "ABAP",
+            "Delphi",
+            "COBOL",
+            "Fortran",
+            "Assembly",
+            "Verilog",
+            "VHDL",
+            "Solidity",
+            "Zig",
+            "Groovy",
+            "Shell",
+            "PowerShell",
+            "Visual Basic",
+            "HTML",
+            "Vue",
+            "Svelte",
+            "GraphQL",
+            "gRPC / Protocol Buffers",
+            "Shaders",
+            "GDScript",
+            "Tokio",
+            "Axum",
+            "Gin",
+            "Django",
+            "FastAPI",
+            "Flask",
+            "Express",
+            "NestJS",
+            "SQLAlchemy",
+            "Celery",
+            "Socket.IO",
+            "React",
+            "Angular",
+            "Next.js",
+            "Nuxt",
+            "Redux",
+            "TanStack Query",
+            "Tailwind CSS",
+            "Vite",
+            "webpack",
+            "Three.js",
+            "Electron",
+            "React Native",
+            "PostgreSQL",
+            "SQLite",
+            "MongoDB",
+            "Redis",
+            "pandas / Polars",
+            "NumPy / SciPy",
+            "scikit-learn",
+            "PyTorch",
+            "TensorFlow",
+            "Hugging Face Transformers",
+            "LangChain",
+            "OpenAI API",
+            "Docker",
+            "Kubernetes",
+            "Helm",
+            "Terraform",
+            "Ansible",
+            "GitHub Actions",
+            "GitLab CI",
+            "Nginx",
+            "Prometheus",
+            "systemd",
+            "Playwright",
+            "Cypress",
+            "Jest",
+            "pytest",
+            "Сбор веб-данных",
+            "1С:Предприятие 8",
+            "1C:EDT",
+            "1С-Битрикс",
+            "Unity",
+            "Unreal Engine",
+            "Godot",
+            "Flutter",
+            "Arduino",
+        ];
+        for name in names {
+            let skill = catalog_skill(name).unwrap_or_else(|| panic!("{name} has no skill"));
+            assert!(fsp_domain::catalog::is_skill(skill), "{name} → {skill}");
+        }
+    }
+
+    #[test]
+    fn onec_sources_and_configurations_are_detected() {
+        let files = [
+            "src/CommonModules/Common/Module.bsl",
+            "src/CommonModules/Prices/Module.bsl",
+            "src/Documents/Order/ObjectModule.bsl",
+            "src/Configuration/Configuration.mdo",
+        ]
+        .map(String::from);
+        let found = detect(&files, &[], &[]);
+        let skills = found
+            .keys()
+            .filter_map(Tech::catalog_skill)
+            .collect::<BTreeSet<_>>();
+        assert!(skills.contains("onec_language"), "{skills:?}");
+        assert!(skills.contains("onec_enterprise"));
+        assert!(skills.contains("onec_edt"));
+        assert_eq!(
+            language_of("src/CommonModules/Common/Module.bsl"),
+            Some("1C Enterprise")
+        );
     }
 
     #[test]

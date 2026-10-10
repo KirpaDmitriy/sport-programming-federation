@@ -1033,7 +1033,7 @@ fn stack(facts: &Facts<'_>) -> (Vec<GitHubStackItem>, Vec<GitHubTechnology>) {
     });
     let mut catalog: BTreeMap<&str, Evidence> = BTreeMap::new();
     for (technology, (repositories, reasons, last)) in &found {
-        if let Some(skill) = technology.skill {
+        if let Some(skill) = technology.catalog_skill() {
             let entry = catalog.entry(skill).or_default();
             entry.0 = entry.0.max(*repositories);
             entry.1.extend(reasons.iter().cloned());
@@ -2165,7 +2165,7 @@ fn repositories(facts: &Facts<'_>, craft: &Craft) -> Vec<GitHubRepositoryInsight
                     .map(|detected| {
                         detected
                             .keys()
-                            .filter_map(|technology| technology.skill)
+                            .filter_map(|technology| technology.catalog_skill())
                             .map(str::to_owned)
                             .collect::<BTreeSet<_>>()
                             .into_iter()
