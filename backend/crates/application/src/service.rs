@@ -3412,7 +3412,7 @@ fn candidate_id(session: &SessionView) -> Result<&str, ApplicationError> {
 fn integration_error(error: IntegrationError) -> ApplicationError {
     let status = match error.code {
         "github_login_invalid" | "github_account_not_found" => 422,
-        "github_rate_limited" => 503,
+        "github_rate_limited" | "github_not_configured" => 503,
         _ => 502,
     };
     ApplicationError::new(status, error.code, error.message)

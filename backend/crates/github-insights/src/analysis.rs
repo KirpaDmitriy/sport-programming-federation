@@ -1799,7 +1799,7 @@ fn highlights(
     let main = languages
         .iter()
         .take(2)
-        .map(|language| language.name.as_str())
+        .map(|language| language.language.as_str())
         .collect::<Vec<_>>();
     if !main.is_empty() {
         items.push(format!("Основные языки: {}", main.join(", ")));
@@ -1912,13 +1912,13 @@ fn languages(snapshot: &Snapshot) -> Vec<GitHubLanguageShare> {
     }
     let mut shares = weights
         .into_iter()
-        .map(|(name, weight)| GitHubLanguageShare {
-            name,
+        .map(|(language, weight)| GitHubLanguageShare {
+            language,
             percent: (weight / sum * 100.0).round() as u8,
         })
         .filter(|share| share.percent >= 1)
         .collect::<Vec<_>>();
-    shares.sort_by(|a, b| b.percent.cmp(&a.percent).then(a.name.cmp(&b.name)));
+    shares.sort_by(|a, b| b.percent.cmp(&a.percent).then(a.language.cmp(&b.language)));
     shares.truncate(8);
     shares
 }

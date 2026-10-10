@@ -140,6 +140,17 @@ impl GitHubInsightsGateway for HttpInsights {
             .map_err(integration)?;
         let status = response.status();
         if !status.is_success() {
+            let code = response
+                .json::<ServiceError>()
+                .await
+                .map(|error| error.code)
+                .unwrap_or_default();
+            if code == "github_not_configured" {
+                return Err(IntegrationError {
+                    code: "github_not_configured",
+                    message: "Подключение GitHub временно недоступно".into(),
+                });
+            }
             return Err(match status {
                 StatusCode::BAD_REQUEST => IntegrationError {
                     code: "github_login_invalid",
@@ -180,6 +191,11 @@ struct ReportRequest<'a> {
 struct ReportResponse {
     report: GitHubReport,
     ownership_code_found: Option<bool>,
+}
+
+#[derive(Deserialize)]
+struct ServiceError {
+    code: String,
 }
 
 #[derive(Deserialize)]
@@ -243,6 +259,10 @@ mod tests {
                     match body["login"].as_str() {
                         Some("missing") => (StatusCode::NOT_FOUND, "{}"),
                         Some("limited") => (StatusCode::TOO_MANY_REQUESTS, "{}"),
+                        Some("tokenless") => (
+                            StatusCode::SERVICE_UNAVAILABLE,
+                            r#"{"code":"github_not_configured","message":"x"}"#,
+                        ),
                         _ => (StatusCode::SERVICE_UNAVAILABLE, "secret upstream detail"),
                     }
                 },
@@ -255,6 +275,7 @@ mod tests {
         for (login, code) in [
             ("missing", "github_account_not_found"),
             ("limited", "github_rate_limited"),
+            ("tokenless", "github_not_configured"),
             ("other", "github_unavailable"),
         ] {
             let error = insights.report(login, None, false).await.unwrap_err();

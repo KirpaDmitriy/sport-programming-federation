@@ -308,7 +308,7 @@ fn github_report(login: &str) -> fsp_domain::GitHubReport {
                            "medianPullRequestLines": null, "externalRepositories": 0, "organizationRepositories": 0,
                            "affiliatedOrganizations": 0, "notableContributions": [] },
         "organizations": { "memberships": [], "contributed": [] },
-        "languages": [{ "name": "Rust", "percent": 80 }],
+        "languages": [{ "language": "Rust", "percent": 80 }],
         "technologies": [{ "skillId": "rust", "repositories": 1, "signals": ["Cargo.toml"], "lastPushedAt": null }],
         "craft": { "substantiveRepositories": 1, "readmePercent": 100, "licensePercent": 100, "ciPercent": 100,
                    "testsPercent": 0, "lockfilePercent": 100, "lintPercent": 0, "dependencyUpdatesPercent": 0,

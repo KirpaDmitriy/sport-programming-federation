@@ -295,7 +295,7 @@ pub struct GitHubContributedOrganization {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GitHubLanguageShare {
-    pub name: String,
+    pub language: String,
     pub percent: u8,
 }
 
@@ -463,7 +463,7 @@ impl GitHubReport {
                 .iter()
                 .take(5)
                 .map(|language| GitHubLanguageShare {
-                    name: language.name.clone(),
+                    language: language.language.clone(),
                     percent: round5(language.percent),
                 })
                 .filter(|language| language.percent > 0)
