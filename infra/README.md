@@ -251,6 +251,9 @@ in place, and keep changes compatible with the running release.
 `RUNTIME_CAPABILITIES` and `check-runtime-compatibility.sh` reject rollbacks that
 cannot support the active domain or real-mail authentication. Never disable real
 mail or restore old demo authentication as a normal rollback procedure.
+The first activated release that declares `catalog-v2` records it in `/etc/fsp/data-capabilities`: stored data
+may then use its grades, specializations and skills, so rollbacks to releases without `catalog-v2` are refused.
+The marker is monotonic; never delete it to force such a rollback.
 
 Rotating `FSP_AUTH_KEY` invalidates all existing sessions/codes while preserving
 accounts and profiles. Keep its active value only in the authorized private runtime configuration.
