@@ -26519,6 +26519,13 @@
             "minLength": 1,
             "maxLength": 8000
           },
+          "responseMode": {
+            "type": "string",
+            "enum": [
+              "text",
+              "voice"
+            ]
+          },
           "revision": {
             "type": "integer",
             "minimum": 0
@@ -26527,6 +26534,7 @@
         "required": [
           "questionId",
           "answer",
+          "responseMode",
           "revision"
         ],
         "additionalProperties": false
@@ -26573,6 +26581,13 @@
             "minimum": 1,
             "maximum": 20
           },
+          "recommendedResponseMode": {
+            "type": "string",
+            "enum": [
+              "text",
+              "voice"
+            ]
+          },
           "delivery": {
             "$ref": "#/components/schemas/InterviewDelivery"
           }
@@ -26582,6 +26597,7 @@
           "nodeId",
           "prompt",
           "sequence",
+          "recommendedResponseMode",
           "delivery"
         ],
         "additionalProperties": false
@@ -26676,6 +26692,18 @@
           },
           "rubricVersion": {
             "type": "string"
+          },
+          "responseMode": {
+            "type": "string",
+            "enum": [
+              "text",
+              "voice"
+            ]
+          },
+          "signalStrength": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2
           }
         },
         "required": [
@@ -26685,7 +26713,9 @@
           "answerExcerpt",
           "rationale",
           "evaluator",
-          "rubricVersion"
+          "rubricVersion",
+          "responseMode",
+          "signalStrength"
         ],
         "additionalProperties": false
       },

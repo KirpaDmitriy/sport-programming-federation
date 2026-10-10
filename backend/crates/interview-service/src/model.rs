@@ -5,7 +5,7 @@ use reqwest::{Client, Url};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::json;
 
-use crate::domain::{CompetencyNode, EvidenceState};
+use crate::domain::{CompetencyNode, EvidenceState, ResponseMode};
 
 #[derive(Debug, Clone)]
 pub struct QuestionContext<'a> {
@@ -19,6 +19,7 @@ pub struct AnswerContext<'a> {
     pub node: &'a CompetencyNode,
     pub question: &'a str,
     pub answer: &'a str,
+    pub response_mode: ResponseMode,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -216,6 +217,7 @@ impl InterviewModel for BifrostInterviewModel {
             question: &'a str,
             answer: &'a str,
             required_concepts: &'a [&'a [&'a str]],
+            response_mode: ResponseMode,
         }
         #[derive(Deserialize)]
         #[serde(rename_all = "camelCase")]
@@ -233,6 +235,7 @@ impl InterviewModel for BifrostInterviewModel {
                     question: context.question,
                     answer: context.answer,
                     required_concepts: context.node.concept_groups,
+                    response_mode: context.response_mode,
                 },
             )
             .await?;

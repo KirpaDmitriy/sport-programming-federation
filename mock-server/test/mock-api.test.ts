@@ -517,18 +517,22 @@ test('graph interview follows prerequisites and rejects a stale answer', async (
       body: {
         questionId: started.currentQuestion.id,
         answer: 'Сначала уточню ожидаемое поведение повторного запроса.',
+        responseMode: 'voice',
         revision: started.revision,
       },
     })
   ).body;
   assert.equal(answered.currentQuestion.nodeId, 'backend.unique-operation');
   assert.equal(answered.evidence[0].state, 'observed');
+  assert.equal(answered.evidence[0].responseMode, 'voice');
+  assert.equal(answered.evidence[0].signalStrength, 2);
 
   await request('POST', `/api/v1/me/interviews/${started.id}/answers`, {
     actor: candidate,
     body: {
       questionId: started.currentQuestion.id,
       answer: 'Устаревший ответ',
+      responseMode: 'text',
       revision: started.revision,
     },
     status: 409,

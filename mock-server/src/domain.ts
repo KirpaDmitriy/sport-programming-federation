@@ -168,11 +168,13 @@ const interviewPrompt = (nodeId: string) =>
 
 function interviewQuestion(nodeId: string, sequence: number): NonNullable<Interview['currentQuestion']> {
   const prompt = interviewPrompt(nodeId);
+  const behavioral = nodeId.startsWith('collaboration.');
   return {
     id: `question-${sequence}-${nodeId.replaceAll('.', '-')}`,
     nodeId,
     prompt,
     sequence,
+    recommendedResponseMode: behavioral || sequence % 4 === 0 ? 'voice' : 'text',
     delivery: { speechText: prompt, avatarCue: 'speaking' },
   };
 }
@@ -1607,6 +1609,8 @@ const handlers: Handlers = {
       rationale: `Распознано ${matched} из ${groups.length} элементов рубрики`,
       evaluator: 'mock-rubric-v1',
       rubricVersion: 'graph-interview-rubric-v1',
+      responseMode: ctx.body.responseMode,
+      signalStrength: ctx.body.responseMode === 'voice' ? 2 : 1,
     });
     item.revision += 1;
     const unknownPrerequisite =

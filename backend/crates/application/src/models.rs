@@ -27,7 +27,16 @@ pub struct InterviewStartInput {
 pub struct InterviewAnswerInput {
     pub question_id: String,
     pub answer: String,
+    pub response_mode: InterviewResponseMode,
     pub revision: u32,
+}
+
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum InterviewResponseMode {
+    #[default]
+    Text,
+    Voice,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -61,6 +70,8 @@ pub struct InterviewQuestionView {
     pub node_id: String,
     pub prompt: String,
     pub sequence: u8,
+    #[serde(default)]
+    pub recommended_response_mode: InterviewResponseMode,
     pub delivery: InterviewDeliveryView,
 }
 
@@ -92,6 +103,14 @@ pub struct InterviewEvidenceView {
     pub rationale: String,
     pub evaluator: String,
     pub rubric_version: String,
+    #[serde(default)]
+    pub response_mode: InterviewResponseMode,
+    #[serde(default = "default_interview_signal_strength")]
+    pub signal_strength: u8,
+}
+
+fn default_interview_signal_strength() -> u8 {
+    1
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
