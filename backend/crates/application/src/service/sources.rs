@@ -8,8 +8,8 @@ use crate::{GitHubAnalysisView, GitHubInsights, InsightsStatus};
 /// A GitHub analysis that has not finished by then is reported as failed.
 const GITHUB_JOB_TIMEOUT_MINUTES: i64 = 90;
 
-/// How long the LLM's second opinion on an estimate may take; without it the rules decide alone.
-const REVIEW_TIMEOUT_SECONDS: u64 = 20;
+/// How long the background LLM review of an estimate may take; without it the rules decide alone.
+const REVIEW_TIMEOUT_SECONDS: u64 = 60;
 
 impl PlatformService {
     pub async fn connect_source(
@@ -69,7 +69,6 @@ impl PlatformService {
                 ));
             }
         };
-        let review = self.estimate_review(candidate_id, &record).await?;
         let tx = self
             .repository
             .transaction()
@@ -84,10 +83,9 @@ impl PlatformService {
         };
         scoped.require_processing_consent(candidate_id).await?;
         let mut candidate = scoped.candidate_index(candidate_id).await?;
-        scoped
-            .save_source_evidence(&mut candidate, &record, review)
-            .await?;
+        scoped.save_source_evidence(&mut candidate, &record).await?;
         tx.commit().await.map_err(ApplicationError::storage)?;
+        self.spawn_estimate_review(candidate_id);
         Ok(source_view(
             record,
             &self.github_ownership_code(candidate_id),
@@ -147,7 +145,6 @@ impl PlatformService {
         };
         match result {
             Ok(updated) => {
-                let review = self.estimate_review(candidate_id, &updated).await?;
                 // The refreshed source and the succeeded job commit together.
                 let tx = self
                     .repository
@@ -188,7 +185,7 @@ impl PlatformService {
                     return Ok(job_view(job, None));
                 }
                 scoped
-                    .save_source_evidence(&mut candidate, &updated, review)
+                    .save_source_evidence(&mut candidate, &updated)
                     .await?;
                 job.status = "succeeded".into();
                 job.updated_at = now();
@@ -207,6 +204,7 @@ impl PlatformService {
                 );
                 tx.save_job(&job).await.map_err(ApplicationError::storage)?;
                 tx.commit().await.map_err(ApplicationError::storage)?;
+                self.spawn_estimate_review(candidate_id);
                 let view = source_view(updated, &self.github_ownership_code(candidate_id), None);
                 Ok(job_view(job, Some(view)))
             }
@@ -290,7 +288,6 @@ impl PlatformService {
                 )
             }
         };
-        let review = self.estimate_review(candidate_id, &record).await?;
         let tx = self
             .repository
             .transaction()
@@ -328,13 +325,14 @@ impl PlatformService {
                 .map_err(ApplicationError::storage)?;
         }
         let mut candidate = scoped.candidate_index(candidate_id).await?;
-        scoped
-            .save_source_evidence(&mut candidate, &record, review)
-            .await?;
+        scoped.save_source_evidence(&mut candidate, &record).await?;
         if let Some(job) = &job {
             tx.save_job(job).await.map_err(ApplicationError::storage)?;
         }
         tx.commit().await.map_err(ApplicationError::storage)?;
+        if job.is_none() {
+            self.spawn_estimate_review(candidate_id);
+        }
         Ok(source_view(record, &code, progress))
     }
 
@@ -502,7 +500,6 @@ impl PlatformService {
                     .await;
             }
         };
-        let review = self.estimate_review(candidate_id, &record).await?;
         let tx = self
             .repository
             .transaction()
@@ -548,9 +545,7 @@ impl PlatformService {
                 .fail_github_job(candidate_id, job, code, message.into())
                 .await;
         }
-        scoped
-            .save_source_evidence(&mut candidate, &record, review)
-            .await?;
+        scoped.save_source_evidence(&mut candidate, &record).await?;
         let view = source_view(record, &self.github_ownership_code(candidate_id), None);
         job.status = "succeeded".into();
         job.updated_at = now();
@@ -565,6 +560,7 @@ impl PlatformService {
         );
         tx.save_job(&job).await.map_err(ApplicationError::storage)?;
         tx.commit().await.map_err(ApplicationError::storage)?;
+        self.spawn_estimate_review(candidate_id);
         Ok(job_view(job, Some(view)))
     }
 
@@ -779,15 +775,25 @@ impl PlatformService {
         })
     }
 
-    /// The LLM's second opinion on the estimate `record` leads to, asked before the transaction.
-    /// `None` without a gateway, a grade or a timely valid answer: the rules then decide alone.
-    async fn estimate_review(
-        &self,
-        candidate_id: &str,
-        record: &fsp_domain::SourceRecord,
-    ) -> Result<Option<fsp_domain::ProfileReviewReply>, ApplicationError> {
+    /// Asks the LLM for a second opinion on the stored estimate in the background. A slow model
+    /// never delays the source write: the rules apply at once and the review joins them later.
+    fn spawn_estimate_review(&self, candidate_id: &str) {
+        if self.llm.is_none() {
+            return;
+        }
+        let service = self.clone();
+        let candidate_id = candidate_id.to_owned();
+        tokio::spawn(async move {
+            if let Err(error) = service.review_estimate(&candidate_id).await {
+                tracing::warn!(code = error.code, "profile review was not stored");
+            }
+        });
+    }
+
+    /// Reviews the stored estimate and applies the review only if that estimate is still current.
+    pub(super) async fn review_estimate(&self, candidate_id: &str) -> Result<(), ApplicationError> {
         let Some(llm) = &self.llm else {
-            return Ok(None);
+            return Ok(());
         };
         let Some(profile) = self
             .repository
@@ -795,35 +801,67 @@ impl PlatformService {
             .await
             .map_err(ApplicationError::storage)?
         else {
-            return Ok(None);
+            return Ok(());
+        };
+        let Some(estimate) = profile
+            .estimate
+            .filter(|estimate| estimate.grade.is_some() && estimate.review.is_none())
+        else {
+            return Ok(());
         };
         let sources = self
             .repository
             .sources(candidate_id)
             .await
             .map_err(ApplicationError::storage)?;
-        let Some((estimate, request)) = source_estimate(&profile, &sources, record) else {
-            return Ok(None);
-        };
-        if estimate.grade.is_none() {
-            return Ok(None);
-        }
-        let review = tokio::time::timeout(
+        let (github, fsp) = source_evidence(&sources.iter().collect::<Vec<_>>());
+        let request = fsp_domain::review_request(&estimate, github, &fsp);
+        let reply = match tokio::time::timeout(
             std::time::Duration::from_secs(REVIEW_TIMEOUT_SECONDS),
             llm.review_profile(&request),
         )
-        .await;
-        Ok(match review {
-            Ok(Ok(reply)) => Some(reply),
+        .await
+        {
+            Ok(Ok(reply)) => reply,
             Ok(Err(error)) => {
                 tracing::warn!(code = error.code, "profile review failed");
-                None
+                return Ok(());
             }
             Err(_) => {
                 tracing::warn!("profile review timed out");
-                None
+                return Ok(());
             }
-        })
+        };
+        let tx = self
+            .repository
+            .transaction()
+            .await
+            .map_err(ApplicationError::storage)?;
+        tx.lock_candidate(candidate_id)
+            .await
+            .map_err(ApplicationError::storage)?;
+        let Some(mut profile) = tx
+            .candidate(candidate_id)
+            .await
+            .map_err(ApplicationError::storage)?
+        else {
+            return tx.commit().await.map_err(ApplicationError::storage);
+        };
+        // A newer estimate or a revoked consent makes this review stale.
+        let current = profile
+            .estimate
+            .clone()
+            .filter(|current| *current == estimate && profile.consents.processing);
+        if let Some(mut current) = current {
+            fsp_domain::apply_review(&mut current, reply);
+            profile.apply_estimate(current);
+            profile.revision += 1;
+            profile.updated_at = now();
+            tx.save_candidate(&profile)
+                .await
+                .map_err(ApplicationError::storage)?;
+        }
+        tx.commit().await.map_err(ApplicationError::storage)
     }
 
     /// Recomputes the profile estimate from every connected source and answers the questionnaire.
@@ -850,7 +888,6 @@ impl PlatformService {
                 "Подключите GitHub или ФСП, чтобы оценить профиль",
             ));
         };
-        let review = self.estimate_review(candidate_id, &anchor).await?;
         let tx = self
             .repository
             .transaction()
@@ -879,7 +916,7 @@ impl PlatformService {
             .find(|source| source.id == anchor.id)
             .cloned()
             .unwrap_or(anchor);
-        if let Some(estimate) = reviewed_estimate(&profile, &current, &anchor, review) {
+        if let Some(estimate) = source_estimate(&profile, &current, &anchor) {
             profile.apply_estimate(estimate);
         }
         profile.revision += 1;
@@ -888,6 +925,7 @@ impl PlatformService {
             .await
             .map_err(ApplicationError::storage)?;
         tx.commit().await.map_err(ApplicationError::storage)?;
+        self.spawn_estimate_review(candidate_id);
         self.profile(session).await
     }
 
@@ -896,7 +934,6 @@ impl PlatformService {
         &self,
         candidate: &mut CandidateIndexRecord,
         source: &fsp_domain::SourceRecord,
-        review: Option<fsp_domain::ProfileReviewReply>,
     ) -> Result<(), ApplicationError> {
         apply_source_evidence(candidate, source);
         let sources = self
@@ -904,7 +941,7 @@ impl PlatformService {
             .sources(&candidate.profile.id)
             .await
             .map_err(ApplicationError::storage)?;
-        if let Some(estimate) = reviewed_estimate(&candidate.profile, &sources, source, review) {
+        if let Some(estimate) = source_estimate(&candidate.profile, &sources, source) {
             candidate.profile.apply_estimate(estimate);
         }
         candidate.profile.revision += 1;
@@ -924,16 +961,13 @@ impl PlatformService {
     }
 }
 
-/// The rule-based estimate once `record` replaces its stored version, with the anonymized request
-/// for its review. `None` while a GitHub analysis runs: the previous estimate stays until it ends.
+/// The rule-based estimate once `record` replaces its stored version. `None` while a GitHub
+/// analysis runs: the previous estimate stays until it ends.
 fn source_estimate(
     profile: &CandidateProfile,
     sources: &[fsp_domain::SourceRecord],
     record: &fsp_domain::SourceRecord,
-) -> Option<(
-    fsp_domain::ProfileEstimate,
-    fsp_domain::ProfileReviewRequest,
-)> {
+) -> Option<fsp_domain::ProfileEstimate> {
     if record.active_job_id.is_some() {
         return None;
     }
@@ -942,6 +976,23 @@ fn source_estimate(
         .filter(|source| source.id != record.id)
         .chain(std::iter::once(record))
         .collect::<Vec<_>>();
+    let (github, fsp) = source_evidence(&sources);
+    let now = now();
+    Some(fsp_domain::estimate_profile(&fsp_domain::EstimateInput {
+        github,
+        fsp: &fsp,
+        stated_experience_months: profile.stated_experience_months(),
+        now: &now,
+    }))
+}
+
+/// The GitHub report and the FSP results among the candidate's sources.
+fn source_evidence<'a>(
+    sources: &[&'a fsp_domain::SourceRecord],
+) -> (
+    Option<&'a fsp_domain::GitHubReport>,
+    Vec<fsp_domain::FspResult>,
+) {
     let github = sources
         .iter()
         .filter(|source| source.provider == fsp_domain::SourceProvider::Github)
@@ -950,32 +1001,8 @@ fn source_estimate(
         .iter()
         .filter(|source| source.provider == fsp_domain::SourceProvider::Fsp)
         .flat_map(|source| source.fsp_results.iter().cloned())
-        .collect::<Vec<_>>();
-    let now = now();
-    let estimate = fsp_domain::estimate_profile(&fsp_domain::EstimateInput {
-        github,
-        fsp: &fsp,
-        stated_experience_months: profile.stated_experience_months(),
-        now: &now,
-    });
-    let request = fsp_domain::review_request(&estimate, github, &fsp);
-    Some((estimate, request))
-}
-
-/// The estimate with a review applied, recomputed from the sources read inside the transaction.
-fn reviewed_estimate(
-    profile: &CandidateProfile,
-    sources: &[fsp_domain::SourceRecord],
-    record: &fsp_domain::SourceRecord,
-    review: Option<fsp_domain::ProfileReviewReply>,
-) -> Option<fsp_domain::ProfileEstimate> {
-    let (mut estimate, _) = source_estimate(profile, sources, record)?;
-    if let Some(reply) = review
-        && estimate.grade.is_some()
-    {
-        fsp_domain::apply_review(&mut estimate, reply);
-    }
-    Some(estimate)
+        .collect();
+    (github, fsp)
 }
 
 fn apply_source_evidence(candidate: &mut CandidateIndexRecord, source: &fsp_domain::SourceRecord) {

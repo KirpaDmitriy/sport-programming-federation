@@ -41,7 +41,8 @@ Navigation: Обзор, Профиль, Источники, Навыки, Про
 Five steps with done markers: e-mail confirmed; consents (processing and publication as separate controls);
 «Подключите GitHub или ФСП» — GitHub by login or profile link with the running analysis stage, and the FSP ID, both
 after processing consent, plus «Подробный отчёт и подтверждение владения»; «Профиль собран автоматически» — the
-estimate card (category with its source and confidence, score, directions, factors, the LLM's second opinion,
+estimate card (category with its source and confidence, score, directions, factors, the LLM's second opinion —
+«ИИ готовит второе мнение об оценке…» while the background review runs —
 «Пересчитать», «Подтвердить тестом») and the questionnaire under «Проверить и поправить анкету» («Заполнить анкету
 вручную» while it is incomplete, open until the candidate closes it), where automatic answers are marked «Заполнено
 автоматически» and «Заполнить из PDF» is available; «Тест знаний — по желанию» with «Пройти тест» for the saved target

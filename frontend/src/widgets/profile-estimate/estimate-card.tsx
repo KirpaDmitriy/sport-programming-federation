@@ -1,15 +1,21 @@
+import { useQuery } from '@tanstack/react-query';
 import type { CSSProperties } from 'react';
-import type { Profile, ProfileEstimate } from '@/entities/profile';
+import { useMeta } from '@/entities/meta';
+import { type Profile, type ProfileEstimate, profileQuery } from '@/entities/profile';
 import { CategoryBadge, estimateConfidenceLabel } from '@/entities/qualification';
+import { useScope } from '@/entities/session';
 import { useRefreshEstimate } from '@/features/refresh-estimate';
 import { describeError } from '@/shared/api';
 import { formatDateTime, gradeLabel, specializationName } from '@/shared/lib';
-import { Button, ButtonLink, Callout, Card, EmptyState, StatusChip } from '@/shared/ui';
+import { Button, ButtonLink, Callout, Card, EmptyState, InlineStatus, StatusChip } from '@/shared/ui';
 import styles from './estimate-card.module.css';
 
 const sourceLabel: Record<ProfileEstimate['sources'][number], string> = { github: 'GitHub', fsp: 'ФСП' };
 
 const share = (value: number) => ({ '--value': String(value) }) as CSSProperties;
+
+/** How long after an estimate its background LLM review is awaited. */
+const REVIEW_WAIT_MS = 2 * 60_000;
 
 /** Grade bands of the seniority score, as `estimate-v1` defines them. */
 const BANDS = 'до 20 — стажёр, 20–39 — джуниор, 40–59 — мидл, 60–79 — сеньор, от 80 — лид';
@@ -49,7 +55,17 @@ type Props = {
  */
 export function ProfileEstimateCard({ profile, canEstimate, title = 'Автоматическая оценка' }: Props) {
   const refresh = useRefreshEstimate();
+  const scope = useScope();
+  const meta = useMeta();
   const estimate = profile.estimate;
+  // The server reviews a fresh estimate in the background; refetch until the review arrives.
+  const reviewPending = Boolean(
+    meta.capabilities.realLlm &&
+      estimate?.grade &&
+      !estimate.review &&
+      Date.now() - Date.parse(estimate.computedAt) < REVIEW_WAIT_MS,
+  );
+  useQuery({ ...profileQuery(scope), refetchInterval: reviewPending ? 4_000 : false });
   const recalculate = (
     <Button
       size="sm"
@@ -150,6 +166,7 @@ export function ProfileEstimateCard({ profile, canEstimate, title = 'Автом�
             />
           </section>
         )}
+        {reviewPending && <InlineStatus>ИИ готовит второе мнение об оценке…</InlineStatus>}
         {estimate.review && (
           <Callout tone={estimate.review.agrees ? 'success' : 'warning'} title="Второе мнение ИИ">
             {estimate.review.agrees
