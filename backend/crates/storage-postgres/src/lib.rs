@@ -3182,36 +3182,20 @@ fn parse_role(value: &str) -> Result<Role, RepositoryError> {
     }
 }
 fn grade(value: Grade) -> &'static str {
-    match value {
-        Grade::Junior => "junior",
-        Grade::Middle => "middle",
-        Grade::Senior => "senior",
-    }
+    value.as_str()
 }
 fn parse_grade(value: &str) -> Result<Grade, RepositoryError> {
-    match value {
-        "junior" => Ok(Grade::Junior),
-        "middle" => Ok(Grade::Middle),
-        "senior" => Ok(Grade::Senior),
-        _ => Err(RepositoryError::Storage(format!("unknown grade: {value}"))),
-    }
+    value
+        .parse()
+        .map_err(|_| RepositoryError::Storage(format!("unknown grade: {value}")))
 }
 fn specialization(value: Specialization) -> &'static str {
-    match value {
-        Specialization::Backend => "backend",
-        Specialization::Frontend => "frontend",
-        Specialization::Fullstack => "fullstack",
-    }
+    value.as_str()
 }
 fn parse_specialization(value: &str) -> Result<Specialization, RepositoryError> {
-    match value {
-        "backend" => Ok(Specialization::Backend),
-        "frontend" => Ok(Specialization::Frontend),
-        "fullstack" => Ok(Specialization::Fullstack),
-        _ => Err(RepositoryError::Storage(format!(
-            "unknown specialization: {value}"
-        ))),
-    }
+    value
+        .parse()
+        .map_err(|_| RepositoryError::Storage(format!("unknown specialization: {value}")))
 }
 fn source_provider(value: fsp_domain::SourceProvider) -> &'static str {
     match value {

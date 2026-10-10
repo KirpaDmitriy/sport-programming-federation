@@ -820,7 +820,7 @@ fn apply_source_evidence(candidate: &mut CandidateIndexRecord, source: &fsp_doma
         .iter()
         .flat_map(|analysis| &analysis.repositories)
         .flat_map(|repository| &repository.technologies)
-        .filter(|technology| CATALOG_SKILLS.contains(&technology.as_str()))
+        .filter(|technology| fsp_domain::catalog::is_skill(technology))
         .cloned()
         .collect();
     for skill_id in technologies {
