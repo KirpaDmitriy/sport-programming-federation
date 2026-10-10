@@ -11,6 +11,7 @@ import {
 import { bandLabel } from '@/entities/github-insights';
 import { type SkillId, skillLabel, useMeta } from '@/entities/meta';
 import { needsQuery } from '@/entities/need';
+import { estimateConfidenceLabel } from '@/entities/qualification';
 import { useScope } from '@/entities/session';
 import { shortlistsQuery } from '@/entities/shortlist';
 import { BookmarkButton, useShortlistMembership } from '@/features/shortlist-membership';
@@ -51,6 +52,7 @@ export type CandidateSearch = {
   mode?: 'recommended' | 'bank' | undefined;
   specialization?: Specialization | undefined;
   grade?: Grade | undefined;
+  categorySource?: 'assessment' | 'estimate' | undefined;
   skill?: SkillId | undefined;
   fsp?: 'any' | 'verified' | undefined;
   page?: number | undefined;
@@ -80,10 +82,10 @@ function groupResults(items: AnonymousCandidate[], withNeed: boolean): Group[] {
   }
   const groups = new Map<string, Group>();
   for (const item of items) {
-    const key = `${item.specialization}:${item.verifiedGrade}`;
+    const key = `${item.specialization}:${item.grade}`;
     const group = groups.get(key) ?? {
       key,
-      title: `${specializationLabel[item.specialization]} · ${gradeLabel[item.verifiedGrade]}`,
+      title: `${specializationLabel[item.specialization]} · ${gradeLabel[item.grade]}`,
       icon: 'users' as const,
       items: [],
     };
@@ -112,6 +114,7 @@ export function EmployerCandidatesPage({ search, onSearchChange }: Props) {
     ...(search.needId ? { needId: search.needId } : {}),
     ...(search.specialization ? { specialization: search.specialization } : {}),
     ...(search.grade ? { grade: search.grade } : {}),
+    ...(search.categorySource ? { categorySource: search.categorySource } : {}),
     ...(search.skill ? { skill: search.skill } : {}),
   };
   const canQuery = mode === 'bank' || Boolean(search.needId);
@@ -119,10 +122,21 @@ export function EmployerCandidatesPage({ search, onSearchChange }: Props) {
   const shortlistId = search.shortlistId ?? shortlists.items[0]?.id ?? null;
   const membership = useShortlistMembership(shortlistId);
   const filtered = Boolean(
-    search.specialization || search.grade || search.skill || (search.fsp && search.fsp !== 'any'),
+    search.specialization ||
+      search.grade ||
+      search.categorySource ||
+      search.skill ||
+      (search.fsp && search.fsp !== 'any'),
   );
   const resetFilters = () =>
-    onSearchChange({ specialization: undefined, grade: undefined, skill: undefined, fsp: undefined, page: undefined });
+    onSearchChange({
+      specialization: undefined,
+      grade: undefined,
+      categorySource: undefined,
+      skill: undefined,
+      fsp: undefined,
+      page: undefined,
+    });
 
   const toggle = (candidate: AnonymousCandidate) =>
     membership.toggle.mutate({
@@ -190,12 +204,23 @@ export function EmployerCandidatesPage({ search, onSearchChange }: Props) {
           />
           <SelectField
             id="filter-grade"
-            label="Подтверждённый грейд"
+            label="Грейд"
             value={search.grade ?? ''}
             onValueChange={(value) => onSearchChange({ grade: value || undefined, page: undefined })}
             options={[
               { value: '', label: 'Любой' },
               ...gradeOrder.map((value) => ({ value, label: gradeLabel[value] })),
+            ]}
+          />
+          <SelectField
+            id="filter-category-source"
+            label="Подтверждение категории"
+            value={search.categorySource ?? ''}
+            onValueChange={(value) => onSearchChange({ categorySource: value || undefined, page: undefined })}
+            options={[
+              { value: '', label: 'Любое' },
+              { value: 'assessment', label: 'Тест знаний' },
+              { value: 'estimate', label: 'Автооценка' },
             ]}
           />
           <SelectField
@@ -222,7 +247,9 @@ export function EmployerCandidatesPage({ search, onSearchChange }: Props) {
           Сбросить фильтры
         </Button>
         <p className="small muted" style={{ flexBasis: '100%' }}>
-          Фильтр по стеку учитывает и наблюдения в работе; подтверждение навыка показано в столбце соответствия.
+          Категорию даёт тест знаний или автоматическая оценка по GitHub и ФСП; подтверждённые тестом стоят выше в своей
+          категории. Фильтр по стеку учитывает и наблюдения в работе; подтверждение навыка показано в столбце
+          соответствия.
         </p>
       </Card>
 
@@ -271,8 +298,8 @@ export function EmployerCandidatesPage({ search, onSearchChange }: Props) {
                 </div>
               }
             >
-              В банке видны только кандидаты с подтверждённой категорией, согласившиеся на показ профиля. Сохранённая
-              подборка не меняется.
+              В банке видны только кандидаты с категорией — по тесту или по оценке открытых данных, — согласившиеся на
+              показ профиля. Сохранённая подборка не меняется.
             </EmptyState>
           )}
           {results.data && results.data.items.length > 0 && (
@@ -325,12 +352,24 @@ export function EmployerCandidatesPage({ search, onSearchChange }: Props) {
                             </span>
                           </td>
                           <td>
-                            {specializationLabel[candidate.specialization]} · {gradeLabel[candidate.verifiedGrade]}
+                            {specializationLabel[candidate.specialization]} · {gradeLabel[candidate.grade]}
                             <div>
-                              <StatusChip tone="success" plain>
-                                Грейд подтверждён
-                              </StatusChip>
+                              {candidate.categorySource === 'assessment' ? (
+                                <StatusChip tone="success" plain>
+                                  Подтверждено тестом
+                                </StatusChip>
+                              ) : (
+                                <StatusChip tone="info" icon="chart" plain>
+                                  Оценка
+                                  {candidate.categoryConfidence
+                                    ? `, ${estimateConfidenceLabel[candidate.categoryConfidence]}`
+                                    : ''}
+                                </StatusChip>
+                              )}
                             </div>
+                            {candidate.estimate && (
+                              <div className="small muted">Балл уровня: {candidate.estimate.score} из 100</div>
+                            )}
                             {candidate.fspVerified && <div className="small muted">ФСП: подтверждённое участие</div>}
                             {candidate.github && (
                               <div className="small muted">

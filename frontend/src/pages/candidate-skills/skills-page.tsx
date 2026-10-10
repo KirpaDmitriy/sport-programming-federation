@@ -193,7 +193,11 @@ export function CandidateSkillsPage({ view, selected, onChange }: Props) {
 
   const subtitle = [
     specializationLabel[profile.verifiedSpecialization ?? profile.specialization],
-    profile.verifiedGrade ? `Подтверждён ${gradeLabel[profile.verifiedGrade]}` : 'Уровень не подтверждён',
+    profile.verifiedGrade
+      ? `Подтверждён ${gradeLabel[profile.verifiedGrade]}`
+      : profile.category.grade
+        ? `Оценка ${gradeLabel[profile.category.grade]}`
+        : 'Категории нет',
     `Цель ${gradeLabel[profile.selectedGrade]}`,
   ].join(' · ');
 

@@ -18,13 +18,24 @@ export async function updateProfile(patch: ProfilePatch) {
   return requireData(await api.PATCH('/api/v1/me/profile', { body: patch }));
 }
 
+/** Recomputes the estimate from the connected sources and answers the questionnaire fields still automatic. */
+export async function refreshEstimate() {
+  return requireData(await api.POST('/api/v1/me/profile/estimate'));
+}
+
+export type ProfileEstimate = components['schemas']['ProfileEstimate'];
+export type AutoField = Profile['autoFields'][number];
+
 export const blockerLabel: Record<Onboarding['blockers'][number], string> = {
   email: 'почта не подтверждена',
   questionnaire: 'анкета не заполнена',
-  assessment: 'уровень не подтверждён проверкой',
+  category: 'нет категории: подключите GitHub или ФСП либо пройдите тест',
   processing_consent: 'нет согласия на обработку данных',
   publication_consent: 'показ профиля работодателям выключен',
 };
+
+/** Marks a questionnaire field the system answered from evidence; the form explains the rule once. */
+export const AUTO_FIELD_HINT = 'Заполнено автоматически.';
 
 export const eligibilityReasonText: Record<NonNullable<Eligibility['selectedReason']>, string> = {
   cooldown: 'Подтверждённый грейд недавно менялся. Новую смену грейда можно начать после указанной даты.',

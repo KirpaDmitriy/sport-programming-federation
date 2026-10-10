@@ -14,6 +14,7 @@ const searchSchema = z.object({
   mode: z.enum(['recommended', 'bank']).optional().catch(undefined),
   specialization: z.enum(SPECIALIZATION_IDS).optional().catch(undefined),
   grade: z.enum(GRADE_IDS).optional().catch(undefined),
+  categorySource: z.enum(['assessment', 'estimate']).optional().catch(undefined),
   skill: z.enum(SKILL_IDS).optional().catch(undefined),
   fsp: z.enum(['any', 'verified']).optional().catch(undefined),
   page: z.number().int().min(1).max(1000).optional().catch(undefined),
