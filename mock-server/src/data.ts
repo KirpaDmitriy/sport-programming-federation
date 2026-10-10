@@ -1,3 +1,4 @@
+import { SKILLS } from './catalog.ts';
 import { fspResults } from './fsp-fixture.ts';
 import type { components } from './generated/schema.d.ts';
 import { githubFixtureReport, githubSource } from './github-fixture.ts';
@@ -125,14 +126,12 @@ export interface State {
 }
 
 export const CLOCK = '2026-10-05T12:00:00.000Z';
-export const SKILLS: S['Meta']['skills'] = [
-  { id: 'rust', label: 'Rust' },
-  { id: 'postgresql', label: 'PostgreSQL' },
-  { id: 'docker', label: 'Docker' },
-  { id: 'redis', label: 'Redis' },
-  { id: 'typescript', label: 'TypeScript' },
-  { id: 'react', label: 'React' },
-];
+export { SKILLS } from './catalog.ts';
+
+/** The skills the seeded demo candidates hold evidence for. */
+const DEMO_SKILLS = SKILLS.filter((skill) =>
+  ['rust', 'postgresql', 'docker', 'redis', 'typescript', 'react'].includes(skill.id),
+);
 export const COMPETITIONS: S['Meta']['competitions'] = [
   {
     id: 'competition-demo-api',
@@ -315,7 +314,7 @@ export function makeSkills(
   missingPostgres = false,
   frontend = false,
 ): SelfSkill[] {
-  return SKILLS.filter((skill) =>
+  return DEMO_SKILLS.filter((skill) =>
     frontend ? ['typescript', 'react'].includes(skill.id) : !['typescript', 'react'].includes(skill.id),
   ).map((skill) => {
     const status: SkillStatus =
