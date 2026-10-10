@@ -253,6 +253,8 @@ mod tests {
             verified_grade: Some(Grade::Junior),
             verified_specialization: Some(Specialization::Backend),
             grade_confirmed_at: None,
+            estimate: None,
+            auto_fields: Vec::new(),
             revision: 4,
             updated_at: now(),
         }

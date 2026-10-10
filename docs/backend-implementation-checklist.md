@@ -6,13 +6,18 @@ Historical cutover commands for another contributor's server are not operating i
 ## Implemented
 
 - Rust hexagonal architecture: domain/application ports, axum transport, PostgreSQL and outbound adapters.
-- All 74 application operations plus `/health`; no production `/__mock__` controls.
+- All 75 application operations plus `/health`; no production `/__mock__` controls.
 - Persisted accounts, sessions, profiles, consents, needs, vacancies, invitations, applications, shortlists,
   tasks, assessments, sources and jobs. Roles and tenant boundaries are enforced by the API.
 - Atomic idempotent commands and response replay; shared email attempt budgets; guarded terminal decisions;
   serialized disclosure and shortlist mutations; profile/assessment/source concurrency protection.
 - Candidate visibility, deterministic ranking, filters, server-returned pagination and anonymous projections.
-- GitHub OAuth identity binding, bounded repository analysis and evidence updates that preserve verified grades.
+- GitHub connection by login through the tokenless public-only insights service as a polled background job,
+  ownership by bio code or OAuth identity, and evidence updates from substantively developed repositories that
+  preserve verified grades.
+- Automatic profile (`estimate-v2`): every source write recomputes the estimate in its transaction, answers the
+  questionnaire fields still automatic and gives an estimated category; a bounded Bifrost second opinion; manual
+  recalculation; category source and confidence in search, ranking, applications and weekly tasks.
 - Optional Bifrost graph extraction with structural/reference validation and safe employer projection.
 - Real PDF export/import, revision-checked preview confirmation, contextual Bifrost assistance, source/job privacy and capability flags.
 - Bounded Resend delivery, per-email issuance limits, cumulative wrong-code budgets and challenge/session HMAC separation.

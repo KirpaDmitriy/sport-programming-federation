@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use fsp_domain::{
     Account, CandidateIndexRecord, CandidateProfile, Company, ExtractedGraph, FspParticipation,
-    GitHubAnalysis, GraphExtractionRequest, HiringNeedRecord, JobRecord, SourceRecord,
+    GitHubReport, GraphExtractionRequest, HiringNeedRecord, JobRecord, SourceRecord,
 };
 
 use crate::PendingChallenge;
@@ -310,6 +310,8 @@ pub trait PlatformRepository: Send + Sync {
     ) -> Result<(), RepositoryError>;
     async fn github_token(&self, candidate_id: &str) -> Result<Option<String>, RepositoryError>;
     async fn sources(&self, candidate_id: &str) -> Result<Vec<SourceRecord>, RepositoryError>;
+    /// GitHub sources of any candidate connected to `login`, compared case-insensitively.
+    async fn github_sources(&self, login: &str) -> Result<Vec<SourceRecord>, RepositoryError>;
     async fn save_source(&self, source: &SourceRecord) -> Result<(), RepositoryError>;
     async fn save_job(&self, job: &JobRecord) -> Result<(), RepositoryError>;
     /// Conditional job write: persists only while `confirmed` is still FALSE —
@@ -365,7 +367,7 @@ pub struct StoredIdempotentResponse {
     pub body: String,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IntegrationError {
     pub code: &'static str,
     pub message: String,
@@ -379,11 +381,45 @@ pub trait GitHubGateway: Send + Sync {
         redirect_uri: &str,
     ) -> Result<String, IntegrationError>;
     async fn exchange_code(&self, code: &str) -> Result<String, IntegrationError>;
-    async fn analyze(
+    /// The login the OAuth token belongs to; a match proves account ownership.
+    async fn authenticated_login(&self, token: &str) -> Result<String, IntegrationError>;
+}
+
+/// A public-activity report and whether the profile bio carried the ownership code.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GitHubInsights {
+    pub report: GitHubReport,
+    pub ownership_code_found: Option<bool>,
+}
+
+/// A background analysis: still running, finished or failed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum InsightsStatus {
+    Pending {
+        /// Waiting for a worker or for GitHub's rate limit to reset.
+        queued: bool,
+        stage: String,
+        progress: u8,
+    },
+    Done(Box<GitHubInsights>),
+    Failed(IntegrationError),
+}
+
+#[async_trait]
+pub trait GitHubInsightsGateway: Send + Sync {
+    /// Starts an analysis, or returns the running or fresh one.
+    async fn submit(
         &self,
-        username: &str,
-        token: &str,
-    ) -> Result<GitHubAnalysis, IntegrationError>;
+        login: &str,
+        ownership_code: Option<&str>,
+        refresh: bool,
+    ) -> Result<InsightsStatus, IntegrationError>;
+    /// The current analysis; `None` when the service does not know it (for example after a restart).
+    async fn status(
+        &self,
+        login: &str,
+        ownership_code: Option<&str>,
+    ) -> Result<Option<InsightsStatus>, IntegrationError>;
 }
 
 #[async_trait]
@@ -405,6 +441,16 @@ pub trait LlmGateway: Send + Sync {
         &self,
         request: &fsp_domain::RepositoryMatchRequest,
     ) -> Result<fsp_domain::RepositoryCompetitionMatch, IntegrationError>;
+    /// A second opinion on an automatic profile estimate from anonymized evidence.
+    async fn review_profile(
+        &self,
+        _request: &fsp_domain::ProfileReviewRequest,
+    ) -> Result<fsp_domain::ProfileReviewReply, IntegrationError> {
+        Err(IntegrationError {
+            code: "bifrost_unavailable",
+            message: "Сервис анализа не настроен".into(),
+        })
+    }
 }
 
 #[async_trait]

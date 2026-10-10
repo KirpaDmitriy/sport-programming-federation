@@ -27,15 +27,50 @@ name a state.
 
 ## 2. Candidate profile
 
+The catalog (`backend/crates/domain/data/catalog.json`, version `catalog-v2`) is shared by the Rust API, the contract
+generator and the development mock: five ordered grades (стажёр, джуниор, мидл, сеньор, лид), 25 specializations in
+eleven groups with the two topics of their knowledge test, and 255 skills in 17 categories, including the 1C ecosystem,
+ERP/SAP, analysis, design and management. `/meta` returns it with labels; requirements, stacks and filters accept any
+catalog skill. GitHub evidence maps languages and technologies onto catalog skills.
+
 | Owner | Fields |
 | --- | --- |
-| Candidate (editable) | `name`, `industry` (only `it`), `specialization` (`backend`/`frontend`/`fullstack`), `selectedGrade` (`junior`/`middle`/`senior`), `stack` (up to 5 of `rust`, `postgresql`, `docker`, `redis`, `typescript`, `react`), `teamRole`, `experienceMonths` (`null` unknown, `0` none, up to 1200), `experience`, `softSkills` (up to 12, self-assessed), `consents` |
-| Server | `verifiedSpecialization`, `verifiedGrade`, `gradeConfirmedAt`, `category`, `onboarding`, `assessmentEligibility`, `revision` |
+| Candidate (editable) | `name`, `industry` (only `it`), `specialization` (one of 25 catalog specializations), `selectedGrade` (`intern`/`junior`/`middle`/`senior`/`lead`), `stack` (up to 12 catalog skills), `teamRole`, `experienceMonths` (`null` unknown, `0` none, up to 1200), `experience`, `softSkills` (up to 12, self-assessed), `consents` |
+| Server | `verifiedSpecialization`, `verifiedGrade`, `gradeConfirmedAt`, `category`, `estimate`, `autoFields`, `onboarding`, `assessmentEligibility`, `revision` |
 
-- `selectedGrade` is only the target of the next assessment («Цель»). Changing it never changes `verifiedGrade`;
+- `selectedGrade` is the target of the next assessment («Цель»). Changing it never changes `verifiedGrade`;
   only an assessment result does.
 - The questionnaire is complete when name, specialization, selected grade, at least one stack item, team role and
   experience are filled.
+
+### Automatic profile
+
+A candidate does not have to type anything: connecting GitHub and/or FSP builds the profile. The rules are
+`estimate-v2` in [`backend/crates/domain/src/estimate.rs`](../../backend/crates/domain/src/estimate.rs); the plan of
+record is [`docs/auto-profile.md`](../auto-profile.md).
+
+- Every finished source write (connecting FSP, a finished GitHub analysis, a sync) recomputes `estimate` from all
+  connected sources in the same transaction. A running GitHub analysis keeps the previous estimate.
+  `POST /me/profile/estimate` recomputes on request (`409 source_not_connected` without a finished source).
+- `estimate` holds the leading specializations with shares, a 0–100 seniority score with its factors (seven GitHub
+  dimensions, stated experience, FSP results), the grade band (< 20 стажёр, 20–39 джуниор, 40–59 мидл, 60–79 сеньор,
+  ≥ 80 лид; сеньор needs 24 months of public work or stated experience, лид 48, counted in months from the first analyzed commit or the first year with ten active days, so thirteen months across a new year are not two years; `estimate-v1` counted calendar years), the confidence,
+  the sources, `insufficient` when there is too little evidence, and the answers it suggests.
+- The estimate answers the questionnaire fields that are empty, that an earlier estimate filled (`autoFields`), and
+  the specialization and target grade while the questionnaire is incomplete. A test-confirmed category keeps its
+  specialization and target grade. A field the candidate changes leaves `autoFields`, and estimates never overwrite
+  it again; a PATCH that resends an unchanged value keeps the field automatic. A new account starts as «Новый
+  кандидат», which the public GitHub name may replace.
+- When Bifrost is configured, the LLM receives the anonymized evidence (no login, names, links or organizations)
+  and gives a second opinion in the background after the source write commits (up to 60 seconds), so a slow model
+  never delays connecting a source. The review applies only while the reviewed estimate is still the stored one and
+  processing consent holds. It may choose between the two leading specializations when their shares differ by at
+  most ten points and may rewrite the experience and team-role texts (texts with links or addresses are dropped). It
+  never sets the grade: a disagreement lowers the confidence one level and is shown. A restart loses a pending
+  review; «Пересчитать» asks again.
+- The mock applies the golden estimates the Rust rules write to
+  [`contracts/fixtures/profile-estimates.json`](../../contracts/fixtures/profile-estimates.json) for its fixed GitHub
+  report and FSP result; it ignores experience the candidate typed.
 
 ### Visibility to employers
 
@@ -46,11 +81,15 @@ ones and the UI lists them on the overview, profile and settings pages:
 | --- | --- |
 | E-mail verified | `email` |
 | Questionnaire complete | `questionnaire` |
-| A passed assessment (verified specialization and grade exist) | `assessment` |
+| A category: a passed assessment, or an estimate with a specialization, a grade and at least medium confidence | `category` |
 | Processing consent | `processing_consent` |
 | Publication consent | `publication_consent` |
 
-`category` is `{ specialization, grade, eligible }` built from the verified values; `eligible` equals visibility.
+`category` is `{ specialization, grade, eligible, source, confidence }`: the verified values with
+`source: assessment`, otherwise the estimate with `source: estimate` and its confidence; `eligible` equals visibility.
+The organizer's specification derives the category from the questionnaire and a test; the owner chose to let the
+estimate assign it too, so every category states its source, test-confirmed categories rank first (section 7), and
+the UI never calls an estimate «подтверждено».
 
 ### Consents
 
@@ -65,18 +104,30 @@ ones and the UI lists them on the overview, profile and settings pages:
 
 - Two providers, GitHub and FSP. In the mock both are synthetic (`synthetic: true`, links under
   `example.com/fixtures`), and the UI labels them «Демо-источник».
-- Connecting a source requires processing consent. The mock starts a `source_sync` timer job at once;
-  Rust performs bounded provider I/O and commits connected data inline. In both implementations there
+- Connecting a source requires processing consent. The mock starts a `source_sync` timer job at once.
+  Rust commits the FSP source inline; a GitHub analysis runs for minutes, so connecting or syncing GitHub records a
+  running `source_sync` job in `Source.activeJobId`, and polling the job applies the finished report in one
+  transaction (`Source.github.analysis` shows the stage and progress meanwhile). In both implementations there
   is no manual repository selection. A connected source can be synced again (`409 source_not_connected` otherwise);
-  the mock returns the same running job for overlapping syncs. Rust detects a source changed during its
+  both return the same running job for overlapping syncs. Rust detects a source changed during its
   provider call and returns a failed `stale_input` job instead of overwriting newer data. Disconnecting is not supported.
-- GitHub reports `found` (total), `processed`, `queued` and `unavailable` repositories; a finished sync processes the
-  queued ones, unavailable ones stay unavailable. Active days and the observation period are observations; there is
-  no worked-hours value.
-- Rust derives allowlisted GitHub technologies as `evidence` during connect/sync, preserves assessment
-  confirmations and removes superseded GitHub support. The mock uses synthetic evidence for empty profiles.
-  Sources never create a confirmed grade: a technology in a repository is not proof of personal skill or
-  level.
+- GitHub connects by login, `@login` or a profile link (`422 github_login_invalid` for repository links and other
+  hosts; `422 github_account_not_found` at once for a mistyped login or an organization account). Updating within
+  six hours of the last analysis reuses its report and re-checks the bio, so ownership is confirmed in seconds. The insights service analyzes **public** data only, without a token, on our
+  server, and returns a report (`Source.github.report`): a developer portrait (summary, areas of work with evidence,
+  languages by the candidate's changed files, stack by category, topics, main projects), a 0–100 index with band and
+  confidence, seven dimensions with metrics, a commit calendar, yearly public commits, an estimated work rhythm in the
+  author's own time zone, own projects and organizations, collaboration validated by other people, repository
+  practices and integrity flags. Work in the candidate's own organizations counts as own work; collaboration counts
+  only work accepted or reviewed by others outside them. Time per active day and week is an explicitly labelled
+  estimate from commit timestamps, not worked hours. The method is in [GitHub insights](../github-insights.md).
+- Ownership: a login alone is a claim. Placing the candidate's code (`Source.github.ownership.code`) in the GitHub bio
+  and syncing, or an OAuth token of the same account, proves it; a proven login belongs to one candidate
+  (`409 github_account_taken`). Employers see whether ownership is proven.
+- Rust derives catalog technologies as `evidence` only from repositories the candidate owns or substantially
+  develops, preserves assessment confirmations and removes superseded GitHub support. The mock uses synthetic
+  evidence for empty profiles. Sources never create a confirmed grade: a technology in a repository is not proof of
+  personal skill or level, and the GitHub index never changes matching or order.
 - FSP is optional. Rust calls the private HTTP simulator on both connect and sync. Fictional results distinguish
   published, pending, disqualified and empty histories, individual and team scope, event dates and protocol references.
   Only published results count as participation for filtering/ranking; team placement never confirms individual skills
@@ -99,10 +150,11 @@ are.
 
 ## 4. Assessments
 
-- Supported scope: backend junior/middle/senior and frontend junior/middle
+- Supported scope: every catalog specialization at every grade, intern to lead
   (`meta.assessmentPolicy.supportedScopes`). Each attempt has ten single-choice questions selected
-  deterministically from a larger grade/specialization pool: five Rust and five PostgreSQL for backend, or five
-  TypeScript and five React for frontend. The immutable `knowledge-v2` snapshot is checked against the server bank
+  deterministically from a larger grade pool: five on each of the specialization's two catalog test topics (for
+  example Rust and PostgreSQL for backend, the 1C language and 1C queries for 1C). Topic-bank questions serve every
+  specialization tested on that topic. The immutable `knowledge-v2` snapshot is checked against the server bank
   before grading. Correct options and explanations are returned only in the final result.
 - Passing requires at least 8/10 overall and 3/5 in each subject. This measures knowledge on these questions,
   not practical development experience. The bank is public study material, not a secure certification exam.
@@ -118,7 +170,7 @@ starts.
 | --- | --- | --- |
 | `onboarding_incomplete` | E-mail unverified, questionnaire incomplete or no processing consent | `409 onboarding_incomplete` |
 | `active_assessment` | A questionnaire is `draft`, `in_progress`, `submitted` or `evaluating`; one active test at a time | `409 assessment_active` |
-| `unsupported_scope` | Fullstack, or frontend senior, has no assessment bank | `422 assessment_scope_unavailable` |
+| `unsupported_scope` | The bank holds no test for the specialization and grade (see `meta.assessmentPolicy.supportedScopes`) | `422 assessment_scope_unavailable` |
 | `grade_downgrade` | The target is below the verified grade in the same specialization; such attempts are never run | `422 grade_downgrade_forbidden` |
 | `cooldown` | A grade-changing attempt within the cooldown after the last successful grade change | `409 grade_change_cooldown` |
 
@@ -182,11 +234,11 @@ verification or «verified» badge.
 ## 7. Search and matching
 
 - The bank contains only profiles visible to employers (section 2).
-- **Recommended** mode needs a need of the company (`422 need_required`) and keeps candidates whose verified
-  specialization equals the need's and whose verified grade is at least the need's. **Bank** mode shows everyone
+- **Recommended** mode needs a need of the company (`422 need_required`) and keeps candidates whose category
+  specialization equals the need's and whose category grade is at least the need's. **Bank** mode shows everyone
   visible.
-- Filters: verified specialization, exact verified grade, a skill in any state except `insufficient`, and verified FSP
-  participation. Pages of 1–50 (default 10).
+- Filters: category specialization, exact category grade, the category source (`categorySource`: `assessment` or
+  `estimate`), a skill in any state except `insufficient`, and verified FSP participation. Pages of 1–50 (default 10).
 
 ### Requirement result
 
@@ -201,7 +253,7 @@ even when the policy accepts those sources; they feed the gap plan instead.
 
 A candidate is `missing_required` («Не хватает свидетельств по обязательным требованиям») when any required item is
 `not_evidenced`, `meets_required` («Подходят по обязательным требованиям») when every required item meets and the
-grade fits (same verified specialization, grade at least the need's), otherwise `needs_verification` («Требуют
+grade fits (same category specialization, grade at least the need's), otherwise `needs_verification` («Требуют
 дополнительной проверки»). Desired items never compensate for a missing required one. The result carries counts, the
 per-requirement reasons, a sentence of explanation and `algorithmVersion: fixture-rules-v1`.
 
@@ -210,17 +262,24 @@ per-requirement reasons, a sentence of explanation and `algorithmVersion: fixtur
 The server sorts; the UI groups by match status and says that the order is set by the server and is not a
 probability of being hired.
 
-- With a need: grade fit, required items met, desired items met, verified FSP participation, candidate ID.
-- Without a need: verified specialization, verified grade (higher first), verified FSP participation, candidate ID.
+- With a need: grade fit, required items met, desired items met, category strength, verified FSP participation,
+  candidate ID.
+- Without a need: category specialization (catalog order), category grade (higher first), category strength,
+  verified FSP participation, candidate ID.
+
+Category strength: a test result 3, a high-confidence estimate 2, a medium-confidence estimate 1.
 
 FSP participation only breaks ties; its absence never disqualifies.
 
 ### Anonymous projection
 
-Every employer response about a candidate (search, profile, graph) contains only: ID, alias, verified specialization
-and grade with confirmation date, work modes, `availableForOffers`, skills (state, evidence grade, source kinds,
+Every employer response about a candidate (search, profile, graph) contains only: ID, alias, the category
+(specialization, grade, `categorySource`, `categoryConfidence`), the verified grade with its confirmation date when
+there is one, for an estimated category the score and factor points (`estimate`, without explanations or texts), work modes, `availableForOffers`, skills (state, evidence grade, source kinds,
 summary, evidence count, confirmation date — no evidence items), source kinds, verified FSP flag, profile freshness
-(section 11) and the match. It
+(section 11), the match and the anonymous GitHub signal (`github`: index, public summary, areas of work, dimensions
+with rounded metrics, ownership state, languages, technologies, rhythm bands, highlights and warnings — no login,
+names, links, calendar or exact counts). It
 never contains a name, e-mail, handles, repository names, links or evidence titles. A profile that is not visible
 answers `404`, except to a company the candidate applied to (section 10) until the application is withdrawn.
 
@@ -268,10 +327,10 @@ applies, and the company decides.
   specialization, grade, work mode and required skill, paged like the bank. A vacancy shows the company (name,
   business area, description, contact e-mail), title, specialization, grade, work mode, salary, description and the
   requirements without the evidence policy. An unpublished or unknown vacancy answers `404`.
-- **Fit:** for a candidate with a verified grade and processing consent the vacancy carries the same `Match` as the
-  employer search (section 7), computed from the candidate's verified profile; otherwise `match: null`.
+- **Fit:** for a candidate with a category and processing consent the vacancy carries the same `Match` as the
+  employer search (section 7), computed from the candidate's category and skills; otherwise `match: null`.
 - **Eligibility:** the server reports `eligibility: { canApply, reason }`. Applying needs, in this order, a verified
-  e-mail (`email`), a complete questionnaire (`questionnaire`), a passed assessment (`assessment`) and processing
+  e-mail (`email`), a complete questionnaire (`questionnaire`), a category (`category`) and processing
   consent (`processing_consent`); publication consent is not needed, because an application goes to one company. A
   candidate has at most one application per vacancy that is not withdrawn (`application_exists`).
 - **Apply** (candidate): `POST /me/applications` with the vacancy, a message of 1–4000 characters, at least one field
@@ -300,9 +359,9 @@ The specification's recurring short tasks keep a profile current and give employ
   tasks with their answer counts.
 - **Weekly offer** (candidate): `GET /me/tasks` returns the current period — the ISO week of the server clock, Monday
   00:00 UTC to the next Monday — and at most one task for it: an active task of any company on a skill the candidate
-  has evidence for (any state but «Недостаточно данных»), at or below the verified grade, not answered in an earlier
+  has evidence for (any state but «Недостаточно данных»), at or below the category grade, not answered in an earlier
   week, chosen by rotating the eligible tasks by the week number. An answer given this week keeps that task as the
-  week's task. Without a verified grade the reason is `assessment`, without processing consent `processing_consent`,
+  week's task. Without a category the reason is `category`, without processing consent `processing_consent`,
   without a matching task `no_tasks`.
 - **Answer:** `POST /me/tasks/{id}/responses` with `mode` (`solution` or `approach`), an answer of 1–10000 characters
   and an `Idempotency-Key`; one answer per week (`409 task_response_exists`) and only to the offered task
@@ -350,14 +409,14 @@ initiating candidate; failures carry `{ code, message, retryable }`. No backgrou
 ## 15. Capabilities and simulation
 
 `GET /api/v1/meta` reports the configured capabilities. The mock reports `mode: mock`; Rust reports `mode: live`
-while still marking demo features as simulated. Real LLM and GitHub OAuth flags indicate configured adapters.
-The stand currently enables Bifrost and leaves GitHub OAuth unconfigured. Development demo controls are absent
+while still marking demo features as simulated. Real LLM, GitHub OAuth and `githubInsights` (public GitHub analysis)
+flags indicate configured adapters. The stand enables Bifrost and GitHub insights and leaves GitHub OAuth unconfigured. Development demo controls are absent
 from production bundles. The `live` mode does not turn fixed-code email verification into proof of email ownership.
 
 The development mock uses demo email identity; Rust uses actual Resend delivery when configured. Both use fictional FSP participation. Knowledge tests have deterministic
 scoring; their public bank has no measured psychometric validity. Only the development mock simulates PDF extraction
 and assistant replies. Rust uses isolated Poppler extraction and Bifrost with validated evidence and no canned fallback.
-Rust persists application records and sessions; its initial candidate bank is synthetic. GitHub calls are real only
-when configured. Graph output is validated against input skills and references; employer projections remove evidence
+Rust persists application records and sessions; its initial candidate bank is synthetic. GitHub analysis is real
+when the insights service is configured; the mock returns the labelled fictional report of a synthetic account. Graph output is validated against input skills and references; employer projections remove evidence
 nodes. An LLM relation is a suggestion, not a qualification verdict. Real email delivery is implemented through Resend; GitHub OAuth setup remains
-deferred; official FSP integration and arbitrary code execution are outside the chosen product scope.
+deferred (ownership is proven by the bio code instead); official FSP integration and arbitrary code execution are outside the chosen product scope.

@@ -1,5 +1,14 @@
 import legacy from '../../backend/crates/domain/data/knowledge-v1.json';
 import additions from '../../backend/crates/domain/data/knowledge-v2-additions.json';
+import topicData from '../../backend/crates/domain/data/knowledge-v3-data.json';
+import topicEnterprise from '../../backend/crates/domain/data/knowledge-v3-enterprise.json';
+import topicInfrastructure from '../../backend/crates/domain/data/knowledge-v3-infrastructure.json';
+import topicMobile from '../../backend/crates/domain/data/knowledge-v3-mobile.json';
+import topicProduct from '../../backend/crates/domain/data/knowledge-v3-product.json';
+import topicQuality from '../../backend/crates/domain/data/knowledge-v3-quality.json';
+import topicSystems from '../../backend/crates/domain/data/knowledge-v3-systems.json';
+import topicWeb from '../../backend/crates/domain/data/knowledge-v3-web.json';
+import { GRADE_ORDER, SPECIALIZATIONS, testTopics } from './catalog.ts';
 import type { components } from './generated/schema.d.ts';
 
 type Schemas = components['schemas'];
@@ -10,7 +19,8 @@ type Specialization = Schemas['Assessment']['specialization'];
 type SkillId = Schemas['KnowledgeQuestion']['skillId'];
 type BankQuestion = {
   id: string;
-  specialization: Specialization;
+  /** `null` in the topic banks: the question serves every specialization tested on its topic. */
+  specialization: Specialization | null;
   grade: Grade;
   skillId: SkillId;
   prompt: string;
@@ -19,18 +29,7 @@ type BankQuestion = {
   explanation: string;
   source: string;
 };
-type TopicPair = readonly [readonly [SkillId, string], readonly [SkillId, string]];
-
-const topics: Partial<Record<Specialization, TopicPair>> = {
-  backend: [
-    ['rust', 'Rust'],
-    ['postgresql', 'PostgreSQL'],
-  ],
-  frontend: [
-    ['typescript', 'TypeScript'],
-    ['react', 'React'],
-  ],
-};
+const topics = (specialization: Specialization) => testTopics(specialization);
 
 const bank: BankQuestion[] = [
   ...legacy.questions.map((question) => ({
@@ -45,7 +44,31 @@ const bank: BankQuestion[] = [
     grade: question.grade as Grade,
     skillId: question.skillId as SkillId,
   })),
+  ...[
+    topicData,
+    topicEnterprise,
+    topicInfrastructure,
+    topicMobile,
+    topicProduct,
+    topicQuality,
+    topicSystems,
+    topicWeb,
+  ].flatMap((topicBank) =>
+    topicBank.questions.map((question) => ({
+      ...question,
+      specialization: null,
+      grade: question.grade as Grade,
+      skillId: question.skillId as SkillId,
+    })),
+  ),
 ];
+
+/** Questions a test of this specialization and grade may draw from, as the Rust `question_pool`. */
+const pool = (specialization: Specialization, grade: Grade) =>
+  bank.filter(
+    (question) =>
+      (question.specialization === null || question.specialization === specialization) && question.grade === grade,
+  );
 
 function stableHash(value: string): number {
   let hash = 0x811c9dc5;
@@ -53,15 +76,24 @@ function stableHash(value: string): number {
   return hash >>> 0;
 }
 
+/** Specializations and grades the bank can test: five questions for each of the two topics. */
+export function knowledgeScopes(): { specialization: Specialization; grades: Grade[] }[] {
+  return SPECIALIZATIONS.map((item) => ({
+    specialization: item.id,
+    grades: GRADE_ORDER.filter((grade) => knowledgeAvailable(item.id, grade)),
+  })).filter((scope) => scope.grades.length > 0);
+}
+
+/** Whether the bank can test this specialization and grade, as the Rust `knowledge_available`. */
+export function knowledgeAvailable(specialization: Specialization, grade: Grade): boolean {
+  return knowledgeTask(specialization, grade, 'availability') !== null;
+}
+
 export function knowledgeTask(specialization: Specialization, grade: Grade, variantKey: string): Task | null {
-  const selectedTopics = topics[specialization];
-  if (!selectedTopics) return null;
+  const selectedTopics = topics(specialization);
   const questions = selectedTopics.flatMap(([skillId]) =>
-    bank
-      .filter(
-        (question) =>
-          question.specialization === specialization && question.grade === grade && question.skillId === skillId,
-      )
+    pool(specialization, grade)
+      .filter((question) => question.skillId === skillId)
       .sort(
         (left, right) =>
           stableHash(`${variantKey}:${skillId}:${left.id}`) - stableHash(`${variantKey}:${skillId}:${right.id}`),
@@ -70,7 +102,7 @@ export function knowledgeTask(specialization: Specialization, grade: Grade, vari
   );
   if (questions.length !== 10) return null;
   const fingerprint = questions.map((question) => question.id).join('.');
-  const specializationTitle = specialization === 'backend' ? 'Rust и PostgreSQL' : 'TypeScript и React';
+  const specializationTitle = `${selectedTopics[0][1]} и ${selectedTopics[1][1]}`;
   return {
     id: `knowledge-${specialization}-${grade}-knowledge-v2`,
     family: `${specialization}-knowledge`,
@@ -79,7 +111,7 @@ export function knowledgeTask(specialization: Specialization, grade: Grade, vari
     title: `Тест знаний: ${specializationTitle}`,
     prompt:
       'Выберите один ответ в каждом из 10 вопросов. Для зачёта нужны минимум 8 верных ответов из 10 и минимум 3 из 5 по каждой теме. ИИ и справочники разрешены. Результат показывает знания по этому тесту, а не опыт написания кода.',
-    language: specialization === 'backend' ? 'backend' : 'frontend',
+    language: specialization,
     starterCode: '',
     execution: 'questionnaire',
     aiAllowed: true,
@@ -127,18 +159,11 @@ export function knowledgeCompletion(task: Task, answer: Answer): Schemas['Check'
 }
 
 export function scoreKnowledge(specialization: Specialization, grade: Grade, task: Task, answer: Answer) {
-  const selectedTopics = topics[specialization];
-  if (
-    !selectedTopics ||
-    task.version !== 'knowledge-v2' ||
-    !validKnowledgeAnswer(task, answer) ||
-    answer.responses?.length !== 10
-  )
+  const selectedTopics = topics(specialization);
+  if (task.version !== 'knowledge-v2' || !validKnowledgeAnswer(task, answer) || answer.responses?.length !== 10)
     return null;
   const selected = new Set(task.questions?.map((question) => question.id));
-  const questions = bank.filter(
-    (question) => question.specialization === specialization && question.grade === grade && selected.has(question.id),
-  );
+  const questions = pool(specialization, grade).filter((question) => selected.has(question.id));
   if (
     questions.length !== 10 ||
     selectedTopics.some(([skillId]) => questions.filter((question) => question.skillId === skillId).length !== 5)

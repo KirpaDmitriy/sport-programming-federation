@@ -1,5 +1,7 @@
+import { SKILLS } from './catalog.ts';
 import { fspResults } from './fsp-fixture.ts';
 import type { components } from './generated/schema.d.ts';
+import { githubFixtureReport, githubSource } from './github-fixture.ts';
 
 type S = components['schemas'];
 export type Grade = S['Profile']['selectedGrade'];
@@ -38,6 +40,8 @@ export interface Candidate {
   experience: string;
   softSkills: string[];
   consents: S['Profile']['consents'];
+  estimate: S['ProfileEstimate'] | null;
+  autoFields: S['Profile']['autoFields'];
   revision: number;
   updatedAt: string;
   workModes: S['AnonymousCandidate']['workModes'];
@@ -124,14 +128,12 @@ export interface State {
 }
 
 export const CLOCK = '2026-10-05T12:00:00.000Z';
-export const SKILLS: S['Meta']['skills'] = [
-  { id: 'rust', label: 'Rust' },
-  { id: 'postgresql', label: 'PostgreSQL' },
-  { id: 'docker', label: 'Docker' },
-  { id: 'redis', label: 'Redis' },
-  { id: 'typescript', label: 'TypeScript' },
-  { id: 'react', label: 'React' },
-];
+export { SKILLS } from './catalog.ts';
+
+/** The skills the seeded demo candidates hold evidence for. */
+const DEMO_SKILLS = SKILLS.filter((skill) =>
+  ['rust', 'postgresql', 'docker', 'redis', 'typescript', 'react'].includes(skill.id),
+);
 export const COMPETITIONS: S['Meta']['competitions'] = [
   {
     id: 'competition-demo-api',
@@ -251,7 +253,12 @@ export function sources(candidateId: string, options: SourceOptions = {}): [Sour
       verifiedParticipation: false,
       competitionIds: [],
       notice:
-        'Демонстрационные открытые данные. Анализ выполняется автоматически. Часы работы по GitHub не измеряются.',
+        'Демонстрационные данные GitHub. В рабочем режиме анализируются только публичные репозитории; метрики — сигналы активности, а не оценка навыков.',
+      github: githubSource(
+        candidateId,
+        connected ? githubFixtureReport(`demo-${candidateId.slice(-3)}`, CLOCK) : null,
+        connected ? CLOCK : null,
+      ),
     },
     {
       id: `source-${candidateId}-fsp`,
@@ -270,6 +277,7 @@ export function sources(candidateId: string, options: SourceOptions = {}): [Sour
       competitionIds: options.fspVerified ? ['competition-demo-api'] : [],
       notice:
         'Синтетический источник ФСП. Реальный API и данные участников не подключены. Участие в ФСП необязательно.',
+      github: null,
     },
   ];
 }
@@ -308,7 +316,7 @@ export function makeSkills(
   missingPostgres = false,
   frontend = false,
 ): SelfSkill[] {
-  return SKILLS.filter((skill) =>
+  return DEMO_SKILLS.filter((skill) =>
     frontend ? ['typescript', 'react'].includes(skill.id) : !['typescript', 'react'].includes(skill.id),
   ).map((skill) => {
     const status: SkillStatus =
@@ -378,6 +386,8 @@ export function makeCandidate(
     experience: fresh ? '' : 'Разработка API и командная работа над учебными и открытыми проектами.',
     softSkills: fresh ? [] : ['Командная работа', 'Объяснение решений'],
     consents: { processing: !fresh, publication: !fresh },
+    estimate: null,
+    autoFields: [],
     revision: 1,
     updatedAt: CLOCK,
     workModes: ['remote'],

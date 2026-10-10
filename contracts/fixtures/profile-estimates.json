@@ -1,0 +1,265 @@
+{
+  "fsp": {
+    "answers": {
+      "experience": "",
+      "experienceMonths": null,
+      "name": null,
+      "stack": [],
+      "teamRole": "Бэкенд-разработчик"
+    },
+    "computedAt": "2026-01-01T00:00:00Z",
+    "confidence": "low",
+    "factors": [
+      {
+        "detail": "Опубликованных результатов: 1; лучшее место — 3 из 18",
+        "id": "fsp",
+        "label": "Результаты соревнований ФСП",
+        "max": 15,
+        "points": 8
+      }
+    ],
+    "grade": "intern",
+    "insufficient": null,
+    "review": null,
+    "score": 16,
+    "sources": [
+      "fsp"
+    ],
+    "specialization": "backend",
+    "specializations": [
+      {
+        "id": "backend",
+        "percent": 50
+      },
+      {
+        "id": "fullstack",
+        "percent": 50
+      }
+    ],
+    "version": "estimate-v2"
+  },
+  "github": {
+    "answers": {
+      "experience": "Основные направления — бэкенд (83%) и фронтенд (17%); пишет в основном на Rust (71%) и TypeScript (17%). Ведёт 2 проекта в 1 организации (acme-labs). За год — 770 публичных коммитов. Ключевые технологии: GitHub Actions, Axum, FastAPI, HTTP-клиенты Python. Темы проектов: platform, rust, web. Главные проекты: project, platform.",
+      "experienceMonths": 45,
+      "name": "Иван Петров",
+      "stack": [
+        "rust",
+        "typescript",
+        "python",
+        "github_actions",
+        "actix",
+        "docker",
+        "fastapi",
+        "postgresql",
+        "react",
+        "sqlalchemy",
+        "tanstack",
+        "tokio"
+      ],
+      "teamRole": "Самостоятельно ведёт проекты"
+    },
+    "computedAt": "2026-01-01T00:00:00Z",
+    "confidence": "high",
+    "factors": [
+      {
+        "detail": "Несколько лет активности",
+        "id": "github_longevity",
+        "label": "Стаж публичной работы",
+        "max": 20,
+        "points": 14
+      },
+      {
+        "detail": "Несколько собственных проектов",
+        "id": "github_ownership",
+        "label": "Собственные проекты",
+        "max": 20,
+        "points": 5
+      },
+      {
+        "detail": "Проекты оформлены зрело: CI, тесты, зависимости и стиль",
+        "id": "github_craft",
+        "label": "Инженерная культура",
+        "max": 15,
+        "points": 14
+      },
+      {
+        "detail": "Совместная работа подтверждается слабо",
+        "id": "github_collaboration",
+        "label": "Совместная работа",
+        "max": 15,
+        "points": 6
+      },
+      {
+        "detail": "Небольшое признание сообщества",
+        "id": "github_impact",
+        "label": "Признание",
+        "max": 10,
+        "points": 4
+      },
+      {
+        "detail": "Заметная вовлечённость",
+        "id": "github_engagement",
+        "label": "Вовлечённость",
+        "max": 10,
+        "points": 7
+      },
+      {
+        "detail": "Стабильная регулярная активность на протяжении года",
+        "id": "github_consistency",
+        "label": "Регулярность",
+        "max": 10,
+        "points": 10
+      }
+    ],
+    "grade": "senior",
+    "insufficient": null,
+    "review": null,
+    "score": 60,
+    "sources": [
+      "github"
+    ],
+    "specialization": "backend",
+    "specializations": [
+      {
+        "id": "backend",
+        "percent": 59
+      },
+      {
+        "id": "frontend",
+        "percent": 19
+      },
+      {
+        "id": "fullstack",
+        "percent": 7
+      }
+    ],
+    "version": "estimate-v2"
+  },
+  "githubFsp": {
+    "answers": {
+      "experience": "Основные направления — бэкенд (83%) и фронтенд (17%); пишет в основном на Rust (71%) и TypeScript (17%). Ведёт 2 проекта в 1 организации (acme-labs). За год — 770 публичных коммитов. Ключевые технологии: GitHub Actions, Axum, FastAPI, HTTP-клиенты Python. Темы проектов: platform, rust, web. Главные проекты: project, platform.",
+      "experienceMonths": 45,
+      "name": "Иван Петров",
+      "stack": [
+        "rust",
+        "typescript",
+        "python",
+        "github_actions",
+        "actix",
+        "docker",
+        "fastapi",
+        "postgresql",
+        "react",
+        "sqlalchemy",
+        "tanstack",
+        "tokio"
+      ],
+      "teamRole": "Самостоятельно ведёт проекты"
+    },
+    "computedAt": "2026-01-01T00:00:00Z",
+    "confidence": "high",
+    "factors": [
+      {
+        "detail": "Несколько лет активности",
+        "id": "github_longevity",
+        "label": "Стаж публичной работы",
+        "max": 20,
+        "points": 14
+      },
+      {
+        "detail": "Несколько собственных проектов",
+        "id": "github_ownership",
+        "label": "Собственные проекты",
+        "max": 20,
+        "points": 5
+      },
+      {
+        "detail": "Проекты оформлены зрело: CI, тесты, зависимости и стиль",
+        "id": "github_craft",
+        "label": "Инженерная культура",
+        "max": 15,
+        "points": 14
+      },
+      {
+        "detail": "Совместная работа подтверждается слабо",
+        "id": "github_collaboration",
+        "label": "Совместная работа",
+        "max": 15,
+        "points": 6
+      },
+      {
+        "detail": "Небольшое признание сообщества",
+        "id": "github_impact",
+        "label": "Признание",
+        "max": 10,
+        "points": 4
+      },
+      {
+        "detail": "Заметная вовлечённость",
+        "id": "github_engagement",
+        "label": "Вовлечённость",
+        "max": 10,
+        "points": 7
+      },
+      {
+        "detail": "Стабильная регулярная активность на протяжении года",
+        "id": "github_consistency",
+        "label": "Регулярность",
+        "max": 10,
+        "points": 10
+      },
+      {
+        "detail": "Опубликованных результатов: 1; лучшее место — 3 из 18",
+        "id": "fsp",
+        "label": "Результаты соревнований ФСП",
+        "max": 15,
+        "points": 8
+      }
+    ],
+    "grade": "senior",
+    "insufficient": null,
+    "review": null,
+    "score": 68,
+    "sources": [
+      "github",
+      "fsp"
+    ],
+    "specialization": "backend",
+    "specializations": [
+      {
+        "id": "backend",
+        "percent": 57
+      },
+      {
+        "id": "fullstack",
+        "percent": 17
+      },
+      {
+        "id": "frontend",
+        "percent": 14
+      }
+    ],
+    "version": "estimate-v2"
+  },
+  "none": {
+    "answers": {
+      "experience": "",
+      "experienceMonths": null,
+      "name": null,
+      "stack": [],
+      "teamRole": ""
+    },
+    "computedAt": "2026-01-01T00:00:00Z",
+    "confidence": "low",
+    "factors": [],
+    "grade": null,
+    "insufficient": "Подключите GitHub или ФСП, чтобы оценить уровень",
+    "review": null,
+    "score": 0,
+    "sources": [],
+    "specialization": null,
+    "specializations": [],
+    "version": "estimate-v2"
+  }
+}

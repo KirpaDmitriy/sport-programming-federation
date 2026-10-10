@@ -1,7 +1,7 @@
 {
   "contractVersion": "0.1.0",
-  "routeCount": 79,
-  "coveredOperationCount": 79,
+  "routeCount": 80,
+  "coveredOperationCount": 80,
   "operations": [
     {
       "operationId": "getHealth",
@@ -96,6 +96,15 @@
       ]
     },
     {
+      "operationId": "refreshMyEstimate",
+      "method": "POST",
+      "path": "/api/v1/me/profile/estimate",
+      "observedStatuses": [
+        200,
+        409
+      ]
+    },
+    {
       "operationId": "exportMyProfile",
       "method": "GET",
       "path": "/api/v1/me/profile/export",
@@ -125,7 +134,8 @@
       "path": "/api/v1/me/sources/{provider}/connect",
       "observedStatuses": [
         200,
-        404
+        404,
+        422
       ]
     },
     {

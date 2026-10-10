@@ -283,82 +283,328 @@ async fn idempotent_command_and_claim_roll_back_if_response_cannot_be_stored() {
     );
 }
 
-#[tokio::test(flavor = "current_thread")]
-async fn source_ingestion_updates_evidence_without_inventing_or_overwriting_grades() {
-    struct GitHub;
-    #[async_trait::async_trait]
-    impl fsp_application::GitHubGateway for GitHub {
-        fn authorization_url(
-            &self,
-            _: &str,
-            _: &str,
-        ) -> Result<String, fsp_application::IntegrationError> {
-            unreachable!()
-        }
-        async fn exchange_code(
-            &self,
-            _: &str,
-        ) -> Result<String, fsp_application::IntegrationError> {
-            unreachable!()
-        }
-        async fn analyze(
-            &self,
-            username: &str,
-            _: &str,
-        ) -> Result<fsp_domain::GitHubAnalysis, fsp_application::IntegrationError> {
-            Ok(fsp_domain::GitHubAnalysis {
-                username: username.into(),
-                active_days: 2,
-                observed_from: None,
-                observed_to: None,
-                repositories: vec![fsp_domain::AnalyzedRepository {
-                    id: "repo-1".into(),
-                    name: "project".into(),
-                    url: "https://github.com/owner/project".into(),
-                    technologies: vec!["rust".into(), "react".into()],
-                    metrics: fsp_domain::RepositoryMetrics {
-                        stars: 1,
-                        forks: 0,
-                        open_issues: 0,
-                        size_kib: 5,
-                        pushed_at: None,
-                    },
-                }],
-            })
+/// The synthetic report of `contracts/fixtures` (an owned Rust/React project, a led organization
+/// project and two commits in someone else's Redis library), under the canonical login.
+fn github_report(login: &str) -> fsp_domain::GitHubReport {
+    let mut report: fsp_domain::GitHubReport = serde_json::from_str(include_str!(
+        "../../../../contracts/fixtures/github-report.json"
+    ))
+    .unwrap();
+    report.login = login.into();
+    report
+}
+
+/// A fake analysis service. Analyses finish after `pending` polls that carry the ownership code
+/// (progress views without the code do not advance them); the bio holds the code only for
+/// logins listed in `verified`.
+struct Insights {
+    verified: &'static [&'static str],
+    pending: std::sync::atomic::AtomicU32,
+}
+
+impl Insights {
+    fn finished(verified: &'static [&'static str]) -> Self {
+        Self::after(0, verified)
+    }
+
+    fn after(pending: u32, verified: &'static [&'static str]) -> Self {
+        Self {
+            verified,
+            pending: pending.into(),
         }
     }
-    let (repository, _database) = repository().await;
-    let repository = Arc::new(repository);
-    let service = PlatformService::new(repository.clone(), Arc::new(FixedDelivery))
-        .with_github(Arc::new(GitHub));
-    service.initialize().await.unwrap();
+
+    fn state(&self, login: &str, ownership_code: Option<&str>) -> fsp_application::InsightsStatus {
+        use std::sync::atomic::Ordering;
+        let pending = self.pending.load(Ordering::SeqCst);
+        if pending > 0 {
+            if ownership_code.is_some() {
+                self.pending.store(pending - 1, Ordering::SeqCst);
+            }
+            return fsp_application::InsightsStatus::Pending {
+                queued: false,
+                stage: "Клонирование и разбор истории".into(),
+                progress: 40,
+            };
+        }
+        // GitHub answers with the canonical login whatever case was typed.
+        let canonical = login.to_ascii_lowercase();
+        fsp_application::InsightsStatus::Done(Box::new(fsp_application::GitHubInsights {
+            ownership_code_found: Some(self.verified.contains(&canonical.as_str())),
+            report: github_report(&canonical),
+        }))
+    }
+}
+
+#[async_trait::async_trait]
+impl fsp_application::GitHubInsightsGateway for Insights {
+    async fn submit(
+        &self,
+        login: &str,
+        ownership_code: Option<&str>,
+        _: bool,
+    ) -> Result<fsp_application::InsightsStatus, fsp_application::IntegrationError> {
+        assert!(ownership_code.is_some_and(|code| code.starts_with("fsp-")));
+        Ok(self.state(login, ownership_code))
+    }
+
+    async fn status(
+        &self,
+        login: &str,
+        ownership_code: Option<&str>,
+    ) -> Result<Option<fsp_application::InsightsStatus>, fsp_application::IntegrationError> {
+        Ok(Some(self.state(login, ownership_code)))
+    }
+}
+
+async fn signed_in_candidate(
+    service: &PlatformService,
+    repository: &PostgresRepository,
+    email: &str,
+) -> fsp_application::SessionView {
     let challenge = service
         .request_challenge(EmailChallengeInput {
-            email: "alexey@example.com".into(),
+            email: email.into(),
             role: Role::Candidate,
         })
         .await
         .unwrap();
-    let (session, _) = service
+    let session = service
+        .verify_email(EmailVerifyInput {
+            challenge_id: challenge.challenge_id,
+            code: "123456".into(),
+        })
+        .await
+        .unwrap()
+        .0;
+    let id = session.candidate_id.as_deref().unwrap();
+    let mut profile = repository.candidate(id).await.unwrap().unwrap();
+    profile.consents.processing = true;
+    repository.save_candidate(&profile).await.unwrap();
+    session
+}
+
+/// An LLM that keeps the specialization, rates one grade lower and rewrites the team role.
+struct Reviewer;
+
+#[async_trait::async_trait]
+impl fsp_application::LlmGateway for Reviewer {
+    async fn extract_resume(
+        &self,
+        _: &[fsp_domain::PdfPage],
+    ) -> Result<fsp_domain::ResumeExtraction, fsp_application::IntegrationError> {
+        unreachable!()
+    }
+    async fn assessment_help(
+        &self,
+        _: &fsp_domain::AssessmentHelpRequest,
+    ) -> Result<fsp_domain::AssessmentHelpReply, fsp_application::IntegrationError> {
+        unreachable!()
+    }
+    async fn extract_graph(
+        &self,
+        _: &fsp_domain::GraphExtractionRequest,
+    ) -> Result<fsp_domain::ExtractedGraph, fsp_application::IntegrationError> {
+        unreachable!()
+    }
+    async fn match_repository(
+        &self,
+        _: &fsp_domain::RepositoryMatchRequest,
+    ) -> Result<fsp_domain::RepositoryCompetitionMatch, fsp_application::IntegrationError> {
+        unreachable!()
+    }
+    async fn review_profile(
+        &self,
+        request: &fsp_domain::ProfileReviewRequest,
+    ) -> Result<fsp_domain::ProfileReviewReply, fsp_application::IntegrationError> {
+        // The review sees anonymized evidence only.
+        let serialized = serde_json::to_string(request).unwrap();
+        assert!(!serialized.contains("Иван") && !serialized.contains("auto-dev"));
+        Ok(fsp_domain::ProfileReviewReply {
+            specialization: Specialization::Backend,
+            grade: Grade::Middle,
+            rationale: "Стабильная работа над собственными проектами".into(),
+            experience: "Разрабатывает API на Rust и веб-интерфейсы на TypeScript.".into(),
+            team_role: "Ведёт бэкенд-проекты".into(),
+        })
+    }
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn connecting_github_builds_the_profile_and_an_estimated_category() {
+    let (repository, _database) = repository().await;
+    let repository = Arc::new(repository);
+    let service = PlatformService::new(repository.clone(), Arc::new(FixedDelivery))
+        .with_github_insights(Arc::new(Insights::finished(&[])))
+        .with_llm(Arc::new(Reviewer));
+    service.initialize().await.unwrap();
+    let session = signed_in_candidate(&service, &repository, "auto-profile@example.com").await;
+    let profile = service.profile(&session).await.unwrap();
+    assert_eq!(profile.name, fsp_domain::DEFAULT_CANDIDATE_NAME);
+    assert!(profile.estimate.is_none());
+    assert!(profile.onboarding.blockers.contains(&"category"));
+    let error = service.refresh_estimate(&session).await.unwrap_err();
+    assert_eq!(error.code, "source_not_connected");
+
+    service
+        .connect_source(
+            &session,
+            "github",
+            fsp_application::SourceConnectInput {
+                account: "auto-dev".into(),
+            },
+        )
+        .await
+        .unwrap();
+    // The rules apply with the source; the LLM review joins them in the background.
+    let mut profile = service.profile(&session).await.unwrap();
+    for _ in 0..100 {
+        if profile
+            .estimate
+            .as_ref()
+            .is_some_and(|estimate| estimate.review.is_some())
+        {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        profile = service.profile(&session).await.unwrap();
+    }
+    assert_eq!(profile.name, "Иван Петров");
+    assert_eq!(profile.specialization, Specialization::Backend);
+    assert_eq!(profile.selected_grade, Grade::Senior);
+    assert_eq!(profile.stack.len(), 12);
+    assert_eq!(profile.auto_fields.len(), fsp_domain::AUTO_FIELDS.len());
+    assert_eq!(profile.team_role, "Ведёт бэкенд-проекты");
+    let estimate = profile.estimate.as_ref().unwrap();
+    assert_eq!(
+        estimate.grade,
+        Some(Grade::Senior),
+        "the grade stays rule-based"
+    );
+    assert!(!estimate.review.as_ref().unwrap().agrees);
+    assert_eq!(estimate.confidence, fsp_domain::SignalConfidence::Medium);
+    assert_eq!(
+        profile.category.source,
+        Some(fsp_domain::CategorySource::Estimate)
+    );
+    assert_eq!(profile.category.grade, Some(Grade::Senior));
+    assert!(!profile.onboarding.blockers.contains(&"category"));
+    assert!(!profile.onboarding.blockers.contains(&"questionnaire"));
+
+    // An edited answer stays the candidate's; publication makes the estimated category searchable.
+    service
+        .update_profile(
+            &session,
+            ProfilePatch {
+                team_role: Some("Тимлид".into()),
+                consents: Some(fsp_domain::Consents {
+                    processing: true,
+                    publication: true,
+                }),
+                ..ProfilePatch::default()
+            },
+        )
+        .await
+        .unwrap();
+    let mut refreshed = service.refresh_estimate(&session).await.unwrap();
+    for _ in 0..100 {
+        if refreshed
+            .estimate
+            .as_ref()
+            .is_some_and(|estimate| estimate.review.is_some())
+        {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        refreshed = service.profile(&session).await.unwrap();
+    }
+    assert_eq!(refreshed.team_role, "Тимлид");
+    assert!(
+        !refreshed
+            .auto_fields
+            .iter()
+            .any(|field| field == "teamRole")
+    );
+    assert!(refreshed.onboarding.visible_to_employers);
+
+    let challenge = service
+        .request_challenge(EmailChallengeInput {
+            email: "hr@sever-tech.example".into(),
+            role: Role::Employer,
+        })
+        .await
+        .unwrap();
+    let (employer, _) = service
         .verify_email(EmailVerifyInput {
             challenge_id: challenge.challenge_id,
             code: "123456".into(),
         })
         .await
         .unwrap();
+    let search = |source| CandidateSearch {
+        specialization: Some(Specialization::Backend),
+        category_source: Some(source),
+        page: 1,
+        page_size: 50,
+        ..CandidateSearch::default()
+    };
+    let estimated = service
+        .candidate_search(&employer, search(fsp_domain::CategorySource::Estimate))
+        .await
+        .unwrap();
+    let card = estimated
+        .items
+        .iter()
+        .find(|item| Some(item.id.as_str()) == session.candidate_id.as_deref())
+        .expect("the estimated candidate is in the bank");
+    assert_eq!(card.grade, Grade::Senior);
+    assert_eq!(card.verified_grade, None);
+    assert_eq!(
+        card.category_confidence,
+        Some(fsp_domain::SignalConfidence::Medium)
+    );
+    assert_eq!(card.estimate.as_ref().unwrap().factors.len(), 7);
+    let confirmed = service
+        .candidate_search(&employer, search(fsp_domain::CategorySource::Assessment))
+        .await
+        .unwrap();
+    assert!(!confirmed.items.is_empty());
+    assert!(
+        confirmed
+            .items
+            .iter()
+            .all(|item| item.category_source == fsp_domain::CategorySource::Assessment)
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn source_ingestion_updates_evidence_without_inventing_or_overwriting_grades() {
+    let (repository, _database) = repository().await;
+    let repository = Arc::new(repository);
+    let service = PlatformService::new(repository.clone(), Arc::new(FixedDelivery))
+        .with_github_insights(Arc::new(Insights::finished(&[])));
+    service.initialize().await.unwrap();
+    let session = signed_in_candidate(&service, &repository, "alexey@example.com").await;
     let id = session.candidate_id.as_deref().unwrap();
-    repository.save_github_token(id, "fixture").await.unwrap();
     let before = repository.candidate_index(id).await.unwrap().unwrap();
     let source = service
         .connect_source(
             &session,
             "github",
             fsp_application::SourceConnectInput {
-                account: "owner".into(),
+                account: "https://github.com/owner".into(),
             },
         )
         .await
         .unwrap();
+    assert_eq!(source.account_label.as_deref(), Some("owner"));
+    let github = source.github.as_ref().unwrap();
+    assert!(!github.ownership.verified);
+    assert!(github.ownership.code.starts_with("fsp-"));
+    assert_eq!(github.report.as_ref().unwrap().login, "owner");
+    assert!(github.analysis.is_none());
+    assert!(source.active_job_id.is_none());
+    assert!(!github.employer_preview.as_ref().unwrap().ownership_verified);
     let connected = repository.candidate_index(id).await.unwrap().unwrap();
     assert_eq!(
         connected.profile.verified_grade,
@@ -391,11 +637,178 @@ async fn source_ingestion_updates_evidence_without_inventing_or_overwriting_grad
         .unwrap();
     assert_eq!(react.status, fsp_domain::EvidenceStatus::Evidence);
     assert_eq!(react.evidence_grade, None);
+    // Two commits to someone else's repository are not evidence of the candidate's Redis skill.
+    assert!(
+        connected
+            .skills
+            .iter()
+            .find(|skill| skill.skill_id == "redis")
+            .is_none_or(|skill| !skill.sources.contains(&fsp_domain::EvidenceSource::Github))
+    );
     let job = service.sync_source(&session, &source.id).await.unwrap();
     assert_eq!(job.status, "succeeded");
     let synced = repository.candidate_index(id).await.unwrap().unwrap();
     assert_eq!(synced.skills, connected.skills);
     assert_eq!(synced.profile.verified_grade, before.profile.verified_grade);
+
+    let invalid = service
+        .connect_source(
+            &session,
+            "github",
+            fsp_application::SourceConnectInput {
+                account: "https://github.com/owner/project".into(),
+            },
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(
+        (invalid.status, invalid.code),
+        (422, "github_login_invalid")
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn a_running_github_analysis_is_applied_when_its_job_is_polled() {
+    let (repository, _database) = repository().await;
+    let repository = Arc::new(repository);
+    let service = PlatformService::new(repository.clone(), Arc::new(FixedDelivery))
+        .with_github_insights(Arc::new(Insights::after(3, &[])));
+    service.initialize().await.unwrap();
+    let session = signed_in_candidate(&service, &repository, "async@example.com").await;
+    let id = session.candidate_id.as_deref().unwrap();
+    let source = service
+        .connect_source(
+            &session,
+            "github",
+            fsp_application::SourceConnectInput {
+                account: "owner".into(),
+            },
+        )
+        .await
+        .unwrap();
+    let job_id = source.active_job_id.clone().unwrap();
+    let github = source.github.as_ref().unwrap();
+    assert!(github.report.is_none());
+    assert_eq!(github.analysis.as_ref().unwrap().state, "running");
+    let listed = service.sources(&session).await.unwrap();
+    let listed = listed
+        .items
+        .iter()
+        .find(|item| item.provider == fsp_domain::SourceProvider::Github)
+        .unwrap();
+    assert_eq!(listed.active_job_id.as_deref(), Some(job_id.as_str()));
+    assert_eq!(
+        listed
+            .github
+            .as_ref()
+            .unwrap()
+            .analysis
+            .as_ref()
+            .unwrap()
+            .progress,
+        40
+    );
+    // A sync while the analysis runs follows the same job.
+    let again = service.sync_source(&session, &source.id).await.unwrap();
+    assert_eq!(again.id, job_id);
+    // Connecting again replaces the running analysis; the replaced job fails as stale.
+    let replaced = service
+        .connect_source(
+            &session,
+            "github",
+            fsp_application::SourceConnectInput {
+                account: "@owner".into(),
+            },
+        )
+        .await
+        .unwrap();
+    let stale = service.job(&session, &job_id).await.unwrap();
+    assert_eq!(stale.status, "failed");
+    assert_eq!(stale.error.unwrap().code, "stale_input");
+    let job_id = replaced.active_job_id.unwrap();
+    let running = service.job(&session, &job_id).await.unwrap();
+    assert_eq!(
+        (running.status.as_str(), running.poll_after_ms),
+        ("running", 2_000)
+    );
+    assert!(
+        !repository
+            .candidate_index(id)
+            .await
+            .unwrap()
+            .unwrap()
+            .skills
+            .iter()
+            .any(|skill| skill.sources.contains(&fsp_domain::EvidenceSource::Github))
+    );
+    let done = service.job(&session, &job_id).await.unwrap();
+    assert_eq!(done.status, "succeeded");
+    // Polling a finished job replays it.
+    assert_eq!(
+        service.job(&session, &job_id).await.unwrap().status,
+        "succeeded"
+    );
+    let stored = repository.sources(id).await.unwrap();
+    let stored = stored
+        .iter()
+        .find(|item| item.provider == fsp_domain::SourceProvider::Github)
+        .unwrap();
+    assert!(stored.active_job_id.is_none());
+    assert!(
+        stored
+            .analysis
+            .as_ref()
+            .and_then(|analysis| analysis.report.as_ref())
+            .is_some()
+    );
+    let rust = repository
+        .candidate_index(id)
+        .await
+        .unwrap()
+        .unwrap()
+        .skills
+        .into_iter()
+        .find(|skill| skill.skill_id == "rust")
+        .unwrap();
+    assert!(rust.sources.contains(&fsp_domain::EvidenceSource::Github));
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn a_github_account_can_be_proven_by_only_one_candidate() {
+    let (repository, _database) = repository().await;
+    let repository = Arc::new(repository);
+    let service = PlatformService::new(repository.clone(), Arc::new(FixedDelivery))
+        .with_github_insights(Arc::new(Insights::finished(&["owner"])));
+    service.initialize().await.unwrap();
+    let first = signed_in_candidate(&service, &repository, "first@example.com").await;
+    let source = service
+        .connect_source(
+            &first,
+            "github",
+            fsp_application::SourceConnectInput {
+                account: "@owner".into(),
+            },
+        )
+        .await
+        .unwrap_or_else(|error| panic!("{} {}", error.code, error.message));
+    let ownership = &source.github.as_ref().unwrap().ownership;
+    assert!(ownership.verified);
+    assert_eq!(
+        ownership.method,
+        Some(fsp_domain::OwnershipMethod::ProfileCode)
+    );
+    let second = signed_in_candidate(&service, &repository, "second@example.com").await;
+    let taken = service
+        .connect_source(
+            &second,
+            "github",
+            fsp_application::SourceConnectInput {
+                account: "OWNER".into(),
+            },
+        )
+        .await
+        .unwrap_err();
+    assert_eq!((taken.status, taken.code), (409, "github_account_taken"));
 }
 
 #[tokio::test(flavor = "current_thread")]

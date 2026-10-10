@@ -1,4 +1,5 @@
 import type { components } from '@/shared/api';
+import { CATALOG_VERSION, GRADES, SKILL_CATEGORIES, SKILLS, SPECIALIZATIONS } from '@/shared/api';
 
 type S = components['schemas'];
 
@@ -39,7 +40,9 @@ export function profile(overrides: Partial<S['Profile']> = {}): S['Profile'] {
     verifiedGrade: 'junior',
     verifiedSpecialization: 'backend',
     gradeConfirmedAt: '2026-06-01T12:00:00.000Z',
-    category: { specialization: 'backend', grade: 'junior', eligible: true },
+    category: { specialization: 'backend', grade: 'junior', eligible: true, source: 'assessment', confidence: null },
+    estimate: null,
+    autoFields: [],
     freshness: { lastSignalAt: '2026-06-01T12:00:00.000Z', lastSignal: 'assessment', fresh: false, windowDays: 90 },
     onboarding: {
       emailVerified: true,
@@ -119,6 +122,7 @@ export const meta: S['Meta'] = {
     profilePdfImport: true,
     githubFixture: true,
     githubOAuth: false,
+    githubInsights: false,
     fspFixture: true,
     matching: true,
     directInvitations: true,
@@ -140,10 +144,11 @@ export const meta: S['Meta'] = {
     supportedScopes: [{ specialization: 'backend', grades: ['junior', 'middle', 'senior'] }],
   },
   competitions: [],
-  skills: [
-    { id: 'rust', label: 'Rust' },
-    { id: 'postgresql', label: 'PostgreSQL' },
-  ],
+  catalogVersion: CATALOG_VERSION,
+  grades: [...GRADES],
+  specializations: SPECIALIZATIONS.map(({ id, label, short, group }) => ({ id, label, short, group })),
+  skillCategories: [...SKILL_CATEGORIES],
+  skills: [...SKILLS],
 };
 
 export function assessment(overrides: Partial<S['Assessment']> = {}): S['Assessment'] {

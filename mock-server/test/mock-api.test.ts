@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { readdirSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { readFile, writeFile } from 'node:fs/promises';
 import { request as rawHttpRequest } from 'node:http';
 import test, { after, type TestContext } from 'node:test';
@@ -84,8 +84,22 @@ async function setup(t: TestContext, options: MockServerOptions = {}) {
   }
   return { app, url, request, login, job, client };
 }
+const dataDirectory = new URL('../../backend/crates/domain/data/', import.meta.url);
+// The topic banks (knowledge-v3-*.json) serve every specialization tested on their topics.
+const topicQuestions = readdirSync(dataDirectory)
+  .filter((name) => name.startsWith('knowledge-v3-'))
+  .flatMap(
+    (name) =>
+      JSON.parse(readFileSync(new URL(name, dataDirectory), 'utf8')).questions as {
+        id: string;
+        correctOptionId: string;
+      }[],
+  );
 const answerKey = new Map(
-  [...bank.questions, ...additions.questions].map((question) => [question.id, question.correctOptionId]),
+  [...bank.questions, ...additions.questions, ...topicQuestions].map((question) => [
+    question.id,
+    question.correctOptionId,
+  ]),
 );
 const assessmentAnswerFor = (task: Body) => ({
   code: '',
@@ -135,6 +149,17 @@ test('canonical contract matches generator and all declared routes have explicit
   assert.equal(file.openapi, '3.1.0');
   for (const route of routeTable.filter((entry) => entry.dev))
     assert.equal(file.paths[route.path]?.[route.method]?.['x-mock-only'], true);
+});
+
+test('the Rust GitHub report and employer projection match the contract schemas', async () => {
+  for (const [file, schema] of [
+    ['github-report.json', 'GitHubReport'],
+    ['github-signal.json', 'GitHubSignal'],
+  ] as const) {
+    const value = JSON.parse(await readFile(new URL(`../../contracts/fixtures/${file}`, import.meta.url), 'utf8'));
+    const validate = validators[schema];
+    assert.ok(validate(value), `${file}: ${JSON.stringify(validate.errors)}`);
+  }
 });
 
 test('error-codes.json lists every code, status and literal message the mock raises', async () => {
@@ -421,7 +446,7 @@ test('profile category is server-owned and publication consent does not replace 
   await request('GET', '/api/v1/candidates/candidate-new', { actor: employer, status: 404 });
 });
 
-test('source enrichment is automatic, asynchronous, private and does not infer hours or grades', async (t) => {
+test('source enrichment is automatic, asynchronous, private and never infers grades', async (t) => {
   const { request, login, job } = await setup(t);
   const candidate = await login('candidate024');
   const other = await login('candidate-new');
@@ -432,7 +457,9 @@ test('source enrichment is automatic, asynchronous, private and does not infer h
   const github = sources.find((source: Body) => source.provider === 'github');
   assert.deepEqual(github.counts, { found: 12, processed: 8, queued: 3, unavailable: 1 });
   assert.ok(github.activeJobId);
+  // Daily time is only an explicitly labelled estimate inside the GitHub report.
   for (const key of Object.keys(github)) assert.ok(!/hours/i.test(key));
+  assert.ok(github.github.report.rhythm.medianMinutesPerActiveDay > 0);
   await request('GET', `/api/v1/jobs/${github.activeJobId}`, { actor: other, status: 404 });
   await request('GET', `/api/v1/jobs/${github.activeJobId}`, { actor: employer, status: 404 });
   const completed = await job(github.activeJobId, candidate);
@@ -770,6 +797,190 @@ test('need CRUD validates salary and evidence policies without tenant crossover 
   await request('GET', '/api/v1/needs', { actor: b });
   await request('DELETE', `/api/v1/needs/${item.id}`, { actor: b, status: 204 });
   await request('GET', `/api/v1/needs/${item.id}`, { actor: b, status: 404 });
+});
+
+test('GitHub connects by login or profile link, stays unverified without proof and reaches employers anonymously', async (t) => {
+  const { request, login, job } = await setup(t, { scenario: 'qualified' });
+  const candidate = await login('candidate024');
+  const employer = await login('employer-a');
+  for (const account of ['https://github.com/octo-cat/repo', 'octo_cat', 'https://gitlab.com/octo-cat'])
+    assert.equal(
+      (
+        await request('POST', '/api/v1/me/sources/github/connect', {
+          actor: candidate,
+          body: { account },
+          status: 422,
+        })
+      ).body.code,
+      'github_login_invalid',
+    );
+  const source = (
+    await request('POST', '/api/v1/me/sources/github/connect', {
+      actor: candidate,
+      body: { account: 'https://github.com/Octo-Cat/' },
+    })
+  ).body;
+  assert.equal(source.accountLabel, 'Octo-Cat');
+  assert.equal(source.github.ownership.verified, false);
+  assert.match(source.github.ownership.code, /^fsp-/);
+  // The analysis runs in the background; the report arrives with its job.
+  assert.equal(source.github.report, null);
+  assert.equal(source.github.analysis.state, 'running');
+  await job(source.activeJobId, candidate);
+  const analyzed = (await request('GET', '/api/v1/me/sources', { actor: candidate })).body.items.find(
+    (item: Body) => item.provider === 'github',
+  );
+  assert.equal(analyzed.activeJobId, null);
+  assert.equal(analyzed.github.analysis, null);
+  assert.equal(analyzed.github.report.login, 'Octo-Cat');
+  assert.equal(analyzed.github.report.activity.calendar.length, 365);
+  assert.equal(analyzed.github.employerPreview.ownershipVerified, false);
+  const seen = (await request('GET', '/api/v1/candidates/candidate024', { actor: employer })).body;
+  assertAnonymous(seen);
+  assert.equal(seen.github.ownershipVerified, false);
+  assert.deepEqual(seen.github, analyzed.github.employerPreview);
+  const serialized = JSON.stringify(seen.github);
+  for (const hidden of ['Octo-Cat', 'demo-company', 'calendar', 'login', 'url'])
+    assert.ok(!serialized.includes(hidden), `${hidden} leaked to the employer`);
+  assert.equal((await request('GET', '/api/v1/me/profile', { actor: candidate })).body.verifiedGrade, 'middle');
+});
+
+test('connecting GitHub builds the profile and an estimated category; edited answers stay', async (t) => {
+  const { request, client, login, job } = await setup(t);
+  const challenge = (
+    await request('POST', '/api/v1/auth/email/challenges', {
+      body: { email: 'auto-profile@example.com', role: 'candidate' },
+      status: 201,
+    })
+  ).body;
+  const candidate = client();
+  await request('POST', '/api/v1/auth/email/verify', {
+    actor: candidate,
+    body: { challengeId: challenge.challengeId, code: '123456' },
+  });
+  let profile = (
+    await request('PATCH', '/api/v1/me/profile', {
+      actor: candidate,
+      body: { consents: { processing: true, publication: true } },
+    })
+  ).body;
+  assert.equal(profile.name, 'Новый кандидат');
+  assert.deepEqual(profile.onboarding.blockers, ['questionnaire', 'category']);
+  assert.equal(profile.estimate, null);
+  assert.equal(
+    (await request('POST', '/api/v1/me/profile/estimate', { actor: candidate, status: 409 })).body.code,
+    'source_not_connected',
+  );
+  const source = (
+    await request('POST', '/api/v1/me/sources/github/connect', { actor: candidate, body: { account: 'auto-dev' } })
+  ).body;
+  await job(source.activeJobId, candidate);
+  profile = (await request('GET', '/api/v1/me/profile', { actor: candidate })).body;
+  assert.equal(profile.name, 'Иван Петров');
+  assert.equal(profile.specialization, 'backend');
+  assert.equal(profile.selectedGrade, 'senior');
+  assert.equal(profile.stack.length, 12);
+  assert.equal(profile.experienceMonths, 45);
+  assert.equal(profile.estimate.version, 'estimate-v2');
+  assert.deepEqual([...profile.autoFields].sort(), [
+    'experience',
+    'experienceMonths',
+    'name',
+    'selectedGrade',
+    'specialization',
+    'stack',
+    'teamRole',
+  ]);
+  assert.deepEqual(profile.category, {
+    specialization: 'backend',
+    grade: 'senior',
+    eligible: true,
+    source: 'estimate',
+    confidence: 'high',
+  });
+  assert.deepEqual(profile.onboarding.blockers, []);
+  // An edited answer is the candidate's from then on; an unchanged one stays automatic.
+  profile = (
+    await request('PATCH', '/api/v1/me/profile', {
+      actor: candidate,
+      body: { teamRole: 'Тимлид', name: profile.name },
+    })
+  ).body;
+  assert.ok(!profile.autoFields.includes('teamRole'));
+  assert.ok(profile.autoFields.includes('name'));
+  profile = (await request('POST', '/api/v1/me/profile/estimate', { actor: candidate })).body;
+  assert.equal(profile.teamRole, 'Тимлид');
+  assert.equal(profile.selectedGrade, 'senior');
+  // Employers see the estimated category, its source and factors; no names or the experience text.
+  const employer = await login('employer-a');
+  const estimated = (
+    await request('GET', '/api/v1/candidates?categorySource=estimate&specialization=backend', { actor: employer })
+  ).body;
+  assertAnonymous(estimated);
+  assert.ok(!JSON.stringify(estimated).includes('Иван'));
+  const card = estimated.items.find((item: Body) => item.id === profile.id);
+  assert.equal(card.grade, 'senior');
+  assert.equal(card.categorySource, 'estimate');
+  assert.equal(card.categoryConfidence, 'high');
+  assert.equal(card.verifiedGrade, null);
+  assert.equal(card.estimate.factors.length, 7);
+  const confirmed = (await request('GET', '/api/v1/candidates?categorySource=assessment', { actor: employer })).body;
+  assert.ok(confirmed.items.length > 0);
+  assert.ok(confirmed.items.every((item: Body) => item.categorySource === 'assessment' && item.estimate === null));
+});
+
+test('every catalog specialization is testable; a 1C test confirms the category', async (t) => {
+  const { request, client, job } = await setup(t);
+  const meta = (await request('GET', '/api/v1/meta')).body;
+  assert.equal(meta.assessmentPolicy.supportedScopes.length, 25);
+  for (const scope of meta.assessmentPolicy.supportedScopes)
+    assert.deepEqual(scope.grades, ['intern', 'junior', 'middle', 'senior', 'lead']);
+  const challenge = (
+    await request('POST', '/api/v1/auth/email/challenges', {
+      body: { email: 'onec-developer@example.com', role: 'candidate' },
+      status: 201,
+    })
+  ).body;
+  const candidate = client();
+  await request('POST', '/api/v1/auth/email/verify', {
+    actor: candidate,
+    body: { challengeId: challenge.challengeId, code: '123456' },
+  });
+  await request('PATCH', '/api/v1/me/profile', {
+    actor: candidate,
+    body: {
+      name: 'Ольга Смирнова',
+      specialization: 'onec',
+      selectedGrade: 'middle',
+      stack: ['onec_language', 'onec_queries'],
+      teamRole: 'Разработчик 1С',
+      experience: 'Доработки 1С:ERP и обмены данными.',
+      consents: { processing: true, publication: true },
+    },
+  });
+  const item = (
+    await request('POST', '/api/v1/me/assessments', {
+      actor: candidate,
+      body: { specialization: 'onec', grade: 'middle' },
+      status: 201,
+    })
+  ).body;
+  assert.equal(item.task.title, 'Тест знаний: Встроенный язык 1С и Язык запросов 1С');
+  assert.equal(item.task.questions.length, 10);
+  await request('PUT', `/api/v1/me/assessments/${item.id}/answer`, {
+    actor: candidate,
+    body: assessmentAnswerFor(item.task),
+  });
+  const submitted = (
+    await request('POST', `/api/v1/me/assessments/${item.id}/submit`, { actor: candidate, status: 202 })
+  ).body;
+  assert.equal((await job(submitted.id, candidate)).result.assessment.status, 'passed');
+  const profile = (await request('GET', '/api/v1/me/profile', { actor: candidate })).body;
+  assert.equal(profile.verifiedSpecialization, 'onec');
+  assert.deepEqual(
+    [profile.category.specialization, profile.category.grade, profile.category.source],
+    ['onec', 'middle', 'assessment'],
+  );
 });
 
 test('candidate bank is anonymous, deterministic and distinguishes qualification from skill evidence', async (t) => {
@@ -1135,7 +1346,7 @@ test('weekly tasks come from evidenced skills, are answered once a week and keep
     fresh: false,
     windowDays: 90,
   });
-  assert.equal((await request('GET', '/api/v1/me/tasks', { actor: fresh })).body.reason, 'assessment');
+  assert.equal((await request('GET', '/api/v1/me/tasks', { actor: fresh })).body.reason, 'category');
   const answer = { mode: 'approach', answer: 'Очередь попыток с экспоненциальной задержкой и пределом попыток.' };
   await request('POST', '/api/v1/me/tasks/task-001/responses', { actor: candidate, body: answer, status: 409 });
   const response = (
@@ -1269,6 +1480,9 @@ test('companies author and archive short tasks; archived tasks are no longer off
 test('PDF export is a real current-profile PDF; fixture import is asynchronous and explicitly confirmed', async (t) => {
   const { request, login, job } = await setup(t);
   const candidate = await login('candidate024');
+  // The seeded source sync changes the profile revision when it finishes; an import starts after it.
+  for (const source of (await request('GET', '/api/v1/me/sources', { actor: candidate })).body.items)
+    if (source.activeJobId) await job(source.activeJobId, candidate);
   const exported = await request('GET', '/api/v1/me/profile/export', { actor: candidate });
   assert.ok(exported.buffer.subarray(0, 5).equals(Buffer.from('%PDF-')));
   assert.ok(exported.buffer.subarray(-1024).includes(Buffer.from('%%EOF')));

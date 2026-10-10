@@ -48,9 +48,13 @@ backend:
 fsp-simulator:
     cd backend && cargo run -p fsp-integration-fsp-synthetic --bin fsp-simulator
 
-# Graph-guided interview service on 127.0.0.1:4030.
+# Graph-guided interview service on 127.0.0.1:4040.
 interview:
     cd backend && INTERVIEW_API_TOKEN=${INTERVIEW_API_TOKEN:-demo-interview-token} cargo run -p fsp-interview-service
+
+# Public GitHub analysis on 127.0.0.1:4030; needs GITHUB_TOKEN and FSP_GITHUB_INSIGHTS_URL for the API.
+github-insights:
+    cd backend && cargo run -p fsp-github-insights --bin fsp-github-insights
 
 # Local PostgreSQL for development and tests (127.0.0.1:5434, user/db "fsp")
 db-up:

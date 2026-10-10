@@ -1,11 +1,15 @@
 export {
+  AUTO_FIELD_HINT,
+  type AutoField,
   blockerLabel,
   type Eligibility,
   eligibilityReasonText,
   type Onboarding,
   type Profile,
+  type ProfileEstimate,
   type ProfilePatch,
   profileKey,
   profileQuery,
+  refreshEstimate,
   updateProfile,
 } from './model';

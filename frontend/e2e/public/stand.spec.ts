@@ -51,12 +51,13 @@ test('a new candidate and two companies complete the reverse-hiring flow', async
   await expect(publication).toHaveAttribute('aria-checked', 'true');
   await candidate.getByLabel('Имя и фамилия').fill('Ирина Стендова');
   await candidate.getByLabel('Грейд для проверки').selectOption('junior');
-  await candidate.getByRole('button', { name: 'Rust' }).click();
+  await candidate.getByRole('combobox', { name: 'Стек' }).fill('Rust');
+  await candidate.getByRole('option', { name: /^Rust/ }).click();
   await candidate.getByRole('textbox', { name: 'Опыт', exact: true }).fill('Проекты на Rust.');
   await candidate.getByLabel('Роль в команде').fill('Разработчик');
   await candidate.getByRole('button', { name: 'Сохранить анкету' }).click();
   await expect(candidate.getByText('Профиль сохранён')).toBeVisible();
-  await candidate.getByRole('button', { name: 'Подтвердить уровень' }).click();
+  await candidate.getByRole('button', { name: 'Пройти тест' }).click();
   await candidate.waitForURL(/\/workspace$/);
   await answerKnowledgeTest(candidate);
   await candidate.getByRole('button', { name: 'Отправить ответы' }).click();

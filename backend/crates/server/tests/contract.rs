@@ -229,10 +229,17 @@ async fn fresh_candidate_completes_assessment() {
     .await;
     assert_eq!(status, StatusCode::OK, "{profile}");
     assert_eq!(profile["onboarding"]["questionnaireComplete"], true);
+    assert_eq!(profile["onboarding"]["blockers"], json!(["category"]));
+    assert_eq!(profile["category"]["source"], Value::Null);
+    assert_eq!(profile["estimate"], Value::Null);
     assert_eq!(
         profile["assessmentEligibility"]["selectedReason"],
         Value::Null
     );
+    // Without a connected source there is nothing to estimate from.
+    let (status, refused) = post(&app, "/api/v1/me/profile/estimate", Some(&cookie)).await;
+    assert_eq!(status, StatusCode::CONFLICT, "{refused}");
+    assert_eq!(code(&refused), "source_not_connected");
     let (status, assessment) = send_keyed(
         &app,
         "POST",
@@ -277,6 +284,8 @@ async fn fresh_candidate_completes_assessment() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(profile["verifiedGrade"], "junior");
     assert_eq!(profile["verifiedSpecialization"], "backend");
+    assert_eq!(profile["category"]["source"], "assessment");
+    assert_eq!(profile["category"]["grade"], "junior");
 }
 
 #[tokio::test]
@@ -997,8 +1006,8 @@ async fn assessment_guards_cooldown_and_downgrade() {
     .await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
     assert_eq!(code(&body), "grade_downgrade_forbidden");
-    // The frontend specialization is outside the supported scope.
-    let (status, body) = send_keyed(
+    // Every catalog specialization and grade has a test now; other guards may still apply.
+    let (_, body) = send_keyed(
         &app,
         "POST",
         "/api/v1/me/assessments",
@@ -1007,8 +1016,7 @@ async fn assessment_guards_cooldown_and_downgrade() {
         json!({"specialization": "frontend", "grade": "senior"}),
     )
     .await;
-    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
-    assert_eq!(code(&body), "assessment_scope_unavailable");
+    assert_ne!(code(&body), "assessment_scope_unavailable");
 }
 
 #[tokio::test]
@@ -1343,6 +1351,35 @@ async fn candidate_bank_anonymous_and_sorted() {
             .iter()
             .all(|item| item["fspVerified"] == true)
     );
+    // Seeded categories are test-confirmed; the confirmation filter separates them from estimates.
+    let (status, confirmed) = get(
+        &app,
+        "/api/v1/candidates?categorySource=assessment&page=1&pageSize=10",
+        Some(&employer),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(confirmed["total"], page["total"]);
+    for item in confirmed["items"].as_array().unwrap() {
+        assert_eq!(item["categorySource"], "assessment");
+        assert_eq!(item["grade"], item["verifiedGrade"]);
+        assert_eq!(item["estimate"], Value::Null);
+    }
+    let (status, estimated) = get(
+        &app,
+        "/api/v1/candidates?categorySource=estimate",
+        Some(&employer),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(estimated["total"], 0);
+    let (status, invalid) = get(
+        &app,
+        "/api/v1/candidates?categorySource=guess",
+        Some(&employer),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{invalid}");
 }
 
 #[tokio::test]
@@ -1609,7 +1646,9 @@ async fn assistant_uses_saved_answer_and_never_issues_a_grade() {
     .await;
     assert_eq!(status, StatusCode::OK, "{reply}");
     assert_eq!(reply["simulation"], false);
-    assert!(reply["message"].as_str().unwrap().contains("mr-arc"));
+    // The variant (and so the questions) depends on the assessment id; the saved answer names them.
+    let question = assessment["task"]["questions"][0]["id"].as_str().unwrap();
+    assert!(reply["message"].as_str().unwrap().contains(question));
     assert!(
         reply["message"]
             .as_str()

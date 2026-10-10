@@ -1,3 +1,12 @@
+import {
+  CATALOG_VERSION,
+  GRADE_ORDER,
+  GRADES,
+  SKILL_CATEGORIES,
+  SPECIALIZATIONS,
+  specializationShort,
+  testTopics,
+} from './catalog.ts';
 import type { OperationId, Route } from './contract.ts';
 import {
   type Actor,
@@ -17,6 +26,7 @@ import {
   type Need,
   nextId,
   type Scenario,
+  type SelfSkill,
   SKILLS,
   type Source,
   type State,
@@ -24,9 +34,32 @@ import {
   type TaskRecord,
   type TaskResponse,
 } from './data.ts';
+import {
+  type AutoField,
+  applyEstimate,
+  categoryOf,
+  categoryStrength,
+  DEFAULT_CANDIDATE_NAME,
+  questionnaireComplete,
+  sourceEstimate,
+} from './estimate.ts';
 import { fspResults } from './fsp-fixture.ts';
 import type { components } from './generated/schema.d.ts';
-import { knowledgeCompletion, knowledgeTask, scoreKnowledge, validKnowledgeAnswer } from './knowledge.ts';
+import {
+  GITHUB_ANALYSIS_STARTED,
+  githubFixtureReport,
+  githubSignal,
+  githubSource,
+  parseGitHubLogin,
+} from './github-fixture.ts';
+import {
+  knowledgeAvailable,
+  knowledgeCompletion,
+  knowledgeScopes,
+  knowledgeTask,
+  scoreKnowledge,
+  validKnowledgeAnswer,
+} from './knowledge.ts';
 
 type Schemas = components['schemas'];
 
@@ -56,9 +89,14 @@ const must = <T>(value: T | null | undefined, what: string): T => {
   if (value === null || value === undefined) throw new Error(`Inconsistent mock state: ${what}`);
   return value;
 };
-const rank: Record<Grade, number> = { junior: 1, middle: 2, senior: 3 };
+const rank = Object.fromEntries(GRADE_ORDER.map((grade, index) => [grade, index])) as Record<Grade, number>;
 // A missing grade compares as NaN, so every comparison with it is false.
 const rankOf = (grade: Grade | null | undefined) => (grade ? rank[grade] : Number.NaN);
+/** The catalog order, which the Rust `Specialization` enum follows. */
+const specializationRank = Object.fromEntries(SPECIALIZATIONS.map((item, index) => [item.id, index])) as Record<
+  Schemas['Profile']['specialization'],
+  number
+>;
 const activeAssessment = new Set<AssessmentRecord['status']>(['draft', 'in_progress', 'submitted', 'evaluating']);
 const terminalStatus = new Set<InvitationRecord['status']>(['accepted', 'declined', 'withdrawn']);
 const pick = <T, K extends keyof T>(value: T, keys: readonly K[]): Pick<T, K> =>
@@ -127,26 +165,20 @@ const processing = (candidate: Candidate) =>
 
 function onboarding(candidate: Candidate): Schemas['Onboarding'] {
   const emailVerified = candidate.emailVerified;
-  const questionnaireComplete = Boolean(
-    candidate.name.trim() &&
-      candidate.specialization &&
-      candidate.selectedGrade &&
-      candidate.stack.length &&
-      candidate.teamRole.trim() &&
-      candidate.experience.trim(),
-  );
+  const complete = questionnaireComplete(candidate);
   const assessmentPassed = Boolean(candidate.verifiedGrade && candidate.verifiedSpecialization);
+  const category = categoryOf(candidate);
   const blockers: Schemas['Onboarding']['blockers'] = [];
   if (!emailVerified) blockers.push('email');
-  if (!questionnaireComplete) blockers.push('questionnaire');
-  if (!assessmentPassed) blockers.push('assessment');
+  if (!complete) blockers.push('questionnaire');
+  if (!category) blockers.push('category');
   if (!candidate.consents.processing) blockers.push('processing_consent');
   if (!candidate.consents.publication) blockers.push('publication_consent');
   return {
     emailVerified,
-    questionnaireComplete,
+    questionnaireComplete: complete,
     assessmentPassed,
-    readyForPublication: emailVerified && questionnaireComplete && assessmentPassed && candidate.consents.processing,
+    readyForPublication: emailVerified && complete && category !== null && candidate.consents.processing,
     visibleToEmployers: blockers.length === 0,
     blockers,
   };
@@ -174,8 +206,7 @@ function eligibility(s: State, candidate: Candidate): Schemas['GradeEligibility'
   const selectedReason =
     reason === 'onboarding_incomplete' || reason === 'active_assessment'
       ? reason
-      : candidate.specialization === 'fullstack' ||
-          (candidate.specialization === 'frontend' && candidate.selectedGrade === 'senior')
+      : !knowledgeAvailable(candidate.specialization, candidate.selectedGrade)
         ? 'unsupported_scope'
         : candidate.verifiedSpecialization === candidate.specialization &&
             rankOf(candidate.selectedGrade) < rankOf(candidate.verifiedGrade)
@@ -212,6 +243,8 @@ const profileKeys = [
   'verifiedGrade',
   'verifiedSpecialization',
   'gradeConfirmedAt',
+  'estimate',
+  'autoFields',
   'revision',
   'updatedAt',
 ] as const;
@@ -240,19 +273,36 @@ function freshness(s: State, candidate: Candidate): Schemas['Freshness'] {
 }
 function profileDto(s: State, candidate: Candidate): Schemas['Profile'] {
   const form = onboarding(candidate);
+  const category = categoryOf(candidate);
   return {
-    ...pick(candidate, profileKeys),
+    ...structuredClone(pick(candidate, profileKeys)),
     category: {
-      specialization: candidate.verifiedSpecialization,
-      grade: candidate.verifiedGrade,
+      specialization: category?.specialization ?? null,
+      grade: category?.grade ?? null,
       eligible: form.visibleToEmployers,
+      source: category?.source ?? null,
+      confidence: category?.confidence ?? null,
     },
     freshness: freshness(s, candidate),
     onboarding: form,
     assessmentEligibility: eligibility(s, candidate),
   };
 }
+const autoFields: readonly AutoField[] = [
+  'name',
+  'specialization',
+  'selectedGrade',
+  'stack',
+  'experienceMonths',
+  'experience',
+  'teamRole',
+];
+/** An answer the candidate changes is theirs from then on: estimates no longer overwrite it. */
 function patchProfile(s: State, candidate: Candidate, patch: Schemas['ProfilePatch']): Schemas['Profile'] {
+  const changed = autoFields.filter(
+    (field) => field in patch && JSON.stringify(patch[field]) !== JSON.stringify(candidate[field]),
+  );
+  candidate.autoFields = candidate.autoFields.filter((field) => !changed.includes(field));
   Object.assign(candidate, structuredClone(patch), { revision: candidate.revision + 1, updatedAt: s.clock });
   return profileDto(s, candidate);
 }
@@ -313,8 +363,8 @@ function match(candidate: Candidate, need: Need): Schemas['Match'] {
   });
   const required = requirements.filter((item) => item.criticality === 'required');
   const desired = requirements.filter((item) => item.criticality === 'desired');
-  const gradeMatches =
-    candidate.verifiedSpecialization === need.specialization && rankOf(candidate.verifiedGrade) >= rankOf(need.grade);
+  const category = categoryOf(candidate);
+  const gradeMatches = category?.specialization === need.specialization && rankOf(category.grade) >= rankOf(need.grade);
   const requiredMet = required.filter((item) => item.status === 'meets').length;
   const desiredMet = desired.filter((item) => item.status === 'meets').length;
   const status = required.some((item) => item.status === 'not_evidenced')
@@ -333,19 +383,32 @@ function match(candidate: Candidate, need: Need): Schemas['Match'] {
     requirements,
     explanation: gradeMatches
       ? `Подтверждено обязательных требований: ${requiredMet} из ${required.length}.`
-      : 'Подтверждённая специализация или грейд пока не соответствуют потребности.',
+      : 'Специализация или грейд категории пока не соответствуют потребности.',
     algorithmVersion: 'fixture-rules-v1',
   };
 }
 const fspVerified = (candidate: Candidate) =>
   candidate.sources.some((source) => source.provider === 'fsp' && source.verifiedParticipation);
 function anonymous(s: State, candidate: Candidate, need: Need | null = null): Schemas['AnonymousCandidate'] {
+  const category = must(categoryOf(candidate), 'visible candidate without a category');
+  const estimate = candidate.estimate;
   return {
     id: candidate.id,
     alias: candidate.alias,
-    specialization: must(candidate.verifiedSpecialization, 'visible candidate without specialization'),
-    verifiedGrade: must(candidate.verifiedGrade, 'visible candidate without grade'),
-    gradeConfirmedAt: must(candidate.gradeConfirmedAt, 'visible candidate without confirmation date'),
+    specialization: category.specialization,
+    grade: category.grade,
+    categorySource: category.source,
+    categoryConfidence: category.confidence,
+    verifiedGrade: candidate.verifiedGrade,
+    gradeConfirmedAt: candidate.gradeConfirmedAt,
+    estimate:
+      category.source === 'estimate' && estimate
+        ? {
+            score: estimate.score,
+            computedAt: estimate.computedAt,
+            factors: estimate.factors.map(({ id, label, points, max }) => ({ id, label, points, max })),
+          }
+        : null,
     workModes: [...candidate.workModes],
     availableForOffers: true,
     skills: candidate.skills.map((skill) => pick(skill, publicSkillKeys)),
@@ -358,16 +421,20 @@ function anonymous(s: State, candidate: Candidate, need: Need | null = null): Sc
     fspVerified: fspVerified(candidate),
     freshness: freshness(s, candidate),
     match: need ? match(candidate, need) : null,
+    github: githubProjection(candidate),
     simulation: true,
   };
 }
-const roleLabels = { backend: 'Бэкенд', frontend: 'Фронтенд', fullstack: 'Фулстек' } as const;
+function githubProjection(candidate: Candidate): Schemas['GitHubSignal'] | null {
+  const github = candidate.sources.find((source) => source.provider === 'github')?.github;
+  return github?.report ? githubSignal(github.report, github.ownership.verified) : null;
+}
 function graph(candidate: Candidate, audience: Schemas['Graph']['audience']): Schemas['Graph'] {
   const nodes: Schemas['GraphNode'][] = [
     {
       id: 'role-main',
       kind: 'role',
-      label: roleLabels[candidate.verifiedSpecialization ?? candidate.specialization],
+      label: specializationShort(candidate.verifiedSpecialization ?? candidate.specialization),
       skillId: null,
       status: null,
     },
@@ -502,7 +569,7 @@ const activeApplication = (s: State, candidateId: string, needId: string) =>
 const eligibilityMessage = {
   email: 'Подтвердите почту, чтобы откликаться на вакансии',
   questionnaire: 'Заполните анкету, чтобы откликаться на вакансии',
-  assessment: 'Подтвердите грейд тестом знаний, чтобы откликаться на вакансии',
+  category: 'Подключите GitHub или ФСП либо пройдите тест знаний, чтобы откликаться на вакансии',
   processing_consent: 'Для отклика необходимо согласие на обработку данных',
   application_exists: 'Вы уже откликнулись на эту вакансию',
 } as const satisfies Record<NonNullable<Schemas['ApplicationEligibility']['reason']>, string>;
@@ -512,8 +579,8 @@ function applicationEligibility(s: State, candidate: Candidate, need: Need): Sch
     ? 'email'
     : !form.questionnaireComplete
       ? 'questionnaire'
-      : !form.assessmentPassed
-        ? 'assessment'
+      : !categoryOf(candidate)
+        ? 'category'
         : !candidate.consents.processing
           ? 'processing_consent'
           : activeApplication(s, candidate.id, need.id)
@@ -527,7 +594,7 @@ function publishedNeed(s: State, id: string): Need {
 }
 function vacancyDto(s: State, need: Need, candidate: Candidate): Schemas['Vacancy'] {
   const company = companyDto(must(s.companies.get(need.companyId), 'vacancy company'));
-  const qualified = onboarding(candidate).assessmentPassed && candidate.consents.processing;
+  const qualified = categoryOf(candidate) !== null && candidate.consents.processing;
   return {
     id: need.id,
     company: pick(company, ['id', 'displayName', 'businessArea', 'description', 'contactEmail']),
@@ -558,7 +625,7 @@ type TaskOffer = {
   reason: Schemas['MyTasks']['reason'];
 };
 /**
- * One task per week: active tasks of any company on a skill the candidate has evidence for, at or below the verified
+ * One task per week: active tasks of any company on a skill the candidate has evidence for, at or below the category
  * grade, not answered in an earlier week, rotated by the week number. An answer given this week stays the week's task.
  */
 function taskOffer(s: State, candidate: Candidate): TaskOffer {
@@ -566,7 +633,8 @@ function taskOffer(s: State, candidate: Candidate): TaskOffer {
   const responses = responsesOf(s, candidate.id);
   const answeredNow = responses.find((item) => item.submittedAt >= from);
   if (answeredNow) return { current: answeredNow.task, currentResponse: answeredNow, reason: null };
-  if (!onboarding(candidate).assessmentPassed) return { current: null, currentResponse: null, reason: 'assessment' };
+  const category = categoryOf(candidate);
+  if (!category) return { current: null, currentResponse: null, reason: 'category' };
   if (!candidate.consents.processing) return { current: null, currentResponse: null, reason: 'processing_consent' };
   const evidenced = new Set(
     candidate.skills.filter((skill) => skill.status !== 'insufficient').map((skill) => skill.skillId),
@@ -577,7 +645,7 @@ function taskOffer(s: State, candidate: Candidate): TaskOffer {
       (task) =>
         task.status === 'active' &&
         evidenced.has(task.skillId) &&
-        rankOf(task.grade) <= rankOf(candidate.verifiedGrade) &&
+        rankOf(task.grade) <= rankOf(category.grade) &&
         !answered.has(task.id),
     )
     .sort((a, b) => a.id.localeCompare(b.id));
@@ -743,6 +811,14 @@ function startSourceSync(s: State, actor: Actor, candidate: Candidate, source: S
       };
       source.lastSyncedAt = s.clock;
       source.activeJobId = null;
+      if (source.github) {
+        const login = source.github.report?.login ?? source.accountLabel ?? 'demo';
+        source.github = githubSource(
+          candidate.id,
+          githubFixtureReport(login, s.clock),
+          source.github.ownership.verifiedAt,
+        );
+      }
       if (source.provider === 'github' && !candidate.skills.length)
         candidate.skills = makeSkills(candidate.id).map((skill) =>
           skill.status === 'confirmed'
@@ -757,12 +833,15 @@ function startSourceSync(s: State, actor: Actor, candidate: Candidate, source: S
               }
             : skill,
         );
+      applyEstimate(candidate, sourceEstimate(candidate, s.clock));
+      candidate.revision += 1;
       candidate.updatedAt = s.clock;
       return { kind: 'source_sync', source: structuredClone(source) };
     },
     { sourceId: source.id },
   );
   source.activeJobId = job.id;
+  if (source.github) source.github.analysis = { ...GITHUB_ANALYSIS_STARTED };
   return job;
 }
 function completeAssessment(s: State, candidate: Candidate, item: AssessmentRecord): JobResult {
@@ -787,16 +866,9 @@ function completeAssessment(s: State, candidate: Candidate, item: AssessmentReco
       candidate.verifiedGrade = item.grade;
       candidate.verifiedSpecialization = item.specialization;
       if (gradeChanged) candidate.gradeConfirmedAt = s.clock;
-      const confirmedSkills =
-        item.specialization === 'backend' ? (['rust', 'postgresql'] as const) : (['typescript', 'react'] as const);
-      for (const skillId of confirmedSkills) {
+      // The two catalog topics of the test become confirmed skills, as in the Rust service.
+      for (const [skillId, label] of testTopics(item.specialization)) {
         const previous = candidate.skills.find((skill) => skill.skillId === skillId);
-        const current = must(
-          makeSkills(candidate.id, true, false, item.specialization === 'frontend').find(
-            (skill) => skill.skillId === skillId,
-          ),
-          `seed skill ${skillId}`,
-        );
         const assessmentEvidence = {
           ...must(evidenceFor(candidate.id, skillId, 'confirmed')[0], 'assessment evidence'),
           id: `evidence-${item.id}-${skillId}`,
@@ -804,8 +876,11 @@ function completeAssessment(s: State, candidate: Candidate, item: AssessmentReco
           observedAt: s.clock,
         };
         const evidence = [...(previous?.evidence ?? []), assessmentEvidence];
-        const updated = {
-          ...current,
+        const updated: SelfSkill = {
+          skillId,
+          label,
+          status: 'confirmed',
+          summary: 'Подтверждено проверкой платформы',
           evidenceGrade: item.grade,
           confirmedAt: s.clock,
           evidence,
@@ -855,6 +930,7 @@ function advanceJob(s: State, job: JobRecord, phase: 'running' | 'complete') {
     if (job.sourceId) {
       const source = candidate.sources.find((item) => item.id === job.sourceId);
       if (source) source.activeJobId = null;
+      if (source?.github) source.github.analysis = null;
     }
     if (job.kind === 'assessment' && assessment) {
       assessment.status = 'service_error';
@@ -917,6 +993,7 @@ const handlers: Handlers = {
       profilePdfImport: true,
       githubFixture: true,
       githubOAuth: false,
+      githubInsights: false,
       fspFixture: true,
       matching: true,
       directInvitations: true,
@@ -934,12 +1011,13 @@ const handlers: Handlers = {
       sameGradeRetryCooldownDays: 0,
       aiAllowed: true,
       externalAiAllowed: true,
-      supportedScopes: [
-        { specialization: 'backend', grades: ['junior', 'middle', 'senior'] },
-        { specialization: 'frontend', grades: ['junior', 'middle'] },
-      ],
+      supportedScopes: knowledgeScopes(),
     },
     competitions: COMPETITIONS,
+    catalogVersion: CATALOG_VERSION,
+    grades: GRADES,
+    specializations: SPECIALIZATIONS,
+    skillCategories: SKILL_CATEGORIES,
     skills: SKILLS,
   }),
   createEmailChallenge: ({ s, body }) => {
@@ -975,7 +1053,7 @@ const handlers: Handlers = {
     if (!actor) {
       if (challenge.role === 'candidate') {
         const id = nextId(s, 'candidate');
-        const candidate = makeCandidate(id, { name: 'Новый участник', email: challenge.email, fresh: true });
+        const candidate = makeCandidate(id, { name: DEFAULT_CANDIDATE_NAME, email: challenge.email, fresh: true });
         candidate.alias = `Кандидат №${id.slice(-3)}`;
         s.candidates.set(id, candidate);
         actor = { id, role: 'candidate', candidateId: id, companyId: null, email: challenge.email };
@@ -1062,6 +1140,16 @@ const handlers: Handlers = {
     job.confirmed = true;
     return updated;
   },
+  refreshMyEstimate: (ctx) => {
+    const candidate = me(ctx);
+    processing(candidate);
+    if (!candidate.sources.some((source) => source.status === 'connected' && !source.activeJobId))
+      fail(409, 'source_not_connected', 'Подключите GitHub или ФСП, чтобы оценить профиль');
+    applyEstimate(candidate, sourceEstimate(candidate, ctx.s.clock));
+    candidate.revision += 1;
+    candidate.updatedAt = ctx.s.clock;
+    return profileDto(ctx.s, candidate);
+  },
   exportMyProfile: (ctx) => ({ pdfProfile: profileDto(ctx.s, me(ctx)) }),
   authorizeGitHub: () => ({
     authorizationUrl: 'https://github.com/login/oauth/authorize?client_id=fixture&state=fixture',
@@ -1081,11 +1169,20 @@ const handlers: Handlers = {
             fspVerified: ctx.body.account === 'FSP-DEMO-024' || ctx.body.account === 'FSP-DEMO-031',
           });
     const connected = provider === 'github' ? github : fsp;
-    connected.accountLabel = provider === 'fsp' ? ctx.body.account.trim().toUpperCase() : ctx.body.account;
-    if (provider === 'fsp') {
-      if (!/^[A-Za-z0-9_-]+$/.test(connected.accountLabel))
+    if (provider === 'github') {
+      const login =
+        parseGitHubLogin(ctx.body.account) ??
+        fail(422, 'github_login_invalid', 'Укажите имя пользователя GitHub или ссылку на профиль');
+      connected.accountLabel = login;
+      // A fresh claim stays unverified until the bio carries the code; the mock cannot read a bio.
+      // The report arrives when the analysis job completes, as with the insights service.
+      connected.github = githubSource(candidate.id, null, null);
+    } else {
+      const account = ctx.body.account.trim().toUpperCase();
+      if (!/^[A-Za-z0-9_-]+$/.test(account))
         fail(400, 'validation_error', 'Используйте буквы, цифры, дефис или подчёркивание в ФСП ID');
-      connected.fspResults = fspResults(connected.accountLabel);
+      connected.accountLabel = account;
+      connected.fspResults = fspResults(account);
       connected.competitionIds = connected.fspResults
         .filter((r) => r.status === 'published')
         .map((r) => r.competitionId);
@@ -1125,10 +1222,7 @@ const handlers: Handlers = {
     const form = onboarding(candidate);
     if (!form.emailVerified || !form.questionnaireComplete)
       fail(409, 'onboarding_incomplete', 'Подтвердите почту и заполните анкету');
-    if (
-      ctx.body.specialization === 'fullstack' ||
-      (ctx.body.specialization === 'frontend' && ctx.body.grade === 'senior')
-    )
+    if (!knowledgeAvailable(ctx.body.specialization, ctx.body.grade))
       fail(422, 'assessment_scope_unavailable', 'Для выбранной специализации и грейда тест пока недоступен');
     if (
       [...ctx.s.assessments.values()].some(
@@ -1412,31 +1506,42 @@ const handlers: Handlers = {
     if (mode === 'recommended' && !need) fail(422, 'need_required', 'Для рекомендаций выберите потребность');
     let items = [...ctx.s.candidates.values()].filter((candidate) => isVisible(ctx.s, candidate));
     if (mode === 'recommended' && need)
-      items = items.filter(
-        (candidate) =>
-          candidate.verifiedSpecialization === need.specialization &&
-          rankOf(candidate.verifiedGrade) >= rankOf(need.grade),
-      );
+      items = items.filter((candidate) => {
+        const category = categoryOf(candidate);
+        return category?.specialization === need.specialization && rankOf(category.grade) >= rankOf(need.grade);
+      });
     const specialization = queryText(ctx.query, 'specialization');
     const grade = queryText(ctx.query, 'grade');
+    const source = queryText(ctx.query, 'categorySource');
     const skill = queryText(ctx.query, 'skill');
-    if (specialization) items = items.filter((candidate) => candidate.verifiedSpecialization === specialization);
-    if (grade) items = items.filter((candidate) => candidate.verifiedGrade === grade);
+    if (specialization) items = items.filter((candidate) => categoryOf(candidate)?.specialization === specialization);
+    if (grade) items = items.filter((candidate) => categoryOf(candidate)?.grade === grade);
+    if (source) items = items.filter((candidate) => categoryOf(candidate)?.source === source);
     if (skill)
       items = items.filter((candidate) =>
         candidate.skills.some((entry) => entry.skillId === skill && entry.status !== 'insufficient'),
       );
     if (queryText(ctx.query, 'fsp') === 'verified') items = items.filter(fspVerified);
+    // Within a grade, test-confirmed categories lead, then estimates by confidence.
+    const strength = (item: Schemas['AnonymousCandidate']) =>
+      categoryStrength({
+        specialization: item.specialization,
+        grade: item.grade,
+        source: item.categorySource,
+        confidence: item.categoryConfidence,
+      });
     let result = items.map((candidate) => anonymous(ctx.s, candidate, need));
     result.sort((a, b) =>
       a.match && b.match
         ? Number(b.match.gradeMatches) - Number(a.match.gradeMatches) ||
           b.match.requiredMet - a.match.requiredMet ||
           b.match.desiredMet - a.match.desiredMet ||
+          strength(b) - strength(a) ||
           Number(b.fspVerified) - Number(a.fspVerified) ||
           a.id.localeCompare(b.id)
-        : a.specialization.localeCompare(b.specialization) ||
-          rank[b.verifiedGrade] - rank[a.verifiedGrade] ||
+        : specializationRank[a.specialization] - specializationRank[b.specialization] ||
+          rank[b.grade] - rank[a.grade] ||
+          strength(b) - strength(a) ||
           Number(b.fspVerified) - Number(a.fspVerified) ||
           a.id.localeCompare(b.id),
     );

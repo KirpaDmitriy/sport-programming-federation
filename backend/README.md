@@ -12,7 +12,8 @@ persists accounts, sessions, profiles, sources, processing jobs and the matching
 | `crates/application` | `fsp-application` | Use cases and outbound ports for persistence, verification, GitHub, FSP and LLM analysis |
 | `crates/http` | `fsp-http` | Inbound adapter on axum: routing, origin check, `X-Request-Id`, the error envelope `{ code, message, requestId, details }`, `GET /health`, `404 not_found` for unknown routes |
 | `crates/storage-postgres` | `fsp-storage-postgres` | PostgreSQL adapter on `sqlx`/`PgPool`: embedded migrations and the synthetic demo seed |
-| `crates/integration-github` | `fsp-integration-github` | GitHub OAuth and bounded repository analysis |
+| `crates/integration-github` | `fsp-integration-github` | Client of the GitHub insights service and GitHub OAuth identity (an optional ownership proof) |
+| `crates/github-insights` | `fsp-github-insights` (binary `fsp-github-insights`) | Separate loopback service: analyzes public GitHub work in the background without a token (search, REST, blobless clones) and computes the documented portrait and heuristics ([GitHub insights](../docs/github-insights.md)) |
 | `crates/integration-fsp-synthetic` | `fsp-integration-fsp-synthetic` | Bounded HTTP adapter and separate fictional FSP simulator |
 | `crates/integration-bifrost` | `fsp-integration-bifrost` | Optional Bifrost adapter for graph extraction and repository-to-competition matching |
 | `crates/integration-email` | `fsp-integration-email` | Resend delivery with random codes and bounded HTTP; fixed-code delivery for local demo mode |
@@ -54,6 +55,7 @@ next run without forcibly disconnecting an active test.
 | `FSP_ALLOWED_ORIGINS` | `http://127.0.0.1:5173,http://localhost:5173` | Comma-separated browser origins accepted on requests with `Origin`; others get `403 origin_not_allowed` |
 | `DATABASE_URL` | `postgres://fsp:fsp@127.0.0.1:5434/fsp` | PostgreSQL connection; migrations and the demo seed run on startup |
 | `FSP_SIMULATOR_URL` | `http://127.0.0.1:4020` | Private fictional participant-results provider; start with `just fsp-simulator` |
+| `FSP_GITHUB_INSIGHTS_URL` | unset | Enables GitHub connection through the insights service (`just github-insights`, port 4030); the service needs `git` and no token |
 | `FSP_AUTH_MODE` | `demo` | `demo` uses a fixed local code; `resend` sends real random codes. Unknown values abort startup |
 | `RESEND_API_KEY` | unset | Required in `resend` mode; use a sending-only key restricted to the sending domain |
 | `FSP_EMAIL_FROM` | unset | Required bare sender address, e.g. `login@auth.nddev.link` |
@@ -79,15 +81,15 @@ for canonical PRs, and gates integration/deployment with `fsp/backend`.
 | [`../contracts/API_INTEGRATION.md`](../contracts/API_INTEGRATION.md) | Session cookie, origin checks, validation, error envelope, idempotency, jobs, pagination, PDF, time, metadata, the cutover checklist |
 | [`../mock-server`](../mock-server/README.md) | The rules as running code (`src/domain.ts`) and as HTTP tests (`test/mock-api.test.ts`), ported to `crates/server/tests/contract.rs` |
 
-Rust implements the 74 application operations plus `/health`; `/__mock__` controls are absent. Sessions,
+Rust implements the 75 application operations plus `/health`; `/__mock__` controls are absent. Sessions,
 roles, tenant scoping and PostgreSQL persistence are real. Email ownership is verified by Resend in `resend` mode; local `demo` mode retains a fixed code;
 FSP uses a separate fictional HTTP provider. Knowledge tests are scored deterministically; no code executes. PDF text extraction uses a bounded, isolated
 Poppler process and Bifrost proposes fields with validated page excerpts. The assessment assistant calls Bifrost
-with the current saved answer and question; these replies never establish a grade. GitHub OAuth is real when configured and checks `/user` before accepting repository evidence. Bifrost graph extraction is real
+with the current saved answer and question; these replies never establish a grade. GitHub analysis runs in the insights service over public data only; ownership is proven by a per-candidate bio code or, when OAuth is configured, by a token whose `/user` login matches. Bifrost graph extraction is real
 when configured; repository-to-competition matching is an adapter port without a product call path.
 `GET /api/v1/meta` reports configuration, not proof of a provider's availability or assessment validity.
 
-Request budgets are nested: GitHub analysis and Bifrost completion each have a 45-second ceiling;
+Request budgets are nested: a call to the GitHub insights service takes at most 10 seconds (the analysis itself runs in the background) and Bifrost completion has a 45-second ceiling;
 the HTTP handler has 55 seconds, inside both nginx proxies' 60-second read deadline. This leaves room
 for storage and the contract error envelope. A provider timeout remains a visible integration failure;
 graph requests do not fall back to synthetic data. HTTP timeout regressions use Tokio virtual time.
@@ -100,9 +102,11 @@ revision guards, assessment/source writes lock the candidate, and disclosure rec
 candidate/company. Shortlist mutations serialize before reading their aggregate.
 
 `sources.rs` performs bounded integration I/O before a short transaction, then atomically saves source evidence
-and its job. It checks consent and source freshness again before applying sync results. Jobs finish inline in
-Rust, persist in PostgreSQL, and remain scoped to their candidate. There is no background worker or durable
-running-job marker. GitHub evidence never creates or upgrades a verified grade.
+and its job. It checks consent and source freshness again before applying sync results. FSP jobs finish inline. A
+GitHub analysis runs in the insights service, so its job stays `running` with the source's `activeJobId`; each
+poll asks the service and applies a finished report in one transaction, restarts an analysis the service forgot and
+fails the job after 90 minutes. Jobs persist in PostgreSQL and remain scoped to their candidate; the API has no
+background worker of its own. GitHub evidence never creates or upgrades a verified grade.
 
 `graphs.rs` validates bounded node/edge sets, unique IDs, endpoints, known skills and evidence references. Labels,
 IDs and skill states come from application facts. Employer projections remove evidence nodes and private free

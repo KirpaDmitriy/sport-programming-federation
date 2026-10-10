@@ -11,7 +11,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     tracing_subscriber::fmt().init();
     let host = env::var("INTERVIEW_HOST").unwrap_or_else(|_| "127.0.0.1".into());
     let port: u16 = env::var("INTERVIEW_PORT")
-        .unwrap_or_else(|_| "4030".into())
+        .unwrap_or_else(|_| "4040".into())
         .parse()?;
     let api_token = required_env("INTERVIEW_API_TOKEN")?;
     let model: Arc<dyn InterviewModel> = if let Some(chat_url) = optional_env("BIFROST_CHAT_URL") {

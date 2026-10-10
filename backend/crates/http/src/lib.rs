@@ -177,6 +177,7 @@ pub fn router(config: HttpConfig, service: Arc<PlatformService>) -> Router {
             get(get_candidate_gap_plan),
         )
         .route("/api/v1/me/profile/export", get(export_profile))
+        .route("/api/v1/me/profile/estimate", post(refresh_estimate))
         .route("/api/v1/me/assessments", get(get_my_assessments))
         .route(
             "/api/v1/me/assessments/{assessment_id}",
@@ -333,6 +334,35 @@ pub fn idempotent_response<T: Serialize>(
 }
 
 async fn meta(State(state): State<AppState>) -> Json<Value> {
+    let catalog = fsp_domain::catalog::catalog();
+    let scopes = fsp_domain::knowledge_scopes()
+        .into_iter()
+        .map(|(specialization, grades)| {
+            json!({ "specialization": specialization, "grades": grades })
+        })
+        .collect::<Vec<_>>();
+    let skills = catalog
+        .skills
+        .iter()
+        .map(|item| json!({ "id": item.id, "label": item.label, "category": item.category }))
+        .collect::<Vec<_>>();
+    let specializations = catalog
+        .specializations
+        .iter()
+        .map(|item| {
+            json!({ "id": item.id, "label": item.label, "short": item.short, "group": item.group })
+        })
+        .collect::<Vec<_>>();
+    let grades = catalog
+        .grades
+        .iter()
+        .map(|item| json!({ "id": item.id, "label": item.label, "description": item.description }))
+        .collect::<Vec<_>>();
+    let categories = catalog
+        .skill_categories
+        .iter()
+        .map(|item| json!({ "id": item.id, "label": item.label }))
+        .collect::<Vec<_>>();
     Json(json!({
         "contractVersion": "0.1.0",
         "mode": "live",
@@ -343,26 +373,24 @@ async fn meta(State(state): State<AppState>) -> Json<Value> {
             "fspFixture": true, "matching": true, "directInvitations": true,
             "vacancyPublication": true, "selfApplication": true, "chat": false,
             "recurringTasks": true, "realCodeExecution": false, "realLlm": state.service.llm_configured(),
-            "githubOAuth": state.service.github_configured()
+            "githubOAuth": state.service.github_configured(),
+            "githubInsights": state.service.github_insights_configured()
         },
         "assessmentPolicy": {
             "successfulGradeChangeCooldownDays": state.service.grade_cooldown_days(), "failedAttemptCooldownDays": 0,
             "serviceFailureCooldownDays": 0, "sameGradeRetryCooldownDays": 0,
             "aiAllowed": true, "externalAiAllowed": true,
-            "supportedScopes": [
-                {"specialization":"backend","grades":["junior","middle","senior"]},
-                {"specialization":"frontend","grades":["junior","middle"]}
-            ]
+            "supportedScopes": scopes
         },
         "competitions": [
             {"id":"competition-demo-api","name":"Демо: проектирование надёжного API","synthetic":true,"skillIds":["rust","postgresql"],"discipline":"Продуктовое программирование"},
             {"id":"competition-demo-systems","name":"Демо: распределённые системы","synthetic":true,"skillIds":["docker","redis"],"discipline":"Продуктовое программирование"}
         ],
-        "skills": [
-            {"id":"rust","label":"Rust"},{"id":"postgresql","label":"PostgreSQL"},
-            {"id":"docker","label":"Docker"},{"id":"redis","label":"Redis"},
-            {"id":"typescript","label":"TypeScript"},{"id":"react","label":"React"}
-        ]
+        "catalogVersion": catalog.version,
+        "grades": grades,
+        "specializations": specializations,
+        "skillCategories": categories,
+        "skills": skills
     }))
 }
 
@@ -438,6 +466,19 @@ async fn get_profile(
     state
         .service
         .profile(&session)
+        .await
+        .map(Json)
+        .map_err(api_error)
+}
+
+async fn refresh_estimate(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<fsp_application::ProfileView>, ApiError> {
+    let session = authenticated(&state, &headers).await?;
+    state
+        .service
+        .refresh_estimate(&session)
         .await
         .map(Json)
         .map_err(api_error)
@@ -672,6 +713,7 @@ struct CandidateQuery {
     mode: Option<String>,
     specialization: Option<Specialization>,
     grade: Option<Grade>,
+    category_source: Option<fsp_domain::CategorySource>,
     skill: Option<String>,
     fsp: Option<String>,
     page: Option<usize>,
@@ -717,6 +759,7 @@ async fn search_candidates(
                 recommended: query.mode.as_deref() == Some("recommended"),
                 specialization: query.specialization,
                 grade: query.grade,
+                category_source: query.category_source,
                 skill: query.skill,
                 fsp_verified: query.fsp.as_deref() == Some("verified"),
                 page,
@@ -2256,6 +2299,10 @@ mod tests {
         }
 
         async fn sources(&self, _: &str) -> Result<Vec<SourceRecord>, RepositoryError> {
+            Ok(Vec::new())
+        }
+
+        async fn github_sources(&self, _: &str) -> Result<Vec<SourceRecord>, RepositoryError> {
             Ok(Vec::new())
         }
 

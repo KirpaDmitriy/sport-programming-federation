@@ -99,22 +99,11 @@ fn paginate(lines: &[Line]) -> Vec<Vec<(f32, u8, String, f32)>> {
 }
 
 fn grade_label(grade: Option<fsp_domain::Grade>) -> String {
-    grade
-        .map(|grade| match grade {
-            fsp_domain::Grade::Junior => "Junior",
-            fsp_domain::Grade::Middle => "Middle",
-            fsp_domain::Grade::Senior => "Senior",
-        })
-        .unwrap_or("—")
-        .to_string()
+    grade.map_or("—", fsp_domain::Grade::label).to_string()
 }
 
 fn specialization_label(spec: fsp_domain::Specialization) -> &'static str {
-    match spec {
-        fsp_domain::Specialization::Backend => "Бэкенд",
-        fsp_domain::Specialization::Frontend => "Фронтенд",
-        fsp_domain::Specialization::Fullstack => "Фулстек",
-    }
+    spec.short_label()
 }
 
 pub fn profile_pdf(profile: &ProfileView) -> Result<Vec<u8>, String> {

@@ -40,7 +40,7 @@ Required configuration:
 | --- | --- |
 | `INTERVIEW_API_TOKEN` | Internal bearer token; there is no insecure default in the binary |
 | `INTERVIEW_HOST` | Bind host, default `127.0.0.1` |
-| `INTERVIEW_PORT` | Bind port, default `4030` |
+| `INTERVIEW_PORT` | Bind port, default `4040`; `4030` belongs to GitHub insights |
 | `BIFROST_CHAT_URL` | Optional OpenAI-compatible Bifrost chat endpoint |
 | `BIFROST_API_KEY` | Optional Bifrost bearer key |
 | `INTERVIEW_BIFROST_MODEL` | Interview model; otherwise `BIFROST_MODEL`, then `openai/gpt-5-mini` |

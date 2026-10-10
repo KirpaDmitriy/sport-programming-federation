@@ -11,7 +11,7 @@ async function submitCurrentAttempt(page: import('@playwright/test').Page) {
   await page.waitForURL(/\/result$/);
 }
 
-test('UI-02 UI-07 a new candidate completes the questionnaire and gets a verified category without FSP', async ({
+test('UI-02 UI-07 a new candidate fills the questionnaire by hand and confirms a category by test', async ({
   page,
 }) => {
   await resetMock('baseline');
@@ -32,7 +32,8 @@ test('UI-02 UI-07 a new candidate completes the questionnaire and gets a verifie
 
   await page.getByLabel('Имя и фамилия').fill('Мария Новикова');
   await page.getByLabel('Грейд для проверки').selectOption('junior');
-  await page.getByRole('button', { name: 'Rust' }).click();
+  await page.getByRole('combobox', { name: 'Стек' }).fill('Rust');
+  await page.getByRole('option', { name: /^Rust/ }).click();
   await page.getByLabel('Стаж, месяцев').fill('0');
   await page.getByRole('textbox', { name: 'Опыт', exact: true }).fill('Учебные проекты на Rust.');
   await page.getByLabel('Роль в команде').fill('Разработчик');
@@ -40,13 +41,17 @@ test('UI-02 UI-07 a new candidate completes the questionnaire and gets a verifie
   await expect(page.getByText('Профиль сохранён')).toBeVisible();
   await expect(page.getByText('Указать ФСП ID')).toHaveCount(0);
 
-  await page.getByRole('button', { name: 'Подтвердить уровень' }).click();
+  // Saving keeps the questionnaire open; without a source there is no estimate yet.
+  await expect(page.getByLabel('Имя и фамилия')).toBeVisible();
+  await expect(page.getByText(/Оценка появится, когда подключится источник/)).toBeVisible();
+
+  await page.getByRole('button', { name: 'Пройти тест' }).click();
   await page.waitForURL(/\/workspace$/);
   await submitCurrentAttempt(page);
   await expect(page.getByRole('heading', { name: 'Джуниор подтверждён' })).toBeVisible();
   await expect(page.getByText('Профиль обновлён автоматически')).toBeVisible();
   await page.getByRole('link', { name: 'Открыть профиль' }).click();
-  await expect(page.getByText('Джуниор подтверждён').first()).toBeVisible();
+  await expect(page.getByText('Бэкенд · Джуниор · подтверждено тестом').first()).toBeVisible();
   await expect(page.getByText(/Для работодателей:/)).toBeVisible();
 });
 
@@ -70,7 +75,7 @@ test('UI-10 UI-12 UI-05 draft survives reload, upgrade updates every view and th
   await expect(page.getByText('Профиль обновлён автоматически')).toBeVisible();
   await expect(page.getByText('Было:')).toContainText('Джуниор');
   await page.goto('/candidate/overview');
-  await expect(page.getByText('Мидл подтверждён').first()).toBeVisible();
+  await expect(page.getByText('Бэкенд · Мидл · подтверждено тестом').first()).toBeVisible();
   await page.goto('/candidate/skills?node=skill-postgresql');
   await expect(page.getByRole('complementary').getByText('Подтверждено для уровня «Мидл»')).toBeVisible();
 
@@ -91,7 +96,7 @@ test('UI-13 a failed upgrade keeps the verified Junior grade', async ({ page }) 
   await expect(page.getByRole('heading', { name: 'Мидл пока не подтверждён' })).toBeVisible();
   await expect(page.getByText(/Джуниор» остаётся в профиле/)).toBeVisible();
   await page.goto('/candidate/overview');
-  await expect(page.getByText('Джуниор подтверждён').first()).toBeVisible();
+  await expect(page.getByText('Бэкенд · Джуниор · подтверждено тестом').first()).toBeVisible();
 });
 
 test('UI-14 a service failure is retryable and carries no penalty', async ({ page }) => {
@@ -103,7 +108,7 @@ test('UI-14 a service failure is retryable and carries no penalty', async ({ pag
   await expect(page.getByText(/Штрафа и дополнительного ожидания нет/)).toBeVisible();
   await expect(page.getByRole('button', { name: /Начать новую попытку/ })).toBeVisible();
   await page.goto('/candidate/overview');
-  await expect(page.getByText('Джуниор подтверждён').first()).toBeVisible();
+  await expect(page.getByText('Бэкенд · Джуниор · подтверждено тестом').first()).toBeVisible();
 });
 
 test('UI-15 cooldown comes from the server', async ({ page }) => {
@@ -118,23 +123,73 @@ test('UI-15 cooldown comes from the server', async ({ page }) => {
   await expect(page.getByText(/Доступно с/)).toBeVisible();
 });
 
-test('UI-06 UI-07 sources enrich automatically; empty FSP history is valid', async ({ page }) => {
+test('UI-06 UI-07 GitHub connects by login with a public report; empty FSP history is valid', async ({ page }) => {
   await resetMock('baseline');
   await signIn(page, ALEXEY, 'candidate');
   await page.goto('/candidate/sources');
-  const stats = page.getByRole('definition');
-  await expect(page.getByText('Обновлено', { exact: false })).toBeVisible();
-  const counts = (await stats.allTextContents()).map(Number);
-  const [found = 0, processed = 0, queued = 0, unavailable = 0] = counts;
-  expect(counts).toHaveLength(4);
-  expect(found).toBe(12);
-  expect(processed + queued + unavailable).toBe(found);
-  expect([processed, queued, unavailable]).toEqual([11, 0, 1]);
+  await expect(page.getByRole('heading', { name: 'Отчёт GitHub' })).toBeVisible();
+  await expect(page.getByText('Владение подтверждено', { exact: false })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Портрет разработчика' })).toBeVisible();
+  // Report sections are tabs kept in the URL, so a reload returns to the same section.
+  await page.getByRole('tab', { name: 'Активность' }).click();
+  await expect(page).toHaveURL(/tab=activity/);
+  await page.reload();
+  await expect(page.getByRole('img', { name: /Коммиты за год по дням/ })).toBeVisible();
+  await page.getByRole('tab', { name: 'Для работодателя' }).click();
+  await expect(
+    page.getByText('Этот обезличенный блок работодатель видит в карточке кандидата', { exact: false }),
+  ).toBeVisible();
+  await page.getByRole('tab', { name: 'Обзор' }).click();
+
+  await page.getByRole('button', { name: 'Подключить другой аккаунт' }).click();
+  const login = page.getByLabel('Ник или ссылка на профиль GitHub');
+  await login.fill('https://github.com/octo-cat/repo');
+  await page.getByRole('button', { name: 'Подключить другой аккаунт' }).click();
+  await expect(page.getByText('Укажите имя пользователя GitHub или ссылку на профиль')).toBeVisible();
+  await login.fill('https://github.com/octo-cat');
+  await page.getByRole('button', { name: 'Подключить другой аккаунт' }).click();
+  // The analysis runs as a background job; the report and the employer preview arrive with it.
+  await expect(page.getByText('Владение аккаунтом не подтверждено').first()).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Портрет разработчика' })).toBeVisible();
+  await expect(page.getByText(/^fsp-demo/)).toBeVisible();
 
   await page.getByRole('button', { name: 'Указать ФСП ID' }).click();
   await page.getByLabel('ФСП ID').fill('FSP-UNKNOWN-1');
-  await page.getByRole('button', { name: 'Подключить' }).click();
+  await page.getByRole('button', { name: 'Подключить', exact: true }).click();
   await expect(page.getByText('Истории ФСП нет')).toBeVisible();
+});
+
+test('UI-06 a new candidate connects GitHub and gets the questionnaire and a category without typing', async ({
+  page,
+}) => {
+  await resetMock('baseline');
+  const email = `github-${Date.now()}@example.com`;
+  await requestCode(page, email, 'candidate');
+  await page.getByLabel('Код из письма').fill(await latestCode(email));
+  await page.getByRole('button', { name: 'Подтвердить и войти' }).click();
+  await page.waitForURL('**/candidate/onboarding');
+  await expect(page.getByText('Подключение источников доступно после согласия на обработку данных.')).toBeVisible();
+  await page.getByLabel('Согласен на обработку данных').click();
+  await expect(page.getByLabel('Согласен на обработку данных')).toBeChecked();
+  await page.getByRole('switch', { name: 'Показывать профиль работодателям' }).click();
+  await page.getByLabel('GitHub: ник или ссылка на профиль').fill('@octo-cat');
+  await page.getByRole('button', { name: 'Подключить GitHub' }).click();
+  // The analysis job ends with the report; the estimate answers the questionnaire and gives the category.
+  await expect(page.getByText(/GitHub «octo-cat» подключён, анализ завершён/)).toBeVisible();
+  await expect(page.getByText('Бэкенд · Сеньор · оценка, высокая уверенность')).toBeVisible();
+  await expect(page.getByText('Стаж публичной работы')).toBeVisible();
+  // The questionnaire stays open as it was and now shows the automatic answers.
+  await expect(page.getByText('Проверить и поправить анкету')).toBeVisible();
+  await expect(page.getByLabel('Имя и фамилия')).toHaveValue('Иван Петров');
+  await expect(page.getByLabel('Грейд для проверки')).toHaveValue('senior');
+  await expect(page.getByText('Заполнено автоматически.').first()).toBeVisible();
+
+  await page.goto('/candidate/overview');
+  await expect(page.getByText('Бэкенд · Сеньор · оценка, высокая уверенность').first()).toBeVisible();
+  await expect(page.getByText(/Для работодателей:/)).toBeVisible();
+  await page.goto('/candidate/onboarding');
+  await page.getByRole('link', { name: 'Подробный отчёт и подтверждение владения' }).click();
+  await expect(page.getByRole('heading', { name: 'Портрет разработчика' })).toBeVisible();
 });
 
 test('UI-06 a verified FSP record appears as a labelled demo source', async ({ page }) => {
@@ -143,7 +198,7 @@ test('UI-06 a verified FSP record appears as a labelled demo source', async ({ p
   await page.goto('/candidate/sources');
   await page.getByRole('button', { name: 'Указать ФСП ID' }).click();
   await page.getByLabel('ФСП ID').fill('FSP-DEMO-024');
-  await page.getByRole('button', { name: 'Подключить' }).click();
+  await page.getByRole('button', { name: 'Подключить', exact: true }).click();
   await expect(page.getByText('Подтверждённое участие')).toBeVisible();
   await expect(page.getByText('DEMO-PROTOCOL-API-2026-01', { exact: false })).toBeVisible();
 });
@@ -206,5 +261,5 @@ test('FSP pending and empty histories stay distinct and never change the assessm
   await page.getByRole('button', { name: 'Подключить', exact: true }).click();
   await expect(page.getByText('Истории ФСП нет', { exact: true })).toBeVisible();
   await page.goto('/candidate/overview');
-  await expect(page.getByText('Джуниор подтверждён').first()).toBeVisible();
+  await expect(page.getByText('Бэкенд · Джуниор · подтверждено тестом').first()).toBeVisible();
 });

@@ -12,6 +12,7 @@ key, host key, droplet metadata) lives in the git-ignored `.fsp-infra/` at the r
 | `release.sh` | On the host: builds the release (frontend, mock, Rust backend), switches `/opt/fsp/current` atomically, runs the API implementation chosen by `/etc/fsp/api-backend`, health-checks and rolls back on failure |
 | `fsp-mock-api.service` | Hardened systemd unit for the mock API (user `fsp`, `127.0.0.1:4010`) |
 | `fsp-simulator.service` | Fictional participant-results HTTP service on private loopback 4020; released with the API, no public nginx route |
+| `fsp-github-insights.service` | Tokenless public GitHub analysis on private loopback 4030 with `git` clones in its `CacheDirectory`; an optional `GITHUB_TOKEN` in root-private `/etc/fsp/github-insights.env` only raises limits; released with the API, no public nginx route |
 | `fsp-api.service` | Hardened systemd unit for the Rust API (same user and port; `StateDirectory=fsp` gives it `/var/lib/fsp`) |
 | `nginx/` | Site config (SPA fallback, `/api/v1/` proxy, `/__mock__` → 404), ACME bootstrap config, security headers |
 
@@ -122,7 +123,7 @@ The additional GitHub mirror is retired; synchronize permanent local branches on
 
 | Task on the host | Command |
 | --- | --- |
-| API status / logs | `systemctl status fsp-api fsp-simulator`, `journalctl -u fsp-api -n 100` |
+| API status / logs | `systemctl status fsp-api fsp-simulator fsp-github-insights`, `journalctl -u fsp-api -n 100` |
 | Which API serves | `cat /etc/fsp/api-backend` |
 | Certificate | `certbot certificates`; renewal by `snap.certbot.renew.timer` using each certificate's policy (the short-lived IP certificate uses three days), then the nginx reload hook |
 | Renewal dry run | `certbot renew --cert-name nddev.link --dry-run --no-random-sleep-on-renew` |
@@ -198,9 +199,12 @@ Ubuntu/systemd, and release activation runs it before changing units or the acti
 For first enablement, probe the deployed binary, set the flag, restart the API and check capability plus a real
 preview. If this fails, restore the flag before restarting. There is no unsandboxed fallback. See [backend limits](../backend/README.md#pdf-import-runtime).
 
-The release builds both Rust binaries, installs/restarts `fsp-simulator.service` before API activation and checks
-its loopback health together with API and nginx. Failed activation restores the previous units/release. Rolling
-back to a schema-compatible release without the simulator stops the helper. The schema guard runs first;
+The release builds the three Rust binaries, installs/restarts `fsp-simulator.service` and
+`fsp-github-insights.service` before API activation and checks their loopback health together with API and nginx.
+Failed activation restores the previous units/release. Rolling back to a schema-compatible release without a helper
+stops that helper. The insights service needs no token; the API
+enables GitHub connection only with `FSP_GITHUB_INSIGHTS_URL` in `rust-api.env`
+([GitHub insights](../docs/github-insights.md#operation)). The schema guard runs first;
 helper lifecycle support alone does not make a historical binary a valid rollback target.
 `0004_fsp_results.sql` preserves historical records with an empty detailed-results array until refreshed.
 [FSP fixtures](../docs/fsp-simulator.md) are entirely fictional and cannot establish real federation identity.
@@ -247,6 +251,9 @@ in place, and keep changes compatible with the running release.
 `RUNTIME_CAPABILITIES` and `check-runtime-compatibility.sh` reject rollbacks that
 cannot support the active domain or real-mail authentication. Never disable real
 mail or restore old demo authentication as a normal rollback procedure.
+The first activated release that declares `catalog-v2` records it in `/etc/fsp/data-capabilities`: stored data
+may then use its grades, specializations and skills, so rollbacks to releases without `catalog-v2` are refused.
+The marker is monotonic; never delete it to force such a rollback.
 
 Rotating `FSP_AUTH_KEY` invalidates all existing sessions/codes while preserving
 accounts and profiles. Keep its active value only in the authorized private runtime configuration.

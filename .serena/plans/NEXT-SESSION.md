@@ -7,9 +7,20 @@ English engineering text, Russian UI. Never expose secrets, reset production dat
 ## Current behavior
 
 nddev.link serves Rust/PostgreSQL behind Cloudflare Full (strict), with real Resend OTPs and secure sessions.
-The original IP redirects to the domain. Five additive migrations are applied. Runtime secrets stay on hosts
+The original IP redirects to the domain. Six additive migrations are applied (0006: estimate and auto fields). Runtime secrets stay on hosts
 and in the original ignored .fsp-infra/. FSP is a deliberately fictional private HTTP provider; knowledge tests
 replace arbitrary code execution. Digital-PDF extraction and Bifrost assistance are real. GitHub OAuth is deferred.
+GitHub connection is real: fsp-github-insights (loopback 4030) analyzes public work without a token in the background
+(search, REST, blobless clones); the API enables it with FSP_GITHUB_INSIGHTS_URL in rust-api.env. Method and limits:
+docs/github-insights.md. Calibrate rule changes on public accounts only and never toward a desired score.
+
+Automatic profile (owner decision 2026-10-10, docs/auto-profile.md): connecting GitHub and/or FSP answers the
+questionnaire and gives an estimated category (estimate-v2: seniority counted in months, senior 24, lead 48).
+Edited answers leave autoFields and are never overwritten. Categories state their source; tests rank first. The Grok
+second opinion runs in the background after commit (live answers take over 20 s) and only lowers confidence or picks
+between close specializations. Catalog v2: 25 specializations, 5 grades, 255 skills incl. 1C; every specialization
+and grade has a knowledge test (topic banks knowledge-v3-*.json, 1,230 questions, length-balanced distractors).
+Live evidence: .fsp-infra/real-features/auto-profile/.
 
 ## Completed work and current evidence
 
@@ -39,4 +50,6 @@ current-state.md: no calibrated/leak-resistant exam, OCR, durable source queue, 
 No pending user permission is needed for the completed scope. Read current open issues for new work.
 
 Memory index: platform.md (auth/data/assessment), frontend.md (UI/proofs), operations.md (deployment/mail/CI/recovery).
-Last commit: 5ff1527ab772df15fab3fa6cd4598ed84d5e4e3b (accepted baseline); current no-backup policy/receipt: #54.
+Release identity: compare upstream/main, /opt/fsp/current and deployed.json instead of trusting a SHA written here.
+Receipts: #54 (no-backup policy), #67 (GitHub insights delivery and live check), #73 (catalog v2),
+#76/#79 (automatic profile, background review), #82 (question banks, estimate-v2).

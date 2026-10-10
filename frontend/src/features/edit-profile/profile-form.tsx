@@ -1,19 +1,26 @@
 import { useForm } from '@tanstack/react-form';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { type SkillId, useMeta } from '@/entities/meta';
-import { type Profile, type ProfilePatch, profileKey, updateProfile } from '@/entities/profile';
+import type { SkillId } from '@/entities/meta';
+import {
+  AUTO_FIELD_HINT,
+  type AutoField,
+  type Profile,
+  type ProfilePatch,
+  profileKey,
+  updateProfile,
+} from '@/entities/profile';
 import { useScope } from '@/entities/session';
 import { describeError, fieldErrors } from '@/shared/api';
-import { gradeLabel, gradeOrder, industryLabel, specializationLabel, specializationOrder } from '@/shared/lib';
+import { gradeLabel, gradeOrder, industryLabel, skillOptions, specializationOptions } from '@/shared/lib';
 import {
   Button,
   Callout,
   SelectField,
   TextareaField,
   TextField,
-  ToggleGroup,
   TokenInput,
+  TokenPicker,
   UnsavedChangesGuard,
   useToast,
 } from '@/shared/ui';
@@ -39,7 +46,6 @@ const required = (message: string) => ({
 type Props = { profile: Profile; submitLabel: string; onSaved?: (profile: Profile) => void };
 
 export function ProfileForm({ profile, submitLabel, onSaved }: Props) {
-  const meta = useMeta();
   const scope = useScope();
   const queryClient = useQueryClient();
   const toast = useToast();
@@ -65,6 +71,9 @@ export function ProfileForm({ profile, submitLabel, onSaved }: Props) {
     },
   });
 
+  /** The field's own hint, preceded by a note when an estimate answered it. */
+  const hintFor = (field: AutoField, hint?: string) =>
+    profile.autoFields.includes(field) ? [AUTO_FIELD_HINT, hint].filter(Boolean).join(' ') : hint;
   const errorFor = (name: keyof Values, clientErrors: unknown[]) =>
     (clientErrors[0] as string | undefined) ?? serverErrors[name];
   const clearServer = (name: keyof Values) =>
@@ -86,6 +95,12 @@ export function ProfileForm({ profile, submitLabel, onSaved }: Props) {
       <form.Subscribe selector={(state) => state.isDirty}>
         {(dirty) => <UnsavedChangesGuard when={dirty && !save.isPending} />}
       </form.Subscribe>
+      {profile.autoFields.length > 0 && (
+        <Callout tone="info">
+          Поля с пометкой «Заполнено автоматически» система заполнила по GitHub и ФСП и обновляет при новой оценке.
+          Поле, которое вы измените, она больше не меняет.
+        </Callout>
+      )}
       <section className="stack" aria-labelledby="profile-basic">
         <h2 id="profile-basic" style={{ margin: 0, fontSize: '1.25rem' }}>
           Основные данные
@@ -98,6 +113,7 @@ export function ProfileForm({ profile, submitLabel, onSaved }: Props) {
               required
               maxLength={120}
               autoComplete="name"
+              hint={hintFor('name')}
               value={field.state.value}
               onChange={(event) => {
                 field.handleChange(event.target.value);
@@ -147,13 +163,14 @@ export function ProfileForm({ profile, submitLabel, onSaved }: Props) {
                 id="profile-specialization"
                 label="Специализация"
                 required
+                hint={hintFor('specialization')}
                 value={field.state.value}
                 onValueChange={(value) => {
                   field.handleChange(value);
                   clearServer('specialization');
                 }}
                 error={serverErrors.specialization}
-                options={specializationOrder.map((value) => ({ value, label: specializationLabel[value] }))}
+                options={specializationOptions}
               />
             )}
           </form.Field>
@@ -163,7 +180,10 @@ export function ProfileForm({ profile, submitLabel, onSaved }: Props) {
                 id="profile-grade"
                 label="Грейд для проверки"
                 required
-                hint="Выбранный грейд — цель следующей проверки. Подтверждённый грейд меняется только по её результату."
+                hint={hintFor(
+                  'selectedGrade',
+                  'Цель теста. Без теста категорию даёт автоматическая оценка; подтверждённый грейд меняется только по результату теста.',
+                )}
                 value={field.state.value}
                 onValueChange={field.handleChange}
                 options={gradeOrder.map((value) => ({ value, label: gradeLabel[value] }))}
@@ -176,7 +196,7 @@ export function ProfileForm({ profile, submitLabel, onSaved }: Props) {
                 id="profile-months"
                 label="Стаж, месяцев"
                 inputMode="numeric"
-                hint="0 — опыта нет; пустое поле — не указан"
+                hint={hintFor('experienceMonths', '0 — опыта нет; пустое поле — не указан')}
                 value={field.state.value === null ? '' : String(field.state.value)}
                 onChange={(event) => {
                   const digits = event.target.value.replace(/\D/g, '');
@@ -193,12 +213,16 @@ export function ProfileForm({ profile, submitLabel, onSaved }: Props) {
               validators={{ onSubmit: ({ value }) => (value.length ? undefined : 'Выберите хотя бы одну технологию') }}
             >
               {(field) => (
-                <ToggleGroup<SkillId>
+                <TokenPicker<SkillId>
                   id="profile-stack"
                   label="Стек"
-                  hint="До пяти технологий из каталога платформы"
-                  max={5}
-                  options={meta.skills.map((skill) => ({ value: skill.id, label: skill.label }))}
+                  hint={hintFor(
+                    'stack',
+                    'До 12 технологий из каталога: начните вводить название, например «1С» или «Python»',
+                  )}
+                  placeholder="Найти технологию"
+                  max={12}
+                  options={skillOptions}
                   selected={field.state.value}
                   onChange={(next) => {
                     field.handleChange(next);
@@ -217,6 +241,7 @@ export function ProfileForm({ profile, submitLabel, onSaved }: Props) {
                   label="Опыт"
                   required
                   maxLength={4000}
+                  hint={hintFor('experience')}
                   value={field.state.value}
                   onChange={(event) => {
                     field.handleChange(event.target.value);
@@ -235,6 +260,7 @@ export function ProfileForm({ profile, submitLabel, onSaved }: Props) {
                 label="Роль в команде"
                 required
                 maxLength={120}
+                hint={hintFor('teamRole')}
                 list="team-role-suggestions"
                 value={field.state.value}
                 onChange={(event) => {
