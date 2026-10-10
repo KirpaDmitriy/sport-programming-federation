@@ -14,6 +14,8 @@ pub struct Snapshot {
     pub created_at: Option<DateTime<Utc>>,
     pub now: DateTime<Utc>,
     pub followers: u32,
+    /// The public profile name, when set.
+    pub display_name: Option<String>,
     /// Public organization memberships.
     pub organizations: Vec<String>,
     /// Lower-case commit identities that GitHub attributes to the account.

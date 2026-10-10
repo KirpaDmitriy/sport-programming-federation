@@ -76,6 +76,10 @@ pub struct ProfileView {
     pub verified_specialization: Option<Specialization>,
     pub grade_confirmed_at: Option<String>,
     pub category: CategoryView,
+    /// The estimate from GitHub and FSP evidence, with its factors and the LLM review.
+    pub estimate: Option<fsp_domain::ProfileEstimate>,
+    /// Questionnaire fields last filled from evidence.
+    pub auto_fields: Vec<String>,
     pub freshness: FreshnessView,
     pub onboarding: OnboardingView,
     pub assessment_eligibility: GradeEligibilityView,
@@ -89,6 +93,28 @@ pub struct CategoryView {
     pub specialization: Option<Specialization>,
     pub grade: Option<Grade>,
     pub eligible: bool,
+    /// A test result or an estimate; `None` without a category.
+    pub source: Option<fsp_domain::CategorySource>,
+    /// The estimate's confidence; `None` for a test result.
+    pub confidence: Option<fsp_domain::SignalConfidence>,
+}
+
+/// What employers see of an estimate: the score and its factors, without names or the LLM text.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EmployerEstimateView {
+    pub score: u8,
+    pub computed_at: String,
+    pub factors: Vec<EmployerEstimateFactorView>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EmployerEstimateFactorView {
+    pub id: String,
+    pub label: String,
+    pub points: u8,
+    pub max: u8,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -776,8 +802,15 @@ pub struct AnonymousCandidateView {
     pub id: String,
     pub alias: String,
     pub specialization: Specialization,
-    pub verified_grade: Grade,
-    pub grade_confirmed_at: String,
+    /// The category grade: confirmed by a test or estimated from evidence.
+    pub grade: Grade,
+    pub category_source: fsp_domain::CategorySource,
+    /// The estimate's confidence; `None` for a test result.
+    pub category_confidence: Option<fsp_domain::SignalConfidence>,
+    /// The test-confirmed grade, when there is one.
+    pub verified_grade: Option<Grade>,
+    pub grade_confirmed_at: Option<String>,
+    pub estimate: Option<EmployerEstimateView>,
     pub work_modes: Vec<String>,
     pub available_for_offers: bool,
     pub skills: Vec<SkillView>,
@@ -834,6 +867,8 @@ pub struct CandidateSearch {
     pub recommended: bool,
     pub specialization: Option<Specialization>,
     pub grade: Option<Grade>,
+    /// Test-confirmed or estimated categories only.
+    pub category_source: Option<fsp_domain::CategorySource>,
     pub skill: Option<String>,
     pub fsp_verified: bool,
     pub page: usize,

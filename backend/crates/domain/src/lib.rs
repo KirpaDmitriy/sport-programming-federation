@@ -2,6 +2,7 @@
 
 pub mod catalog;
 mod documents;
+mod estimate;
 mod github;
 mod knowledge;
 mod llm;
@@ -9,6 +10,7 @@ mod matching;
 mod sources;
 
 pub use documents::*;
+pub use estimate::*;
 pub use github::*;
 pub use knowledge::*;
 pub use llm::*;
@@ -233,8 +235,42 @@ pub struct CandidateProfile {
     pub verified_grade: Option<Grade>,
     pub verified_specialization: Option<Specialization>,
     pub grade_confirmed_at: Option<String>,
+    /// The latest estimate from GitHub and FSP evidence.
+    pub estimate: Option<ProfileEstimate>,
+    /// Questionnaire fields last filled from evidence; editing a field removes it.
+    pub auto_fields: Vec<String>,
     pub revision: u64,
     pub updated_at: String,
+}
+
+/// Where a candidate's category comes from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CategorySource {
+    Assessment,
+    Estimate,
+}
+
+/// The employer-visible category: a passed test, otherwise an estimate of at least medium confidence.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Category {
+    pub specialization: Specialization,
+    pub grade: Grade,
+    pub source: CategorySource,
+    /// The estimate's confidence; `None` for a test result.
+    pub confidence: Option<SignalConfidence>,
+}
+
+impl Category {
+    /// Strength of the confirmation: a test, then high and medium estimates.
+    #[must_use]
+    pub fn strength(&self) -> u8 {
+        match (self.source, self.confidence) {
+            (CategorySource::Assessment, _) => 3,
+            (CategorySource::Estimate, Some(SignalConfidence::High)) => 2,
+            (CategorySource::Estimate, _) => 1,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -252,10 +288,12 @@ pub struct CandidateIndexRecord {
 impl CandidateIndexRecord {
     #[must_use]
     pub fn rankable(&self) -> Option<RankableCandidate> {
+        let category = self.profile.category()?;
         Some(RankableCandidate {
             id: self.profile.id.clone(),
-            specialization: self.profile.verified_specialization?,
-            verified_grade: self.profile.verified_grade?,
+            specialization: category.specialization,
+            grade: category.grade,
+            confirmation: category.strength(),
             fsp_verified: self.fsp_verified,
             skills: self.skills.clone(),
         })
@@ -288,15 +326,38 @@ impl CandidateProfile {
             && !self.experience.trim().is_empty()
     }
 
+    /// The category a passed test gives, otherwise an estimate with at least medium confidence.
+    #[must_use]
+    pub fn category(&self) -> Option<Category> {
+        if let (Some(specialization), Some(grade)) =
+            (self.verified_specialization, self.verified_grade)
+        {
+            return Some(Category {
+                specialization,
+                grade,
+                source: CategorySource::Assessment,
+                confidence: None,
+            });
+        }
+        let estimate = self.estimate.as_ref()?;
+        if estimate.confidence == SignalConfidence::Low {
+            return None;
+        }
+        Some(Category {
+            specialization: estimate.specialization?,
+            grade: estimate.grade?,
+            source: CategorySource::Estimate,
+            confidence: Some(estimate.confidence),
+        })
+    }
+
     /// Mirrors the mock's `onboarding.visibleToEmployers`: verified e-mail,
-    /// complete questionnaire, a passed assessment (grade and specialization)
-    /// and both consents.
+    /// complete questionnaire, a category (test or estimate) and both consents.
     #[must_use]
     pub fn visible_to_employers(&self, email_verified: bool) -> bool {
         email_verified
             && self.questionnaire_complete()
-            && self.verified_grade.is_some()
-            && self.verified_specialization.is_some()
+            && self.category().is_some()
             && self.consents.processing
             && self.consents.publication
     }
@@ -782,6 +843,8 @@ mod tests {
             verified_grade: Some(Grade::Junior),
             verified_specialization: Some(Specialization::Backend),
             grade_confirmed_at: None,
+            estimate: None,
+            auto_fields: Vec::new(),
             revision: 1,
             updated_at: "2026-10-06T00:00:00Z".into(),
         };
@@ -789,5 +852,59 @@ mod tests {
         assert!(!profile.visible_to_employers(false));
         profile.consents.publication = false;
         assert!(!profile.visible_to_employers(true));
+    }
+
+    #[test]
+    fn an_estimate_of_medium_confidence_gives_a_category_below_a_test() {
+        let report: GitHubReport = serde_json::from_str(include_str!(
+            "../../../../contracts/fixtures/github-report.json"
+        ))
+        .unwrap();
+        let estimate = estimate_profile(&EstimateInput {
+            github: Some(&report),
+            fsp: &[],
+            stated_experience_months: None,
+            now: "2026-10-10T00:00:00Z",
+        });
+        let mut profile = CandidateProfile {
+            id: "candidate-2".into(),
+            alias: "Кандидат №002".into(),
+            email: "estimate@example.test".into(),
+            name: "Кандидат".into(),
+            specialization: Specialization::Backend,
+            selected_grade: Grade::Junior,
+            stack: vec!["rust".into()],
+            team_role: "Разработчик".into(),
+            experience_months: None,
+            experience: "Публичные проекты".into(),
+            soft_skills: Vec::new(),
+            consents: Consents {
+                processing: true,
+                publication: true,
+            },
+            verified_grade: None,
+            verified_specialization: None,
+            grade_confirmed_at: None,
+            estimate: Some(estimate.clone()),
+            auto_fields: Vec::new(),
+            revision: 1,
+            updated_at: "2026-10-10T00:00:00Z".into(),
+        };
+        let category = profile.category().unwrap();
+        assert_eq!(category.source, CategorySource::Estimate);
+        assert_eq!(Some(category.grade), estimate.grade);
+        assert!(profile.visible_to_employers(true));
+        assert!(category.strength() < 3);
+        // A low-confidence estimate gives no category.
+        if let Some(stored) = profile.estimate.as_mut() {
+            stored.confidence = SignalConfidence::Low;
+        }
+        assert!(profile.category().is_none());
+        // A test result wins over any estimate.
+        profile.verified_grade = Some(Grade::Middle);
+        profile.verified_specialization = Some(Specialization::Frontend);
+        let category = profile.category().unwrap();
+        assert_eq!(category.source, CategorySource::Assessment);
+        assert_eq!(category.strength(), 3);
     }
 }

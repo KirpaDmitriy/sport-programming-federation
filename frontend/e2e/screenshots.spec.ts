@@ -19,7 +19,7 @@ test('documentation screenshots of the implemented screens', async ({ browser, p
   await expect(page.getByRole('heading', { name: 'Вход и регистрация' })).toBeVisible();
   await shot(page, '00-login');
   await signIn(page, ALEXEY, 'candidate');
-  await expect(page.getByText('Джуниор подтверждён').first()).toBeVisible();
+  await expect(page.getByText('Бэкенд · Джуниор · подтверждено тестом').first()).toBeVisible();
   await shot(page, '01-candidate-overview');
   await page.goto('/candidate/profile');
   await shot(page, '02-profile-goals');
@@ -107,6 +107,21 @@ test('documentation screenshots of the implemented screens', async ({ browser, p
   const fresh = await browser.newPage({ viewport: { width: 1440, height: 900 } });
   await signIn(fresh, `onboarding-${Date.now()}@example.com`, 'candidate');
   await shot(fresh, '15-onboarding');
+  // The automatic profile: GitHub answers the questionnaire and gives an estimated category.
+  await fresh.getByLabel('Согласен на обработку данных').click();
+  await expect(fresh.getByLabel('Согласен на обработку данных')).toBeChecked();
+  await fresh.getByRole('switch', { name: 'Показывать профиль работодателям' }).click();
+  await fresh.getByLabel('GitHub: ник или ссылка на профиль').fill('octo-cat');
+  await fresh.getByRole('button', { name: 'Подключить GitHub' }).click();
+  await expect(fresh.getByText('Бэкенд · Сеньор · оценка, высокая уверенность')).toBeVisible();
+  await shot(fresh, '25-onboarding-auto-profile');
+  await fresh.goto('/candidate/overview');
+  await expect(fresh.getByText('Из чего складывается балл')).toBeVisible();
+  await shot(fresh, '26-candidate-estimate');
+  const bank = await actor(browser, COMPANY_A, 'employer');
+  await bank.page.goto('/employer/candidates?categorySource=estimate');
+  await expect(bank.page.getByRole('table')).toBeVisible();
+  await shot(bank.page, '27-employer-estimated-candidates');
   await resetMock('api_error');
   await signIn(fresh, COMPANY_A, 'employer');
   await fresh.goto('/employer/candidates');

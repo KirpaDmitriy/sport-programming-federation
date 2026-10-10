@@ -4,7 +4,7 @@ import { AssessmentStatusChip, assessmentsQuery } from '@/entities/assessment';
 import { bandLabel } from '@/entities/github-insights';
 import { skillLabel, useMeta } from '@/entities/meta';
 import { blockerLabel, type Profile, profileQuery } from '@/entities/profile';
-import { FreshnessChip, TargetGradeBadge, VerifiedGradeBadge } from '@/entities/qualification';
+import { CategoryBadge, FreshnessChip, TargetGradeBadge } from '@/entities/qualification';
 import { useScope } from '@/entities/session';
 import { mySkillsQuery, SkillStatusChip } from '@/entities/skill';
 import { mySourcesQuery, type Source } from '@/entities/source';
@@ -25,6 +25,7 @@ import {
   TagList,
 } from '@/shared/ui';
 import { AssessmentNextStep } from '@/widgets/assessment-next-step';
+import { ProfileEstimateCard } from '@/widgets/profile-estimate';
 import styles from './overview-page.module.css';
 
 function VisibilityRow({ profile }: { profile: Profile }) {
@@ -63,7 +64,7 @@ function SkillsCard() {
       {skills.isError && <ErrorState error={skills.error} onRetry={() => skills.refetch()} />}
       {skills.data && skills.data.items.length === 0 && (
         <EmptyState icon="chart" title="Навыков пока нет">
-          Они появятся после проверки уровня или автоматического анализа GitHub.
+          Они появятся после анализа GitHub или теста знаний.
         </EmptyState>
       )}
       {skills.data && skills.data.items.length > 0 && (
@@ -208,7 +209,9 @@ export function CandidateOverviewPage() {
   const scope = useScope();
   const meta = useMeta();
   const { data: profile } = useSuspenseQuery(profileQuery(scope));
-  const showTarget = !profile.verifiedGrade || profile.selectedGrade !== profile.verifiedGrade;
+  const sources = useQuery(mySourcesQuery(scope));
+  const canEstimate = (sources.data?.items ?? []).some((item) => item.status === 'connected' && !item.activeJobId);
+  const showTarget = profile.selectedGrade !== profile.category.grade;
 
   return (
     <>
@@ -221,7 +224,7 @@ export function CandidateOverviewPage() {
               <h2 className={styles.name}>{profile.name}</h2>
               <p className="muted">{roleTitle[profile.specialization]}</p>
               <div className="row">
-                <VerifiedGradeBadge grade={profile.verifiedGrade} />
+                <CategoryBadge {...profile.category} />
                 {showTarget && <TargetGradeBadge grade={profile.selectedGrade} />}
                 {profile.verifiedGrade && <FreshnessChip freshness={profile.freshness} />}
                 {!profile.onboarding.questionnaireComplete && (
@@ -234,24 +237,31 @@ export function CandidateOverviewPage() {
             </div>
             <ExportProfileButton />
           </div>
-          {!profile.verifiedGrade && (
+          {!profile.category.source && (
             <p className="small muted">
-              Пока уровень не подтверждён проверкой, профиль не попадает в категоризированный банк кандидатов.
+              Пока нет категории, профиль не попадает в банк кандидатов: подключите GitHub или ФСП для автоматической
+              оценки либо пройдите тест знаний.
             </p>
           )}
           <VisibilityRow profile={profile} />
         </div>
       </Card>
       {!profile.onboarding.questionnaireComplete && (
-        <Card title="Начните с анкеты" style={{ marginTop: '1.5rem' }}>
+        <Card title="Соберите профиль" style={{ marginTop: '1.5rem' }}>
           <div className="row" style={{ justifyContent: 'space-between' }}>
-            <p className="muted">Анкета, согласия и выбор грейда займут несколько минут. ФСП и GitHub необязательны.</p>
+            <p className="muted">
+              Подключите GitHub или ФСП — система сама заполнит анкету и оценит специализацию и грейд. Можно заполнить и
+              вручную.
+            </p>
             <ButtonLink to="/candidate/onboarding" variant="primary" iconAfter="arrowRight">
-              Заполнить анкету
+              Продолжить
             </ButtonLink>
           </div>
         </Card>
       )}
+      <div style={{ marginTop: '1.5rem' }}>
+        <ProfileEstimateCard profile={profile} canEstimate={canEstimate} />
+      </div>
       <div className={styles.grid}>
         <SkillsCard />
         <div className="stack-lg">

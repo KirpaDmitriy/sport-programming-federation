@@ -1,7 +1,7 @@
 {
   "contractVersion": "0.1.0",
-  "routeCount": 79,
-  "coveredOperationCount": 79,
+  "routeCount": 80,
+  "coveredOperationCount": 80,
   "operations": [
     {
       "operationId": "getHealth",
@@ -90,6 +90,15 @@
       "operationId": "confirmProfileImport",
       "method": "POST",
       "path": "/api/v1/me/profile/imports/{jobId}/confirm",
+      "observedStatuses": [
+        200,
+        409
+      ]
+    },
+    {
+      "operationId": "refreshMyEstimate",
+      "method": "POST",
+      "path": "/api/v1/me/profile/estimate",
       "observedStatuses": [
         200,
         409

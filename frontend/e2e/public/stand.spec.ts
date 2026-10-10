@@ -57,7 +57,7 @@ test('a new candidate and two companies complete the reverse-hiring flow', async
   await candidate.getByLabel('Роль в команде').fill('Разработчик');
   await candidate.getByRole('button', { name: 'Сохранить анкету' }).click();
   await expect(candidate.getByText('Профиль сохранён')).toBeVisible();
-  await candidate.getByRole('button', { name: 'Подтвердить уровень' }).click();
+  await candidate.getByRole('button', { name: 'Пройти тест' }).click();
   await candidate.waitForURL(/\/workspace$/);
   await answerKnowledgeTest(candidate);
   await candidate.getByRole('button', { name: 'Отправить ответы' }).click();

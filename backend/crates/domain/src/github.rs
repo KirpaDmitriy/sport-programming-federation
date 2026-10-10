@@ -126,6 +126,9 @@ pub struct GitHubReport {
     pub algorithm_version: String,
     pub generated_at: String,
     pub login: String,
+    /// The public profile name, when the account sets one.
+    #[serde(default)]
+    pub display_name: Option<String>,
     pub profile_url: String,
     pub account_created_at: String,
     pub coverage: GitHubCoverage,

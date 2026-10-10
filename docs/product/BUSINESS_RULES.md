@@ -36,12 +36,38 @@ catalog skill. GitHub evidence maps languages and technologies onto catalog skil
 | Owner | Fields |
 | --- | --- |
 | Candidate (editable) | `name`, `industry` (only `it`), `specialization` (one of 25 catalog specializations), `selectedGrade` (`intern`/`junior`/`middle`/`senior`/`lead`), `stack` (up to 12 catalog skills), `teamRole`, `experienceMonths` (`null` unknown, `0` none, up to 1200), `experience`, `softSkills` (up to 12, self-assessed), `consents` |
-| Server | `verifiedSpecialization`, `verifiedGrade`, `gradeConfirmedAt`, `category`, `onboarding`, `assessmentEligibility`, `revision` |
+| Server | `verifiedSpecialization`, `verifiedGrade`, `gradeConfirmedAt`, `category`, `estimate`, `autoFields`, `onboarding`, `assessmentEligibility`, `revision` |
 
-- `selectedGrade` is only the target of the next assessment («Цель»). Changing it never changes `verifiedGrade`;
+- `selectedGrade` is the target of the next assessment («Цель»). Changing it never changes `verifiedGrade`;
   only an assessment result does.
 - The questionnaire is complete when name, specialization, selected grade, at least one stack item, team role and
   experience are filled.
+
+### Automatic profile
+
+A candidate does not have to type anything: connecting GitHub and/or FSP builds the profile. The rules are
+`estimate-v1` in [`backend/crates/domain/src/estimate.rs`](../../backend/crates/domain/src/estimate.rs); the plan of
+record is [`docs/auto-profile.md`](../auto-profile.md).
+
+- Every finished source write (connecting FSP, a finished GitHub analysis, a sync) recomputes `estimate` from all
+  connected sources in the same transaction. A running GitHub analysis keeps the previous estimate.
+  `POST /me/profile/estimate` recomputes on request (`409 source_not_connected` without a finished source).
+- `estimate` holds the leading specializations with shares, a 0–100 seniority score with its factors (seven GitHub
+  dimensions, stated experience, FSP results), the grade band (< 20 стажёр, 20–39 джуниор, 40–59 мидл, 60–79 сеньор,
+  ≥ 80 лид; сеньор needs two active years or 36 months of experience, лид three years or 60 months), the confidence,
+  the sources, `insufficient` when there is too little evidence, and the answers it suggests.
+- The estimate answers the questionnaire fields that are empty, that an earlier estimate filled (`autoFields`), and
+  the specialization and target grade while the questionnaire is incomplete. A test-confirmed category keeps its
+  specialization and target grade. A field the candidate changes leaves `autoFields`, and estimates never overwrite
+  it again; a PATCH that resends an unchanged value keeps the field automatic. A new account starts as «Новый
+  кандидат», which the public GitHub name may replace.
+- When Bifrost is configured, the LLM receives the anonymized evidence (no login, names, links or organizations)
+  and gives a second opinion within 20 seconds. It may choose between the two leading specializations when their
+  shares differ by at most ten points and may rewrite the experience and team-role texts (texts with links or
+  addresses are dropped). It never sets the grade: a disagreement lowers the confidence one level and is shown.
+- The mock applies the golden estimates the Rust rules write to
+  [`contracts/fixtures/profile-estimates.json`](../../contracts/fixtures/profile-estimates.json) for its fixed GitHub
+  report and FSP result; it ignores experience the candidate typed.
 
 ### Visibility to employers
 
@@ -52,11 +78,15 @@ ones and the UI lists them on the overview, profile and settings pages:
 | --- | --- |
 | E-mail verified | `email` |
 | Questionnaire complete | `questionnaire` |
-| A passed assessment (verified specialization and grade exist) | `assessment` |
+| A category: a passed assessment, or an estimate with a specialization, a grade and at least medium confidence | `category` |
 | Processing consent | `processing_consent` |
 | Publication consent | `publication_consent` |
 
-`category` is `{ specialization, grade, eligible }` built from the verified values; `eligible` equals visibility.
+`category` is `{ specialization, grade, eligible, source, confidence }`: the verified values with
+`source: assessment`, otherwise the estimate with `source: estimate` and its confidence; `eligible` equals visibility.
+The organizer's specification derives the category from the questionnaire and a test; the owner chose to let the
+estimate assign it too, so every category states its source, test-confirmed categories rank first (section 7), and
+the UI never calls an estimate «подтверждено».
 
 ### Consents
 
@@ -200,11 +230,11 @@ verification or «verified» badge.
 ## 7. Search and matching
 
 - The bank contains only profiles visible to employers (section 2).
-- **Recommended** mode needs a need of the company (`422 need_required`) and keeps candidates whose verified
-  specialization equals the need's and whose verified grade is at least the need's. **Bank** mode shows everyone
+- **Recommended** mode needs a need of the company (`422 need_required`) and keeps candidates whose category
+  specialization equals the need's and whose category grade is at least the need's. **Bank** mode shows everyone
   visible.
-- Filters: verified specialization, exact verified grade, a skill in any state except `insufficient`, and verified FSP
-  participation. Pages of 1–50 (default 10).
+- Filters: category specialization, exact category grade, the category source (`categorySource`: `assessment` or
+  `estimate`), a skill in any state except `insufficient`, and verified FSP participation. Pages of 1–50 (default 10).
 
 ### Requirement result
 
@@ -219,7 +249,7 @@ even when the policy accepts those sources; they feed the gap plan instead.
 
 A candidate is `missing_required` («Не хватает свидетельств по обязательным требованиям») when any required item is
 `not_evidenced`, `meets_required` («Подходят по обязательным требованиям») when every required item meets and the
-grade fits (same verified specialization, grade at least the need's), otherwise `needs_verification` («Требуют
+grade fits (same category specialization, grade at least the need's), otherwise `needs_verification` («Требуют
 дополнительной проверки»). Desired items never compensate for a missing required one. The result carries counts, the
 per-requirement reasons, a sentence of explanation and `algorithmVersion: fixture-rules-v1`.
 
@@ -228,15 +258,20 @@ per-requirement reasons, a sentence of explanation and `algorithmVersion: fixtur
 The server sorts; the UI groups by match status and says that the order is set by the server and is not a
 probability of being hired.
 
-- With a need: grade fit, required items met, desired items met, verified FSP participation, candidate ID.
-- Without a need: verified specialization, verified grade (higher first), verified FSP participation, candidate ID.
+- With a need: grade fit, required items met, desired items met, category strength, verified FSP participation,
+  candidate ID.
+- Without a need: category specialization (catalog order), category grade (higher first), category strength,
+  verified FSP participation, candidate ID.
+
+Category strength: a test result 3, a high-confidence estimate 2, a medium-confidence estimate 1.
 
 FSP participation only breaks ties; its absence never disqualifies.
 
 ### Anonymous projection
 
-Every employer response about a candidate (search, profile, graph) contains only: ID, alias, verified specialization
-and grade with confirmation date, work modes, `availableForOffers`, skills (state, evidence grade, source kinds,
+Every employer response about a candidate (search, profile, graph) contains only: ID, alias, the category
+(specialization, grade, `categorySource`, `categoryConfidence`), the verified grade with its confirmation date when
+there is one, for an estimated category the score and factor points (`estimate`, without explanations or texts), work modes, `availableForOffers`, skills (state, evidence grade, source kinds,
 summary, evidence count, confirmation date — no evidence items), source kinds, verified FSP flag, profile freshness
 (section 11), the match and the anonymous GitHub signal (`github`: index, public summary, areas of work, dimensions
 with rounded metrics, ownership state, languages, technologies, rhythm bands, highlights and warnings — no login,
@@ -288,10 +323,10 @@ applies, and the company decides.
   specialization, grade, work mode and required skill, paged like the bank. A vacancy shows the company (name,
   business area, description, contact e-mail), title, specialization, grade, work mode, salary, description and the
   requirements without the evidence policy. An unpublished or unknown vacancy answers `404`.
-- **Fit:** for a candidate with a verified grade and processing consent the vacancy carries the same `Match` as the
-  employer search (section 7), computed from the candidate's verified profile; otherwise `match: null`.
+- **Fit:** for a candidate with a category and processing consent the vacancy carries the same `Match` as the
+  employer search (section 7), computed from the candidate's category and skills; otherwise `match: null`.
 - **Eligibility:** the server reports `eligibility: { canApply, reason }`. Applying needs, in this order, a verified
-  e-mail (`email`), a complete questionnaire (`questionnaire`), a passed assessment (`assessment`) and processing
+  e-mail (`email`), a complete questionnaire (`questionnaire`), a category (`category`) and processing
   consent (`processing_consent`); publication consent is not needed, because an application goes to one company. A
   candidate has at most one application per vacancy that is not withdrawn (`application_exists`).
 - **Apply** (candidate): `POST /me/applications` with the vacancy, a message of 1–4000 characters, at least one field
@@ -320,9 +355,9 @@ The specification's recurring short tasks keep a profile current and give employ
   tasks with their answer counts.
 - **Weekly offer** (candidate): `GET /me/tasks` returns the current period — the ISO week of the server clock, Monday
   00:00 UTC to the next Monday — and at most one task for it: an active task of any company on a skill the candidate
-  has evidence for (any state but «Недостаточно данных»), at or below the verified grade, not answered in an earlier
+  has evidence for (any state but «Недостаточно данных»), at or below the category grade, not answered in an earlier
   week, chosen by rotating the eligible tasks by the week number. An answer given this week keeps that task as the
-  week's task. Without a verified grade the reason is `assessment`, without processing consent `processing_consent`,
+  week's task. Without a category the reason is `category`, without processing consent `processing_consent`,
   without a matching task `no_tasks`.
 - **Answer:** `POST /me/tasks/{id}/responses` with `mode` (`solution` or `approach`), an answer of 1–10000 characters
   and an `Idempotency-Key`; one answer per week (`409 task_response_exists`) and only to the offered task

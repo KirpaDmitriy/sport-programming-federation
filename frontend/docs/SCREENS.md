@@ -36,21 +36,30 @@ Navigation: Обзор, Профиль, Источники, Навыки, Про
 ### `/candidate/onboarding` — «Анкета кандидата»
 
 ![Onboarding](screenshots/15-onboarding.png)
+![Automatic profile](screenshots/25-onboarding-auto-profile.png)
 
 Five steps with done markers: e-mail confirmed; consents (processing and publication as separate controls);
-questionnaire (the profile form, or «Заполнить из PDF» after processing consent); optional sources, where GitHub can
-be connected right away by login or profile link after processing consent (then «Открыть отчёт GitHub»); level check.
-The last step offers «Подтвердить уровень» for the saved target when the server allows it, otherwise the reason
-(unsupported specialization, active attempt, cooldown, downgrade).
+«Подключите GitHub или ФСП» — GitHub by login or profile link with the running analysis stage, and the FSP ID, both
+after processing consent, plus «Подробный отчёт и подтверждение владения»; «Профиль собран автоматически» — the
+estimate card (category with its source and confidence, score, directions, factors, the LLM's second opinion,
+«Пересчитать», «Подтвердить тестом») and the questionnaire under «Проверить и поправить анкету» («Заполнить анкету
+вручную» while it is incomplete, open until the candidate closes it), where automatic answers are marked «Заполнено
+автоматически» and «Заполнить из PDF» is available; «Тест знаний — по желанию» with «Пройти тест» for the saved target
+when the server allows it, otherwise the reason (unsupported specialization, active attempt, cooldown, downgrade).
+Without a source the estimate step says the questionnaire can be filled by hand and the category earned by a test.
 
 ### `/candidate/overview` — «Мой профиль»
 
 ![Candidate overview](screenshots/01-candidate-overview.png)
 
-- Identity card: name, role, verified grade badge («Джуниор подтверждён» or «Уровень не подтверждён»), target badge
-  («Цель: Мидл») when it differs, profile freshness once a grade is verified, stack, «Скачать PDF», and the visibility line: the alias employers see, or the
-  blockers that keep the profile out of search.
-- «Начните с анкеты» while the questionnaire is incomplete.
+![Automatic estimate](screenshots/26-candidate-estimate.png)
+
+- Identity card: name, role, the category badge with its source («Бэкенд · Джуниор · подтверждено тестом», «Бэкенд ·
+  Сеньор · оценка, высокая уверенность» or «Категория не присвоена»), target badge («Цель: Мидл») when it differs from
+  the category grade, profile freshness once a grade is verified, stack, «Скачать PDF», and the visibility line: the
+  alias employers see, or the blockers that keep the profile out of search.
+- «Соберите профиль» while the questionnaire is incomplete.
+- «Автоматическая оценка»: the estimate card, or «Подключите GitHub или ФСП» / «Оценить профиль» without an estimate.
 - «Мои компетенции»: skills with state, confirmed level and evidence sources, plus a summary of GitHub (the running
   analysis stage, then the index, band and ownership state) and FSP.
 - «Следующий шаг» (shared with «Проверки»): continue the questionnaire, continue an active attempt, open an
@@ -63,8 +72,9 @@ The last step offers «Подтвердить уровень» for the saved tar
 
 The profile form (name, read-only e-mail, industry, specialization grouped by direction, grade for the check,
 experience in months, a searchable stack of up to 12 catalog technologies, experience, team role, soft skills) with «Сохранить профиль» and «Отменить изменения»; «Импортировать
-PDF»; «Для работодателей» — the anonymous preview; privacy settings; «Текущий статус» with the verified grade and the
-selected target shown separately.
+PDF»; «Для работодателей» — the anonymous preview with the category badge; privacy settings; «Текущий статус» with the
+verified grade, or the estimated category, or «Категории пока нет», and the target of the next test shown separately.
+Automatic answers are marked «Заполнено автоматически»; changing one keeps it from later estimates.
 
 PDF import is available when the capability is on. Choose a digital PDF (up to 2 MiB), wait for bounded
 extraction, then review/edit fields and their page excerpts. Nothing changes before confirmation. A changed
@@ -231,12 +241,14 @@ gets a warning with a link, since invitations need it.
 ### `/employer/candidates` — «Кандидаты»
 
 ![Candidate search](screenshots/08-candidate-search.png)
+![Estimated candidates](screenshots/27-employer-estimated-candidates.png)
 ![Search failure](screenshots/16-search-api-error.png)
 
-- «Для потребности» selector and mode «Рекомендации» / «Весь банк»; filters for specialization, verified grade,
-  stack and FSP. Everything is in the URL.
+- «Для потребности» selector and mode «Рекомендации» / «Весь банк»; filters for specialization, grade, «Подтверждение
+  категории» («Тест знаний» / «Автооценка»), stack and FSP. Everything is in the URL.
 - Results grouped by match status («Подходят по обязательным требованиям», «Требуют дополнительной проверки», «Не
-  хватает свидетельств по обязательным требованиям»), each row with alias, verified qualification and its date, FSP
+  хватает свидетельств по обязательным требованиям»), each row with alias, the category with «Подтверждено тестом» or
+  «Оценка, … уверенность» and the score of an estimate, FSP
   participation, freshness, stack, required coverage, the first missing requirement with its reason, desired gaps, and a bookmark
   for the active shortlist. The order is set by the server and the page says it is not a probability of hiring.
 - Paging; empty results offer «Сбросить фильтры» or «Весь банк»; a search failure is an error state with retry,
@@ -249,10 +261,11 @@ gets a warning with a link, since invitations need it.
 ![Invitation composer](screenshots/09b-invitation-composer.png)
 ![Disclosed contacts](screenshots/12-employer-disclosed-contacts.png)
 
-Alias, verified specialization and grade with date, profile freshness, work modes, FSP participation; «Потребность для сравнения»;
+Alias, the category badge with its source, profile freshness, work modes, FSP participation; «Потребность для сравнения»;
 the «GitHub: публичная активность» card with the anonymous rounded signal and the ownership state when the candidate connected GitHub (the candidate list shows its index, band and ownership state in the qualification column);
 tabs «Соответствие» (per requirement: result, evidence state, reason, gap plan), «Навыки» (list or graph without
-evidence details) and «Проверки». The contacts card says «Контакты и ссылки скрыты до согласия кандидата» until the
+evidence details) and «Категория» (the test and its date, or for an estimate the score with each factor's points and
+the grade bands). The contacts card says «Контакты и ссылки скрыты до согласия кандидата» until the
 candidate accepts this company's invitation, then shows only the fields they chose. «Пригласить кандидата» opens the
 composer: need, offer text, the frozen terms and the company contact the candidate will see; blocked with a link
 while the company profile is incomplete; an existing active invitation for the need is reported.

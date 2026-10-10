@@ -40,6 +40,8 @@ export interface Candidate {
   experience: string;
   softSkills: string[];
   consents: S['Profile']['consents'];
+  estimate: S['ProfileEstimate'] | null;
+  autoFields: S['Profile']['autoFields'];
   revision: number;
   updatedAt: string;
   workModes: S['AnonymousCandidate']['workModes'];
@@ -384,6 +386,8 @@ export function makeCandidate(
     experience: fresh ? '' : 'Разработка API и командная работа над учебными и открытыми проектами.',
     softSkills: fresh ? [] : ['Командная работа', 'Объяснение решений'],
     consents: { processing: !fresh, publication: !fresh },
+    estimate: null,
+    autoFields: [],
     revision: 1,
     updatedAt: CLOCK,
     workModes: ['remote'],
