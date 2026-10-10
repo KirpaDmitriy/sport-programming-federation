@@ -1,8 +1,10 @@
-import { useSuspenseQuery } from '@tanstack/react-query';
+import { useQuery, useSuspenseQuery } from '@tanstack/react-query';
 import { type ReactNode, useState } from 'react';
 import { useMeta } from '@/entities/meta';
 import { eligibilityReasonText, profileQuery } from '@/entities/profile';
 import { useScope } from '@/entities/session';
+import { mySourcesQuery, type Source } from '@/entities/source';
+import { ConnectSourceForm } from '@/features/connect-source';
 import { ConsentControls } from '@/features/consents';
 import { ProfileForm } from '@/features/edit-profile';
 import { ImportProfileDialog } from '@/features/profile-pdf';
@@ -25,11 +27,58 @@ function Step({ index, done, title, children }: { index: number; done: boolean; 
   );
 }
 
+/** GitHub can be added right here; the full report and FSP live on the sources page. */
+function SourcesStep({ consent, github, failed }: { consent: boolean; github: Source | undefined; failed: boolean }) {
+  const connected = github?.status === 'connected';
+  return (
+    <div className="stack">
+      <p className="muted">
+        GitHub покажет вашу публичную работу: языки, стек, главные проекты и регулярность. Анализ идёт на нашем сервере
+        в фоне несколько минут, токен не нужен. ФСП ID тоже можно указать позже. Без источников проверка и подбор
+        работают полностью.
+      </p>
+      {failed && (
+        <Callout tone="warning">
+          Не удалось загрузить источники. Подключить GitHub можно на странице источников.
+        </Callout>
+      )}
+      {connected ? (
+        <p className="row" style={{ margin: 0 }}>
+          <Icon name={github.activeJobId ? 'refresh' : 'checkCircle'} />
+          GitHub «{github.accountLabel}» подключён{github.activeJobId ? ', идёт анализ' : ''}.
+        </p>
+      ) : consent ? (
+        <div style={{ maxWidth: '32rem' }}>
+          <ConnectSourceForm
+            provider="github"
+            label="Ник или ссылка на профиль GitHub"
+            placeholder="octocat или https://github.com/octocat"
+            submitLabel="Подключить GitHub"
+            hint="Например: octocat, @octocat или https://github.com/octocat."
+          />
+        </div>
+      ) : (
+        <p className="small muted" style={{ margin: 0 }}>
+          Подключение GitHub доступно после согласия на обработку данных.
+        </p>
+      )}
+      <div>
+        <ButtonLink to="/candidate/sources" iconAfter="arrowRight">
+          {connected ? 'Открыть отчёт GitHub' : 'Перейти к источникам'}
+        </ButtonLink>
+      </div>
+    </div>
+  );
+}
+
 export function CandidateOnboardingPage() {
   useDocumentTitle('Анкета кандидата');
   const scope = useScope();
   const meta = useMeta();
   const { data: profile } = useSuspenseQuery(profileQuery(scope));
+  const sources = useQuery(mySourcesQuery(scope));
+  const github = sources.data?.items.find((item) => item.provider === 'github');
+  const githubConnected = github?.status === 'connected';
   const [importOpen, setImportOpen] = useState(false);
   const start = useStartAssessment();
   const eligibility = profile.assessmentEligibility;
@@ -69,16 +118,8 @@ export function CandidateOnboardingPage() {
             <ProfileForm profile={profile} submitLabel="Сохранить анкету" />
           </div>
         </Step>
-        <Step index={4} done={false} title="Источники — по желанию">
-          <div className="stack">
-            <p className="muted">
-              GitHub дополнит профиль свидетельствами автоматически. ФСП ID тоже можно указать позже. Без них проверка и
-              подбор работают полностью.
-            </p>
-            <ButtonLink to="/candidate/sources" iconAfter="arrowRight">
-              Перейти к источникам
-            </ButtonLink>
-          </div>
+        <Step index={4} done={githubConnected} title="Источники — по желанию">
+          <SourcesStep consent={profile.consents.processing} github={github} failed={sources.isError} />
         </Step>
         <Step index={5} done={form.assessmentPassed} title="Проверка уровня">
           {form.assessmentPassed ? (
