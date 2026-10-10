@@ -15,7 +15,9 @@ GitHub connection is real: fsp-github-insights (loopback 4030) analyzes public w
 docs/github-insights.md. Calibrate rule changes on public accounts only and never toward a desired score.
 
 Automatic profile (owner decision 2026-10-10, docs/auto-profile.md): connecting GitHub and/or FSP answers the
-questionnaire and gives an estimated category (estimate-v2: seniority counted in months, senior 24, lead 48).
+questionnaire and gives an estimated category (estimate-v3: level-framework factors with scope and complexity,
+senior 24 and lead 48 months, stated experience never lowers evidence, lead needs collaboration ≥ 50 or a stated
+leading role, notes explain caps; «Заполнить анкету по источникам» rebuilds answers).
 Edited answers leave autoFields and are never overwritten. Categories state their source; tests rank first. The Grok
 second opinion runs in the background after commit (live answers take over 20 s) and only lowers confidence or picks
 between close specializations. Catalog v2: 25 specializations, 5 grades, 255 skills incl. 1C; every specialization
@@ -52,4 +54,4 @@ No pending user permission is needed for the completed scope. Read current open 
 Memory index: platform.md (auth/data/assessment), frontend.md (UI/proofs), operations.md (deployment/mail/CI/recovery).
 Release identity: compare upstream/main, /opt/fsp/current and deployed.json instead of trusting a SHA written here.
 Receipts: #54 (no-backup policy), #67 (GitHub insights delivery and live check), #73 (catalog v2),
-#76/#79 (automatic profile, background review), #82 (question banks, estimate-v2).
+#76/#79 (automatic profile, background review), #82 (question banks, estimate-v2), estimate-v3 PR (see GitHub).

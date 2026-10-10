@@ -40,6 +40,28 @@ describe('profile estimate card', () => {
     for (const factor of github.factors) expect(screen.getByText(factor.label)).toBeTruthy();
     expect(screen.getByText(/Оценивает грейд как «Мидл», поэтому уверенность снижена/)).toBeTruthy();
     expect(screen.getByRole('link', { name: /Подтвердить тестом/ })).toBeTruthy();
+    // The notes say why the grade is what it is and what the next one needs.
+    for (const note of github.notes) expect(screen.getByText(note)).toBeTruthy();
+  });
+
+  it('rebuilds every answer from the sources after a confirmation', async () => {
+    const rebuilt = estimated();
+    let mode: string | null = null;
+    server.use(
+      http.post(`${API}/api/v1/me/profile/estimate`, ({ request }) => {
+        mode = new URL(request.url).searchParams.get('answers');
+        return HttpResponse.json(rebuilt);
+      }),
+    );
+    const { queryClient } = await renderWithProviders(<ProfileEstimateCard profile={estimated()} canEstimate />, {
+      session: candidateSession,
+      prefill,
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Заполнить анкету по источникам' }));
+    expect(screen.getByText(/Имя останется вашим/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Заполнить' }));
+    await waitFor(() => expect(mode).toBe('replace'));
+    await waitFor(() => expect(queryClient.getQueryData(profileKey(scopeOf(candidateSession)))).toEqual(rebuilt));
   });
 
   it('asks for a source without an estimate and recalculates on request', async () => {

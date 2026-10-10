@@ -113,7 +113,7 @@ test('documentation screenshots of the implemented screens', async ({ browser, p
   await fresh.getByRole('switch', { name: 'Показывать профиль работодателям' }).click();
   await fresh.getByLabel('GitHub: ник или ссылка на профиль').fill('octo-cat');
   await fresh.getByRole('button', { name: 'Подключить GitHub' }).click();
-  await expect(fresh.getByText('Бэкенд · Сеньор · оценка, высокая уверенность')).toBeVisible();
+  await expect(fresh.getByText('Бэкенд · Мидл · оценка, высокая уверенность')).toBeVisible();
   await shot(fresh, '25-onboarding-auto-profile');
   await fresh.goto('/candidate/overview');
   await expect(fresh.getByText('Из чего складывается балл')).toBeVisible();

@@ -5,7 +5,9 @@ A candidate connects a GitHub account by login or profile link. The separate loo
 without any token from the candidate or from us. It turns the work into a developer portrait (areas, languages,
 stack, main projects), documented heuristics, a 0–100 index and integrity flags. The career API stores the report
 with the source, shows it to the candidate in full and gives employers an anonymous projection. The algorithm is
-`github-insights-v2`; changing a threshold or weight means a new version.
+`github-insights-v3` (v3 added the scope dimension and moved weight from rhythm to it); changing a threshold or
+weight means a new version. Reports of an earlier version stay readable and are re-analyzed when the candidate
+recalculates the estimate.
 
 ## Principles
 
@@ -112,12 +114,12 @@ weighted mean of the dimensions. Bands: 0–24 weak, 25–49 moderate, 50–74 s
 
 | Dimension (weight) | Metric | Score | Weight |
 | --- | --- | --- | --- |
-| Регулярность (20%) | Active weeks of the last 52 | `ramp(0, 40)` | 35 |
+| Регулярность (15%) | Active weeks of the last 52 | `ramp(0, 40)` | 35 |
 | | Longest run of active weeks | `ramp(0, 26)` | 20 |
 | | Current run of active weeks | `ramp(0, 12)` | 15 |
 | | Active months of the last 24 | `ramp(0, 20)` | 15 |
 | | Weekly burstiness B = (σ − μ)/(σ + μ) | 100 at B ≤ 0, 0 at B ≥ 0.8 | 15 |
-| Вовлечённость (20%) | Public commits in the last year (search total) | `log(1000)` | 15 |
+| Вовлечённость (15%) | Public commits in the last year (search total) | `log(1000)` | 15 |
 | | Active days in the last year | `ramp(0, 180)` | 20 |
 | | Longest run of consecutive days | `ramp(0, 30)` | 15 |
 | | Median active days per active week | `ramp(0, 5)` | 10 |
@@ -144,6 +146,15 @@ weighted mean of the dimensions. Bands: 0–24 weak, 25–49 moderate, 50–74 s
 | | Forks of owned repositories | `log(100)` | 15 |
 | | Independent projects from 1 000 stars with ≥ 3 commits or a merged pull request | `ramp(0, 3)` | 40 |
 | | Followers | `log(200)` | 10 |
+| Масштаб и сложность (10%) | Owned or led repositories with ≥ 10 own commits spanning ≥ 180 days | `ramp(0, 5)` | 35 |
+| | Engineering areas of the portrait with at least 15% | `ramp(0, 3)` | 20 |
+| | Non-language stack categories used in two or more repositories | `ramp(0, 6)` | 20 |
+| | Substantive repositories with design artifacts: architecture decision records or design documents, OpenAPI/AsyncAPI/GraphQL/Protocol Buffers contracts, schema migrations | `ramp(0, 5)` | 25 |
+
+Scope and complexity is the axis engineering level frameworks rank first (the
+[levels.fyi framework](https://www.levels.fyi/blog/swe-level-framework.html) defines levels by scope, impact and
+ambiguity): it counts systems sustained for months, breadth across areas and layers, and design work beyond code,
+never commit volume.
 
 Hygiene is read from the whole default-branch tree, so tests anywhere in the tree count. Stars and followers are
 gameable ([StarScout](https://arxiv.org/abs/2412.13459) found millions of fake stars), so impact carries 5% and the

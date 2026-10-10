@@ -19,8 +19,11 @@ export async function updateProfile(patch: ProfilePatch) {
 }
 
 /** Recomputes the estimate from the connected sources and answers the questionnaire fields still automatic. */
-export async function refreshEstimate() {
-  return requireData(await api.POST('/api/v1/me/profile/estimate'));
+/** `keep` answers only the fields the candidate has not edited; `replace` rebuilds every answer but the name. */
+export type EstimateAnswers = 'keep' | 'replace';
+
+export async function refreshEstimate(answers: EstimateAnswers = 'keep') {
+  return requireData(await api.POST('/api/v1/me/profile/estimate', { params: { query: { answers } } }));
 }
 
 export type ProfileEstimate = components['schemas']['ProfileEstimate'];

@@ -4,6 +4,10 @@
       "experience": "",
       "experienceMonths": null,
       "name": null,
+      "softSkills": [
+        "Работает в команде на соревнованиях",
+        "Решает задачи в ограниченное время"
+      ],
       "stack": [],
       "teamRole": "Бэкенд-разработчик"
     },
@@ -20,6 +24,7 @@
     ],
     "grade": "intern",
     "insufficient": null,
+    "notes": [],
     "review": null,
     "score": 16,
     "sources": [
@@ -36,13 +41,16 @@
         "percent": 50
       }
     ],
-    "version": "estimate-v2"
+    "version": "estimate-v3"
   },
   "github": {
     "answers": {
       "experience": "Основные направления — бэкенд (83%) и фронтенд (17%); пишет в основном на Rust (71%) и TypeScript (17%). Ведёт 2 проекта в 1 организации (acme-labs). За год — 770 публичных коммитов. Ключевые технологии: GitHub Actions, Axum, FastAPI, HTTP-клиенты Python. Темы проектов: platform, rust, web. Главные проекты: project, platform.",
       "experienceMonths": 45,
       "name": "Иван Петров",
+      "softSkills": [
+        "Понятно описывает изменения в коммитах"
+      ],
       "stack": [
         "rust",
         "typescript",
@@ -63,18 +71,25 @@
     "confidence": "high",
     "factors": [
       {
+        "detail": "Масштаб работы пока ограничен",
+        "id": "github_scope",
+        "label": "Масштаб и сложность",
+        "max": 20,
+        "points": 6
+      },
+      {
         "detail": "Несколько лет активности",
         "id": "github_longevity",
-        "label": "Стаж публичной работы",
-        "max": 20,
-        "points": 14
+        "label": "Стаж",
+        "max": 15,
+        "points": 10
       },
       {
         "detail": "Несколько собственных проектов",
         "id": "github_ownership",
         "label": "Собственные проекты",
-        "max": 20,
-        "points": 5
+        "max": 15,
+        "points": 4
       },
       {
         "detail": "Проекты оформлены зрело: CI, тесты, зависимости и стиль",
@@ -101,21 +116,24 @@
         "detail": "Заметная вовлечённость",
         "id": "github_engagement",
         "label": "Вовлечённость",
-        "max": 10,
-        "points": 7
+        "max": 5,
+        "points": 4
       },
       {
         "detail": "Стабильная регулярная активность на протяжении года",
         "id": "github_consistency",
         "label": "Регулярность",
-        "max": 10,
-        "points": 10
+        "max": 5,
+        "points": 5
       }
     ],
-    "grade": "senior",
+    "grade": "middle",
     "insufficient": null,
+    "notes": [
+      "До уровня «Сеньор» не хватает 7 баллов; больше всего можно добавить в «Масштаб и сложность» (ещё до 14) и «Собственные проекты» (ещё до 11)"
+    ],
     "review": null,
-    "score": 60,
+    "score": 53,
     "sources": [
       "github"
     ],
@@ -134,13 +152,18 @@
         "percent": 7
       }
     ],
-    "version": "estimate-v2"
+    "version": "estimate-v3"
   },
   "githubFsp": {
     "answers": {
       "experience": "Основные направления — бэкенд (83%) и фронтенд (17%); пишет в основном на Rust (71%) и TypeScript (17%). Ведёт 2 проекта в 1 организации (acme-labs). За год — 770 публичных коммитов. Ключевые технологии: GitHub Actions, Axum, FastAPI, HTTP-клиенты Python. Темы проектов: platform, rust, web. Главные проекты: project, platform.",
       "experienceMonths": 45,
       "name": "Иван Петров",
+      "softSkills": [
+        "Понятно описывает изменения в коммитах",
+        "Работает в команде на соревнованиях",
+        "Решает задачи в ограниченное время"
+      ],
       "stack": [
         "rust",
         "typescript",
@@ -161,18 +184,25 @@
     "confidence": "high",
     "factors": [
       {
+        "detail": "Масштаб работы пока ограничен",
+        "id": "github_scope",
+        "label": "Масштаб и сложность",
+        "max": 20,
+        "points": 6
+      },
+      {
         "detail": "Несколько лет активности",
         "id": "github_longevity",
-        "label": "Стаж публичной работы",
-        "max": 20,
-        "points": 14
+        "label": "Стаж",
+        "max": 15,
+        "points": 10
       },
       {
         "detail": "Несколько собственных проектов",
         "id": "github_ownership",
         "label": "Собственные проекты",
-        "max": 20,
-        "points": 5
+        "max": 15,
+        "points": 4
       },
       {
         "detail": "Проекты оформлены зрело: CI, тесты, зависимости и стиль",
@@ -199,15 +229,15 @@
         "detail": "Заметная вовлечённость",
         "id": "github_engagement",
         "label": "Вовлечённость",
-        "max": 10,
-        "points": 7
+        "max": 5,
+        "points": 4
       },
       {
         "detail": "Стабильная регулярная активность на протяжении года",
         "id": "github_consistency",
         "label": "Регулярность",
-        "max": 10,
-        "points": 10
+        "max": 5,
+        "points": 5
       },
       {
         "detail": "Опубликованных результатов: 1; лучшее место — 3 из 18",
@@ -219,8 +249,11 @@
     ],
     "grade": "senior",
     "insufficient": null,
+    "notes": [
+      "До уровня «Лид» не хватает 19 баллов; больше всего можно добавить в «Масштаб и сложность» (ещё до 14) и «Собственные проекты» (ещё до 11)"
+    ],
     "review": null,
-    "score": 68,
+    "score": 61,
     "sources": [
       "github",
       "fsp"
@@ -240,13 +273,14 @@
         "percent": 14
       }
     ],
-    "version": "estimate-v2"
+    "version": "estimate-v3"
   },
   "none": {
     "answers": {
       "experience": "",
       "experienceMonths": null,
       "name": null,
+      "softSkills": [],
       "stack": [],
       "teamRole": ""
     },
@@ -255,11 +289,12 @@
     "factors": [],
     "grade": null,
     "insufficient": "Подключите GitHub или ФСП, чтобы оценить уровень",
+    "notes": [],
     "review": null,
     "score": 0,
     "sources": [],
     "specialization": null,
     "specializations": [],
-    "version": "estimate-v2"
+    "version": "estimate-v3"
   }
 }

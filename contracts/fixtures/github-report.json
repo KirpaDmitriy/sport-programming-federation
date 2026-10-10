@@ -1496,7 +1496,7 @@
       }
     ]
   },
-  "algorithmVersion": "github-insights-v2",
+  "algorithmVersion": "github-insights-v3",
   "collaboration": {
     "approvedPullRequests": 8,
     "externalMergeRatePercent": null,
@@ -1593,7 +1593,7 @@
       ],
       "score": 95,
       "summary": "Стабильная регулярная активность на протяжении года",
-      "weight": 20
+      "weight": 15
     },
     {
       "id": "engagement",
@@ -1658,7 +1658,7 @@
       ],
       "score": 72,
       "summary": "Заметная вовлечённость",
-      "weight": 20
+      "weight": 15
     },
     {
       "id": "longevity",
@@ -1904,6 +1904,47 @@
       "score": 44,
       "summary": "Небольшое признание сообщества",
       "weight": 5
+    },
+    {
+      "id": "scope",
+      "label": "Масштаб и сложность",
+      "metrics": [
+        {
+          "display": "1",
+          "id": "sustained_systems",
+          "label": "Своих проектов, которые развивает полгода и дольше",
+          "publicDisplay": "1",
+          "score": 20,
+          "value": 1
+        },
+        {
+          "display": "2",
+          "id": "engineering_areas",
+          "label": "Направлений разработки с долей от 15%",
+          "publicDisplay": "2",
+          "score": 67,
+          "value": 2
+        },
+        {
+          "display": "1",
+          "id": "system_layers",
+          "label": "Слоёв системы, используемых в двух и более проектах",
+          "publicDisplay": "1",
+          "score": 17,
+          "value": 1
+        },
+        {
+          "display": "1",
+          "id": "design_artifacts",
+          "label": "Проектов с архитектурными решениями, контрактами API или миграциями",
+          "publicDisplay": "1",
+          "score": 20,
+          "value": 1
+        }
+      ],
+      "score": 29,
+      "summary": "Масштаб работы пока ограничен",
+      "weight": 10
     }
   ],
   "displayName": "Иван Петров",
@@ -1920,7 +1961,7 @@
   "index": {
     "band": "strong",
     "confidence": "high",
-    "score": 66
+    "score": 61
   },
   "languages": [
     {

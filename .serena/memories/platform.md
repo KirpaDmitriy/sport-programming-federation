@@ -23,7 +23,7 @@ The contextual assistant uses saved responses and never grades. Real extraction 
 Bifrost deadlines are 45 seconds inside the 55-second HTTP and 60-second nginx deadlines; insights calls take 10 seconds.
 FSP uses a private fictional HTTP provider. Published participation counts; team results never certify skills.
 Failed provider sync preserves snapshots. GitHub connects by login/link through the loopback insights service
-(github-insights-v2, docs/github-insights.md): tokenless background analysis of public work (search, REST, blobless
+(github-insights-v3 with the scope dimension, docs/github-insights.md): tokenless background analysis of public work (search, REST, blobless
 clones) polled through a running source_sync job; developer portrait, own organizations as own work, collaboration
 only outside them; ownership by bio code (OAuth optional, deferred), one proven login per candidate, evidence only
 from owned/led repos, anonymous rounded employer signal, no grade/order effect.

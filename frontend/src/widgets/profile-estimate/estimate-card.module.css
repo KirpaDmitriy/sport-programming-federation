@@ -76,3 +76,10 @@
   padding-top: var(--fsp-space-4);
   border-top: 1px solid var(--fsp-color-border);
 }
+
+.notes {
+  display: grid;
+  gap: var(--fsp-space-2);
+  margin: 0;
+  padding-left: 1.25rem;
+}

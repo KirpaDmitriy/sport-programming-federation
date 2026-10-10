@@ -422,7 +422,7 @@ impl fsp_application::LlmGateway for Reviewer {
         assert!(!serialized.contains("Иван") && !serialized.contains("auto-dev"));
         Ok(fsp_domain::ProfileReviewReply {
             specialization: Specialization::Backend,
-            grade: Grade::Middle,
+            grade: Grade::Junior,
             rationale: "Стабильная работа над собственными проектами".into(),
             experience: "Разрабатывает API на Rust и веб-интерфейсы на TypeScript.".into(),
             team_role: "Ведёт бэкенд-проекты".into(),
@@ -443,7 +443,7 @@ async fn connecting_github_builds_the_profile_and_an_estimated_category() {
     assert_eq!(profile.name, fsp_domain::DEFAULT_CANDIDATE_NAME);
     assert!(profile.estimate.is_none());
     assert!(profile.onboarding.blockers.contains(&"category"));
-    let error = service.refresh_estimate(&session).await.unwrap_err();
+    let error = service.refresh_estimate(&session, false).await.unwrap_err();
     assert_eq!(error.code, "source_not_connected");
 
     service
@@ -471,14 +471,14 @@ async fn connecting_github_builds_the_profile_and_an_estimated_category() {
     }
     assert_eq!(profile.name, "Иван Петров");
     assert_eq!(profile.specialization, Specialization::Backend);
-    assert_eq!(profile.selected_grade, Grade::Senior);
+    assert_eq!(profile.selected_grade, Grade::Middle);
     assert_eq!(profile.stack.len(), 12);
     assert_eq!(profile.auto_fields.len(), fsp_domain::AUTO_FIELDS.len());
     assert_eq!(profile.team_role, "Ведёт бэкенд-проекты");
     let estimate = profile.estimate.as_ref().unwrap();
     assert_eq!(
         estimate.grade,
-        Some(Grade::Senior),
+        Some(Grade::Middle),
         "the grade stays rule-based"
     );
     assert!(!estimate.review.as_ref().unwrap().agrees);
@@ -487,7 +487,7 @@ async fn connecting_github_builds_the_profile_and_an_estimated_category() {
         profile.category.source,
         Some(fsp_domain::CategorySource::Estimate)
     );
-    assert_eq!(profile.category.grade, Some(Grade::Senior));
+    assert_eq!(profile.category.grade, Some(Grade::Middle));
     assert!(!profile.onboarding.blockers.contains(&"category"));
     assert!(!profile.onboarding.blockers.contains(&"questionnaire"));
 
@@ -506,7 +506,7 @@ async fn connecting_github_builds_the_profile_and_an_estimated_category() {
         )
         .await
         .unwrap();
-    let mut refreshed = service.refresh_estimate(&session).await.unwrap();
+    let mut refreshed = service.refresh_estimate(&session, false).await.unwrap();
     for _ in 0..100 {
         if refreshed
             .estimate
@@ -557,13 +557,13 @@ async fn connecting_github_builds_the_profile_and_an_estimated_category() {
         .iter()
         .find(|item| Some(item.id.as_str()) == session.candidate_id.as_deref())
         .expect("the estimated candidate is in the bank");
-    assert_eq!(card.grade, Grade::Senior);
+    assert_eq!(card.grade, Grade::Middle);
     assert_eq!(card.verified_grade, None);
     assert_eq!(
         card.category_confidence,
         Some(fsp_domain::SignalConfidence::Medium)
     );
-    assert_eq!(card.estimate.as_ref().unwrap().factors.len(), 7);
+    assert_eq!(card.estimate.as_ref().unwrap().factors.len(), 8);
     let confirmed = service
         .candidate_search(&employer, search(fsp_domain::CategorySource::Assessment))
         .await
@@ -575,6 +575,35 @@ async fn connecting_github_builds_the_profile_and_an_estimated_category() {
             .iter()
             .all(|item| item.category_source == fsp_domain::CategorySource::Assessment)
     );
+
+    // Typed experience is re-estimated at once and never costs the public evidence points.
+    let score = refreshed.estimate.as_ref().unwrap().score;
+    let typed = service
+        .update_profile(
+            &session,
+            ProfilePatch {
+                experience_months: Some(Some(5)),
+                ..ProfilePatch::default()
+            },
+        )
+        .await
+        .unwrap();
+    let estimate = typed.estimate.as_ref().unwrap();
+    assert_eq!(estimate.score, score);
+    assert_eq!(estimate.review, None, "a new estimate waits for its review");
+    assert_eq!(typed.experience_months, Some(5));
+
+    // Rebuilding hands every answer back to the evidence, the typed experience included.
+    let rebuilt = service.refresh_estimate(&session, true).await.unwrap();
+    assert_ne!(rebuilt.team_role, "Тимлид");
+    assert_eq!(rebuilt.name, "Иван Петров");
+    for field in ["teamRole", "experienceMonths", "softSkills", "stack"] {
+        assert!(
+            rebuilt.auto_fields.iter().any(|item| item == field),
+            "{field}"
+        );
+    }
+    assert_ne!(rebuilt.experience_months, Some(5));
 }
 
 #[tokio::test(flavor = "current_thread")]
