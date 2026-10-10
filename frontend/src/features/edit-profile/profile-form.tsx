@@ -24,6 +24,7 @@ import {
   UnsavedChangesGuard,
   useToast,
 } from '@/shared/ui';
+import styles from './profile-form.module.css';
 
 type Values = Required<Omit<ProfilePatch, 'consents'>>;
 
@@ -191,21 +192,46 @@ export function ProfileForm({ profile, submitLabel, onSaved }: Props) {
             )}
           </form.Field>
           <form.Field name="experienceMonths">
-            {(field) => (
-              <TextField
-                id="profile-months"
-                label="Стаж, месяцев"
-                inputMode="numeric"
-                hint={hintFor('experienceMonths', '0 — опыта нет; пустое поле — не указан')}
-                value={field.state.value === null ? '' : String(field.state.value)}
-                onChange={(event) => {
-                  const digits = event.target.value.replace(/\D/g, '');
-                  field.handleChange(digits === '' ? null : Math.min(1200, Number(digits)));
-                  clearServer('experienceMonths');
-                }}
-                error={serverErrors.experienceMonths}
-              />
-            )}
+            {(field) => {
+              // Stored in months, typed as years and months: «5» in a months box read as five years.
+              const total = field.state.value;
+              const set = (years: number | null, months: number | null) => {
+                field.handleChange(
+                  years === null && months === null ? null : Math.min(1200, (years ?? 0) * 12 + (months ?? 0)),
+                );
+                clearServer('experienceMonths');
+              };
+              const digits = (value: string) => {
+                const text = value.replace(/\D/g, '');
+                return text === '' ? null : Number(text);
+              };
+              return (
+                <div className={styles.duration}>
+                  <TextField
+                    id="profile-years"
+                    label="Общий стаж, лет"
+                    inputMode="numeric"
+                    hint={hintFor('experienceMonths', 'Весь опыт работы, включая закрытые проекты. Пусто — не указан')}
+                    value={total === null ? '' : String(Math.floor(total / 12))}
+                    onChange={(event) => set(digits(event.target.value), total === null ? null : total % 12)}
+                    error={serverErrors.experienceMonths}
+                  />
+                  <TextField
+                    id="profile-months"
+                    label="Ещё месяцев"
+                    inputMode="numeric"
+                    value={total === null ? '' : String(total % 12)}
+                    onChange={(event) => {
+                      const months = digits(event.target.value);
+                      set(
+                        total === null ? null : Math.floor(total / 12),
+                        months === null ? null : Math.min(11, months),
+                      );
+                    }}
+                  />
+                </div>
+              );
+            }}
           </form.Field>
           <div className="full">
             <form.Field
@@ -285,7 +311,7 @@ export function ProfileForm({ profile, submitLabel, onSaved }: Props) {
                   id="profile-soft"
                   label="Навыки общения"
                   aside="Самооценка"
-                  hint="Например: «Командная работа». До 12 пунктов."
+                  hint={hintFor('softSkills', 'Например: «Командная работа». До 12 пунктов.')}
                   max={12}
                   maxLength={100}
                   values={field.state.value}

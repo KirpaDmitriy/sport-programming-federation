@@ -1549,7 +1549,7 @@ export interface components {
         };
         ProfileEstimate: {
             /** @enum {string} */
-            version: "estimate-v1" | "estimate-v2";
+            version: "estimate-v1" | "estimate-v2" | "estimate-v3";
             /** Format: date-time */
             computedAt: string;
             specialization: ("backend" | "frontend" | "fullstack" | "ios" | "android" | "mobile_crossplatform" | "devops" | "data_engineering" | "data_science" | "ml_engineering" | "qa_manual" | "qa_automation" | "security" | "embedded" | "systems" | "gamedev" | "onec" | "erp" | "system_analysis" | "business_analysis" | "data_analytics" | "dba" | "sysadmin" | "design" | "management") | null;
@@ -1569,9 +1569,11 @@ export interface components {
                 experience: string;
                 teamRole: string;
                 name: string | null;
+                softSkills: string[];
             };
             sources: ("github" | "fsp")[];
             insufficient: string | null;
+            notes: string[];
             review: {
                 /** @enum {string} */
                 specialization: "backend" | "frontend" | "fullstack" | "ios" | "android" | "mobile_crossplatform" | "devops" | "data_engineering" | "data_science" | "ml_engineering" | "qa_manual" | "qa_automation" | "security" | "embedded" | "systems" | "gamedev" | "onec" | "erp" | "system_analysis" | "business_analysis" | "data_analytics" | "dba" | "sysadmin" | "design" | "management";
@@ -1625,7 +1627,7 @@ export interface components {
             gradeConfirmedAt: string | null;
             category: components["schemas"]["Category"];
             estimate: components["schemas"]["ProfileEstimate"] | null;
-            autoFields: ("name" | "specialization" | "selectedGrade" | "stack" | "experienceMonths" | "experience" | "teamRole")[];
+            autoFields: ("name" | "specialization" | "selectedGrade" | "stack" | "experienceMonths" | "experience" | "teamRole" | "softSkills")[];
             freshness: components["schemas"]["Freshness"];
             onboarding: components["schemas"]["Onboarding"];
             assessmentEligibility: components["schemas"]["GradeEligibility"];
@@ -1752,7 +1754,7 @@ export interface components {
         };
         GitHubDimension: {
             /** @enum {string} */
-            id: "consistency" | "engagement" | "longevity" | "collaboration" | "ownership" | "craft" | "impact";
+            id: "consistency" | "engagement" | "longevity" | "collaboration" | "ownership" | "craft" | "impact" | "scope";
             label: string;
             score: number;
             weight: number;
@@ -1769,7 +1771,7 @@ export interface components {
         };
         GitHubReport: {
             /** @enum {string} */
-            algorithmVersion: "github-insights-v2";
+            algorithmVersion: "github-insights-v2" | "github-insights-v3";
             /** Format: date-time */
             generatedAt: string;
             login: string;
@@ -1956,7 +1958,7 @@ export interface components {
         };
         GitHubSignal: {
             /** @enum {string} */
-            algorithmVersion: "github-insights-v2";
+            algorithmVersion: "github-insights-v2" | "github-insights-v3";
             /** Format: date */
             generatedAt: string;
             ownershipVerified: boolean;
@@ -1970,7 +1972,7 @@ export interface components {
             }[];
             dimensions: {
                 /** @enum {string} */
-                id: "consistency" | "engagement" | "longevity" | "collaboration" | "ownership" | "craft" | "impact";
+                id: "consistency" | "engagement" | "longevity" | "collaboration" | "ownership" | "craft" | "impact" | "scope";
                 label: string;
                 score: number;
                 summary: string;
@@ -4017,7 +4019,9 @@ export interface operations {
     };
     refreshMyEstimate: {
         parameters: {
-            query?: never;
+            query?: {
+                answers?: "keep" | "replace";
+            };
             header?: never;
             path?: never;
             cookie?: never;

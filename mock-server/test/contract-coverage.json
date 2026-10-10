@@ -101,6 +101,7 @@
       "path": "/api/v1/me/profile/estimate",
       "observedStatuses": [
         200,
+        400,
         409
       ]
     },

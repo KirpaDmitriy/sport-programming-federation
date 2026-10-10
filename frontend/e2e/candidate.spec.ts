@@ -34,7 +34,7 @@ test('UI-02 UI-07 a new candidate fills the questionnaire by hand and confirms a
   await page.getByLabel('Грейд для проверки').selectOption('junior');
   await page.getByRole('combobox', { name: 'Стек' }).fill('Rust');
   await page.getByRole('option', { name: /^Rust/ }).click();
-  await page.getByLabel('Стаж, месяцев').fill('0');
+  await page.getByLabel('Общий стаж, лет').fill('0');
   await page.getByRole('textbox', { name: 'Опыт', exact: true }).fill('Учебные проекты на Rust.');
   await page.getByLabel('Роль в команде').fill('Разработчик');
   await page.getByRole('button', { name: 'Сохранить анкету' }).click();
@@ -176,16 +176,22 @@ test('UI-06 a new candidate connects GitHub and gets the questionnaire and a cat
   await page.getByRole('button', { name: 'Подключить GitHub' }).click();
   // The analysis job ends with the report; the estimate answers the questionnaire and gives the category.
   await expect(page.getByText(/GitHub «octo-cat» подключён, анализ завершён/)).toBeVisible();
-  await expect(page.getByText('Бэкенд · Сеньор · оценка, высокая уверенность')).toBeVisible();
-  await expect(page.getByText('Стаж публичной работы')).toBeVisible();
+  await expect(page.getByText('Бэкенд · Мидл · оценка, высокая уверенность')).toBeVisible();
+  await expect(page.getByText('Масштаб и сложность', { exact: true })).toBeVisible();
+  // The notes say what the next grade needs; every answer can be rebuilt from the sources.
+  await expect(page.getByText('Почему такой уровень')).toBeVisible();
+  await expect(page.getByText(/До уровня «Сеньор» не хватает/)).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Заполнить анкету по источникам' })).toBeVisible();
   // The questionnaire stays open as it was and now shows the automatic answers.
   await expect(page.getByText('Проверить и поправить анкету')).toBeVisible();
   await expect(page.getByLabel('Имя и фамилия')).toHaveValue('Иван Петров');
-  await expect(page.getByLabel('Грейд для проверки')).toHaveValue('senior');
+  await expect(page.getByLabel('Грейд для проверки')).toHaveValue('middle');
+  await expect(page.getByLabel('Общий стаж, лет')).toHaveValue('3');
+  await expect(page.getByLabel('Ещё месяцев')).toHaveValue('9');
   await expect(page.getByText('Заполнено автоматически.').first()).toBeVisible();
 
   await page.goto('/candidate/overview');
-  await expect(page.getByText('Бэкенд · Сеньор · оценка, высокая уверенность').first()).toBeVisible();
+  await expect(page.getByText('Бэкенд · Мидл · оценка, высокая уверенность').first()).toBeVisible();
   await expect(page.getByText(/Для работодателей:/)).toBeVisible();
   await page.goto('/candidate/onboarding');
   await page.getByRole('link', { name: 'Подробный отчёт и подтверждение владения' }).click();

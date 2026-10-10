@@ -6,7 +6,7 @@
 
 use serde::{Deserialize, Serialize};
 
-pub const GITHUB_INSIGHTS_VERSION: &str = "github-insights-v2";
+pub const GITHUB_INSIGHTS_VERSION: &str = "github-insights-v3";
 
 /// Normalizes a GitHub login typed as `login`, `@login` or a profile URL.
 ///
@@ -86,6 +86,8 @@ pub enum GitHubDimensionId {
     Ownership,
     Craft,
     Impact,
+    /// Scope and complexity: sustained systems, engineering areas, system layers and design work.
+    Scope,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

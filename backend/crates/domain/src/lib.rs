@@ -343,8 +343,17 @@ impl CandidateProfile {
         if estimate.confidence == SignalConfidence::Low {
             return None;
         }
+        // The candidate may choose among the specializations the evidence supports.
+        let chosen = estimate
+            .specializations
+            .iter()
+            .any(|share| share.id == self.specialization);
         Some(Category {
-            specialization: estimate.specialization?,
+            specialization: if chosen {
+                self.specialization
+            } else {
+                estimate.specialization?
+            },
             grade: estimate.grade?,
             source: CategorySource::Estimate,
             confidence: Some(estimate.confidence),
@@ -864,6 +873,7 @@ mod tests {
             github: Some(&report),
             fsp: &[],
             stated_experience_months: None,
+            stated_team_role: None,
             now: "2026-10-10T00:00:00Z",
         });
         let mut profile = CandidateProfile {
@@ -895,6 +905,21 @@ mod tests {
         assert_eq!(Some(category.grade), estimate.grade);
         assert!(profile.visible_to_employers(true));
         assert!(category.strength() < 3);
+        // The candidate may choose among the supported specializations, not beyond them.
+        let supported = estimate
+            .specializations
+            .iter()
+            .map(|share| share.id)
+            .find(|id| Some(*id) != estimate.specialization);
+        if let Some(supported) = supported {
+            profile.specialization = supported;
+            assert_eq!(profile.category().unwrap().specialization, supported);
+        }
+        profile.specialization = Specialization::Design;
+        assert_eq!(
+            Some(profile.category().unwrap().specialization),
+            estimate.specialization
+        );
         // A low-confidence estimate gives no category.
         if let Some(stored) = profile.estimate.as_mut() {
             stored.confidence = SignalConfidence::Low;

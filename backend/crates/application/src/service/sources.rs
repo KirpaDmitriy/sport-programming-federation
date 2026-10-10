@@ -777,7 +777,7 @@ impl PlatformService {
 
     /// Asks the LLM for a second opinion on the stored estimate in the background. A slow model
     /// never delays the source write: the rules apply at once and the review joins them later.
-    fn spawn_estimate_review(&self, candidate_id: &str) {
+    pub(super) fn spawn_estimate_review(&self, candidate_id: &str) {
         if self.llm.is_none() {
             return;
         }
@@ -803,6 +803,8 @@ impl PlatformService {
         else {
             return Ok(());
         };
+        let stated_experience_months = profile.stated_experience_months();
+        let stated_team_role = profile.stated_team_role().map(str::to_owned);
         let Some(estimate) = profile
             .estimate
             .filter(|estimate| estimate.grade.is_some() && estimate.review.is_none())
@@ -815,7 +817,13 @@ impl PlatformService {
             .await
             .map_err(ApplicationError::storage)?;
         let (github, fsp) = source_evidence(&sources.iter().collect::<Vec<_>>());
-        let request = fsp_domain::review_request(&estimate, github, &fsp);
+        let request = fsp_domain::review_request(
+            &estimate,
+            github,
+            &fsp,
+            stated_experience_months,
+            stated_team_role.as_deref(),
+        );
         let reply = match tokio::time::timeout(
             std::time::Duration::from_secs(REVIEW_TIMEOUT_SECONDS),
             llm.review_profile(&request),
@@ -865,9 +873,12 @@ impl PlatformService {
     }
 
     /// Recomputes the profile estimate from every connected source and answers the questionnaire.
+    /// `replace_answers` hands every answer but the name back to the evidence. A GitHub report from
+    /// an earlier analysis version is analyzed again; its job applies the new estimate when it ends.
     pub async fn refresh_estimate(
         &self,
         session: &SessionView,
+        replace_answers: bool,
     ) -> Result<ProfileView, ApplicationError> {
         let candidate_id = candidate_id(session)?;
         self.require_processing_consent(candidate_id).await?;
@@ -888,6 +899,20 @@ impl PlatformService {
                 "Подключите GitHub или ФСП, чтобы оценить профиль",
             ));
         };
+        let outdated = sources
+            .iter()
+            .find(|source| {
+                source.provider == fsp_domain::SourceProvider::Github
+                    && source.active_job_id.is_none()
+                    && source
+                        .analysis
+                        .as_ref()
+                        .and_then(|analysis| analysis.report.as_ref())
+                        .is_some_and(|report| {
+                            report.algorithm_version != fsp_domain::GITHUB_INSIGHTS_VERSION
+                        })
+            })
+            .cloned();
         let tx = self
             .repository
             .transaction()
@@ -916,8 +941,15 @@ impl PlatformService {
             .find(|source| source.id == anchor.id)
             .cloned()
             .unwrap_or(anchor);
+        if replace_answers {
+            profile.release_answers();
+        }
         if let Some(estimate) = source_estimate(&profile, &current, &anchor) {
-            profile.apply_estimate(estimate);
+            if replace_answers {
+                profile.rebuild_from_estimate(estimate);
+            } else {
+                profile.apply_estimate(estimate);
+            }
         }
         profile.revision += 1;
         profile.updated_at = now();
@@ -925,8 +957,33 @@ impl PlatformService {
             .await
             .map_err(ApplicationError::storage)?;
         tx.commit().await.map_err(ApplicationError::storage)?;
+        if let Some(source) = outdated
+            && let Err(error) = self.sync_github(candidate_id, source).await
+        {
+            tracing::warn!(
+                code = error.code,
+                "outdated GitHub report was not re-analyzed"
+            );
+        }
         self.spawn_estimate_review(candidate_id);
         self.profile(session).await
+    }
+
+    /// The estimate from the candidate's stored evidence after an answer it depends on changed;
+    /// `None` without finished evidence. A running GitHub analysis applies its own estimate later.
+    pub(super) async fn answer_estimate(
+        &self,
+        profile: &CandidateProfile,
+    ) -> Result<Option<fsp_domain::ProfileEstimate>, ApplicationError> {
+        let sources = self
+            .repository
+            .sources(&profile.id)
+            .await
+            .map_err(ApplicationError::storage)?;
+        Ok(sources
+            .iter()
+            .find(|source| source.active_job_id.is_none())
+            .and_then(|anchor| source_estimate(profile, &sources, anchor)))
     }
 
     // Called only after locking the candidate inside the source write transaction.
@@ -982,6 +1039,7 @@ fn source_estimate(
         github,
         fsp: &fsp,
         stated_experience_months: profile.stated_experience_months(),
+        stated_team_role: profile.stated_team_role(),
         now: &now,
     }))
 }
