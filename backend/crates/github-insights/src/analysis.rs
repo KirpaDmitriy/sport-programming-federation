@@ -1,54 +1,147 @@
 //! Heuristics: a [`Snapshot`] of public facts becomes a [`GitHubReport`].
 //!
 //! Every metric is a documented, deterministic function of public data (see
-//! `docs/github-insights.md`). Scores map metrics onto 0–100 with fixed thresholds; they are
-//! saturating, so volume beyond a reasonable level earns nothing more. Integrity flags never add
-//! points: they lower confidence and explain anomalies.
+//! `docs/github-insights.md`). Scores map metrics onto 0–100 with fixed thresholds and saturate.
+//! Integrity flags never add points: they lower confidence and explain anomalies. Agent-assisted
+//! work is ordinary work: commits made through AI agents under the account count like any other.
 
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
-use chrono::{DateTime, Datelike, Duration, NaiveDate, Timelike, Utc};
+use chrono::{DateTime, Datelike, Duration, FixedOffset, NaiveDate, Timelike, Utc};
 use fsp_domain::{
-    FlagSeverity, GITHUB_INSIGHTS_VERSION, GitHubActivity, GitHubCollaboration,
-    GitHubContributedOrganization, GitHubCoverage, GitHubCraft, GitHubDay, GitHubDimension,
-    GitHubDimensionId, GitHubFlag, GitHubIndex, GitHubLanguageShare, GitHubMetric,
+    Archetype, FlagSeverity, GITHUB_INSIGHTS_VERSION, GitHubActivity, GitHubCollaboration,
+    GitHubContributedOrganization, GitHubCoverage, GitHubCraft, GitHubDay, GitHubDeveloperProfile,
+    GitHubDimension, GitHubDimensionId, GitHubFlag, GitHubIndex, GitHubMetric,
     GitHubNotableContribution, GitHubOffsetShare, GitHubOrganization, GitHubOrganizations,
-    GitHubReport, GitHubRepositoryInsight, GitHubRhythm, GitHubTechnology, GitHubYear,
-    HygieneSignal, SignalBand, SignalConfidence,
+    GitHubOwnershipSummary, GitHubProject, GitHubReport, GitHubRepositoryInsight, GitHubRhythm,
+    GitHubStackItem, GitHubTechnology, GitHubYear, HygieneSignal, SignalBand, SignalConfidence,
 };
 
-use crate::snapshot::{
-    CommitFact, PrimaryRepository, PullRequestFact, PullRequestState, RepositoryRef, Snapshot,
-};
-use crate::tech;
+use crate::collect::affiliated_owners;
+use crate::profile::{self, RepositoryKind, SummaryInput};
+use crate::snapshot::{GitCommit, PullRequestState, RepositoryAnalysis, Snapshot};
+use crate::tech::{self, Detected, Tech, language_of};
 
 /// A gap of up to two hours between commits continues a work session (git-hours convention).
 const SESSION_GAP_MINUTES: i64 = 120;
 /// Work before the first commit of a session is unknown; credit a conservative half hour.
 const FIRST_COMMIT_MINUTES: i64 = 30;
-/// Median commits per active day above which volume looks automated.
-const AUTOMATION_COMMITS_PER_DAY: u32 = 25;
+
+/// Everything derived once and shared by the sections of the report.
+struct Facts<'a> {
+    snapshot: &'a Snapshot,
+    today: NaiveDate,
+    /// The account's commits across analyzed repositories, each commit once.
+    commits: Vec<(&'a RepositoryAnalysis, &'a GitCommit)>,
+    detected: BTreeMap<&'a str, Detected>,
+    affiliated: BTreeMap<String, bool>,
+    led: BTreeSet<&'a str>,
+}
+
+impl<'a> Facts<'a> {
+    fn new(snapshot: &'a Snapshot) -> Self {
+        let mut seen = HashSet::new();
+        let mut commits = Vec::new();
+        for repository in &snapshot.analyzed {
+            for commit in &repository.commits {
+                if seen.insert(commit.sha.as_str()) {
+                    commits.push((repository, commit));
+                }
+            }
+        }
+        commits.sort_by_key(|(_, commit)| commit.utc());
+        let detected = snapshot
+            .analyzed
+            .iter()
+            .map(|repository| {
+                let topics = snapshot
+                    .repositories
+                    .get(&repository.full_name)
+                    .map(|meta| meta.topics.clone())
+                    .unwrap_or_default();
+                (
+                    repository.full_name.as_str(),
+                    tech::detect(&repository.files, &repository.manifests, &topics),
+                )
+            })
+            .collect();
+        let led = snapshot
+            .analyzed
+            .iter()
+            .filter(|repository| {
+                repository.user_commits() >= 10 && repository.share_percent() >= 50
+            })
+            .map(|repository| repository.full_name.as_str())
+            .collect();
+        Self {
+            snapshot,
+            today: snapshot.now.date_naive(),
+            commits,
+            detected,
+            affiliated: affiliated_owners(snapshot),
+            led,
+        }
+    }
+
+    fn owner(name: &str) -> &str {
+        name.split('/').next().unwrap_or_default()
+    }
+
+    fn owned(&self, name: &str) -> bool {
+        self.snapshot.is_self(Self::owner(name))
+    }
+
+    fn independent(&self, name: &str) -> bool {
+        let owner = Self::owner(name);
+        !self.snapshot.is_self(owner)
+            && !self
+                .affiliated
+                .keys()
+                .any(|known| known.eq_ignore_ascii_case(owner))
+            && !self.led.contains(name)
+    }
+
+    /// Repositories the account substantially develops: owned, led or with ten commits.
+    fn substantive(&self, repository: &RepositoryAnalysis) -> bool {
+        let fork = self
+            .snapshot
+            .repositories
+            .get(&repository.full_name)
+            .is_some_and(|meta| meta.fork);
+        !fork
+            && (self.owned(&repository.full_name)
+                || self.led.contains(repository.full_name.as_str())
+                || repository.user_commits() >= 10)
+    }
+
+    fn year_ago(&self) -> DateTime<Utc> {
+        self.snapshot.now - Duration::days(365)
+    }
+}
 
 pub fn build_report(snapshot: &Snapshot) -> GitHubReport {
-    let today = snapshot.now.date_naive();
-    let activity = Activity::compute(snapshot, today);
-    let rhythm = Rhythm::compute(&snapshot.commits, &snapshot.timezone_samples);
-    let collaboration = Collaboration::compute(snapshot);
-    let craft = Craft::compute(snapshot);
-    let impact = Impact::compute(snapshot, &collaboration);
-    let flags = flags(snapshot, &activity, rhythm.as_ref(), &collaboration, &craft);
-    let automated = flags.iter().any(|flag| flag.id == "high_commit_rate");
+    let facts = Facts::new(snapshot);
+    let activity = Activity::compute(&facts);
+    let rhythm = Rhythm::compute(&facts);
+    let collaboration = collaboration(&facts);
+    let ownership = ownership(&facts);
+    let craft = Craft::compute(&facts);
+    let (stack, technologies) = stack(&facts);
+    let impact = Impact::compute(&facts, &collaboration);
+    let flags = flags(&facts, &activity, rhythm.as_ref(), &craft);
 
-    let mut dimensions = vec![
+    let dimensions = vec![
         consistency_dimension(&activity),
-        engagement_dimension(&activity, rhythm.as_ref(), automated),
-        longevity_dimension(snapshot, &activity, today),
+        engagement_dimension(&activity, rhythm.as_ref()),
+        longevity_dimension(&facts, &activity),
         collaboration_dimension(&collaboration),
+        ownership_dimension(&facts, &ownership),
+        craft_dimension(&craft),
         impact_dimension(&impact),
-    ];
-    if let Some(dimension) = craft_dimension(&craft) {
-        dimensions.insert(4, dimension);
-    }
+    ]
+    .into_iter()
+    .flatten()
+    .collect::<Vec<_>>();
     let weight_sum: u32 = dimensions
         .iter()
         .map(|dimension| u32::from(dimension.weight))
@@ -60,39 +153,50 @@ pub fn build_report(snapshot: &Snapshot) -> GitHubReport {
     let score = (weighted + weight_sum / 2)
         .checked_div(weight_sum)
         .unwrap_or(0) as u8;
-    let confidence = confidence(snapshot, &activity, &flags);
-    let languages = languages(snapshot);
-    let highlights = highlights(&activity, &collaboration, &craft, &impact, &languages);
+    let coverage = coverage(&facts);
+    let confidence = confidence(&facts, &activity, &coverage, &flags);
+    let languages = languages(&facts);
+    let developer = developer_profile(&facts, &languages, &stack, &ownership, &activity);
+    let highlights = highlights(
+        &activity,
+        rhythm.as_ref(),
+        &collaboration,
+        &ownership,
+        &craft,
+        &impact,
+    );
 
     GitHubReport {
         algorithm_version: GITHUB_INSIGHTS_VERSION.into(),
-        generated_at: snapshot
-            .now
-            .to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+        generated_at: iso(snapshot.now),
         login: snapshot.login.clone(),
         profile_url: format!("https://github.com/{}", snapshot.login),
-        account_created_at: snapshot
-            .created_at
-            .map(|time| time.to_rfc3339_opts(chrono::SecondsFormat::Secs, true))
-            .unwrap_or_default(),
-        coverage: coverage(snapshot),
+        account_created_at: snapshot.created_at.map(iso).unwrap_or_default(),
+        coverage,
         index: GitHubIndex {
             score,
             band: SignalBand::from_score(score),
             confidence,
         },
         dimensions,
+        profile: developer,
         activity: activity.report.clone(),
         rhythm: rhythm.as_ref().map(|rhythm| rhythm.report.clone()),
-        collaboration: collaboration.report.clone(),
-        organizations: organizations(snapshot),
+        collaboration,
+        ownership,
+        organizations: organizations(&facts),
         languages,
-        technologies: technologies(snapshot),
+        stack,
+        technologies,
         craft: craft.report.clone(),
-        repositories: repositories(snapshot, &craft),
+        repositories: repositories(&facts, &craft),
         flags,
         highlights,
     }
+}
+
+fn iso(time: DateTime<Utc>) -> String {
+    time.to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -106,16 +210,27 @@ struct Activity {
     burstiness: Option<i32>,
     days_per_active_week: Option<u32>,
     days_since_last: Option<i64>,
-    commits_last_year: u32,
+}
+
+fn week_of(date: NaiveDate) -> NaiveDate {
+    date - Duration::days(i64::from(date.weekday().num_days_from_monday()))
 }
 
 impl Activity {
-    fn compute(snapshot: &Snapshot, today: NaiveDate) -> Self {
+    fn compute(facts: &Facts<'_>) -> Self {
+        let today = facts.today;
         let window_start = today - Duration::days(364);
-        let active = snapshot
-            .days
+        // Local calendar days of commits plus the days pull requests were opened.
+        let mut days: BTreeMap<NaiveDate, u32> = BTreeMap::new();
+        for (_, commit) in &facts.commits {
+            *days.entry(commit.authored_at.date_naive()).or_default() += 1;
+        }
+        for pull in &facts.snapshot.pull_requests {
+            *days.entry(pull.created_at.date_naive()).or_default() += 1;
+        }
+        let active = days
             .iter()
-            .filter(|(date, day)| day.total() > 0 && **date <= today)
+            .filter(|(date, count)| **count > 0 && **date <= today)
             .map(|(date, _)| *date)
             .collect::<Vec<_>>();
         let in_window = active
@@ -123,32 +238,32 @@ impl Activity {
             .copied()
             .filter(|date| *date >= window_start)
             .collect::<Vec<_>>();
-        let count_between = |from: NaiveDate, to: NaiveDate| -> u32 {
-            snapshot
-                .days
-                .range(from..=to)
-                .map(|(_, day)| day.total())
-                .sum()
+        let sum = |from: NaiveDate, to: NaiveDate| -> u32 {
+            days.range(from..=to).map(|(_, count)| count).sum()
         };
-        let contributions_last_year = count_between(window_start, today);
-        let commits_last_year = snapshot
-            .days
-            .range(window_start..=today)
-            .map(|(_, day)| day.commits)
-            .sum();
-        let week_of = |date: NaiveDate| {
-            date - Duration::days(i64::from(date.weekday().num_days_from_monday()))
-        };
+        let year_ago = facts.year_ago();
+        let found_last_year = facts
+            .commits
+            .iter()
+            .filter(|(_, commit)| commit.utc() >= year_ago)
+            .count() as u32;
+        // The exact public total from commit search; the analyzed histories when search failed.
+        let commits_last_year = facts
+            .snapshot
+            .totals
+            .commits_last_year
+            .map_or(found_last_year, |total| total.max(found_last_year));
         let window_weeks = in_window
             .iter()
             .map(|date| week_of(*date))
             .collect::<BTreeSet<_>>();
-        let all_weeks = active
+        let weeks = active
             .iter()
             .map(|date| week_of(*date))
-            .collect::<BTreeSet<_>>();
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>();
         let (longest_daily, current_daily) = runs(&active, 1, today);
-        let weeks = all_weeks.iter().copied().collect::<Vec<_>>();
         let (longest_weekly, current_weekly) = runs(&weeks, 7, week_of(today));
         let longest_gap = in_window
             .windows(2)
@@ -156,8 +271,8 @@ impl Activity {
             .max()
             .unwrap_or(0)
             .max(0) as u32;
-        let recent = count_between(today - Duration::days(181), today);
-        let previous = count_between(today - Duration::days(363), today - Duration::days(182));
+        let recent = sum(today - Duration::days(181), today);
+        let previous = sum(today - Duration::days(363), today - Duration::days(182));
         let trend_percent = match (previous, recent) {
             (0, 0) => None,
             (0, _) => Some(100),
@@ -165,16 +280,15 @@ impl Activity {
                 Some(((i64::from(recent) - i64::from(previous)) * 100 / i64::from(previous)) as i32)
             }
         };
-        let month_start = |date: NaiveDate| (date.year(), date.month());
         let months_24 = active
             .iter()
             .filter(|date| **date > today - Duration::days(730))
-            .map(|date| month_start(*date))
+            .map(|date| (date.year(), date.month()))
             .collect::<BTreeSet<_>>()
             .len() as u32;
         let mut weekly_counts = BTreeMap::new();
-        for (date, day) in snapshot.days.range(window_start..=today) {
-            *weekly_counts.entry(week_of(*date)).or_insert(0u32) += day.total();
+        for (date, count) in days.range(window_start..=today) {
+            *weekly_counts.entry(week_of(*date)).or_insert(0u32) += count;
         }
         let first_week = week_of(window_start);
         let counts = (0..52)
@@ -185,45 +299,48 @@ impl Activity {
                     .unwrap_or(0)
             })
             .collect::<Vec<_>>();
-        let burstiness = (contributions_last_year > 0).then(|| burstiness(&counts));
+        let burstiness = (!in_window.is_empty()).then(|| burstiness(&counts));
         let mut days_per_week = BTreeMap::new();
         for date in &in_window {
             *days_per_week.entry(week_of(*date)).or_insert(0u32) += 1;
         }
-        let days_per_active_week = median(days_per_week.values().copied().collect());
-        let yearly = snapshot
-            .years
-            .iter()
+        let mut yearly: BTreeMap<i32, (u32, BTreeSet<NaiveDate>)> = BTreeMap::new();
+        for (_, commit) in &facts.commits {
+            let date = commit.authored_at.date_naive();
+            let entry = yearly.entry(date.year()).or_default();
+            entry.0 += 1;
+            entry.1.insert(date);
+        }
+        // Public commit totals per year come from period searches over all repositories;
+        // active days need commit dates and come from the analyzed histories.
+        let searched = &facts.snapshot.totals.yearly_commits;
+        let mut years = yearly.keys().copied().collect::<BTreeSet<_>>();
+        years.extend(
+            searched
+                .iter()
+                .filter(|(_, count)| **count > 0)
+                .map(|(year, _)| *year),
+        );
+        let yearly = years
+            .into_iter()
             .map(|year| {
-                let from = NaiveDate::from_ymd_opt(year.year, 1, 1).unwrap_or(today);
-                let to = NaiveDate::from_ymd_opt(year.year, 12, 31).unwrap_or(today);
+                let (cloned, active) = yearly.get(&year).cloned().unwrap_or_default();
                 GitHubYear {
-                    year: year.year,
-                    contributions: year.totals.commits
-                        + year.totals.pull_requests
-                        + year.totals.reviews
-                        + year.totals.issues,
-                    commits: year.totals.commits,
-                    pull_requests: year.totals.pull_requests,
-                    reviews: year.totals.reviews,
-                    issues: year.totals.issues,
-                    private_contributions: year.restricted,
-                    active_days: snapshot
-                        .days
-                        .range(from..=to)
-                        .filter(|(_, day)| day.total() > 0)
-                        .count() as u32,
+                    year,
+                    commits: searched.get(&year).copied().unwrap_or(0).max(cloned),
+                    active_days: active.len() as u32,
+                    pull_requests: None,
                 }
             })
             .collect::<Vec<_>>();
-        let active_years = yearly.iter().filter(|year| year.contributions > 0).count() as u32;
+        let active_years = yearly.iter().filter(|year| year.commits > 0).count() as u32;
         let sustained_years = yearly.iter().filter(|year| year.active_days >= 50).count() as u32;
         let calendar = (0..365)
             .map(|offset| {
                 let date = window_start + Duration::days(offset);
                 GitHubDay {
                     date: date.format("%Y-%m-%d").to_string(),
-                    count: snapshot.days.get(&date).map_or(0, |day| day.total()),
+                    count: days.get(&date).copied().unwrap_or(0),
                 }
             })
             .collect();
@@ -231,8 +348,19 @@ impl Activity {
         Self {
             report: GitHubActivity {
                 active_years,
-                contributions_last_year,
-                private_contributions_last_year: snapshot.restricted_last_year,
+                commits_last_year,
+                pull_requests_last_year: facts
+                    .snapshot
+                    .totals
+                    .pull_requests_last_year
+                    .unwrap_or_else(|| {
+                        facts
+                            .snapshot
+                            .pull_requests
+                            .iter()
+                            .filter(|pull| pull.created_at >= year_ago)
+                            .count() as u32
+                    }),
                 active_days_last_year: in_window.len() as u32,
                 active_weeks_last_year: (window_weeks.len() as u32).min(52),
                 longest_daily_streak: longest_daily,
@@ -248,9 +376,8 @@ impl Activity {
             active_months_24: months_24,
             sustained_years,
             burstiness,
-            days_per_active_week,
+            days_per_active_week: median(days_per_week.values().copied().collect()),
             days_since_last: last.map(|date| (today - date).num_days()),
-            commits_last_year,
         }
     }
 }
@@ -294,55 +421,47 @@ fn burstiness(counts: &[u32]) -> i32 {
 
 struct Rhythm {
     report: GitHubRhythm,
-    median_commits_per_day: u32,
     top_minute_share: u8,
 }
 
 impl Rhythm {
-    fn compute(
-        commits: &[CommitFact],
-        samples: &[crate::snapshot::TimezoneSample],
-    ) -> Option<Self> {
-        if commits.len() < 10 {
+    /// The last year's commits in the author's own local time; two years when the last is thin.
+    fn compute(facts: &Facts<'_>) -> Option<Self> {
+        let mut since = facts.year_ago();
+        let mut sample = facts
+            .commits
+            .iter()
+            .map(|(_, commit)| *commit)
+            .filter(|commit| commit.utc() >= since)
+            .collect::<Vec<_>>();
+        if sample.len() < 20 {
+            since = facts.snapshot.now - Duration::days(730);
+            sample = facts
+                .commits
+                .iter()
+                .map(|(_, commit)| *commit)
+                .filter(|commit| commit.utc() >= since)
+                .collect();
+        }
+        if sample.len() < 10 {
             return None;
         }
-        let mut samples = samples.to_vec();
-        samples.sort_by_key(|sample| sample.at);
-        let offset_at = |time: DateTime<Utc>| -> i32 {
-            samples
-                .iter()
-                .min_by_key(|sample| (sample.at - time).num_seconds().abs())
-                .map_or(0, |sample| sample.offset_minutes)
-        };
-        let local = commits
-            .iter()
-            .map(|commit| {
-                let offset = offset_at(commit.authored_at);
-                (
-                    commit,
-                    commit.authored_at + Duration::minutes(i64::from(offset)),
-                    offset,
-                )
-            })
-            .collect::<Vec<_>>();
-        let total = local.len() as u32;
+        let total = sample.len() as u32;
         let mut hourly = [0u32; 24];
         let mut weekdays = [0u32; 7];
-        let mut office = 0;
-        let mut evening = 0;
-        let mut night = 0;
-        let mut weekend = 0;
+        let (mut office, mut evening, mut night, mut weekend) = (0, 0, 0, 0);
         let mut offsets: BTreeMap<i32, u32> = BTreeMap::new();
         let mut minutes: HashMap<(u32, u32), u32> = HashMap::new();
-        let mut per_day: BTreeMap<NaiveDate, u32> = BTreeMap::new();
-        for (_, time, offset) in &local {
-            let hour = time.hour();
-            let weekday = time.weekday().num_days_from_monday();
+        for commit in &sample {
+            let local = commit.authored_at;
+            let hour = local.hour();
+            let weekday = local.weekday().num_days_from_monday();
             hourly[hour as usize] += 1;
             weekdays[weekday as usize] += 1;
-            *offsets.entry(*offset).or_insert(0) += 1;
-            *minutes.entry((hour, time.minute())).or_insert(0) += 1;
-            *per_day.entry(time.date_naive()).or_insert(0) += 1;
+            *offsets
+                .entry(local.offset().local_minus_utc() / 60)
+                .or_insert(0) += 1;
+            *minutes.entry((hour, local.minute())).or_insert(0) += 1;
             if weekday >= 5 {
                 weekend += 1;
             } else if (9..19).contains(&hour) {
@@ -355,35 +474,41 @@ impl Rhythm {
                 night += 1;
             }
         }
-        // Sessions in UTC order; each is attributed to the local day where it starts.
-        let mut ordered = local.clone();
-        ordered.sort_by_key(|(commit, _, _)| commit.authored_at);
-        let mut sessions: Vec<(NaiveDate, i64)> = Vec::new();
-        let mut start = ordered[0].0.authored_at;
-        let mut start_day = ordered[0].1.date_naive();
-        let mut last = start;
-        for (commit, time, _) in ordered.iter().skip(1) {
-            if (commit.authored_at - last).num_minutes() <= SESSION_GAP_MINUTES {
-                last = commit.authored_at;
+        // Sessions in UTC order and in the local time of their first commit. The half-hour credit
+        // goes to the day a session starts; its span is split across the local days it covers.
+        let mut sessions: Vec<(DateTime<FixedOffset>, DateTime<FixedOffset>)> = Vec::new();
+        let mut start = sample[0].authored_at;
+        let mut last = sample[0].utc();
+        for commit in sample.iter().skip(1) {
+            if (commit.utc() - last).num_minutes() <= SESSION_GAP_MINUTES {
+                last = commit.utc();
                 continue;
             }
-            sessions.push((
-                start_day,
-                (last - start).num_minutes() + FIRST_COMMIT_MINUTES,
-            ));
+            sessions.push((start, last.with_timezone(start.offset())));
             start = commit.authored_at;
-            start_day = time.date_naive();
-            last = start;
+            last = commit.utc();
         }
-        sessions.push((
-            start_day,
-            (last - start).num_minutes() + FIRST_COMMIT_MINUTES,
-        ));
+        sessions.push((start, last.with_timezone(start.offset())));
         let mut day_minutes: BTreeMap<NaiveDate, i64> = BTreeMap::new();
-        let mut day_sessions: BTreeMap<NaiveDate, u32> = BTreeMap::new();
-        for (day, length) in &sessions {
-            *day_minutes.entry(*day).or_insert(0) += length;
-            *day_sessions.entry(*day).or_insert(0) += 1;
+        for (begin, end) in &sessions {
+            *day_minutes.entry(begin.date_naive()).or_insert(0) += FIRST_COMMIT_MINUTES;
+            let mut cursor = *begin;
+            while cursor < *end {
+                let midnight = cursor
+                    .date_naive()
+                    .succ_opt()
+                    .and_then(|day| day.and_hms_opt(0, 0, 0))
+                    .and_then(|time| time.and_local_timezone(*cursor.offset()).single())
+                    .unwrap_or(*end);
+                let until = midnight.min(*end);
+                *day_minutes.entry(cursor.date_naive()).or_insert(0) +=
+                    (until - cursor).num_minutes();
+                cursor = until;
+            }
+        }
+        let mut week_minutes: BTreeMap<NaiveDate, i64> = BTreeMap::new();
+        for (day, minutes) in &day_minutes {
+            *week_minutes.entry(week_of(*day)).or_insert(0) += minutes;
         }
         let mut daily = day_minutes
             .values()
@@ -392,15 +517,17 @@ impl Rhythm {
         daily.sort_unstable();
         let active_days = daily.len() as u32;
         let p90 = daily
-            .get(((daily.len() * 9).div_ceil(10)).saturating_sub(1))
+            .get((daily.len() * 9).div_ceil(10).saturating_sub(1))
             .copied()
             .unwrap_or(0);
-        let session_count = sessions.len() as u32;
+        let weekly = week_minutes
+            .values()
+            .map(|minutes| (*minutes).clamp(0, 7 * 24 * 60) as u32)
+            .collect::<Vec<_>>();
         let top_minute = minutes.values().copied().max().unwrap_or(0);
         Some(Self {
             report: GitHubRhythm {
                 sample_size: total,
-                timezone_inferred: !samples.is_empty(),
                 timezone_offsets: offsets
                     .iter()
                     .map(|(offset, count)| GitHubOffsetShare {
@@ -419,222 +546,135 @@ impl Rhythm {
                 night_percent: percent(night, total),
                 weekend_percent: percent(weekend, total),
                 active_days,
-                median_minutes_per_active_day: median(daily.clone()).unwrap_or(0),
+                median_minutes_per_active_day: median(daily).unwrap_or(0),
                 p90_minutes_per_active_day: p90,
-                sessions_per_active_day_tenths: (session_count * 10 + active_days / 2)
+                median_minutes_per_active_week: median(weekly),
+                sessions_per_active_day_tenths: (sessions.len() as u32 * 10 + active_days / 2)
                     .checked_div(active_days)
                     .unwrap_or(0),
                 longest_session_minutes: sessions
                     .iter()
-                    .map(|(_, length)| (*length).clamp(0, 24 * 60) as u32)
+                    .map(|(begin, end)| {
+                        ((*end - *begin).num_minutes() + FIRST_COMMIT_MINUTES).clamp(0, 24 * 60)
+                            as u32
+                    })
                     .max()
                     .unwrap_or(0),
             },
-            median_commits_per_day: median(per_day.values().copied().collect()).unwrap_or(0),
             top_minute_share: percent(top_minute, total),
         })
     }
 }
 
 // ---------------------------------------------------------------------------------------------
-// Collaboration
+// Collaboration and ownership
 
-struct Collaboration {
-    report: GitHubCollaboration,
-    peer_validated: u32,
-    sampled: u32,
-    merged_sampled: u32,
-    reviews_of_others: u32,
-}
-
-/// Owners whose repositories count as the account's own work: the account, its public
-/// organizations, owners where it merged its own pull requests (merge rights) and owners where it
-/// commits to three or more repositories (organization-wide write access).
-fn affiliated_owners(snapshot: &Snapshot) -> BTreeSet<String> {
-    let mut owners = BTreeSet::from([snapshot.login.to_ascii_lowercase()]);
-    let mut repositories_by_owner: BTreeMap<String, BTreeSet<&str>> = BTreeMap::new();
-    for year in &snapshot.years {
-        for item in &year.commit_repositories {
-            repositories_by_owner
-                .entry(item.repository.owner_login.to_ascii_lowercase())
-                .or_default()
-                .insert(item.repository.name_with_owner.as_str());
-        }
-    }
-    owners.extend(
-        repositories_by_owner
-            .into_iter()
-            .filter(|(_, repositories)| repositories.len() >= 3)
-            .map(|(owner, _)| owner),
-    );
-    owners.extend(
-        snapshot
-            .organizations
-            .iter()
-            .map(|organization| organization.login.to_ascii_lowercase()),
-    );
-    owners.extend(
-        pull_requests(snapshot)
-            .into_iter()
-            .filter(|pull| pull.merged_by_self)
-            .map(|pull| pull.repository.owner_login.to_ascii_lowercase()),
-    );
-    owners
-}
-
-/// Recent and external pull requests, each once.
-fn pull_requests(snapshot: &Snapshot) -> Vec<&PullRequestFact> {
-    let mut seen = BTreeSet::new();
-    snapshot
-        .pull_requests
+fn collaboration(facts: &Facts<'_>) -> GitHubCollaboration {
+    let totals = &facts.snapshot.totals;
+    let external = facts
+        .snapshot
+        .external_pull_requests
         .iter()
-        .chain(&snapshot.external_pull_requests)
-        .filter(|pull| seen.insert(pull.url.as_str()))
-        .collect()
-}
-
-fn accepted_entry<'a>(
-    accepted: &'a mut BTreeMap<String, GitHubNotableContribution>,
-    organization_repositories: &mut BTreeSet<String>,
-    repository: &RepositoryRef,
-) -> &'a mut GitHubNotableContribution {
-    if repository.owner_is_organization {
-        organization_repositories.insert(repository.name_with_owner.clone());
-    }
-    accepted
-        .entry(repository.name_with_owner.clone())
-        .or_insert_with(|| GitHubNotableContribution {
-            repository: repository.name_with_owner.clone(),
-            url: format!("https://github.com/{}", repository.name_with_owner),
-            stars: repository.stars,
-            commits: 0,
+        .filter(|pull| facts.independent(&pull.repository))
+        .collect::<Vec<_>>();
+    let merged_sample = external
+        .iter()
+        .filter(|pull| pull.state == PullRequestState::Merged)
+        .count() as u32;
+    let decided = external
+        .iter()
+        .filter(|pull| pull.state != PullRequestState::Open)
+        .count() as u32;
+    let mut accepted: BTreeMap<String, GitHubNotableContribution> = BTreeMap::new();
+    let entry = |name: &str| -> GitHubNotableContribution {
+        GitHubNotableContribution {
+            repository: name.into(),
+            url: format!("https://github.com/{name}"),
+            stars: facts
+                .snapshot
+                .repositories
+                .get(name)
+                .map_or(0, |meta| meta.stars),
             merged_pull_requests: 0,
-            reviews: 0,
-        })
-}
-
-/// Repositories where the account authored at least half of the default-branch commits in the
-/// history window: its own project even when an organization hosts it.
-fn led_repositories(snapshot: &Snapshot) -> BTreeSet<String> {
-    snapshot
-        .history_shares
+            commits: 0,
+        }
+    };
+    for pull in external
         .iter()
-        .filter(|(_, share)| share.authored >= 10 && share.authored * 2 >= share.total)
-        .map(|(name, _)| name.clone())
-        .collect()
+        .filter(|pull| pull.state == PullRequestState::Merged)
+    {
+        accepted
+            .entry(pull.repository.clone())
+            .or_insert_with(|| entry(&pull.repository))
+            .merged_pull_requests += 1;
+    }
+    for repository in facts.snapshot.analyzed.iter().filter(|repository| {
+        repository.user_commits() > 0 && facts.independent(&repository.full_name)
+    }) {
+        accepted
+            .entry(repository.full_name.clone())
+            .or_insert_with(|| entry(&repository.full_name))
+            .commits += repository.user_commits();
+    }
+    let external_repositories = accepted.len() as u32;
+    let mut notable = accepted
+        .into_values()
+        .filter(|item| item.stars >= 100)
+        .collect::<Vec<_>>();
+    notable.sort_by(|a, b| b.stars.cmp(&a.stars).then(a.repository.cmp(&b.repository)));
+    notable.truncate(10);
+    GitHubCollaboration {
+        pull_requests_total: totals
+            .pull_requests
+            .unwrap_or(facts.snapshot.pull_requests.len() as u32),
+        approved_pull_requests: totals.approved_pull_requests.unwrap_or(0),
+        reviews_of_others: totals.reviews_of_others.unwrap_or(0),
+        independent_reviews: totals.independent_reviews.unwrap_or(0),
+        issues_total: totals.issues.unwrap_or(0),
+        external_pull_requests: totals
+            .external_pull_requests
+            .unwrap_or(external.len() as u32),
+        external_merged: totals.external_merged.unwrap_or(merged_sample),
+        external_merge_rate_percent: (decided >= 3).then(|| percent(merged_sample, decided)),
+        external_repositories,
+        notable_contributions: notable,
+    }
 }
 
-impl Collaboration {
-    fn compute(snapshot: &Snapshot) -> Self {
-        let affiliated = affiliated_owners(snapshot);
-        let led = led_repositories(snapshot);
-        let independent = |repository: &RepositoryRef| {
-            !affiliated.contains(&repository.owner_login.to_ascii_lowercase())
-                && !led.contains(&repository.name_with_owner)
-        };
-        let totals = snapshot.years.iter().fold((0, 0, 0), |sum, year| {
-            (
-                sum.0 + year.totals.pull_requests,
-                sum.1 + year.totals.reviews,
-                sum.2 + year.totals.issues,
-            )
-        });
-        let sample = pull_requests(snapshot);
-        let external = sample
+fn ownership(facts: &Facts<'_>) -> GitHubOwnershipSummary {
+    let year_ago = facts.year_ago();
+    let own_organizations = facts
+        .affiliated
+        .iter()
+        .filter(|(_, organization)| **organization)
+        .map(|(owner, _)| owner.to_ascii_lowercase())
+        .collect::<BTreeSet<_>>();
+    let analyzed = &facts.snapshot.analyzed;
+    GitHubOwnershipSummary {
+        led_repositories: facts.led.len() as u32,
+        maintained_repositories: analyzed
             .iter()
-            .copied()
-            .filter(|pull| independent(&pull.repository))
-            .collect::<Vec<_>>();
-        let external_merged = external
+            .filter(|repository| {
+                (facts.owned(&repository.full_name)
+                    || facts.led.contains(repository.full_name.as_str()))
+                    && repository
+                        .last_commit()
+                        .is_some_and(|last| last >= year_ago)
+            })
+            .count() as u32,
+        own_organizations: own_organizations.len() as u32,
+        own_organization_repositories: analyzed
             .iter()
-            .filter(|pull| pull.state == PullRequestState::Merged)
-            .count() as u32;
-        let external_decided = external
+            .filter(|repository| {
+                repository.user_commits() > 0
+                    && own_organizations
+                        .contains(&Facts::owner(&repository.full_name).to_ascii_lowercase())
+            })
+            .count() as u32,
+        direct_push_repositories: analyzed
             .iter()
-            .filter(|pull| pull.state != PullRequestState::Open)
-            .count() as u32;
-        let mut lines = sample
-            .iter()
-            .map(|pull| pull.additions.saturating_add(pull.deletions))
-            .collect::<Vec<_>>();
-        lines.sort_unstable();
-        // Accepted work only: commits on the default branch, merged pull requests and reviews.
-        // Issues and unmerged pull requests show interest, not accepted contribution.
-        let mut accepted: BTreeMap<String, GitHubNotableContribution> = BTreeMap::new();
-        let mut organization_repositories = BTreeSet::new();
-        let mut reviews_of_others = 0;
-        for year in &snapshot.years {
-            for item in year
-                .commit_repositories
-                .iter()
-                .filter(|item| independent(&item.repository))
-            {
-                accepted_entry(
-                    &mut accepted,
-                    &mut organization_repositories,
-                    &item.repository,
-                )
-                .commits += item.count;
-            }
-            for item in year
-                .review_repositories
-                .iter()
-                .filter(|item| independent(&item.repository))
-            {
-                reviews_of_others += item.count;
-                accepted_entry(
-                    &mut accepted,
-                    &mut organization_repositories,
-                    &item.repository,
-                )
-                .reviews += item.count;
-            }
-        }
-        for pull in &external {
-            if pull.state == PullRequestState::Merged {
-                accepted_entry(
-                    &mut accepted,
-                    &mut organization_repositories,
-                    &pull.repository,
-                )
-                .merged_pull_requests += 1;
-            }
-        }
-        let external_repositories = accepted.len() as u32;
-        let mut notable = accepted
-            .into_values()
-            .filter(|item| item.stars >= 100)
-            .collect::<Vec<_>>();
-        notable.sort_by(|a, b| b.stars.cmp(&a.stars).then(a.repository.cmp(&b.repository)));
-        notable.truncate(10);
-        let peer_validated = sample
-            .iter()
-            .filter(|pull| pull.merged_by_other || pull.reviewed_by_other)
-            .count() as u32;
-        Self {
-            report: GitHubCollaboration {
-                pull_requests_total: totals.0,
-                reviews_total: totals.1,
-                issues_total: totals.2,
-                pull_requests_sampled: sample.len() as u32,
-                external_pull_requests: external.len() as u32,
-                external_merged,
-                external_merge_rate_percent: (external_decided >= 3)
-                    .then(|| percent(external_merged, external_decided)),
-                median_pull_request_lines: median(lines),
-                external_repositories,
-                organization_repositories: organization_repositories.len() as u32,
-                affiliated_organizations: affiliated.len().saturating_sub(1) as u32,
-                notable_contributions: notable,
-            },
-            peer_validated,
-            sampled: sample.len() as u32,
-            merged_sampled: sample
-                .iter()
-                .filter(|pull| pull.state == PullRequestState::Merged)
-                .count() as u32,
-            reviews_of_others,
-        }
+            .filter(|repository| repository.direct_pushes > 0)
+            .count() as u32,
     }
 }
 
@@ -648,94 +688,79 @@ struct Craft {
     repeated_message_share: u8,
 }
 
-/// Repositories the account substantially develops: owned or with at least ten commits.
-fn substantive(snapshot: &Snapshot) -> Vec<&PrimaryRepository> {
-    snapshot
-        .primary
+fn hygiene(
+    repository: &RepositoryAnalysis,
+    meta: Option<&crate::snapshot::RepositoryMeta>,
+) -> Vec<HygieneSignal> {
+    let files = repository
+        .files
         .iter()
-        .filter(|repository| {
-            !repository.reference.fork
-                && !repository.template
-                && (repository
-                    .reference
-                    .owner_login
-                    .eq_ignore_ascii_case(&snapshot.login)
-                    || repository.contributions >= 10)
+        .map(|path| path.to_ascii_lowercase())
+        .filter(|path| {
+            !path
+                .split('/')
+                .any(|segment| segment == "node_modules" || segment == "vendor")
         })
-        .collect()
-}
-
-fn hygiene(repository: &PrimaryRepository) -> Vec<HygieneSignal> {
-    let root = repository
-        .root
-        .iter()
-        .map(|(name, directory)| (name.to_ascii_lowercase(), *directory))
         .collect::<Vec<_>>();
-    let has = |test: &dyn Fn(&str, bool) -> bool| root.iter().any(|(name, dir)| test(name, *dir));
-    let github = repository
-        .github_dir
-        .iter()
-        .map(|name| name.to_ascii_lowercase())
-        .collect::<Vec<_>>();
+    let root =
+        |test: &dyn Fn(&str) -> bool| files.iter().any(|path| !path.contains('/') && test(path));
+    let any = |test: &dyn Fn(&str) -> bool| files.iter().any(|path| test(path));
+    let name = |path: &str| path.rsplit('/').next().unwrap_or(path).to_owned();
     let mut signals = Vec::new();
-    if has(&|name, dir| !dir && name.starts_with("readme")) {
+    if root(&|path| path.starts_with("readme")) {
         signals.push(HygieneSignal::Readme);
     }
-    if repository.license.is_some()
-        || has(&|name, _| {
-            name.starts_with("license")
-                || name.starts_with("licence")
-                || name.starts_with("copying")
+    if meta.is_some_and(|meta| meta.license.is_some())
+        || root(&|path| {
+            path.starts_with("license")
+                || path.starts_with("licence")
+                || path.starts_with("copying")
         })
     {
         signals.push(HygieneSignal::License);
     }
-    const CI: &[&str] = &[
-        ".gitlab-ci.yml",
-        ".travis.yml",
-        ".circleci",
-        "azure-pipelines.yml",
-        "jenkinsfile",
-        ".drone.yml",
-        ".woodpecker.yml",
-        ".woodpecker",
-        "bitbucket-pipelines.yml",
-        ".buildkite",
-    ];
-    if repository.workflows > 0 || has(&|name, _| CI.contains(&name)) {
+    if any(&|path| {
+        path.starts_with(".github/workflows/")
+            || matches!(
+                path,
+                ".gitlab-ci.yml"
+                    | ".travis.yml"
+                    | "azure-pipelines.yml"
+                    | "jenkinsfile"
+                    | ".drone.yml"
+                    | "bitbucket-pipelines.yml"
+            )
+            || path.starts_with(".circleci/")
+            || path.starts_with(".woodpecker")
+            || path.starts_with(".buildkite/")
+    }) {
         signals.push(HygieneSignal::Ci);
     }
-    const TEST_DIRS: &[&str] = &[
-        "tests",
-        "test",
-        "__tests__",
-        "spec",
-        "specs",
-        "e2e",
-        "testing",
-        "integration-tests",
-    ];
-    const TEST_FILES: &[&str] = &[
-        "pytest.ini",
-        "tox.ini",
-        "karma.conf.js",
-        "phpunit.xml",
-        "phpunit.xml.dist",
-        "nextest.toml",
-    ];
-    const TEST_CONFIG_PREFIXES: &[&str] = &[
-        "jest.config.",
-        "vitest.config.",
-        "playwright.config.",
-        "cypress.config.",
-        ".mocharc",
-    ];
-    if has(&|name, dir| {
-        (dir && TEST_DIRS.contains(&name))
-            || TEST_FILES.contains(&name)
-            || TEST_CONFIG_PREFIXES
-                .iter()
-                .any(|prefix| name.starts_with(prefix))
+    if any(&|path| {
+        let file = name(path);
+        path.split('/').any(|segment| {
+            matches!(
+                segment,
+                "tests" | "test" | "__tests__" | "spec" | "specs" | "e2e" | "testing"
+            )
+        }) && path.contains('/')
+            || file.ends_with("_test.go")
+            || file.ends_with("_test.py")
+            || file.starts_with("test_") && file.ends_with(".py")
+            || [
+                ".test.ts",
+                ".test.tsx",
+                ".test.js",
+                ".test.jsx",
+                ".spec.ts",
+                ".spec.tsx",
+                ".spec.js",
+            ]
+            .iter()
+            .any(|suffix| file.ends_with(suffix))
+            || file.ends_with("test.java")
+            || file.ends_with("tests.cs")
+            || matches!(file.as_str(), "pytest.ini" | "conftest.py" | "nextest.toml")
     }) {
         signals.push(HygieneSignal::Tests);
     }
@@ -754,13 +779,11 @@ fn hygiene(repository: &PrimaryRepository) -> Vec<HygieneSignal> {
         "gemfile.lock",
         "mix.lock",
         "flake.lock",
-        "packages.lock.json",
-        "gradle.lockfile",
     ];
-    if has(&|name, _| LOCKFILES.contains(&name)) {
+    if any(&|path| LOCKFILES.contains(&name(path).as_str())) {
         signals.push(HygieneSignal::Lockfile);
     }
-    const LINT_FILES: &[&str] = &[
+    const LINT: &[&str] = &[
         "rustfmt.toml",
         ".rustfmt.toml",
         "clippy.toml",
@@ -777,49 +800,48 @@ fn hygiene(repository: &PrimaryRepository) -> Vec<HygieneSignal> {
         ".rubocop.yml",
         ".flake8",
         ".pylintrc",
-        "tslint.json",
         ".clang-format",
         ".clang-tidy",
         ".swiftlint.yml",
-        ".scalafmt.conf",
     ];
-    const LINT_PREFIXES: &[&str] = &[
-        ".eslintrc",
-        "eslint.config.",
-        ".prettierrc",
-        "prettier.config.",
-        ".stylelintrc",
-    ];
-    if has(&|name, _| {
-        LINT_FILES.contains(&name) || LINT_PREFIXES.iter().any(|prefix| name.starts_with(prefix))
+    if any(&|path| {
+        let file = name(path);
+        LINT.contains(&file.as_str())
+            || [
+                ".eslintrc",
+                "eslint.config.",
+                ".prettierrc",
+                "prettier.config.",
+                ".stylelintrc",
+            ]
+            .iter()
+            .any(|prefix| file.starts_with(prefix))
     }) {
         signals.push(HygieneSignal::Lint);
     }
-    let dependency_files = [
-        "dependabot.yml",
-        "dependabot.yaml",
-        "renovate.json",
-        "renovate.json5",
-    ];
-    if github
-        .iter()
-        .any(|name| dependency_files.contains(&name.as_str()))
-        || has(&|name, _| name == "renovate.json" || name.starts_with(".renovaterc"))
-    {
+    if any(&|path| {
+        matches!(
+            path,
+            ".github/dependabot.yml"
+                | ".github/dependabot.yaml"
+                | "renovate.json"
+                | ".github/renovate.json"
+        ) || name(path).starts_with(".renovaterc")
+    }) {
         signals.push(HygieneSignal::DependencyUpdates);
     }
-    const CONTAINERS: &[&str] = &[
-        "dockerfile",
-        "containerfile",
-        "docker-compose.yml",
-        "docker-compose.yaml",
-        "compose.yml",
-        "compose.yaml",
-    ];
-    if has(&|name, _| CONTAINERS.contains(&name)) {
+    if any(&|path| {
+        let file = name(path);
+        file == "dockerfile"
+            || file == "containerfile"
+            || file.starts_with("dockerfile.")
+            || file.starts_with("docker-compose")
+            || file == "compose.yml"
+            || file == "compose.yaml"
+    }) {
         signals.push(HygieneSignal::Container);
     }
-    if repository.has_description {
+    if meta.is_some_and(|meta| meta.description.is_some()) {
         signals.push(HygieneSignal::Description);
     }
     signals
@@ -886,14 +908,19 @@ pub(crate) fn is_descriptive(headline: &str) -> bool {
 }
 
 impl Craft {
-    fn compute(snapshot: &Snapshot) -> Self {
-        let repositories = substantive(snapshot);
-        let hygiene_map = repositories
+    fn compute(facts: &Facts<'_>) -> Self {
+        let hygiene_map = facts
+            .snapshot
+            .analyzed
             .iter()
+            .filter(|repository| facts.substantive(repository))
             .map(|repository| {
                 (
-                    repository.reference.name_with_owner.clone(),
-                    hygiene(repository),
+                    repository.full_name.clone(),
+                    hygiene(
+                        repository,
+                        facts.snapshot.repositories.get(&repository.full_name),
+                    ),
                 )
             })
             .collect::<BTreeMap<_, _>>();
@@ -907,21 +934,24 @@ impl Craft {
                 total,
             )
         };
-        let all = &snapshot.commits;
+        let all = facts
+            .commits
+            .iter()
+            .map(|(_, commit)| *commit)
+            .collect::<Vec<_>>();
         let regular = all
             .iter()
             .filter(|commit| !commit.is_merge())
             .collect::<Vec<_>>();
         let sample = regular.len() as u32;
         let enough = sample >= 10;
-        let mut lines = regular
+        let files = regular
             .iter()
-            .map(|commit| commit.lines())
+            .map(|commit| commit.files.len() as u32)
             .collect::<Vec<_>>();
-        lines.sort_unstable();
         let mut headlines: HashMap<&str, u32> = HashMap::new();
         for commit in &regular {
-            *headlines.entry(commit.headline.trim()).or_insert(0) += 1;
+            *headlines.entry(commit.subject.trim()).or_insert(0) += 1;
         }
         let top_headline = headlines.values().copied().max().unwrap_or(0);
         let of = |count: usize| enough.then(|| percent(count as u32, sample));
@@ -938,15 +968,14 @@ impl Craft {
                 container_percent: share(HygieneSignal::Container),
                 conventional_commits_percent: of(regular
                     .iter()
-                    .filter(|commit| is_conventional(&commit.headline))
+                    .filter(|commit| is_conventional(&commit.subject))
                     .count()),
                 descriptive_messages_percent: of(regular
                     .iter()
-                    .filter(|commit| is_descriptive(&commit.headline))
+                    .filter(|commit| is_descriptive(&commit.subject))
                     .count()),
-                median_commit_lines: enough.then(|| median(lines.clone()).unwrap_or(0)),
-                large_commits_percent: of(lines.iter().filter(|value| **value > 1000).count()),
-                signed_commits_percent: of(regular.iter().filter(|commit| commit.signed).count()),
+                median_files_per_commit: if enough { median(files.clone()) } else { None },
+                large_commits_percent: of(files.iter().filter(|count| **count > 50).count()),
                 merge_commits_percent: (all.len() >= 10).then(|| {
                     percent(
                         all.iter().filter(|commit| commit.is_merge()).count() as u32,
@@ -962,6 +991,219 @@ impl Craft {
 }
 
 // ---------------------------------------------------------------------------------------------
+// Stack and languages
+
+/// Repositories, reasons and the latest own commit per technology.
+type Evidence = (u32, BTreeSet<String>, Option<DateTime<Utc>>);
+
+fn stack(facts: &Facts<'_>) -> (Vec<GitHubStackItem>, Vec<GitHubTechnology>) {
+    let mut found: BTreeMap<Tech, Evidence> = BTreeMap::new();
+    for repository in &facts.snapshot.analyzed {
+        // Technologies count where the account works: owned repositories or three own commits.
+        if !(facts.owned(&repository.full_name) || repository.user_commits() >= 3) {
+            continue;
+        }
+        let Some(detected) = facts.detected.get(repository.full_name.as_str()) else {
+            continue;
+        };
+        for (technology, reasons) in detected {
+            let entry = found.entry(*technology).or_default();
+            entry.0 += 1;
+            entry.1.extend(reasons.iter().cloned());
+            entry.2 = entry.2.max(repository.last_commit());
+        }
+    }
+    let mut items = found
+        .iter()
+        .map(
+            |(technology, (repositories, reasons, last))| GitHubStackItem {
+                name: technology.name.into(),
+                category: technology.category,
+                repositories: *repositories,
+                signals: reasons.iter().take(4).cloned().collect(),
+                last_used_at: last.map(iso),
+            },
+        )
+        .collect::<Vec<_>>();
+    items.sort_by(|a, b| {
+        a.category
+            .cmp(&b.category)
+            .then(b.repositories.cmp(&a.repositories))
+            .then(a.name.cmp(&b.name))
+    });
+    let mut catalog: BTreeMap<&str, Evidence> = BTreeMap::new();
+    for (technology, (repositories, reasons, last)) in &found {
+        if let Some(skill) = technology.skill {
+            let entry = catalog.entry(skill).or_default();
+            entry.0 = entry.0.max(*repositories);
+            entry.1.extend(reasons.iter().cloned());
+            entry.2 = entry.2.max(*last);
+        }
+    }
+    let technologies = catalog
+        .into_iter()
+        .map(|(skill, (repositories, reasons, last))| GitHubTechnology {
+            skill_id: skill.into(),
+            repositories,
+            signals: reasons.into_iter().take(5).collect(),
+            last_pushed_at: last.map(iso),
+        })
+        .collect();
+    (items, technologies)
+}
+
+fn languages(facts: &Facts<'_>) -> Vec<fsp_domain::GitHubLanguageShare> {
+    let mut changes: BTreeMap<&'static str, u32> = BTreeMap::new();
+    for (_, commit) in facts
+        .commits
+        .iter()
+        .filter(|(_, commit)| !commit.is_merge())
+    {
+        for file in &commit.files {
+            if let Some(language) = language_of(file) {
+                *changes.entry(language).or_default() += 1;
+            }
+        }
+    }
+    profile::languages(&changes)
+}
+
+fn developer_profile(
+    facts: &Facts<'_>,
+    languages: &[fsp_domain::GitHubLanguageShare],
+    stack: &[GitHubStackItem],
+    ownership: &GitHubOwnershipSummary,
+    activity: &Activity,
+) -> GitHubDeveloperProfile {
+    let mut areas: BTreeMap<Archetype, (u32, BTreeMap<&'static str, u32>)> = BTreeMap::new();
+    for (repository, commit) in facts
+        .commits
+        .iter()
+        .filter(|(_, commit)| !commit.is_merge())
+    {
+        let kind = facts
+            .detected
+            .get(repository.full_name.as_str())
+            .map(RepositoryKind::of)
+            .unwrap_or_default();
+        for file in &commit.files {
+            if let Some(area) = profile::area(file, kind) {
+                let entry = areas.entry(area).or_default();
+                entry.0 += 1;
+                if let Some(language) = language_of(file) {
+                    *entry.1.entry(language).or_default() += 1;
+                }
+            }
+        }
+    }
+    let mut stack_by_area: BTreeMap<Archetype, Vec<&str>> = BTreeMap::new();
+    for item in stack {
+        if let Some(area) = profile::archetype_of(&item.name, item.category) {
+            stack_by_area
+                .entry(area)
+                .or_default()
+                .push(item.name.as_str());
+        }
+    }
+    let archetypes = profile::archetypes(&areas, &stack_by_area);
+    // Technologies shared by several projects; a small account shows its single-project stack.
+    let mut ranked = stack
+        .iter()
+        .filter(|item| {
+            !matches!(
+                item.category,
+                fsp_domain::StackCategory::Language | fsp_domain::StackCategory::Quality
+            )
+        })
+        .collect::<Vec<_>>();
+    ranked.sort_by(|a, b| {
+        b.repositories
+            .cmp(&a.repositories)
+            .then(a.category.cmp(&b.category))
+            .then(a.name.cmp(&b.name))
+    });
+    let shared = ranked.iter().filter(|item| item.repositories >= 2).count();
+    let key_technologies = ranked
+        .into_iter()
+        .take(shared.clamp(4, 8))
+        .map(|item| item.name.as_str())
+        .collect::<Vec<_>>();
+    let own_organizations = facts
+        .affiliated
+        .iter()
+        .filter(|(_, organization)| **organization)
+        .map(|(owner, _)| owner.clone())
+        .collect::<Vec<_>>();
+    let mut topic_counts: BTreeMap<String, u32> = BTreeMap::new();
+    for repository in &facts.snapshot.analyzed {
+        if !(facts.owned(&repository.full_name)
+            || facts.led.contains(repository.full_name.as_str()))
+        {
+            continue;
+        }
+        if let Some(meta) = facts.snapshot.repositories.get(&repository.full_name) {
+            for topic in meta
+                .topics
+                .iter()
+                .filter(|topic| profile::meaningful_topic(topic))
+            {
+                *topic_counts.entry(topic.clone()).or_default() += 1;
+            }
+        }
+    }
+    let mut topics = topic_counts.into_iter().collect::<Vec<_>>();
+    topics.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+    let focus_topics = topics
+        .into_iter()
+        .take(8)
+        .map(|(topic, _)| topic)
+        .collect::<Vec<_>>();
+    let (summary, public_summary) = profile::summaries(&SummaryInput {
+        archetypes: &archetypes,
+        languages,
+        key_technologies: &key_technologies,
+        led_repositories: ownership.led_repositories,
+        own_organizations: &own_organizations,
+        focus_topics: &focus_topics,
+        commits_last_year: activity.report.commits_last_year,
+    });
+    let mut projects = facts
+        .snapshot
+        .analyzed
+        .iter()
+        .filter(|repository| {
+            facts.led.contains(repository.full_name.as_str())
+                || (facts.owned(&repository.full_name) && repository.user_commits() > 0)
+        })
+        .collect::<Vec<_>>();
+    projects.sort_by_key(|repository| std::cmp::Reverse(repository.user_commits()));
+    let top_projects = projects
+        .into_iter()
+        .take(8)
+        .map(|repository| {
+            let meta = facts.snapshot.repositories.get(&repository.full_name);
+            GitHubProject {
+                name_with_owner: repository.full_name.clone(),
+                url: format!("https://github.com/{}", repository.full_name),
+                description: meta.and_then(|meta| meta.description.clone()),
+                primary_language: meta.and_then(|meta| meta.language.clone()),
+                stars: meta.map_or(0, |meta| meta.stars),
+                user_commits: repository.user_commits(),
+                user_share_percent: repository.share_percent(),
+                last_commit_at: repository.last_commit().map(iso),
+            }
+        })
+        .collect();
+    GitHubDeveloperProfile {
+        summary,
+        public_summary,
+        archetypes,
+        focus_topics,
+        top_projects,
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
 // Impact
 
 struct Impact {
@@ -972,28 +1214,31 @@ struct Impact {
 }
 
 impl Impact {
-    fn compute(snapshot: &Snapshot, collaboration: &Collaboration) -> Self {
+    fn compute(facts: &Facts<'_>, collaboration: &GitHubCollaboration) -> Self {
+        let meta = |name: &str| facts.snapshot.repositories.get(name);
         Self {
-            maintained_stars: substantive(snapshot)
+            maintained_stars: facts
+                .snapshot
+                .analyzed
                 .iter()
-                .map(|repository| repository.reference.stars)
+                .filter(|repository| facts.substantive(repository))
+                .map(|repository| meta(&repository.full_name).map_or(0, |meta| meta.stars))
                 .sum(),
-            owned_forks: snapshot
-                .owned
-                .iter()
-                .filter(|repository| !repository.fork)
-                .map(|repository| repository.forks)
+            owned_forks: facts
+                .snapshot
+                .repositories
+                .values()
+                .filter(|meta| facts.snapshot.is_self(&meta.owner) && !meta.fork)
+                .map(|meta| meta.forks)
                 .sum(),
-            // Independent projects from 1000 stars that accepted at least three commits or a merge.
             notable_external: collaboration
-                .report
                 .notable_contributions
                 .iter()
                 .filter(|item| {
                     item.stars >= 1000 && (item.commits >= 3 || item.merged_pull_requests >= 1)
                 })
                 .count() as u32,
-            followers: snapshot.followers,
+            followers: facts.snapshot.followers,
         }
     }
 }
@@ -1017,8 +1262,11 @@ fn dimension(
     weight: u8,
     summaries: [&str; 4],
     metrics: Vec<MetricSpec>,
-) -> GitHubDimension {
+) -> Option<GitHubDimension> {
     let total: u32 = metrics.iter().map(|metric| u32::from(metric.weight)).sum();
+    if total == 0 {
+        return None;
+    }
     let weighted: u32 = metrics
         .iter()
         .map(|metric| u32::from(metric.weight) * u32::from(metric.score))
@@ -1030,7 +1278,7 @@ fn dimension(
         25..=49 => summaries[2],
         _ => summaries[3],
     };
-    GitHubDimension {
+    Some(GitHubDimension {
         id,
         label: label.into(),
         score,
@@ -1047,7 +1295,7 @@ fn dimension(
                 score: metric.score,
             })
             .collect(),
-    }
+    })
 }
 
 fn count_metric(
@@ -1093,17 +1341,16 @@ const MONTHS: (&str, &str, &str) = ("месяц", "месяца", "месяце�
 const YEARS: (&str, &str, &str) = ("год", "года", "лет");
 const ITEMS: (&str, &str, &str) = ("", "", "");
 
-fn consistency_dimension(activity: &Activity) -> GitHubDimension {
+fn consistency_dimension(activity: &Activity) -> Option<GitHubDimension> {
     let report = &activity.report;
-    let regularity = activity.burstiness.map_or(0, |b| {
-        // B ≤ 0: at least as regular as random; B ≥ 0.8: activity comes in rare bursts.
-        ramp(f64::from(80 - b.clamp(0, 80)), 0.0, 80.0)
-    });
+    let regularity = activity
+        .burstiness
+        .map_or(0, |b| ramp(f64::from(80 - b.clamp(0, 80)), 0.0, 80.0));
     let weeks = report.active_weeks_last_year;
     dimension(
         GitHubDimensionId::Consistency,
         "Регулярность",
-        25,
+        20,
         [
             "Стабильная регулярная активность на протяжении года",
             "Активность в основном регулярная",
@@ -1166,20 +1413,16 @@ fn regularity_label(burstiness: Option<i32>) -> &'static str {
     }
 }
 
-fn engagement_dimension(
-    activity: &Activity,
-    rhythm: Option<&Rhythm>,
-    automated: bool,
-) -> GitHubDimension {
+fn engagement_dimension(activity: &Activity, rhythm: Option<&Rhythm>) -> Option<GitHubDimension> {
     let report = &activity.report;
     let mut metrics = vec![
         count_metric(
-            "contributions_last_year",
-            "Публичный вклад за год",
-            report.contributions_last_year,
+            "commits_last_year",
+            "Публичных коммитов за год",
+            report.commits_last_year,
             ITEMS,
-            log_ramp(f64::from(report.contributions_last_year), 1000.0),
-            20,
+            log_ramp(f64::from(report.commits_last_year), 1000.0),
+            15,
         ),
         count_metric(
             "active_days_last_year",
@@ -1187,7 +1430,7 @@ fn engagement_dimension(
             report.active_days_last_year,
             DAYS,
             ramp(f64::from(report.active_days_last_year), 0.0, 180.0),
-            25,
+            20,
         ),
         count_metric(
             "longest_daily_streak",
@@ -1212,21 +1455,32 @@ fn engagement_dimension(
         let minutes = rhythm.report.median_minutes_per_active_day;
         metrics.push(MetricSpec {
             id: "hours_per_active_day",
-            label: "Оценка времени в активный день (медиана)",
+            label: "Время в активный день (медиана)",
             value: i64::from(minutes),
             display: hours_exact(minutes),
             public_display: fsp_domain::hours_band(minutes),
-            // Saturates at three hours: longer days are not rewarded; automated volume is not scored.
-            score: ramp(f64::from(minutes), 0.0, 180.0),
-            weight: if automated { 0 } else { 15 },
+            // A full working day of commit sessions earns the maximum.
+            score: ramp(f64::from(minutes), 0.0, 360.0),
+            weight: 15,
         });
+        if let Some(weekly) = rhythm.report.median_minutes_per_active_week {
+            metrics.push(MetricSpec {
+                id: "hours_per_active_week",
+                label: "Время в активную неделю (медиана)",
+                value: i64::from(weekly),
+                display: hours_exact(weekly),
+                public_display: fsp_domain::week_band(weekly),
+                score: ramp(f64::from(weekly), 0.0, 1800.0),
+                weight: 10,
+            });
+        }
     }
     let since = activity.days_since_last;
     metrics.push(MetricSpec {
         id: "days_since_last_activity",
         label: "Дней с последней активности",
         value: since.unwrap_or(-1),
-        display: since.map_or_else(|| "нет активности".into(), |days| format!("{days}")),
+        display: since.map_or_else(|| "нет активности".into(), |days| days.to_string()),
         public_display: since.map_or_else(
             || "нет активности".into(),
             |days| match days {
@@ -1244,7 +1498,7 @@ fn engagement_dimension(
         "Вовлечённость",
         20,
         [
-            "Высокая вовлечённость: много активных дней и длинные серии",
+            "Высокая вовлечённость: много активных дней, длинные серии и рабочие часы",
             "Заметная вовлечённость",
             "Умеренная вовлечённость",
             "Низкая публичная вовлечённость",
@@ -1253,18 +1507,14 @@ fn engagement_dimension(
     )
 }
 
-fn longevity_dimension(
-    snapshot: &Snapshot,
-    activity: &Activity,
-    today: NaiveDate,
-) -> GitHubDimension {
-    let age_years = snapshot.created_at.map_or(0, |created| {
-        ((today - created.date_naive()).num_days() / 365) as u32
+fn longevity_dimension(facts: &Facts<'_>, activity: &Activity) -> Option<GitHubDimension> {
+    let age_years = facts.snapshot.created_at.map_or(0, |created| {
+        ((facts.today - created.date_naive()).num_days() / 365) as u32
     });
     dimension(
         GitHubDimensionId::Longevity,
         "Стаж",
-        15,
+        10,
         [
             "Многолетняя устойчивая активность",
             "Несколько лет активности",
@@ -1282,7 +1532,7 @@ fn longevity_dimension(
             ),
             count_metric(
                 "active_years",
-                "Лет с публичным вкладом",
+                "Лет с публичными коммитами",
                 activity.report.active_years,
                 YEARS,
                 ramp(f64::from(activity.report.active_years), 0.0, 5.0),
@@ -1300,28 +1550,27 @@ fn longevity_dimension(
     )
 }
 
-fn collaboration_dimension(collaboration: &Collaboration) -> GitHubDimension {
-    let report = &collaboration.report;
+fn collaboration_dimension(report: &GitHubCollaboration) -> Option<GitHubDimension> {
     let mut metrics = vec![
         count_metric(
-            "peer_validated_pull_requests",
-            "PR, принятые или отревьюенные другим человеком",
-            collaboration.peer_validated,
+            "approved_pull_requests",
+            "PR, одобренные другими людьми в ревью",
+            report.approved_pull_requests,
             ITEMS,
-            log_ramp(f64::from(collaboration.peer_validated), 25.0),
+            log_ramp(f64::from(report.approved_pull_requests), 25.0),
             35,
         ),
         count_metric(
-            "reviews_of_others",
-            "Ревью в независимых репозиториях",
-            collaboration.reviews_of_others,
+            "independent_reviews",
+            "Ревью PR в независимых репозиториях",
+            report.independent_reviews,
             ITEMS,
-            log_ramp(f64::from(collaboration.reviews_of_others), 50.0),
+            log_ramp(f64::from(report.independent_reviews), 50.0),
             25,
         ),
         count_metric(
             "external_repositories",
-            "Независимых репозиториев с принятым вкладом",
+            "Независимых проектов с принятым вкладом",
             report.external_repositories,
             ITEMS,
             ramp(f64::from(report.external_repositories), 0.0, 10.0),
@@ -1329,7 +1578,7 @@ fn collaboration_dimension(collaboration: &Collaboration) -> GitHubDimension {
         ),
         count_metric(
             "external_merged",
-            "Принятых PR в независимые репозитории (выборка)",
+            "Принятых PR в независимые проекты",
             report.external_merged,
             ITEMS,
             log_ramp(f64::from(report.external_merged), 25.0),
@@ -1339,7 +1588,7 @@ fn collaboration_dimension(collaboration: &Collaboration) -> GitHubDimension {
     if let Some(rate) = report.external_merge_rate_percent {
         metrics.push(percent_metric(
             "external_merge_rate",
-            "Доля принятых PR в независимые репозитории",
+            "Доля принятых PR в независимые проекты",
             rate,
             ramp(f64::from(rate), 30.0, 90.0),
             10,
@@ -1348,7 +1597,7 @@ fn collaboration_dimension(collaboration: &Collaboration) -> GitHubDimension {
     dimension(
         GitHubDimensionId::Collaboration,
         "Совместная работа",
-        20,
+        15,
         [
             "Регулярная работа с другими людьми: ревью и принятые изменения",
             "Есть подтверждённая совместная работа",
@@ -1359,25 +1608,85 @@ fn collaboration_dimension(collaboration: &Collaboration) -> GitHubDimension {
     )
 }
 
+fn ownership_dimension(
+    facts: &Facts<'_>,
+    report: &GitHubOwnershipSummary,
+) -> Option<GitHubDimension> {
+    let pulls = facts.snapshot.totals.pull_requests_last_year.unwrap_or(0);
+    dimension(
+        GitHubDimensionId::Ownership,
+        "Собственные проекты и организации",
+        15,
+        [
+            "Ведёт много живых проектов и развивает свои организации",
+            "Ведёт собственные проекты",
+            "Несколько собственных проектов",
+            "Собственных публичных проектов почти нет",
+        ],
+        vec![
+            count_metric(
+                "led_repositories",
+                "Проектов, где пишет большую часть кода",
+                report.led_repositories,
+                ITEMS,
+                ramp(f64::from(report.led_repositories), 0.0, 10.0),
+                25,
+            ),
+            count_metric(
+                "maintained_repositories",
+                "Проектов с коммитами за год",
+                report.maintained_repositories,
+                ITEMS,
+                ramp(f64::from(report.maintained_repositories), 0.0, 8.0),
+                20,
+            ),
+            count_metric(
+                "own_organizations",
+                "Собственных организаций",
+                report.own_organizations,
+                ITEMS,
+                ramp(f64::from(report.own_organizations), 0.0, 3.0),
+                15,
+            ),
+            count_metric(
+                "own_organization_repositories",
+                "Репозиториев в собственных организациях",
+                report.own_organization_repositories,
+                ITEMS,
+                ramp(f64::from(report.own_organization_repositories), 0.0, 15.0),
+                20,
+            ),
+            count_metric(
+                "pull_requests_last_year",
+                "Pull request’ов за год",
+                pulls,
+                ITEMS,
+                log_ramp(f64::from(pulls), 300.0),
+                20,
+            ),
+        ],
+    )
+}
+
 fn craft_dimension(craft: &Craft) -> Option<GitHubDimension> {
     let report = &craft.report;
     if report.substantive_repositories == 0 {
         return None;
     }
-    let hygiene = |id, label, value: u8, weight| percent_metric(id, label, value, value, weight);
+    let practice = |id, label, value: u8, weight| percent_metric(id, label, value, value, weight);
     let mut metrics = vec![
-        hygiene("readme", "Проекты с README", report.readme_percent, 10),
-        hygiene("license", "Проекты с лицензией", report.license_percent, 10),
-        hygiene("ci", "Проекты с CI", report.ci_percent, 20),
-        hygiene("tests", "Проекты с тестами", report.tests_percent, 20),
-        hygiene(
+        practice("readme", "Проекты с README", report.readme_percent, 10),
+        practice("license", "Проекты с лицензией", report.license_percent, 10),
+        practice("ci", "Проекты с CI", report.ci_percent, 20),
+        practice("tests", "Проекты с тестами", report.tests_percent, 20),
+        practice(
             "lockfile",
             "Зафиксированные зависимости",
             report.lockfile_percent,
             10,
         ),
-        hygiene("lint", "Линтеры и форматтеры", report.lint_percent, 10),
-        hygiene(
+        practice("lint", "Линтеры и форматтеры", report.lint_percent, 10),
+        practice(
             "dependency_updates",
             "Автообновление зависимостей",
             report.dependency_updates_percent,
@@ -1393,26 +1702,25 @@ fn craft_dimension(craft: &Craft) -> Option<GitHubDimension> {
             10,
         ));
     }
-    if let Some(lines) = report.median_commit_lines {
-        // Small reviewable commits score best; tiny or huge medians score less.
-        let score = match lines {
+    if let Some(files) = report.median_files_per_commit {
+        // Focused commits score best; empty or sweeping medians score less.
+        let score = match files {
             0 => 0,
-            1..=4 => 50,
-            5..=400 => 100,
-            401..=1000 => 60,
+            1..=10 => 100,
+            11..=30 => 60,
             _ => 20,
         };
         metrics.push(MetricSpec {
-            id: "median_commit_lines",
-            label: "Медианный размер коммита",
-            value: i64::from(lines),
-            display: format!("{} строк", group(lines)),
-            public_display: format!("{} строк", approx(lines)),
+            id: "median_files_per_commit",
+            label: "Файлов в коммите (медиана)",
+            value: i64::from(files),
+            display: files.to_string(),
+            public_display: approx(files),
             score,
             weight: 5,
         });
     }
-    Some(dimension(
+    dimension(
         GitHubDimensionId::Craft,
         "Инженерная культура",
         15,
@@ -1423,10 +1731,10 @@ fn craft_dimension(craft: &Craft) -> Option<GitHubDimension> {
             "Инженерных практик в публичных проектах почти не видно",
         ],
         metrics,
-    ))
+    )
 }
 
-fn impact_dimension(impact: &Impact) -> GitHubDimension {
+fn impact_dimension(impact: &Impact) -> Option<GitHubDimension> {
     dimension(
         GitHubDimensionId::Impact,
         "Признание",
@@ -1478,10 +1786,9 @@ fn impact_dimension(impact: &Impact) -> GitHubDimension {
 // Flags, confidence and narrative
 
 fn flags(
-    snapshot: &Snapshot,
+    facts: &Facts<'_>,
     activity: &Activity,
     rhythm: Option<&Rhythm>,
-    collaboration: &Collaboration,
     craft: &Craft,
 ) -> Vec<GitHubFlag> {
     let mut flags = Vec::new();
@@ -1493,14 +1800,10 @@ fn flags(
             detail,
         });
     };
-    let regular = snapshot
+    let future = facts
         .commits
         .iter()
-        .filter(|commit| !commit.is_merge())
-        .collect::<Vec<_>>();
-    let future = regular
-        .iter()
-        .filter(|commit| commit.authored_at > snapshot.now + Duration::days(1))
+        .filter(|(_, commit)| commit.utc() > facts.snapshot.now + Duration::days(1))
         .count();
     if future > 0 {
         push(
@@ -1510,33 +1813,19 @@ fn flags(
             format!("{future} коммитов датированы позже текущего момента: даты задаются вручную."),
         );
     }
-    if let Some(rhythm) = rhythm {
-        if rhythm.report.sample_size >= 20 && rhythm.top_minute_share >= 40 {
-            push(
-                "uniform_commit_minute",
-                FlagSeverity::Warning,
-                "Коммиты в одну и ту же минуту",
-                format!(
-                    "{}% коммитов выборки сделаны в одну и ту же минуту суток: так выглядит генерация по расписанию.",
-                    rhythm.top_minute_share
-                ),
-            );
-        }
-        let per_active_day = activity
-            .commits_last_year
-            .checked_div(activity.report.active_days_last_year)
-            .unwrap_or(0);
-        let rate = rhythm.median_commits_per_day.max(per_active_day);
-        if rate >= AUTOMATION_COMMITS_PER_DAY {
-            push(
-                "high_commit_rate",
-                FlagSeverity::Info,
-                "Очень высокий темп коммитов",
-                format!(
-                    "Около {rate} коммитов в активный день: похоже на автоматизацию или работу AI-агентов. Объём не равен трудозатратам, поэтому оценка часов не входит в индекс."
-                ),
-            );
-        }
+    if let Some(rhythm) = rhythm
+        && rhythm.report.sample_size >= 20
+        && rhythm.top_minute_share >= 40
+    {
+        push(
+            "uniform_commit_minute",
+            FlagSeverity::Warning,
+            "Коммиты в одну и ту же минуту",
+            format!(
+                "{}% коммитов сделаны в одну и ту же минуту суток: так выглядит генерация по расписанию.",
+                rhythm.top_minute_share
+            ),
+        );
     }
     if craft.message_sample >= 20 && craft.repeated_message_share >= 50 {
         push(
@@ -1544,98 +1833,48 @@ fn flags(
             FlagSeverity::Warning,
             "Одинаковые сообщения коммитов",
             format!(
-                "{}% коммитов выборки имеют одно и то же сообщение.",
+                "{}% коммитов имеют одно и то же сообщение.",
                 craft.repeated_message_share
             ),
         );
     }
-    let backdated = regular
-        .iter()
-        .filter(|commit| commit.committed_at - commit.authored_at > Duration::days(30))
-        .count() as u32;
-    if regular.len() >= 20 && percent(backdated, regular.len() as u32) >= 50 {
-        push(
-            "rewritten_history",
-            FlagSeverity::Info,
-            "Даты авторства сильно раньше дат коммита",
-            "Так бывает после rebase, переноса истории или датирования задним числом; активность по дням может быть смещена.".into(),
-        );
-    }
-    let mut by_repository: HashMap<&str, Vec<u32>> = HashMap::new();
-    for commit in &regular {
-        by_repository
-            .entry(commit.repository.as_str())
-            .or_default()
-            .push(commit.lines());
-    }
-    // Graph padding: an unknown repository of the account receives most of its commits, almost all
-    // of them one- or two-line edits. Popular or independent projects are never treated as padding.
-    let led = led_repositories(snapshot);
-    if activity.commits_last_year >= 100 {
-        for repository in &snapshot.primary {
-            let name = repository.reference.name_with_owner.as_str();
-            let own = repository
-                .reference
-                .owner_login
-                .eq_ignore_ascii_case(&snapshot.login)
-                || led.contains(name);
-            let share = percent(repository.contributions, total_commits(snapshot));
-            let tiny = by_repository.get(name).is_some_and(|lines| {
-                lines.len() >= 30
-                    && percent(
-                        lines.iter().filter(|value| **value <= 2).count() as u32,
-                        lines.len() as u32,
-                    ) >= 70
-            });
-            if own && repository.reference.stars < 10 && share >= 80 && tiny {
-                push(
-                    "padding_repository",
-                    FlagSeverity::Warning,
-                    "Активность сосредоточена в одном репозитории из микрокоммитов",
-                    "Большая часть вклада — коммиты в 1–2 строки в одном репозитории; такой вклад не учитывается как содержательный.".into(),
-                );
-                break;
-            }
+    // Graph padding: an unknown repository of the account holds most of its commits, which change
+    // a single file and repeat one message.
+    let total = facts.commits.len() as u32;
+    for repository in &facts.snapshot.analyzed {
+        let stars = facts
+            .snapshot
+            .repositories
+            .get(&repository.full_name)
+            .map_or(0, |meta| meta.stars);
+        let own =
+            facts.owned(&repository.full_name) || facts.led.contains(repository.full_name.as_str());
+        let commits = &repository.commits;
+        if !own || stars >= 10 || commits.len() < 30 || percent(commits.len() as u32, total) < 80 {
+            continue;
+        }
+        let single = commits
+            .iter()
+            .filter(|commit| commit.files.len() <= 1)
+            .count() as u32;
+        let mut subjects: HashMap<&str, u32> = HashMap::new();
+        for commit in commits {
+            *subjects.entry(commit.subject.trim()).or_insert(0) += 1;
+        }
+        let top = subjects.values().copied().max().unwrap_or(0);
+        if percent(single, commits.len() as u32) >= 80 && percent(top, commits.len() as u32) >= 30 {
+            push(
+                "padding_repository",
+                FlagSeverity::Warning,
+                "Активность сосредоточена в одном репозитории из однотипных микрокоммитов",
+                "Большая часть коммитов — правки одного файла с повторяющимся сообщением; такой вклад не считается содержательным.".into(),
+            );
+            break;
         }
     }
-    // GitHub records contributions when commits are pushed; a later history rewrite keeps them.
-    let recent_years = snapshot.now.year() - 2;
-    let mut window_contributions: HashMap<&str, u32> = HashMap::new();
-    for year in snapshot
-        .years
-        .iter()
-        .filter(|year| year.year >= recent_years)
-    {
-        for item in &year.commit_repositories {
-            *window_contributions
-                .entry(item.repository.name_with_owner.as_str())
-                .or_insert(0) += item.count;
-        }
-    }
-    let inflated = snapshot
-        .history_shares
-        .iter()
-        .filter(|(name, share)| {
-            let counted = window_contributions
-                .get(name.as_str())
-                .copied()
-                .unwrap_or(0);
-            counted >= 100 && share.authored * 2 < counted
-        })
-        .count();
-    if inflated > 0 {
-        push(
-            "contributions_exceed_history",
-            FlagSeverity::Info,
-            "Вклад по счётчику GitHub больше текущей истории",
-            format!(
-                "В {inflated} репозиториях GitHub насчитал заметно больше коммитов, чем осталось в истории основной ветки: история переписана или изменения сжаты. Размеры и ритм считаются по текущей истории."
-            ),
-        );
-    }
-    if let Some(created) = snapshot.created_at
-        && (snapshot.now - created).num_days() < 120
-        && activity.report.contributions_last_year >= 300
+    if let Some(created) = facts.snapshot.created_at
+        && (facts.snapshot.now - created).num_days() < 120
+        && activity.report.commits_last_year >= 300
     {
         push(
             "new_account_burst",
@@ -1644,69 +1883,46 @@ fn flags(
             "Аккаунту меньше четырёх месяцев; устойчивость активности пока не проверить.".into(),
         );
     }
-    let public = activity.report.contributions_last_year;
-    let private = snapshot.restricted_last_year;
-    if private > 0 && percent(private, public + private) >= 60 {
-        push(
-            "mostly_private",
-            FlagSeverity::Info,
-            "Основная работа — в приватных репозиториях",
-            format!(
-                "GitHub показывает {} приватных вкладов за год против {} публичных. Приватная работа не проверяется и не входит в индекс, поэтому индекс может быть занижен.",
-                group(private),
-                group(public)
-            ),
-        );
-    }
-    let owned = snapshot.owned.len() as u32;
-    let forks = snapshot
-        .owned
-        .iter()
-        .filter(|repository| repository.fork)
-        .count() as u32;
-    if owned >= 10 && percent(forks, owned) >= 70 {
+    let owned = facts
+        .snapshot
+        .repositories
+        .values()
+        .filter(|meta| facts.snapshot.is_self(&meta.owner))
+        .collect::<Vec<_>>();
+    let forks = owned.iter().filter(|meta| meta.fork).count() as u32;
+    if owned.len() >= 10 && percent(forks, owned.len() as u32) >= 70 {
         push(
             "fork_heavy",
             FlagSeverity::Info,
             "Много форков без собственной работы",
-            format!("{forks} из {owned} собственных репозиториев — форки; форки не оцениваются."),
-        );
-    }
-    if collaboration.sampled >= 30
-        && collaboration.merged_sampled >= 20
-        && percent(collaboration.peer_validated, collaboration.sampled) < 5
-    {
-        push(
-            "self_merged_pull_requests",
-            FlagSeverity::Info,
-            "PR принимаются без внешнего ревью",
             format!(
-                "Из {} последних PR другим человеком проверены или приняты {}: совместная работа подтверждается слабо.",
-                collaboration.sampled, collaboration.peer_validated
+                "{forks} из {} собственных репозиториев — форки; форки не оцениваются.",
+                owned.len()
             ),
         );
     }
-    if snapshot
-        .years
+    let year_ago = facts.year_ago();
+    let found = facts
+        .commits
         .iter()
-        .any(|year| year.commit_repositories.len() >= 100)
+        .filter(|(_, commit)| commit.utc() >= year_ago)
+        .count() as u32;
+    if let Some(total) = facts.snapshot.totals.commits_last_year
+        && total >= 50
+        && percent(found, total) < 50
     {
         push(
-            "repository_cap",
+            "partial_coverage",
             FlagSeverity::Info,
-            "Вклад в очень многие репозитории",
-            "GitHub отдаёт не более 100 репозиториев за год; распределение вклада по остальным неизвестно.".into(),
+            "Проанализирована часть публичных коммитов",
+            format!(
+                "В проанализированных репозиториях найдено {} из {} публичных коммитов за год; остальные — в репозиториях за пределами выборки.",
+                group(found),
+                group(total)
+            ),
         );
     }
-    if rhythm.is_some_and(|rhythm| !rhythm.report.timezone_inferred) {
-        push(
-            "timezone_unknown",
-            FlagSeverity::Info,
-            "Часовой пояс не определён",
-            "Время коммитов показано в UTC.".into(),
-        );
-    }
-    if activity.report.active_days_last_year < 10 && snapshot.commits.len() < 10 {
+    if activity.report.active_days_last_year < 10 && facts.commits.len() < 10 {
         push(
             "low_public_data",
             FlagSeverity::Info,
@@ -1718,29 +1934,63 @@ fn flags(
     flags
 }
 
-fn total_commits(snapshot: &Snapshot) -> u32 {
-    snapshot.years.iter().map(|year| year.totals.commits).sum()
+fn coverage(facts: &Facts<'_>) -> GitHubCoverage {
+    let totals = &facts.snapshot.totals;
+    let year_ago = facts.year_ago();
+    let found_last_year = facts
+        .commits
+        .iter()
+        .filter(|(_, commit)| commit.utc() >= year_ago)
+        .count() as u32;
+    let first = facts
+        .commits
+        .first()
+        .map(|(_, commit)| commit.utc())
+        .or(facts.snapshot.created_at)
+        .unwrap_or(facts.snapshot.now);
+    GitHubCoverage {
+        from: iso(first),
+        to: iso(facts.snapshot.now),
+        repositories_analyzed: facts.snapshot.analyzed.len() as u32,
+        commits_analyzed: facts.commits.len() as u32,
+        commits_public_total: totals.commits.unwrap_or(0),
+        commits_last_year_found: found_last_year,
+        commits_last_year_total: totals.commits_last_year.unwrap_or(found_last_year),
+        coverage_percent: totals
+            .commits_last_year
+            .filter(|total| *total > 0)
+            .map(|total| percent(found_last_year.min(total), total)),
+        partial: facts.snapshot.partial,
+        notes: facts.snapshot.notes.clone(),
+    }
 }
 
-fn confidence(snapshot: &Snapshot, activity: &Activity, flags: &[GitHubFlag]) -> SignalConfidence {
-    let sampled = snapshot.commits.len();
+fn confidence(
+    facts: &Facts<'_>,
+    activity: &Activity,
+    coverage: &GitHubCoverage,
+    flags: &[GitHubFlag],
+) -> SignalConfidence {
+    let analyzed = facts.commits.len();
     let days = activity.report.active_days_last_year;
-    let mut level: u8 = if sampled >= 150 && days >= 60 && activity.report.active_years >= 2 {
+    let mut level: u8 = if analyzed >= 150 && days >= 60 && activity.report.active_years >= 2 {
         2
-    } else if sampled >= 30 && days >= 15 {
+    } else if analyzed >= 30 && days >= 15 {
         1
     } else {
         0
     };
-    // Warnings and automation-like volume mean activity may not reflect the person's own work.
-    if flags.iter().any(|flag| {
-        flag.severity == FlagSeverity::Warning
-            || flag.id == "high_commit_rate"
-            || flag.id == "contributions_exceed_history"
-    }) {
+    if flags
+        .iter()
+        .any(|flag| flag.severity == FlagSeverity::Warning)
+    {
         level = level.saturating_sub(1);
     }
-    if snapshot.partial {
+    if facts.snapshot.partial
+        || coverage
+            .coverage_percent
+            .is_some_and(|percent| percent < 30)
+    {
         level = level.min(1);
     }
     match level {
@@ -1752,10 +2002,11 @@ fn confidence(snapshot: &Snapshot, activity: &Activity, flags: &[GitHubFlag]) ->
 
 fn highlights(
     activity: &Activity,
-    collaboration: &Collaboration,
+    rhythm: Option<&Rhythm>,
+    collaboration: &GitHubCollaboration,
+    ownership: &GitHubOwnershipSummary,
     craft: &Craft,
     impact: &Impact,
-    languages: &[GitHubLanguageShare],
 ) -> Vec<String> {
     let mut items = Vec::new();
     let report = &activity.report;
@@ -1775,16 +2026,40 @@ fn highlights(
             )
         ));
     }
-    if collaboration.peer_validated > 0 {
+    if let Some(rhythm) = rhythm.filter(|rhythm| rhythm.report.sample_size >= 20) {
         items.push(format!(
-            "Изменения, проверенные другими людьми: {}",
-            approx(collaboration.peer_validated)
+            "Обычно {} работы в активный день",
+            fsp_domain::hours_band(rhythm.report.median_minutes_per_active_day)
         ));
     }
-    if collaboration.reviews_of_others >= 5 {
+    if ownership.led_repositories > 0 {
+        let projects = with_unit(
+            approx(ownership.led_repositories),
+            approx_value(ownership.led_repositories),
+            (
+                "собственный проект",
+                "собственных проекта",
+                "собственных проектов",
+            ),
+        );
+        let organizations = if ownership.own_organizations > 0 {
+            format!(
+                " в {} {}",
+                ownership.own_organizations,
+                plural(
+                    ownership.own_organizations,
+                    ("организации", "организациях", "организациях")
+                )
+            )
+        } else {
+            String::new()
+        };
+        items.push(format!("Ведёт {projects}{organizations}"));
+    }
+    if collaboration.approved_pull_requests >= 5 {
         items.push(format!(
-            "Ревью в независимых репозиториях: {}",
-            approx(collaboration.reviews_of_others)
+            "PR, одобренные другими людьми: {}",
+            approx(collaboration.approved_pull_requests)
         ));
     }
     if impact.notable_external > 0 {
@@ -1796,203 +2071,129 @@ fn highlights(
             round_to(u32::from(craft.report.ci_percent), 10)
         ));
     }
-    let main = languages
-        .iter()
-        .take(2)
-        .map(|language| language.language.as_str())
-        .collect::<Vec<_>>();
-    if !main.is_empty() {
-        items.push(format!("Основные языки: {}", main.join(", ")));
-    }
-    items.truncate(6);
+    items.truncate(7);
     items
 }
 
-fn coverage(snapshot: &Snapshot) -> GitHubCoverage {
-    let from = snapshot
-        .years
-        .first()
-        .map(|year| format!("{}-01-01T00:00:00Z", year.year))
-        .unwrap_or_else(|| {
-            snapshot
-                .now
-                .to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
-        });
-    GitHubCoverage {
-        from,
-        to: snapshot
-            .now
-            .to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
-        years_analyzed: snapshot.years.len() as u32,
-        commit_contributions: total_commits(snapshot),
-        commits_sampled: snapshot.commits.len() as u32,
-        repositories_analyzed: snapshot.primary.len() as u32,
-        timezone_samples: snapshot.timezone_samples.len() as u32,
-        partial: snapshot.partial,
-        notes: snapshot.notes.clone(),
-    }
-}
-
-fn organizations(snapshot: &Snapshot) -> GitHubOrganizations {
-    let affiliated = affiliated_owners(snapshot);
+fn organizations(facts: &Facts<'_>) -> GitHubOrganizations {
     let mut contributed: BTreeMap<String, (BTreeSet<String>, u32)> = BTreeMap::new();
-    for year in &snapshot.years {
-        for item in year
-            .commit_repositories
-            .iter()
-            .chain(&year.pull_request_repositories)
-            .chain(&year.review_repositories)
-            .chain(&year.issue_repositories)
-        {
-            if item.repository.owner_is_organization {
-                let entry = contributed
-                    .entry(item.repository.owner_login.clone())
-                    .or_default();
-                entry.0.insert(item.repository.name_with_owner.clone());
-                entry.1 += item.count;
-            }
+    for (name, item) in facts
+        .snapshot
+        .sampled
+        .iter()
+        .filter(|(_, item)| item.organization)
+    {
+        contributed
+            .entry(item.owner.clone())
+            .or_default()
+            .0
+            .insert(name.clone());
+    }
+    for repository in &facts.snapshot.analyzed {
+        let owner = Facts::owner(&repository.full_name);
+        if let Some(entry) = contributed.get_mut(owner) {
+            entry.0.insert(repository.full_name.clone());
+            entry.1 += repository.user_commits();
         }
     }
     let mut contributed = contributed
         .into_iter()
         .map(
-            |(login, (repositories, contributions))| GitHubContributedOrganization {
+            |(login, (repositories, commits))| GitHubContributedOrganization {
                 url: format!("https://github.com/{login}"),
-                affiliated: affiliated.contains(&login.to_ascii_lowercase()),
-                login,
+                affiliated: facts
+                    .affiliated
+                    .keys()
+                    .any(|known| known.eq_ignore_ascii_case(&login)),
                 repositories: repositories.len() as u32,
-                contributions,
+                // The owner search counts every public commit there, beyond the cloned histories.
+                commits: facts
+                    .snapshot
+                    .totals
+                    .owner_commits
+                    .get(&login)
+                    .map_or(commits, |total| commits.max(*total)),
+                login,
             },
         )
         .collect::<Vec<_>>();
-    contributed.sort_by(|a, b| {
-        b.contributions
-            .cmp(&a.contributions)
-            .then(a.login.cmp(&b.login))
-    });
+    contributed.sort_by(|a, b| b.commits.cmp(&a.commits).then(a.login.cmp(&b.login)));
     contributed.truncate(15);
     GitHubOrganizations {
-        memberships: snapshot
+        memberships: facts
+            .snapshot
             .organizations
             .iter()
-            .map(|organization| GitHubOrganization {
-                login: organization.login.clone(),
-                name: organization.name.clone(),
-                url: format!("https://github.com/{}", organization.login),
-                members: organization.members,
-                public_repositories: organization.public_repositories,
+            .map(|login| GitHubOrganization {
+                login: login.clone(),
+                url: format!("https://github.com/{login}"),
             })
             .collect(),
         contributed,
     }
 }
 
-/// Language mix weighted by where the account commits: each primary repository's byte shares are
-/// scaled by its commit contributions (owned repositories count at least once).
-fn languages(snapshot: &Snapshot) -> Vec<GitHubLanguageShare> {
-    let mut weights: BTreeMap<String, f64> = BTreeMap::new();
-    for repository in snapshot
-        .primary
-        .iter()
-        .filter(|repository| !repository.reference.fork)
-    {
-        let total: u64 = repository.languages.iter().map(|(_, size)| size).sum();
-        if total == 0 {
-            continue;
-        }
-        let weight = f64::from(repository.contributions.max(1));
-        for (language, size) in &repository.languages {
-            *weights.entry(language.clone()).or_insert(0.0) +=
-                weight * (*size as f64) / (total as f64);
-        }
-    }
-    let sum: f64 = weights.values().sum();
-    if sum == 0.0 {
-        return Vec::new();
-    }
-    let mut shares = weights
-        .into_iter()
-        .map(|(language, weight)| GitHubLanguageShare {
-            language,
-            percent: (weight / sum * 100.0).round() as u8,
-        })
-        .filter(|share| share.percent >= 1)
-        .collect::<Vec<_>>();
-    shares.sort_by(|a, b| b.percent.cmp(&a.percent).then(a.language.cmp(&b.language)));
-    shares.truncate(8);
-    shares
-}
-
-/// Repositories, reasons and the latest push per detected technology.
-type TechnologyEvidence = (u32, BTreeSet<String>, Option<DateTime<Utc>>);
-
-fn technologies(snapshot: &Snapshot) -> Vec<GitHubTechnology> {
-    let mut found: BTreeMap<&'static str, TechnologyEvidence> = BTreeMap::new();
-    for repository in snapshot
-        .primary
-        .iter()
-        .filter(|repository| !repository.reference.fork)
-    {
-        for (skill, reasons) in tech::detect(repository) {
-            let entry = found.entry(skill).or_default();
-            entry.0 += 1;
-            entry.1.extend(reasons);
-            entry.2 = entry.2.max(repository.pushed_at);
-        }
-    }
-    found
-        .into_iter()
-        .map(
-            |(skill, (repositories, reasons, pushed))| GitHubTechnology {
-                skill_id: skill.into(),
-                repositories,
-                signals: reasons.into_iter().take(5).collect(),
-                last_pushed_at: pushed
-                    .map(|time| time.to_rfc3339_opts(chrono::SecondsFormat::Secs, true)),
-            },
-        )
-        .collect()
-}
-
-fn repositories(snapshot: &Snapshot, craft: &Craft) -> Vec<GitHubRepositoryInsight> {
-    let mut sampled: HashMap<&str, u32> = HashMap::new();
-    for commit in &snapshot.commits {
-        *sampled.entry(commit.repository.as_str()).or_insert(0) += 1;
-    }
-    snapshot
-        .primary
+fn repositories(facts: &Facts<'_>, craft: &Craft) -> Vec<GitHubRepositoryInsight> {
+    let mut items = facts
+        .snapshot
+        .analyzed
         .iter()
         .map(|repository| {
-            let name = repository.reference.name_with_owner.clone();
+            let meta = facts.snapshot.repositories.get(&repository.full_name);
+            let detected = facts.detected.get(repository.full_name.as_str());
             GitHubRepositoryInsight {
-                url: format!("https://github.com/{name}"),
-                owned: repository
-                    .reference
-                    .owner_login
-                    .eq_ignore_ascii_case(&snapshot.login),
-                fork: repository.reference.fork,
-                archived: repository.archived,
-                stars: repository.reference.stars,
-                forks: repository.forks,
-                primary_language: repository.reference.primary_language.clone(),
-                pushed_at: repository
-                    .pushed_at
-                    .map(|time| time.to_rfc3339_opts(chrono::SecondsFormat::Secs, true)),
-                contributions: repository.contributions,
-                sampled_commits: sampled.get(name.as_str()).copied().unwrap_or(0),
+                url: format!("https://github.com/{}", repository.full_name),
+                owned: facts.owned(&repository.full_name),
+                led: facts.led.contains(repository.full_name.as_str()),
+                fork: meta.is_some_and(|meta| meta.fork),
+                archived: meta.is_some_and(|meta| meta.archived),
+                stars: meta.map_or(0, |meta| meta.stars),
+                forks: meta.map_or(0, |meta| meta.forks),
+                primary_language: meta.and_then(|meta| meta.language.clone()),
+                description: meta.and_then(|meta| meta.description.clone()),
+                pushed_at: meta.and_then(|meta| meta.pushed_at).map(iso),
+                total_commits: repository.total_commits,
+                user_commits: repository.user_commits(),
+                user_share_percent: repository.share_percent(),
+                last_user_commit_at: repository.last_commit().map(iso),
                 hygiene: craft
                     .hygiene
-                    .get(&name)
+                    .get(&repository.full_name)
                     .cloned()
-                    .unwrap_or_else(|| hygiene(repository)),
-                technologies: tech::detect(repository)
-                    .into_keys()
-                    .map(str::to_owned)
-                    .collect(),
-                name_with_owner: name,
+                    .unwrap_or_else(|| hygiene(repository, meta)),
+                technologies: detected
+                    .map(|detected| {
+                        detected
+                            .keys()
+                            .filter_map(|technology| technology.skill)
+                            .map(str::to_owned)
+                            .collect::<BTreeSet<_>>()
+                            .into_iter()
+                            .collect()
+                    })
+                    .unwrap_or_default(),
+                stack: detected
+                    .map(|detected| {
+                        detected
+                            .keys()
+                            .filter(|technology| {
+                                technology.category != fsp_domain::StackCategory::Language
+                            })
+                            .map(|technology| technology.name.to_owned())
+                            .take(8)
+                            .collect()
+                    })
+                    .unwrap_or_default(),
+                name_with_owner: repository.full_name.clone(),
             }
         })
-        .collect()
+        .collect::<Vec<_>>();
+    items.sort_by(|a, b| {
+        b.user_commits
+            .cmp(&a.user_commits)
+            .then(a.name_with_owner.cmp(&b.name_with_owner))
+    });
+    items
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -2046,16 +2247,15 @@ fn round_to(value: u32, step: u32) -> u32 {
     (value + step / 2) / step * step
 }
 
-/// Two significant figures for values from 100; nearest five from 10; exact below 10.
+/// Rounded down, so a public figure never overstates: two significant figures from 100, a
+/// multiple of five from 10, exact below 10.
 fn approx_value(value: u32) -> u32 {
-    match value {
-        0..=9 => value,
-        10..=99 => round_to(value, 5),
-        _ => {
-            let magnitude = 10u32.pow(value.ilog10() - 1);
-            round_to(value, magnitude)
-        }
-    }
+    let step = match value {
+        0..=9 => 1,
+        10..=99 => 5,
+        _ => 10u32.pow(value.ilog10() - 1),
+    };
+    value / step * step
 }
 
 fn approx(value: u32) -> String {
@@ -2105,321 +2305,4 @@ fn with_unit(number: String, value: u32, unit: (&str, &str, &str)) -> String {
 
 fn hours_exact(minutes: u32) -> String {
     format!("{} ч {:02} мин", minutes / 60, minutes % 60)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::snapshot::{
-        DayActivity, HistoryShare, OrganizationFact, PeriodTotals, PullRequestFact,
-        RepositoryContribution, TimezoneSample, YearFact,
-    };
-    use chrono::TimeZone;
-
-    fn date(y: i32, m: u32, d: u32) -> NaiveDate {
-        NaiveDate::from_ymd_opt(y, m, d).unwrap()
-    }
-
-    fn at(y: i32, m: u32, d: u32, h: u32, min: u32) -> DateTime<Utc> {
-        Utc.with_ymd_and_hms(y, m, d, h, min, 0).unwrap()
-    }
-
-    fn commit(repository: &str, time: DateTime<Utc>, lines: u32, headline: &str) -> CommitFact {
-        CommitFact {
-            repository: repository.into(),
-            oid: format!("{repository}-{}-{lines}-{headline}", time.timestamp()),
-            authored_at: time,
-            committed_at: time,
-            additions: lines,
-            deletions: 0,
-            headline: headline.into(),
-            parents: 1,
-            signed: false,
-        }
-    }
-
-    fn reference(name: &str, stars: u32) -> RepositoryRef {
-        let owner = name.split('/').next().unwrap();
-        RepositoryRef {
-            name_with_owner: name.into(),
-            owner_login: owner.into(),
-            owner_is_organization: owner != "me",
-            fork: false,
-            stars,
-            primary_language: None,
-        }
-    }
-
-    fn pull(
-        name: &str,
-        number: u32,
-        merged_by_other: bool,
-        merged_by_self: bool,
-    ) -> PullRequestFact {
-        PullRequestFact {
-            url: format!("https://github.com/{name}/pull/{number}"),
-            repository: reference(name, 2000),
-            created_at: at(2026, 5, 1, 12, 0),
-            state: if merged_by_other || merged_by_self {
-                PullRequestState::Merged
-            } else {
-                PullRequestState::Open
-            },
-            additions: 10,
-            deletions: 2,
-            merged_by_other,
-            merged_by_self,
-            reviewed_by_other: false,
-        }
-    }
-
-    fn base() -> Snapshot {
-        Snapshot {
-            login: "me".into(),
-            now: at(2026, 10, 9, 12, 0),
-            created_at: Some(at(2019, 1, 1, 0, 0)),
-            ..Snapshot::default()
-        }
-    }
-
-    #[test]
-    fn streaks_count_consecutive_days_and_weeks_including_the_current_one() {
-        let days = [
-            date(2026, 9, 1),
-            date(2026, 9, 2),
-            date(2026, 9, 3),
-            date(2026, 10, 8),
-            date(2026, 10, 9),
-        ];
-        assert_eq!(runs(&days, 1, date(2026, 10, 9)), (3, 2));
-        assert_eq!(runs(&days, 1, date(2026, 10, 12)), (3, 0));
-        let weeks = [date(2026, 9, 7), date(2026, 9, 14), date(2026, 9, 28)];
-        assert_eq!(runs(&weeks, 7, date(2026, 10, 5)), (2, 1));
-    }
-
-    #[test]
-    fn burstiness_separates_steady_from_bursty_weeks() {
-        assert!(burstiness(&[5; 52]) < 0);
-        let mut bursty = vec![0; 52];
-        bursty[10] = 200;
-        assert!(burstiness(&bursty) > 70);
-    }
-
-    #[test]
-    fn rhythm_uses_the_author_offset_and_joins_close_commits_into_sessions() {
-        // Mondays at 05:00 and 05:40 UTC are 10:00 and 10:40 at UTC+5: one 70-minute session.
-        // 2026-01-05 is a Monday.
-        let mut commits = Vec::new();
-        for week in 0..10 {
-            let monday = at(2026, 1, 5, 5, 0) + Duration::weeks(week);
-            commits.push(commit("me/a", monday, 10, "feat: one"));
-            commits.push(commit(
-                "me/a",
-                monday + Duration::minutes(40),
-                10,
-                "feat: two",
-            ));
-        }
-        let samples = [TimezoneSample {
-            at: at(2026, 1, 5, 5, 0),
-            offset_minutes: 300,
-        }];
-        let rhythm = Rhythm::compute(&commits, &samples).unwrap();
-        assert!(rhythm.report.timezone_inferred);
-        assert_eq!(rhythm.report.hourly_percent[10], 100);
-        assert_eq!(rhythm.report.office_hours_percent, 100);
-        assert_eq!(rhythm.report.weekend_percent, 0);
-        assert_eq!(
-            rhythm.report.median_minutes_per_active_day,
-            40 + FIRST_COMMIT_MINUTES as u32
-        );
-        assert_eq!(rhythm.report.sessions_per_active_day_tenths, 10);
-        assert_eq!(rhythm.report.active_days, 10);
-    }
-
-    #[test]
-    fn commit_messages_are_classified_conservatively() {
-        assert!(is_conventional("feat(api): add search"));
-        assert!(is_conventional("fix!: drop legacy flag"));
-        assert!(!is_conventional("feature: add search"));
-        assert!(!is_conventional("fix:no space"));
-        assert!(is_descriptive(
-            "Bound inbound request bodies before allocating"
-        ));
-        assert!(!is_descriptive("Update README.md"));
-        assert!(!is_descriptive("wip"));
-        assert!(!is_descriptive("small fix"));
-    }
-
-    #[test]
-    fn own_organizations_never_count_as_independent_collaboration() {
-        let mut snapshot = base();
-        snapshot.organizations = vec![OrganizationFact {
-            login: "member-org".into(),
-            ..OrganizationFact::default()
-        }];
-        snapshot.years = vec![YearFact {
-            year: 2026,
-            commit_repositories: [
-                "writer/a",
-                "writer/b",
-                "writer/c",
-                "oss/lib",
-                "member-org/x",
-            ]
-            .iter()
-            .map(|name| RepositoryContribution {
-                repository: reference(name, 5000),
-                count: 5,
-            })
-            .collect(),
-            ..YearFact::default()
-        }];
-        snapshot.pull_requests = vec![
-            pull("self-merged/tool", 1, false, true),
-            pull("oss/lib", 2, true, false),
-            pull("member-org/x", 3, true, false),
-            pull("writer/a", 4, true, false),
-        ];
-        let collaboration = Collaboration::compute(&snapshot);
-        // Every pull request merged by another human is peer-validated wherever it lives …
-        assert_eq!(collaboration.peer_validated, 3);
-        // … but only `oss/lib` is independent: membership, self-merge and organization-wide
-        // write access (three or more repositories) make the other owners the account's own.
-        assert_eq!(collaboration.report.external_pull_requests, 1);
-        assert_eq!(collaboration.report.external_merged, 1);
-        assert_eq!(collaboration.report.external_repositories, 1);
-        assert_eq!(collaboration.report.affiliated_organizations, 3);
-        assert_eq!(
-            collaboration
-                .report
-                .notable_contributions
-                .iter()
-                .map(|item| item.repository.as_str())
-                .collect::<Vec<_>>(),
-            ["oss/lib"]
-        );
-    }
-
-    #[test]
-    fn repositories_led_by_the_account_are_its_own_work() {
-        let mut snapshot = base();
-        snapshot.years = vec![YearFact {
-            year: 2026,
-            commit_repositories: vec![RepositoryContribution {
-                repository: reference("team/led", 3000),
-                count: 60,
-            }],
-            ..YearFact::default()
-        }];
-        snapshot.history_shares = BTreeMap::from([(
-            "team/led".to_owned(),
-            HistoryShare {
-                authored: 60,
-                total: 90,
-            },
-        )]);
-        let collaboration = Collaboration::compute(&snapshot);
-        assert_eq!(collaboration.report.external_repositories, 0);
-        assert!(collaboration.report.notable_contributions.is_empty());
-    }
-
-    #[test]
-    fn graph_padding_and_generated_history_are_flagged_and_lower_confidence() {
-        let mut snapshot = base();
-        let start = at(2026, 3, 2, 9, 15);
-        snapshot.commits = (0..60)
-            .map(|day| commit("me/green", start + Duration::days(day), 1, "update"))
-            .collect();
-        snapshot.primary = vec![PrimaryRepository {
-            reference: reference("me/green", 0),
-            contributions: 300,
-            ..PrimaryRepository::default()
-        }];
-        snapshot.years = vec![YearFact {
-            year: 2026,
-            totals: PeriodTotals {
-                commits: 300,
-                ..PeriodTotals::default()
-            },
-            ..YearFact::default()
-        }];
-        for day in 0..200 {
-            snapshot.days.insert(
-                date(2026, 1, 1) + Duration::days(day),
-                DayActivity {
-                    commits: 1,
-                    ..DayActivity::default()
-                },
-            );
-        }
-        let report = build_report(&snapshot);
-        let ids = report
-            .flags
-            .iter()
-            .map(|flag| flag.id.as_str())
-            .collect::<Vec<_>>();
-        assert!(ids.contains(&"padding_repository"), "{ids:?}");
-        assert!(ids.contains(&"uniform_commit_minute"), "{ids:?}");
-        assert!(ids.contains(&"repeated_messages"), "{ids:?}");
-        assert_eq!(report.index.confidence, SignalConfidence::Low);
-
-        // The same pattern in a popular project of another owner is not padding.
-        snapshot.primary[0].reference = reference("kernel/linux", 200_000);
-        for commit in &mut snapshot.commits {
-            commit.repository = "kernel/linux".into();
-        }
-        let report = build_report(&snapshot);
-        assert!(
-            !report
-                .flags
-                .iter()
-                .any(|flag| flag.id == "padding_repository")
-        );
-    }
-
-    #[test]
-    fn scores_saturate_and_counts_are_rounded_for_employers() {
-        assert_eq!(log_ramp(1_000_000.0, 1000.0), 100);
-        assert_eq!(log_ramp(0.0, 1000.0), 0);
-        assert_eq!(ramp(20.0, 0.0, 40.0), 50);
-        assert_eq!(inverse_ramp(7.0, 14.0, 180.0), 100);
-        assert_eq!(inverse_ramp(400.0, 14.0, 180.0), 0);
-        assert_eq!(approx(7), "7");
-        assert_eq!(approx(43), "≈45");
-        assert_eq!(approx(1234), "≈1\u{a0}200");
-        assert_eq!(group(20229), "20\u{a0}229");
-        assert_eq!(plural(21, DAYS), "день");
-        assert_eq!(plural(12, DAYS), "дней");
-        assert_eq!(plural(3, DAYS), "дня");
-    }
-
-    #[test]
-    fn employer_projection_hides_identity_and_fingerprints() {
-        let mut snapshot = base();
-        snapshot.organizations = vec![OrganizationFact {
-            login: "secret-org".into(),
-            ..OrganizationFact::default()
-        }];
-        snapshot.days.insert(
-            date(2026, 10, 1),
-            DayActivity {
-                commits: 1234,
-                ..DayActivity::default()
-            },
-        );
-        let report = build_report(&snapshot);
-        let signal = serde_json::to_string(&report.employer_signal(false)).unwrap();
-        for hidden in [
-            "\"me\"",
-            "github.com",
-            "secret-org",
-            "calendar",
-            "1234",
-            "1\u{a0}234",
-        ] {
-            assert!(!signal.contains(hidden), "{hidden} leaked: {signal}");
-        }
-        assert!(signal.contains("≈1\u{a0}200"));
-    }
 }

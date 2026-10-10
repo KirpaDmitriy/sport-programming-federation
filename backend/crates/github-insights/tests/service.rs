@@ -1,262 +1,346 @@
-//! End-to-end service test against a fake GitHub: parsing of every query, the public-only rule and
-//! the ownership code check.
+//! The service end to end without the network: a local fake of GitHub's REST, search and raw
+//! endpoints, and public repositories cloned from local directories over `file://`.
 
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use std::process::Stdio;
 use std::sync::Arc;
+use std::time::Duration;
 
-use axum::extract::Path;
-use axum::routing::{get, post};
+use axum::extract::{Path as UrlPath, Query};
+use axum::http::StatusCode;
+use axum::response::{IntoResponse, Response};
+use axum::routing::get;
 use axum::{Json, Router};
 use fsp_github_insights::client::GitHubClient;
-use fsp_github_insights::collect::Limits;
+use fsp_github_insights::collect::{Collector, Limits};
+use fsp_github_insights::git::Git;
 use fsp_github_insights::{InsightsState, router};
 use serde_json::{Value, json};
+use tokio::process::Command;
 
-fn repository(name: &str, private: bool, stars: u32) -> Value {
-    let owner = name.split('/').next().unwrap();
-    json!({
-        "nameWithOwner": name, "isFork": false, "isPrivate": private, "stargazerCount": stars,
-        "owner": { "__typename": if owner == "dev" { "User" } else { "Organization" }, "login": owner },
-        "primaryLanguage": { "name": "Rust" }
-    })
-}
-
-fn by_repository(name: &str, private: bool, days: &[(&str, u32)]) -> Value {
-    json!({
-        "repository": repository(name, private, 3),
-        "contributions": {
-            "totalCount": days.iter().map(|(_, count)| count).sum::<u32>(),
-            "nodes": days.iter().map(|(date, count)| json!({
-                "occurredAt": format!("{date}T07:00:00Z"), "commitCount": count
-            })).collect::<Vec<_>>()
-        }
-    })
-}
-
-fn history(dates: &[&str]) -> Value {
-    json!({
-        "isPrivate": false,
-        "defaultBranchRef": { "target": {
-            "all": { "totalCount": dates.len() * 4 },
-            "history": {
-                "totalCount": dates.len(),
-                "nodes": dates.iter().enumerate().map(|(index, date)| json!({
-                    "oid": format!("{index:040x}"), "authoredDate": date, "committedDate": date,
-                    "additions": 20, "deletions": 4, "messageHeadline": format!("feat: change number {index}"),
-                    "parents": { "totalCount": 1 }, "signature": { "isValid": true }
-                })).collect::<Vec<_>>()
-            }
-        } }
-    })
-}
-
-async fn graphql(Json(body): Json<Value>) -> Json<Value> {
-    let query = body["query"].as_str().unwrap_or_default();
-    let data = if query.contains("contributionYears") {
-        json!({ "user": {
-            "id": "U_dev", "login": "dev", "createdAt": "2020-02-01T00:00:00Z",
-            "bio": "Rust developer fsp-0123456789",
-            "followers": { "totalCount": 12 }, "repositories": { "totalCount": 2 },
-            "contributionsCollection": { "contributionYears": [2026], "restrictedContributionsCount": 40 }
-        } })
-    } else if query.contains("commitContributionsByRepository") {
-        json!({ "user": { "contributionsCollection": {
-            "totalCommitContributions": 1040, "restrictedContributionsCount": 40,
-            "commitContributionsByRepository": [
-                by_repository("dev/service", false, &[("2026-10-08", 3), ("2026-10-09", 2), ("2026-09-01", 35)]),
-                by_repository("hidden/private-repo", true, &[("2026-10-07", 1000)]),
-            ]
-        } } })
-    } else if query.contains("pullRequestContributionsByRepository") {
-        json!({ "user": { "contributionsCollection": {
-            "totalPullRequestContributions": 2, "totalPullRequestReviewContributions": 0,
-            "totalIssueContributions": 0,
-            "pullRequestContributionsByRepository": [
-                by_repository("oss/library", false, &[("2026-08-03", 2)])
-            ],
-            "pullRequestReviewContributionsByRepository": [],
-            "issueContributionsByRepository": []
-        } } })
-    } else if query.contains("ownerAffiliations: OWNER, privacy: PUBLIC,") {
-        json!({ "user": { "repositories": {
-            "pageInfo": { "hasNextPage": false, "endCursor": null },
-            "nodes": [
-                { "nameWithOwner": "dev/service", "isFork": false, "isPrivate": false, "isArchived": false,
-                  "createdAt": "2025-01-01T00:00:00Z", "pushedAt": "2026-10-09T00:00:00Z",
-                  "stargazerCount": 3, "forkCount": 1, "diskUsage": 900 },
-                { "nameWithOwner": "dev/private-repo", "isFork": false, "isPrivate": true, "isArchived": false,
-                  "createdAt": "2025-01-01T00:00:00Z", "pushedAt": "2026-10-09T00:00:00Z",
-                  "stargazerCount": 0, "forkCount": 0, "diskUsage": 1 }
-            ]
-        } } })
-    } else if query.contains("search(type: ISSUE") {
-        json!({ "search": { "issueCount": 2, "nodes": [
-            { "url": "https://github.com/oss/library/pull/7", "createdAt": "2026-08-03T10:00:00Z",
-              "state": "MERGED", "merged": true, "additions": 30, "deletions": 5,
-              "mergedBy": { "__typename": "User", "login": "maintainer" },
-              "reviews": { "nodes": [ { "author": { "__typename": "User", "login": "maintainer" } } ] },
-              "repository": repository("oss/library", false, 4200) },
-            { "url": "https://github.com/hidden/private-repo/pull/1", "createdAt": "2026-08-03T10:00:00Z",
-              "state": "MERGED", "merged": true, "additions": 1, "deletions": 1,
-              "mergedBy": { "__typename": "User", "login": "maintainer" },
-              "reviews": { "nodes": [] }, "repository": repository("hidden/private-repo", true, 0) }
-        ] } })
-    } else if query.contains("pullRequests(first: 100") {
-        json!({ "user": { "pullRequests": {
-            "totalCount": 0, "pageInfo": { "hasNextPage": false, "endCursor": null }, "nodes": []
-        } } })
-    } else if query.contains("organization(login") {
-        json!({ "o0": { "login": "public-org", "name": "Public Org",
-                        "membersWithRole": { "totalCount": 8 }, "repositories": { "totalCount": 5 } } })
-    } else if query.contains("fragment Detail") {
-        json!({ "r0": {
-            "nameWithOwner": "dev/service", "isFork": false, "isPrivate": false, "isArchived": false,
-            "isTemplate": false, "createdAt": "2025-01-01T00:00:00Z", "pushedAt": "2026-10-09T00:00:00Z",
-            "stargazerCount": 3, "forkCount": 1, "description": "Order service",
-            "licenseInfo": { "spdxId": "MIT" }, "primaryLanguage": { "name": "Rust" },
-            "owner": { "__typename": "User", "login": "dev" },
-            "repositoryTopics": { "nodes": [] },
-            "languages": { "edges": [ { "size": 9000, "node": { "name": "Rust" } } ] },
-            "root": { "entries": [
-                { "name": "README.md", "type": "blob" }, { "name": "Cargo.lock", "type": "blob" },
-                { "name": "tests", "type": "tree" }, { "name": "Dockerfile", "type": "blob" }
-            ] },
-            "github": { "entries": [ { "name": "dependabot.yml" } ] },
-            "workflows": { "entries": [ { "name": "ci.yml" } ] },
-            "cargo": { "byteSize": 120, "text": "[dependencies]\nsqlx = { version = \"0.8\", features = [\"postgres\"] }\n" },
-            "npm": null
-        } })
-    } else if query.contains("fragment History") {
-        json!({ "r0": history(&[
-            "2026-10-09T04:00:00Z", "2026-10-09T04:30:00Z", "2026-10-08T05:00:00Z",
-            "2026-10-07T05:10:00Z", "2026-10-06T05:00:00Z", "2026-10-05T06:00:00Z",
-            "2026-10-02T05:00:00Z", "2026-10-01T05:00:00Z", "2026-09-30T05:00:00Z",
-            "2026-09-29T05:00:00Z", "2026-09-28T05:00:00Z", "2026-09-25T05:00:00Z"
-        ]) })
-    } else {
-        Value::Null
-    };
-    Json(json!({ "data": data }))
-}
-
-async fn organizations(Path(login): Path<String>) -> Json<Value> {
-    assert_eq!(login, "dev");
-    Json(json!([{ "login": "public-org" }]))
-}
-
-async fn patch(Path((_, _, _)): Path<(String, String, String)>) -> String {
-    "From 0 Mon Sep 17 00:00:00 2001\nFrom: Dev <dev@example.invalid>\nDate: Fri, 9 Oct 2026 09:00:00 +0500\nSubject: [PATCH] change\n\n---\n".into()
-}
-
-#[tokio::test]
-async fn reports_contain_only_public_facts_and_verify_ownership() {
-    let fake = Router::new()
-        .route("/graphql", post(graphql))
-        .route("/users/{login}/orgs", get(organizations))
-        .route("/repos/{owner}/{name}/commits/{oid}", get(patch));
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let github = format!("http://{}", listener.local_addr().unwrap());
-    tokio::spawn(async move { axum::serve(listener, fake).await.unwrap() });
-
-    let client =
-        GitHubClient::with_endpoints("test".into(), format!("{github}/graphql"), github).unwrap();
-    let service = router(Arc::new(InsightsState::new(
-        Some(client),
-        Limits::default(),
-    )));
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let base = format!("http://{}", listener.local_addr().unwrap());
-    tokio::spawn(async move { axum::serve(listener, service).await.unwrap() });
-
-    let http = reqwest::Client::new();
-    let response = http
-        .post(format!("{base}/v1/reports"))
-        .json(&json!({ "login": "https://github.com/dev", "ownershipCode": "fsp-0123456789" }))
-        .send()
+async fn git(directory: &Path, args: &[&str], env: &[(&str, &str)]) {
+    let status = Command::new("git")
+        .arg("-C")
+        .arg(directory)
+        .args(args)
+        .envs(env.iter().copied())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
         .await
         .unwrap();
-    assert_eq!(response.status(), 200);
-    let body: Value = response.json().await.unwrap();
-    let text = body.to_string();
-    assert!(
-        !text.contains("private-repo"),
-        "private data leaked: {text}"
-    );
-    assert_eq!(body["ownershipCodeFound"], true);
-    let report = &body["report"];
-    assert_eq!(report["login"], "dev");
-    assert_eq!(
-        report["coverage"]["partial"], false,
-        "{}",
-        report["coverage"]
-    );
-    assert_eq!(report["coverage"]["commitContributions"], 40);
-    assert_eq!(report["activity"]["privateContributionsLastYear"], 40);
-    assert_eq!(
-        report["organizations"]["memberships"][0]["login"],
-        "public-org"
-    );
-    assert_eq!(report["collaboration"]["externalMerged"], 1);
-    assert_eq!(report["rhythm"]["timezoneOffsets"][0]["offsetMinutes"], 300);
-    assert_eq!(report["rhythm"]["hourlyPercent"][10], 75);
-    let technologies = report["technologies"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|item| item["skillId"].as_str().unwrap())
-        .collect::<Vec<_>>();
-    assert_eq!(technologies, ["docker", "postgresql", "rust"]);
-    let hygiene = &report["repositories"][0]["hygiene"];
-    for signal in [
-        "readme",
-        "license",
-        "ci",
-        "tests",
-        "lockfile",
-        "dependency_updates",
-        "container",
-    ] {
-        assert!(
-            hygiene
-                .as_array()
-                .unwrap()
-                .iter()
-                .any(|value| value == signal),
-            "{signal} missing in {hygiene}"
-        );
+    assert!(status.success(), "git {args:?}");
+}
+
+/// A public repository with `commits` commits by dev@example.com, served as `{name}.git`.
+async fn repository(root: &Path, name: &str, files: &[(&str, &str)], commits: u32) {
+    let work = root.join("work").join(name);
+    tokio::fs::create_dir_all(&work).await.unwrap();
+    git(&work, &["init", "--quiet", "--initial-branch=main"], &[]).await;
+    for (path, text) in files {
+        let path = work.join(path);
+        tokio::fs::create_dir_all(path.parent().unwrap())
+            .await
+            .unwrap();
+        tokio::fs::write(path, text).await.unwrap();
     }
-
-    let invalid = http
-        .post(format!("{base}/v1/reports"))
-        .json(&json!({ "login": "https://github.com/dev/service" }))
-        .send()
+    for index in 0..commits {
+        tokio::fs::write(work.join("src/lib.rs"), format!("// change {index}\n"))
+            .await
+            .unwrap();
+        git(&work, &["add", "."], &[]).await;
+        let date = format!(
+            "2026-09-{:02}T10:{:02}:00+05:00",
+            1 + index % 28,
+            index % 60
+        );
+        let author = [
+            ("GIT_AUTHOR_NAME", "Dev"),
+            ("GIT_AUTHOR_EMAIL", "dev@example.com"),
+            ("GIT_COMMITTER_NAME", "Dev"),
+            ("GIT_COMMITTER_EMAIL", "dev@example.com"),
+            ("GIT_AUTHOR_DATE", date.as_str()),
+            ("GIT_COMMITTER_DATE", date.as_str()),
+        ];
+        git(
+            &work,
+            &["commit", "--quiet", "-m", &format!("feat: change {index}")],
+            &author,
+        )
+        .await;
+    }
+    let served = root.join("source").join(format!("{name}.git"));
+    tokio::fs::create_dir_all(served.parent().unwrap())
         .await
         .unwrap();
-    assert_eq!(invalid.status(), 400);
-    let error: Value = invalid.json().await.unwrap();
-    assert_eq!(error["code"], "github_login_invalid");
+    tokio::fs::rename(&work, served).await.unwrap();
+}
+
+fn commit_item(repository: &str, organization: bool) -> Value {
+    json!({
+        "sha": format!("{:040x}", repository.len()),
+        "commit": { "author": { "email": "dev@example.com" } },
+        "author": { "login": "Dev" },
+        "repository": {
+            "full_name": repository,
+            "private": false,
+            "owner": {
+                "login": repository.split('/').next().unwrap(),
+                "type": if organization { "Organization" } else { "User" },
+            },
+        },
+    })
+}
+
+fn repository_item(name: &str, organization: bool, language: &str) -> Value {
+    json!({
+        "full_name": name,
+        "private": false,
+        "owner": {
+            "login": name.split('/').next().unwrap(),
+            "type": if organization { "Organization" } else { "User" },
+        },
+        "fork": false,
+        "archived": false,
+        "stargazers_count": 3,
+        "forks_count": 0,
+        "size": 10,
+        "language": language,
+        "topics": ["cli"],
+        "description": "A tool",
+        "license": { "spdx_id": "MIT" },
+        "default_branch": "main",
+        "pushed_at": "2026-09-28T10:00:00Z",
+    })
+}
+
+fn pull_item(repository: &str, number: u32, merged: bool) -> Value {
+    json!({
+        "html_url": format!("https://github.com/{repository}/pull/{number}"),
+        "repository_url": format!("https://api.github.com/repos/{repository}"),
+        "state": if merged { "closed" } else { "open" },
+        "created_at": "2026-09-20T10:00:00Z",
+        "pull_request": { "merged_at": merged.then_some("2026-09-21T10:00:00Z") },
+    })
+}
+
+async fn user(UrlPath(login): UrlPath<String>) -> Response {
+    match login.as_str() {
+        "dev" | "Dev" => Json(json!({
+            "login": "Dev",
+            "id": 7,
+            "type": "User",
+            "created_at": "2020-01-01T00:00:00Z",
+            "followers": 3,
+            "bio": "Rust developer · fsp-0123456789",
+        }))
+        .into_response(),
+        _ => StatusCode::NOT_FOUND.into_response(),
+    }
+}
+
+async fn organizations() -> Json<Value> {
+    Json(json!([{ "login": "acme" }]))
+}
+
+async fn commits(Query(query): Query<HashMap<String, String>>) -> Json<Value> {
+    let q = query.get("q").cloned().unwrap_or_default();
+    if q.contains("user:acme") {
+        return Json(json!({ "total_count": 12, "items": [commit_item("acme/service", true)] }));
+    }
+    Json(json!({ "total_count": 5, "items": [commit_item("Dev/tool", false)] }))
+}
+
+async fn issues(Query(query): Query<HashMap<String, String>>) -> Json<Value> {
+    let q = query.get("q").cloned().unwrap_or_default();
+    if q.contains("sort:created-desc") {
+        return Json(json!({ "total_count": 1, "items": [pull_item("acme/service", 1, true)] }));
+    }
+    if q.contains("-user:Dev") && q.starts_with("type:pr author:Dev") {
+        return Json(json!({ "total_count": 1, "items": [pull_item("other/library", 9, true)] }));
+    }
+    Json(json!({ "total_count": 2, "items": [] }))
+}
+
+async fn repositories() -> Json<Value> {
+    Json(json!({
+        "total_count": 2,
+        "items": [
+            repository_item("Dev/tool", false, "Rust"),
+            repository_item("acme/service", true, "Rust"),
+        ],
+    }))
+}
+
+async fn raw(UrlPath((owner, name, path)): UrlPath<(String, String, String)>) -> Response {
+    match (owner.as_str(), name.as_str(), path.as_str()) {
+        ("Dev", "tool", "Cargo.toml") => {
+            "[package]\nname = \"tool\"\n\n[dependencies]\nclap = \"4\"\ntokio = \"1\"\n"
+                .into_response()
+        }
+        _ => StatusCode::NOT_FOUND.into_response(),
+    }
+}
+
+async fn serve(app: Router) -> String {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    format!("http://{address}")
+}
+
+async fn insights(root: &Path) -> String {
+    let github = serve(
+        Router::new()
+            .route("/users/{login}", get(user))
+            .route("/users/{login}/orgs", get(organizations))
+            .route("/search/commits", get(commits))
+            .route("/search/issues", get(issues))
+            .route("/search/repositories", get(repositories))
+            .route("/{owner}/{name}/HEAD/{*path}", get(raw)),
+    )
+    .await;
+    let client = GitHubClient::with_endpoints(None, github.clone(), github)
+        .unwrap()
+        .with_search_interval(Duration::from_millis(5));
+    let collector = Collector {
+        client: Arc::new(client),
+        git: Arc::new(Git {
+            base_url: format!("file://{}", root.join("source").display()),
+            scratch: root.join("scratch"),
+            clone_timeout: Duration::from_secs(30),
+        }),
+        limits: Limits::default(),
+    };
+    serve(router(Arc::new(InsightsState::new(Some(collector))))).await
+}
+
+async fn finished(http: &reqwest::Client, base: &str, login: &str, code: &str) -> Value {
+    for _ in 0..200 {
+        let status: Value = http
+            .get(format!("{base}/v1/analyses/{login}?ownershipCode={code}"))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        if matches!(status["state"].as_str(), Some("done" | "failed")) {
+            return status;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    panic!("the analysis did not finish");
+}
+
+fn scratch_root() -> PathBuf {
+    std::env::temp_dir().join(format!("fsp-insights-service-{}", std::process::id()))
 }
 
 #[tokio::test]
-async fn a_missing_token_is_reported_as_not_configured() {
-    let service = router(Arc::new(InsightsState::new(None, Limits::default())));
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let base = format!("http://{}", listener.local_addr().unwrap());
-    tokio::spawn(async move { axum::serve(listener, service).await.unwrap() });
+async fn an_account_is_analyzed_in_the_background_from_public_data() {
+    let root = scratch_root();
+    let _ = tokio::fs::remove_dir_all(&root).await;
+    repository(
+        &root,
+        "Dev/tool",
+        &[
+            ("Cargo.toml", "[package]\nname = \"tool\"\n"),
+            ("README.md", "# Tool\n"),
+            (".github/workflows/ci.yml", "on: push\n"),
+            ("src/lib.rs", ""),
+        ],
+        12,
+    )
+    .await;
+    repository(&root, "acme/service", &[("src/lib.rs", "")], 4).await;
+    let base = insights(&root).await;
     let http = reqwest::Client::new();
-    let health: Value = http
-        .get(format!("{base}/health"))
+
+    let queued: Value = http
+        .post(format!("{base}/v1/analyses"))
+        .json(&json!({ "login": "https://github.com/Dev", "ownershipCode": "fsp-0123456789" }))
         .send()
         .await
         .unwrap()
         .json()
         .await
         .unwrap();
-    assert_eq!(health["github"], "missing_token");
-    let response = http
-        .post(format!("{base}/v1/reports"))
+    assert!(matches!(
+        queued["state"].as_str(),
+        Some("queued" | "running")
+    ));
+    let done = finished(&http, &base, "dev", "fsp-0123456789").await;
+    assert_eq!(done["state"], "done", "{done}");
+    assert_eq!(done["ownershipCodeFound"], true);
+    let report = &done["report"];
+    assert_eq!(report["login"], "Dev");
+    assert_eq!(report["algorithmVersion"], "github-insights-v2");
+    assert_eq!(report["coverage"]["repositoriesAnalyzed"], 2);
+    let repositories = report["repositories"].as_array().unwrap();
+    let tool = repositories
+        .iter()
+        .find(|repository| repository["nameWithOwner"] == "Dev/tool")
+        .unwrap();
+    assert_eq!(tool["userCommits"], 12);
+    assert_eq!(tool["owned"], true);
+    assert!(
+        tool["stack"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|item| item == "clap (CLI)")
+    );
+    let acme = &report["organizations"]["contributed"][0];
+    assert_eq!(acme["login"], "acme");
+    assert_eq!(acme["commits"], 12);
+    assert_eq!(acme["affiliated"], true);
+    assert_eq!(report["rhythm"]["timezoneOffsets"][0]["offsetMinutes"], 300);
+    // The clones are removed after the analysis.
+    let mut scratch = tokio::fs::read_dir(root.join("scratch")).await.unwrap();
+    assert!(scratch.next_entry().await.unwrap().is_none());
+
+    // Another code is not in the bio; a repeated request reuses the fresh analysis.
+    let other = finished(&http, &base, "dev", "fsp-9999999999").await;
+    assert_eq!(other["ownershipCodeFound"], false);
+    let again: Value = http
+        .post(format!("{base}/v1/analyses"))
         .json(&json!({ "login": "dev" }))
         .send()
         .await
+        .unwrap()
+        .json()
+        .await
         .unwrap();
-    assert_eq!(response.status(), 503);
+    assert_eq!(again["state"], "done");
+
+    let missing: Value = http
+        .post(format!("{base}/v1/analyses"))
+        .json(&json!({ "login": "ghost" }))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert!(missing["report"].is_null());
+    let failed = finished(&http, &base, "ghost", "fsp-0123456789").await;
+    assert_eq!(failed["state"], "failed");
+    assert_eq!(failed["error"]["code"], "github_account_not_found");
+
+    let invalid = http
+        .post(format!("{base}/v1/analyses"))
+        .json(&json!({ "login": "not a login" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(invalid.status(), reqwest::StatusCode::BAD_REQUEST);
+    let unknown = http
+        .get(format!("{base}/v1/analyses/nobody"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(unknown.status(), reqwest::StatusCode::NOT_FOUND);
+    let _ = tokio::fs::remove_dir_all(&root).await;
 }

@@ -6,7 +6,7 @@
 
 use serde::{Deserialize, Serialize};
 
-pub const GITHUB_INSIGHTS_VERSION: &str = "github-insights-v1";
+pub const GITHUB_INSIGHTS_VERSION: &str = "github-insights-v2";
 
 /// Normalizes a GitHub login typed as `login`, `@login` or a profile URL.
 ///
@@ -83,6 +83,7 @@ pub enum GitHubDimensionId {
     Engagement,
     Longevity,
     Collaboration,
+    Ownership,
     Craft,
     Impact,
 }
@@ -92,6 +93,31 @@ pub enum GitHubDimensionId {
 pub enum FlagSeverity {
     Info,
     Warning,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum StackCategory {
+    Language,
+    Backend,
+    Frontend,
+    Data,
+    Infrastructure,
+    Quality,
+    Ai,
+    Mobile,
+    Tooling,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Archetype {
+    Backend,
+    Frontend,
+    Platform,
+    Systems,
+    Data,
+    Mobile,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -105,11 +131,18 @@ pub struct GitHubReport {
     pub coverage: GitHubCoverage,
     pub index: GitHubIndex,
     pub dimensions: Vec<GitHubDimension>,
+    /// Who the developer is: roles, summary, focus areas and leading projects.
+    pub profile: GitHubDeveloperProfile,
     pub activity: GitHubActivity,
     pub rhythm: Option<GitHubRhythm>,
     pub collaboration: GitHubCollaboration,
+    pub ownership: GitHubOwnershipSummary,
     pub organizations: GitHubOrganizations,
+    /// Languages of the files the account itself changed.
     pub languages: Vec<GitHubLanguageShare>,
+    /// Languages, frameworks, databases, infrastructure and tools with their artifacts.
+    pub stack: Vec<GitHubStackItem>,
+    /// Catalog skills (`rust`, `postgresql`, `docker`, `redis`, `typescript`, `react`).
     pub technologies: Vec<GitHubTechnology>,
     pub craft: GitHubCraft,
     pub repositories: Vec<GitHubRepositoryInsight>,
@@ -123,11 +156,14 @@ pub struct GitHubReport {
 pub struct GitHubCoverage {
     pub from: String,
     pub to: String,
-    pub years_analyzed: u32,
-    pub commit_contributions: u32,
-    pub commits_sampled: u32,
     pub repositories_analyzed: u32,
-    pub timezone_samples: u32,
+    /// The account's commits found in the analyzed repositories' full histories.
+    pub commits_analyzed: u32,
+    /// All public commits GitHub search attributes to the account.
+    pub commits_public_total: u32,
+    pub commits_last_year_found: u32,
+    pub commits_last_year_total: u32,
+    pub coverage_percent: Option<u8>,
     pub partial: bool,
     pub notes: Vec<String>,
 }
@@ -167,10 +203,44 @@ pub struct GitHubMetric {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct GitHubDeveloperProfile {
+    /// For the candidate; may name projects and organizations.
+    pub summary: String,
+    /// The same portrait without names, for employers.
+    pub public_summary: String,
+    pub archetypes: Vec<GitHubArchetypeShare>,
+    pub focus_topics: Vec<String>,
+    pub top_projects: Vec<GitHubProject>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitHubArchetypeShare {
+    pub id: Archetype,
+    pub label: String,
+    pub percent: u8,
+    pub evidence: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitHubProject {
+    pub name_with_owner: String,
+    pub url: String,
+    pub description: Option<String>,
+    pub primary_language: Option<String>,
+    pub stars: u32,
+    pub user_commits: u32,
+    pub user_share_percent: u8,
+    pub last_commit_at: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct GitHubActivity {
     pub active_years: u32,
-    pub contributions_last_year: u32,
-    pub private_contributions_last_year: u32,
+    pub commits_last_year: u32,
+    pub pull_requests_last_year: u32,
     pub active_days_last_year: u32,
     pub active_weeks_last_year: u32,
     pub longest_daily_streak: u32,
@@ -179,7 +249,7 @@ pub struct GitHubActivity {
     pub current_weekly_streak: u32,
     pub longest_gap_days_last_year: u32,
     pub last_active_on: Option<String>,
-    /// Contributions of the last six months against the six before, in percent change.
+    /// Commits of the last six months against the six before, in percent change.
     pub trend_percent: Option<i32>,
     pub calendar: Vec<GitHubDay>,
     pub yearly: Vec<GitHubYear>,
@@ -196,20 +266,16 @@ pub struct GitHubDay {
 #[serde(rename_all = "camelCase")]
 pub struct GitHubYear {
     pub year: i32,
-    pub contributions: u32,
     pub commits: u32,
-    pub pull_requests: u32,
-    pub reviews: u32,
-    pub issues: u32,
-    pub private_contributions: u32,
     pub active_days: u32,
+    /// Pull requests opened that year, when GitHub search was asked for it.
+    pub pull_requests: Option<u32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GitHubRhythm {
     pub sample_size: u32,
-    pub timezone_inferred: bool,
     pub timezone_offsets: Vec<GitHubOffsetShare>,
     /// 24 values, local hour of the author's commit time.
     pub hourly_percent: Vec<u8>,
@@ -222,6 +288,7 @@ pub struct GitHubRhythm {
     pub active_days: u32,
     pub median_minutes_per_active_day: u32,
     pub p90_minutes_per_active_day: u32,
+    pub median_minutes_per_active_week: Option<u32>,
     pub sessions_per_active_day_tenths: u32,
     pub longest_session_minutes: u32,
 }
@@ -237,17 +304,15 @@ pub struct GitHubOffsetShare {
 #[serde(rename_all = "camelCase")]
 pub struct GitHubCollaboration {
     pub pull_requests_total: u32,
-    pub reviews_total: u32,
+    /// Pull requests approved in review: GitHub forbids approving one's own pull request.
+    pub approved_pull_requests: u32,
+    pub reviews_of_others: u32,
+    pub independent_reviews: u32,
     pub issues_total: u32,
-    pub pull_requests_sampled: u32,
     pub external_pull_requests: u32,
     pub external_merged: u32,
     pub external_merge_rate_percent: Option<u8>,
-    pub median_pull_request_lines: Option<u32>,
     pub external_repositories: u32,
-    pub organization_repositories: u32,
-    /// Organizations treated as the account's own: public membership or self-merged pull requests.
-    pub affiliated_organizations: u32,
     pub notable_contributions: Vec<GitHubNotableContribution>,
 }
 
@@ -257,9 +322,21 @@ pub struct GitHubNotableContribution {
     pub repository: String,
     pub url: String,
     pub stars: u32,
-    pub commits: u32,
     pub merged_pull_requests: u32,
-    pub reviews: u32,
+    pub commits: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitHubOwnershipSummary {
+    /// Repositories where the account wrote at least half of the commits.
+    pub led_repositories: u32,
+    /// Owned or led repositories with commits in the last year.
+    pub maintained_repositories: u32,
+    /// Organizations the account builds: public membership, direct pushes or wide write access.
+    pub own_organizations: u32,
+    pub own_organization_repositories: u32,
+    pub direct_push_repositories: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -267,7 +344,7 @@ pub struct GitHubNotableContribution {
 pub struct GitHubOrganizations {
     /// Public memberships only; GitHub hides private memberships from everyone else.
     pub memberships: Vec<GitHubOrganization>,
-    /// Organizations whose public repositories received this account's contributions.
+    /// Organizations whose public repositories hold the account's commits.
     pub contributed: Vec<GitHubContributedOrganization>,
 }
 
@@ -275,10 +352,7 @@ pub struct GitHubOrganizations {
 #[serde(rename_all = "camelCase")]
 pub struct GitHubOrganization {
     pub login: String,
-    pub name: Option<String>,
     pub url: String,
-    pub members: u32,
-    pub public_repositories: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -287,8 +361,8 @@ pub struct GitHubContributedOrganization {
     pub login: String,
     pub url: String,
     pub repositories: u32,
-    pub contributions: u32,
-    /// The account merges its own changes here, so the work is not independent collaboration.
+    pub commits: u32,
+    /// The account's own organization: it writes there directly or holds membership.
     pub affiliated: bool,
 }
 
@@ -297,6 +371,17 @@ pub struct GitHubContributedOrganization {
 pub struct GitHubLanguageShare {
     pub language: String,
     pub percent: u8,
+    pub files_changed: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitHubStackItem {
+    pub name: String,
+    pub category: StackCategory,
+    pub repositories: u32,
+    pub signals: Vec<String>,
+    pub last_used_at: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -323,9 +408,8 @@ pub struct GitHubCraft {
     pub container_percent: u8,
     pub conventional_commits_percent: Option<u8>,
     pub descriptive_messages_percent: Option<u8>,
-    pub median_commit_lines: Option<u32>,
+    pub median_files_per_commit: Option<u32>,
     pub large_commits_percent: Option<u8>,
-    pub signed_commits_percent: Option<u8>,
     pub merge_commits_percent: Option<u8>,
 }
 
@@ -349,17 +433,21 @@ pub struct GitHubRepositoryInsight {
     pub name_with_owner: String,
     pub url: String,
     pub owned: bool,
+    pub led: bool,
     pub fork: bool,
     pub archived: bool,
     pub stars: u32,
     pub forks: u32,
     pub primary_language: Option<String>,
+    pub description: Option<String>,
     pub pushed_at: Option<String>,
-    /// Commit contributions GitHub attributes to the account in the analyzed years.
-    pub contributions: u32,
-    pub sampled_commits: u32,
+    pub total_commits: u32,
+    pub user_commits: u32,
+    pub user_share_percent: u8,
+    pub last_user_commit_at: Option<String>,
     pub hygiene: Vec<HygieneSignal>,
     pub technologies: Vec<String>,
+    pub stack: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -395,12 +483,37 @@ pub struct GitHubSignal {
     pub generated_at: String,
     pub ownership_verified: bool,
     pub index: GitHubIndex,
+    pub summary: String,
+    pub archetypes: Vec<GitHubSignalArchetype>,
     pub dimensions: Vec<GitHubSignalDimension>,
-    pub languages: Vec<GitHubLanguageShare>,
+    pub languages: Vec<GitHubSignalLanguage>,
+    pub stack: Vec<GitHubSignalStackItem>,
     pub rhythm: Option<GitHubSignalRhythm>,
     pub highlights: Vec<String>,
     pub flags: Vec<GitHubFlag>,
-    pub mostly_private: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitHubSignalArchetype {
+    pub id: Archetype,
+    pub label: String,
+    pub percent: u8,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitHubSignalLanguage {
+    pub language: String,
+    pub percent: u8,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitHubSignalStackItem {
+    /// Named `technology`, not `name`: anonymous views carry no `name` keys at all.
+    pub technology: String,
+    pub category: StackCategory,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -425,6 +538,7 @@ pub struct GitHubSignalMetric {
 #[serde(rename_all = "camelCase")]
 pub struct GitHubSignalRhythm {
     pub hours_per_active_day: String,
+    pub hours_per_active_week: Option<String>,
     pub office_hours_percent: u8,
     pub weekend_percent: u8,
 }
@@ -439,6 +553,18 @@ impl GitHubReport {
             generated_at: self.generated_at.get(..10).unwrap_or_default().to_owned(),
             ownership_verified,
             index: self.index.clone(),
+            summary: self.profile.public_summary.clone(),
+            archetypes: self
+                .profile
+                .archetypes
+                .iter()
+                .map(|archetype| GitHubSignalArchetype {
+                    id: archetype.id,
+                    label: archetype.label.clone(),
+                    percent: round5(archetype.percent),
+                })
+                .filter(|archetype| archetype.percent > 0)
+                .collect(),
             dimensions: self
                 .dimensions
                 .iter()
@@ -461,15 +587,26 @@ impl GitHubReport {
             languages: self
                 .languages
                 .iter()
-                .take(5)
-                .map(|language| GitHubLanguageShare {
+                .take(6)
+                .map(|language| GitHubSignalLanguage {
                     language: language.language.clone(),
                     percent: round5(language.percent),
                 })
                 .filter(|language| language.percent > 0)
                 .collect(),
+            stack: self
+                .stack
+                .iter()
+                .filter(|item| item.category != StackCategory::Language)
+                .take(16)
+                .map(|item| GitHubSignalStackItem {
+                    technology: item.name.clone(),
+                    category: item.category,
+                })
+                .collect(),
             rhythm: self.rhythm.as_ref().map(|rhythm| GitHubSignalRhythm {
                 hours_per_active_day: hours_band(rhythm.median_minutes_per_active_day),
+                hours_per_active_week: rhythm.median_minutes_per_active_week.map(week_band),
                 office_hours_percent: round5(rhythm.office_hours_percent),
                 weekend_percent: round5(rhythm.weekend_percent),
             }),
@@ -480,10 +617,19 @@ impl GitHubReport {
                 .filter(|flag| flag.severity == FlagSeverity::Warning)
                 .cloned()
                 .collect(),
-            mostly_private: self.activity.private_contributions_last_year
-                > self.activity.contributions_last_year / 2,
         }
     }
+}
+
+/// Five-hour bands for weekly time.
+#[must_use]
+pub fn week_band(minutes: u32) -> String {
+    let hours = minutes / 60;
+    if hours < 5 {
+        return "менее 5 ч".into();
+    }
+    let low = hours / 5 * 5;
+    format!("{low}–{} ч", low + 5)
 }
 
 /// Half-hour bands: an exact daily duration is not needed to compare engagement.
@@ -492,10 +638,8 @@ pub fn hours_band(minutes: u32) -> String {
     if minutes < 30 {
         return "менее 0,5 ч".into();
     }
-    let halves = minutes / 30;
-    let low = halves * 30;
-    let high = low + 30;
-    format!("{}–{} ч", half_hours(low), half_hours(high))
+    let low = minutes / 30 * 30;
+    format!("{}–{} ч", half_hours(low), half_hours(low + 30))
 }
 
 fn half_hours(minutes: u32) -> String {
@@ -532,10 +676,12 @@ mod tests {
     }
 
     #[test]
-    fn hour_bands_hide_exact_durations() {
+    fn time_bands_hide_exact_durations() {
         assert_eq!(hours_band(10), "менее 0,5 ч");
         assert_eq!(hours_band(95), "1,5–2 ч");
         assert_eq!(hours_band(120), "2–2,5 ч");
+        assert_eq!(week_band(130), "менее 5 ч");
+        assert_eq!(week_band(1_380), "20–25 ч");
     }
 
     #[test]

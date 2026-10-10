@@ -1,5 +1,17 @@
 {
-  "algorithmVersion": "github-insights-v1",
+  "algorithmVersion": "github-insights-v2",
+  "archetypes": [
+    {
+      "id": "backend",
+      "label": "Бэкенд",
+      "percent": 85
+    },
+    {
+      "id": "frontend",
+      "label": "Фронтенд",
+      "percent": 15
+    }
+  ],
   "dimensions": [
     {
       "id": "consistency",
@@ -11,17 +23,17 @@
           "label": "Активных недель за год"
         },
         {
-          "display": "≈55 недель",
+          "display": "≈50 недель",
           "id": "longest_weekly_streak",
           "label": "Самая длинная серия активных недель"
         },
         {
-          "display": "≈55 недель",
+          "display": "≈50 недель",
           "id": "current_weekly_streak",
           "label": "Текущая серия активных недель"
         },
         {
-          "display": "≈15 месяцев",
+          "display": "≈10 месяцев",
           "id": "active_months_24",
           "label": "Активных месяцев за два года"
         },
@@ -39,17 +51,17 @@
       "label": "Вовлечённость",
       "metrics": [
         {
-          "display": "≈630",
-          "id": "contributions_last_year",
-          "label": "Публичный вклад за год"
+          "display": "≈770",
+          "id": "commits_last_year",
+          "label": "Публичных коммитов за год"
         },
         {
-          "display": "≈240 дней",
+          "display": "≈230 дней",
           "id": "active_days_last_year",
           "label": "Активных дней за год"
         },
         {
-          "display": "5 дней",
+          "display": "6 дней",
           "id": "longest_daily_streak",
           "label": "Самая длинная серия дней подряд"
         },
@@ -59,9 +71,14 @@
           "label": "Дней в активную неделю (медиана)"
         },
         {
-          "display": "1–1,5 ч",
+          "display": "2–2,5 ч",
           "id": "hours_per_active_day",
-          "label": "Оценка времени в активный день (медиана)"
+          "label": "Время в активный день (медиана)"
+        },
+        {
+          "display": "10–15 ч",
+          "id": "hours_per_active_week",
+          "label": "Время в активную неделю (медиана)"
         },
         {
           "display": "до недели",
@@ -69,59 +86,92 @@
           "label": "Дней с последней активности"
         }
       ],
-      "score": 77,
-      "summary": "Высокая вовлечённость: много активных дней и длинные серии"
+      "score": 72,
+      "summary": "Заметная вовлечённость"
     },
     {
       "id": "longevity",
       "label": "Стаж",
       "metrics": [
         {
-          "display": "7 лет",
+          "display": "6 лет",
           "id": "account_age",
           "label": "Возраст аккаунта"
         },
         {
-          "display": "1 год",
+          "display": "3 года",
           "id": "active_years",
-          "label": "Лет с публичным вкладом"
+          "label": "Лет с публичными коммитами"
         },
         {
-          "display": "1 год",
+          "display": "2 года",
           "id": "sustained_years",
           "label": "Лет с 50+ активными днями"
         }
       ],
-      "score": 46,
-      "summary": "Небольшой публичный стаж"
+      "score": 69,
+      "summary": "Несколько лет активности"
     },
     {
       "id": "collaboration",
       "label": "Совместная работа",
       "metrics": [
         {
-          "display": "1",
-          "id": "peer_validated_pull_requests",
-          "label": "PR, принятые или отревьюенные другим человеком"
+          "display": "8",
+          "id": "approved_pull_requests",
+          "label": "PR, одобренные другими людьми в ревью"
         },
         {
-          "display": "≈25",
-          "id": "reviews_of_others",
-          "label": "Ревью в независимых репозиториях"
+          "display": "2",
+          "id": "independent_reviews",
+          "label": "Ревью PR в независимых репозиториях"
         },
         {
           "display": "1",
           "id": "external_repositories",
-          "label": "Независимых репозиториев с принятым вкладом"
+          "label": "Независимых проектов с принятым вкладом"
+        },
+        {
+          "display": "2",
+          "id": "external_merged",
+          "label": "Принятых PR в независимые проекты"
+        }
+      ],
+      "score": 39,
+      "summary": "Совместная работа подтверждается слабо"
+    },
+    {
+      "id": "ownership",
+      "label": "Собственные проекты и организации",
+      "metrics": [
+        {
+          "display": "2",
+          "id": "led_repositories",
+          "label": "Проектов, где пишет большую часть кода"
+        },
+        {
+          "display": "2",
+          "id": "maintained_repositories",
+          "label": "Проектов с коммитами за год"
         },
         {
           "display": "1",
-          "id": "external_merged",
-          "label": "Принятых PR в независимые репозитории (выборка)"
+          "id": "own_organizations",
+          "label": "Собственных организаций"
+        },
+        {
+          "display": "1",
+          "id": "own_organization_repositories",
+          "label": "Репозиториев в собственных организациях"
+        },
+        {
+          "display": "≈20",
+          "id": "pull_requests_last_year",
+          "label": "Pull request’ов за год"
         }
       ],
-      "score": 34,
-      "summary": "Совместная работа подтверждается слабо"
+      "score": 27,
+      "summary": "Несколько собственных проектов"
     },
     {
       "id": "craft",
@@ -153,12 +203,12 @@
           "label": "Зафиксированные зависимости"
         },
         {
-          "display": "≈100%",
+          "display": "≈50%",
           "id": "lint",
           "label": "Линтеры и форматтеры"
         },
         {
-          "display": "≈100%",
+          "display": "≈50%",
           "id": "dependency_updates",
           "label": "Автообновление зависимостей"
         },
@@ -168,12 +218,12 @@
           "label": "Содержательные сообщения коммитов"
         },
         {
-          "display": "≈55 строк",
-          "id": "median_commit_lines",
-          "label": "Медианный размер коммита"
+          "display": "2",
+          "id": "median_files_per_commit",
+          "label": "Файлов в коммите (медиана)"
         }
       ],
-      "score": 100,
+      "score": 93,
       "summary": "Проекты оформлены зрело: CI, тесты, зависимости и стиль"
     },
     {
@@ -181,12 +231,12 @@
       "label": "Признание",
       "metrics": [
         {
-          "display": "≈25",
+          "display": "≈50",
           "id": "maintained_stars",
           "label": "Звёзды основных проектов"
         },
         {
-          "display": "4",
+          "display": "1",
           "id": "owned_forks",
           "label": "Форки собственных проектов"
         },
@@ -196,7 +246,7 @@
           "label": "Принятый вклад в независимые проекты от 1000 звёзд"
         },
         {
-          "display": "≈40",
+          "display": "≈25",
           "id": "followers",
           "label": "Подписчики"
         }
@@ -205,38 +255,103 @@
       "summary": "Небольшое признание сообщества"
     }
   ],
-  "flags": [
-    {
-      "detail": "50% коммитов выборки сделаны в одну и ту же минуту суток: так выглядит генерация по расписанию.",
-      "id": "uniform_commit_minute",
-      "severity": "warning",
-      "title": "Коммиты в одну и ту же минуту"
-    }
-  ],
+  "flags": [],
   "generatedAt": "2026-10-09",
   "highlights": [
     "Активность около 50 из 52 недель за последний год",
-    "Изменения, проверенные другими людьми: 1",
-    "Ревью в независимых репозиториях: ≈25",
+    "Обычно 2–2,5 ч работы в активный день",
+    "Ведёт 2 собственных проекта в 1 организации",
+    "PR, одобренные другими людьми: 8",
     "Принятый вклад в крупные независимые open source-проекты",
-    "Основные языки: Rust, Dockerfile"
+    "CI настроен примерно в 100% основных проектов"
   ],
   "index": {
     "band": "strong",
-    "confidence": "low",
-    "score": 70
+    "confidence": "high",
+    "score": 66
   },
   "languages": [
     {
       "language": "Rust",
-      "percent": 100
+      "percent": 70
+    },
+    {
+      "language": "TypeScript",
+      "percent": 15
+    },
+    {
+      "language": "Python",
+      "percent": 10
     }
   ],
-  "mostlyPrivate": false,
   "ownershipVerified": true,
   "rhythm": {
-    "hoursPerActiveDay": "1–1,5 ч",
-    "officeHoursPercent": 75,
-    "weekendPercent": 25
-  }
+    "hoursPerActiveDay": "2–2,5 ч",
+    "hoursPerActiveWeek": "10–15 ч",
+    "officeHoursPercent": 100,
+    "weekendPercent": 0
+  },
+  "stack": [
+    {
+      "category": "backend",
+      "technology": "Axum"
+    },
+    {
+      "category": "backend",
+      "technology": "FastAPI"
+    },
+    {
+      "category": "backend",
+      "technology": "HTTP-клиенты Python"
+    },
+    {
+      "category": "backend",
+      "technology": "Tokio"
+    },
+    {
+      "category": "frontend",
+      "technology": "React"
+    },
+    {
+      "category": "frontend",
+      "technology": "TanStack Query"
+    },
+    {
+      "category": "frontend",
+      "technology": "Vite"
+    },
+    {
+      "category": "data",
+      "technology": "PostgreSQL"
+    },
+    {
+      "category": "data",
+      "technology": "SQLAlchemy"
+    },
+    {
+      "category": "data",
+      "technology": "SQLx"
+    },
+    {
+      "category": "infrastructure",
+      "technology": "GitHub Actions"
+    },
+    {
+      "category": "infrastructure",
+      "technology": "Docker"
+    },
+    {
+      "category": "quality",
+      "technology": "Dependabot"
+    },
+    {
+      "category": "quality",
+      "technology": "rustfmt / Clippy"
+    },
+    {
+      "category": "tooling",
+      "technology": "Serde"
+    }
+  ],
+  "summary": "Основные направления — бэкенд (83%) и фронтенд (17%); пишет в основном на Rust (71%) и TypeScript (17%). Ведёт 2 проекта в 1 организации. За год — 770 публичных коммитов. Ключевые технологии: GitHub Actions, Axum, FastAPI, HTTP-клиенты Python."
 }

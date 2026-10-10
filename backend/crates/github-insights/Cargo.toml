@@ -12,7 +12,7 @@ fsp-domain.workspace = true
 reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net", "signal", "sync", "time"] }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net", "signal", "sync", "time", "process", "fs"] }
 toml.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true

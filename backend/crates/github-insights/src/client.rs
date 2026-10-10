@@ -1,219 +1,206 @@
-//! GitHub transport: GraphQL for structured data, REST patches for commit time zones.
+//! GitHub transport without a token: the public REST API, GitHub search and raw file downloads.
 //!
-//! The client bounds concurrency, honors primary and secondary rate limits and maps GitHub's
-//! GraphQL execution timeout (HTTP 502/504) to [`FetchError::Timeout`] so callers can degrade.
+//! Anonymous limits are per server IP: 60 REST requests per hour and 10 search requests per minute
+//! ([rate limits](https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api)).
+//! The client tracks both from response headers and waits for the reset instead of failing, so a
+//! background analysis finishes later rather than with gaps. An optional token only raises limits.
 
 use std::sync::Arc;
 use std::time::Duration;
 
 use reqwest::{Client, Response, StatusCode};
-use serde::Deserialize;
 use serde::de::DeserializeOwned;
-use serde_json::{Value, json};
-use tokio::sync::Semaphore;
+use tokio::sync::Mutex;
+use tokio::time::Instant;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FetchError {
     NotFound,
-    Unauthorized,
-    RateLimited { retry_after_seconds: u64 },
-    Timeout,
+    /// The limit resets later than the caller may wait.
+    RateLimited {
+        retry_after_seconds: u64,
+    },
     Unavailable,
+}
+
+#[derive(Clone, Copy)]
+enum Bucket {
+    Core,
+    Search,
+}
+
+#[derive(Default)]
+struct Budget {
+    remaining: Option<u32>,
+    reset_at: Option<Instant>,
+    /// Earliest time for the next request: spaces anonymous search to ten per minute.
+    next_at: Option<Instant>,
 }
 
 pub struct GitHubClient {
     http: Client,
-    token: String,
-    graphql_url: String,
-    rest_url: String,
-    permits: Arc<Semaphore>,
+    token: Option<String>,
+    api_url: String,
+    raw_url: String,
+    core: Arc<Mutex<Budget>>,
+    search: Arc<Mutex<Budget>>,
+    /// Longest wait for a rate-limit reset inside one request.
+    max_wait: Duration,
+    /// Spacing between search requests; `None` keeps GitHub's documented rate.
+    search_interval: Option<Duration>,
 }
 
 impl GitHubClient {
-    pub fn new(token: String) -> Result<Self, reqwest::Error> {
+    pub fn new(token: Option<String>) -> Result<Self, reqwest::Error> {
         Self::with_endpoints(
             token,
-            "https://api.github.com/graphql".into(),
             "https://api.github.com".into(),
+            "https://raw.githubusercontent.com".into(),
         )
     }
 
     pub fn with_endpoints(
-        token: String,
-        graphql_url: String,
-        rest_url: String,
+        token: Option<String>,
+        api_url: String,
+        raw_url: String,
     ) -> Result<Self, reqwest::Error> {
         let http = Client::builder()
             .timeout(Duration::from_secs(20))
             .connect_timeout(Duration::from_secs(5))
-            .redirect(reqwest::redirect::Policy::none())
-            .user_agent("fsp-github-insights/0.1")
+            .redirect(reqwest::redirect::Policy::limited(3))
+            .user_agent("fsp-github-insights/0.2")
             .build()?;
         Ok(Self {
             http,
             token,
-            graphql_url,
-            rest_url,
-            // GitHub allows 100 concurrent requests per token; stay well below it.
-            permits: Arc::new(Semaphore::new(12)),
+            api_url,
+            raw_url,
+            core: Arc::default(),
+            search: Arc::default(),
+            max_wait: Duration::from_secs(70),
+            search_interval: None,
         })
     }
 
-    /// Runs a query and returns `data`. Partial data with field errors is accepted; a missing
-    /// `data` object is an error.
-    pub async fn graphql<T: DeserializeOwned>(
-        &self,
-        query: &str,
-        variables: Value,
-    ) -> Result<T, FetchError> {
-        let _permit = self
-            .permits
-            .acquire()
-            .await
-            .map_err(|_| FetchError::Unavailable)?;
-        let body = json!({ "query": query, "variables": variables });
-        let mut attempt = 0;
-        loop {
-            attempt += 1;
-            let response = self
+    /// Overrides the spacing between search requests (for a local fake of GitHub).
+    #[must_use]
+    pub fn with_search_interval(mut self, interval: Duration) -> Self {
+        self.search_interval = Some(interval);
+        self
+    }
+
+    pub fn authenticated(&self) -> bool {
+        self.token.is_some()
+    }
+
+    /// GETs a REST resource.
+    pub async fn rest<T: DeserializeOwned>(&self, path: &str) -> Result<T, FetchError> {
+        self.json(Bucket::Core, path).await
+    }
+
+    /// GETs a search resource (`/search/...`), respecting the search budget.
+    pub async fn search<T: DeserializeOwned>(&self, path: &str) -> Result<T, FetchError> {
+        self.json(Bucket::Search, path).await
+    }
+
+    /// Downloads a public file of a repository's default branch; `None` when absent or too large.
+    pub async fn raw_file(&self, full_name: &str, path: &str) -> Option<String> {
+        let url = format!("{}/{full_name}/HEAD/{path}", self.raw_url);
+        let response = self.http.get(url).send().await.ok()?;
+        if !response.status().is_success() {
+            return None;
+        }
+        if response
+            .content_length()
+            .is_some_and(|length| length > 256 * 1024)
+        {
+            return None;
+        }
+        let text = response.text().await.ok()?;
+        (text.len() <= 256 * 1024).then_some(text)
+    }
+
+    async fn json<T: DeserializeOwned>(&self, bucket: Bucket, path: &str) -> Result<T, FetchError> {
+        let budget = match bucket {
+            Bucket::Core => &self.core,
+            Bucket::Search => &self.search,
+        };
+        for attempt in 0..3 {
+            self.wait_for(bucket, budget).await?;
+            let mut request = self
                 .http
-                .post(&self.graphql_url)
-                .bearer_auth(&self.token)
+                .get(format!("{}{path}", self.api_url))
                 .header("Accept", "application/vnd.github+json")
-                .json(&body)
-                .send()
-                .await;
-            let response = match response {
+                .header("X-GitHub-Api-Version", "2022-11-28");
+            if let Some(token) = &self.token {
+                request = request.bearer_auth(token);
+            }
+            let response = match request.send().await {
                 Ok(response) => response,
-                Err(error) if error.is_timeout() => return Err(FetchError::Timeout),
                 Err(_) if attempt < 2 => continue,
                 Err(_) => return Err(FetchError::Unavailable),
             };
-            match classify(&response) {
-                Some(FetchError::RateLimited {
-                    retry_after_seconds,
-                }) if attempt < 2 && retry_after_seconds <= 3 => {
-                    tokio::time::sleep(Duration::from_secs(retry_after_seconds.max(1))).await;
-                    continue;
+            record(budget, &response).await;
+            match response.status() {
+                status if status.is_success() => {
+                    return response.json().await.map_err(|_| FetchError::Unavailable);
                 }
-                // GitHub's 10-second execution limit: a repeated query often completes from its cache.
-                Some(FetchError::Timeout) if attempt < 2 => continue,
-                Some(error) => return Err(error),
-                None => {}
+                StatusCode::NOT_FOUND | StatusCode::GONE => return Err(FetchError::NotFound),
+                StatusCode::UNPROCESSABLE_ENTITY => return Err(FetchError::NotFound),
+                StatusCode::FORBIDDEN | StatusCode::TOO_MANY_REQUESTS => {
+                    // A primary limit is recorded above; a secondary one waits a minute.
+                    let retry = retry_after(&response).unwrap_or(60);
+                    let mut state = budget.lock().await;
+                    state.next_at = Some(Instant::now() + Duration::from_secs(retry));
+                    if state.reset_at.is_none() {
+                        state.remaining = Some(0);
+                        state.reset_at = state.next_at;
+                    }
+                }
+                status if status.is_server_error() && attempt < 2 => {
+                    tokio::time::sleep(Duration::from_secs(1)).await;
+                }
+                _ => return Err(FetchError::Unavailable),
             }
-            let envelope = response
-                .json::<Envelope<T>>()
-                .await
-                .map_err(|_| FetchError::Unavailable)?;
-            return match envelope.data {
-                Some(data) => Ok(data),
-                None if envelope
-                    .errors
-                    .iter()
-                    .any(|error| error.kind.as_deref() == Some("NOT_FOUND")) =>
-                {
-                    Err(FetchError::NotFound)
-                }
-                None if envelope
-                    .errors
-                    .iter()
-                    .any(|error| error.kind.as_deref() == Some("RATE_LIMITED")) =>
-                {
-                    Err(FetchError::RateLimited {
-                        retry_after_seconds: 60,
-                    })
-                }
-                None => Err(FetchError::Unavailable),
-            };
         }
+        Err(FetchError::Unavailable)
     }
 
-    /// GETs a REST resource as JSON.
-    pub async fn rest<T: DeserializeOwned>(&self, path: &str) -> Result<T, FetchError> {
-        let _permit = self
-            .permits
-            .acquire()
-            .await
-            .map_err(|_| FetchError::Unavailable)?;
-        let response = self
-            .http
-            .get(format!("{}{path}", self.rest_url))
-            .bearer_auth(&self.token)
-            .header("Accept", "application/vnd.github+json")
-            .header("X-GitHub-Api-Version", "2022-11-28")
-            .send()
-            .await
-            .map_err(|error| {
-                if error.is_timeout() {
-                    FetchError::Timeout
-                } else {
-                    FetchError::Unavailable
-                }
-            })?;
-        if let Some(error) = classify(&response) {
-            return Err(error);
+    async fn wait_for(&self, bucket: Bucket, budget: &Mutex<Budget>) -> Result<(), FetchError> {
+        let mut state = budget.lock().await;
+        let now = Instant::now();
+        let mut until = state.next_at.filter(|at| *at > now);
+        if state.remaining == Some(0)
+            && let Some(reset) = state.reset_at.filter(|at| *at > now)
+        {
+            until = Some(until.map_or(reset, |at| at.max(reset)));
         }
-        response.json().await.map_err(|_| FetchError::Unavailable)
-    }
-
-    /// Reads the original author UTC offset, in minutes, from the commit's patch header.
-    ///
-    /// GitHub's JSON APIs normalize commit dates to UTC; only the `Date:` header of the
-    /// mailbox-format patch keeps the author's offset. The body is streamed and abandoned after the
-    /// header, so large diffs are never downloaded. The e-mail header is ignored.
-    pub async fn commit_offset_minutes(
-        &self,
-        name_with_owner: &str,
-        oid: &str,
-    ) -> Result<Option<i32>, FetchError> {
-        let _permit = self
-            .permits
-            .acquire()
-            .await
-            .map_err(|_| FetchError::Unavailable)?;
-        let mut response = self
-            .http
-            .get(format!(
-                "{}/repos/{name_with_owner}/commits/{oid}",
-                self.rest_url
-            ))
-            .bearer_auth(&self.token)
-            .header("Accept", "application/vnd.github.patch")
-            .send()
-            .await
-            .map_err(|error| {
-                if error.is_timeout() {
-                    FetchError::Timeout
-                } else {
-                    FetchError::Unavailable
-                }
-            })?;
-        if let Some(error) = classify(&response) {
-            return Err(error);
+        if let Some(until) = until {
+            let wait = until - now;
+            if wait > self.max_wait {
+                return Err(FetchError::RateLimited {
+                    retry_after_seconds: wait.as_secs().max(1),
+                });
+            }
+            tokio::time::sleep(wait).await;
+            state.remaining = None;
         }
-        let mut header = Vec::new();
-        while header.len() < 16 * 1024 {
-            match response.chunk().await {
-                Ok(Some(chunk)) => header.extend_from_slice(&chunk),
-                Ok(None) => break,
-                Err(_) => return Err(FetchError::Unavailable),
-            }
-            if let Some(offset) = patch_offset(&header) {
-                return Ok(Some(offset));
-            }
-            if header.windows(2).any(|pair| pair == b"\n\n") {
-                break;
-            }
+        // Anonymous search allows ten requests a minute; authenticated search thirty.
+        if matches!(bucket, Bucket::Search) {
+            let spacing =
+                self.search_interval
+                    .unwrap_or(Duration::from_millis(if self.token.is_some() {
+                        2_100
+                    } else {
+                        6_200
+                    }));
+            state.next_at = Some(Instant::now() + spacing);
         }
-        Ok(patch_offset(&header))
+        Ok(())
     }
 }
 
-fn classify(response: &Response) -> Option<FetchError> {
-    let status = response.status();
-    if status.is_success() {
-        return None;
-    }
+async fn record(budget: &Mutex<Budget>, response: &Response) {
     let header = |name: &str| {
         response
             .headers()
@@ -221,57 +208,37 @@ fn classify(response: &Response) -> Option<FetchError> {
             .and_then(|value| value.to_str().ok())
             .and_then(|value| value.parse::<u64>().ok())
     };
-    Some(match status {
-        StatusCode::NOT_FOUND | StatusCode::UNPROCESSABLE_ENTITY => FetchError::NotFound,
-        StatusCode::UNAUTHORIZED => FetchError::Unauthorized,
-        StatusCode::FORBIDDEN | StatusCode::TOO_MANY_REQUESTS => {
-            if let Some(seconds) = header("retry-after") {
-                FetchError::RateLimited {
-                    retry_after_seconds: seconds,
-                }
-            } else if header("x-ratelimit-remaining") == Some(0) {
-                let now = chrono::Utc::now().timestamp().max(0) as u64;
-                FetchError::RateLimited {
-                    retry_after_seconds: header("x-ratelimit-reset")
-                        .map_or(60, |reset| reset.saturating_sub(now).max(1)),
-                }
-            } else if status == StatusCode::TOO_MANY_REQUESTS {
-                // A secondary limit without headers: wait at least a minute.
-                FetchError::RateLimited {
-                    retry_after_seconds: 60,
-                }
-            } else {
-                // A plain 403 (for example a disabled repository) concerns one resource only.
-                FetchError::Unavailable
+    let mut state = budget.lock().await;
+    if let Some(remaining) = header("x-ratelimit-remaining") {
+        state.remaining = u32::try_from(remaining).ok();
+    }
+    if let Some(reset) = header("x-ratelimit-reset") {
+        let now = chrono::Utc::now().timestamp().max(0) as u64;
+        state.reset_at = Some(Instant::now() + Duration::from_secs(reset.saturating_sub(now) + 1));
+    }
+}
+
+fn retry_after(response: &Response) -> Option<u64> {
+    response
+        .headers()
+        .get("retry-after")
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.parse().ok())
+}
+
+/// Percent-encodes a search query for a URL.
+pub fn encode_query(query: &str) -> String {
+    let mut encoded = String::with_capacity(query.len());
+    for byte in query.bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                encoded.push(byte as char);
             }
+            b' ' => encoded.push('+'),
+            other => encoded.push_str(&format!("%{other:02X}")),
         }
-        StatusCode::BAD_GATEWAY | StatusCode::GATEWAY_TIMEOUT => FetchError::Timeout,
-        _ => FetchError::Unavailable,
-    })
-}
-
-/// Parses `Date: Thu, 8 Oct 2026 23:15:00 +0200` from the patch header block.
-pub(crate) fn patch_offset(header: &[u8]) -> Option<i32> {
-    let text = String::from_utf8_lossy(header);
-    let headers = text.split("\n\n").next().unwrap_or_default();
-    let line = headers
-        .lines()
-        .find_map(|line| line.strip_prefix("Date: "))?;
-    let date = chrono::DateTime::parse_from_rfc2822(line.trim()).ok()?;
-    Some(date.offset().local_minus_utc() / 60)
-}
-
-#[derive(Deserialize)]
-struct Envelope<T> {
-    data: Option<T>,
-    #[serde(default)]
-    errors: Vec<GraphQlError>,
-}
-
-#[derive(Deserialize)]
-struct GraphQlError {
-    #[serde(rename = "type")]
-    kind: Option<String>,
+    }
+    encoded
 }
 
 #[cfg(test)]
@@ -279,14 +246,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn patch_offsets_keep_the_author_time_zone() {
-        let patch = b"From 1234 Mon Sep 17 00:00:00 2001\nFrom: Someone <x@example.invalid>\nDate: Thu, 8 Oct 2026 23:15:00 +0200\nSubject: [PATCH] test\n\n---\n";
-        assert_eq!(patch_offset(patch), Some(120));
-        let west = b"From: a\nDate: Mon, 21 Sep 2026 20:41:57 -0700\n\nbody";
-        assert_eq!(patch_offset(west), Some(-420));
+    fn search_queries_are_encoded() {
         assert_eq!(
-            patch_offset(b"From: a\n\nDate: Mon, 21 Sep 2026 20:41:57 -0700"),
-            None
+            encode_query("type:pr author:a-b -org:x review:approved"),
+            "type%3Apr+author%3Aa-b+-org%3Ax+review%3Aapproved"
+        );
+        assert_eq!(
+            encode_query("author-date:>=2026-01-01"),
+            "author-date%3A%3E%3D2026-01-01"
         );
     }
 }

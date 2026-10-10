@@ -1,53 +1,46 @@
-//! Collects a [`Snapshot`] of public facts within a deadline.
+//! Collects a [`Snapshot`] of public facts without a token.
 //!
-//! Stages: the profile first (node id, contribution years), then contribution years, owned
-//! repositories, pull requests and public organizations in parallel, then details and commit
-//! histories of the primary repositories in parallel, and finally a monthly sample of commit time
-//! zones. A stage that misses its deadline keeps what it has and marks the snapshot partial.
-//!
-//! Only public repositories are kept, whatever the token can see: every repository reference is
-//! filtered by `isPrivate`, organizations come from the public-membership REST endpoint, and daily
-//! activity is rebuilt from public contributions instead of the profile calendar (which also counts
-//! private work).
+//! Stages: the profile and public organizations (two REST requests), commit search by period for
+//! the account's commit identities, repositories and yearly totals, the newest pull requests,
+//! commit search per owner, repository metadata through repository search, blobless clones of the
+//! repositories the account works in, manifests from raw file downloads, and pull-request counts.
+//! The account's own organizations are known only after the clones (direct pushes), so the search
+//! for pull requests into other owners' projects runs last.
 
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet};
 use std::future::Future;
+use std::sync::Arc;
 use std::task::Poll;
-use std::time::Duration;
 
-use chrono::{DateTime, Datelike, Months, NaiveDate, Utc};
+use chrono::{DateTime, Datelike, Duration, Utc};
 use serde::Deserialize;
-use serde_json::json;
-use tokio::time::Instant;
+use tokio::sync::Semaphore;
 
-use crate::client::{FetchError, GitHubClient};
+use crate::client::{FetchError, GitHubClient, encode_query};
+use crate::git::Git;
 use crate::snapshot::{
-    CommitFact, DayActivity, HistoryShare, OrganizationFact, OwnedRepository, PeriodTotals,
-    PrimaryRepository, PullRequestFact, PullRequestState, RepositoryContribution, RepositoryRef,
-    Snapshot, TimezoneSample, YearFact,
+    PullRequestFact, PullRequestState, RepositoryMeta, SampledRepository, Snapshot,
 };
+use crate::tech::manifest_paths;
 
 #[derive(Debug, Clone)]
 pub struct Limits {
-    pub deadline: Duration,
-    pub max_years: usize,
-    pub owned_pages: usize,
-    pub pull_request_pages: usize,
-    pub primary_repositories: usize,
-    pub history_years: u32,
-    pub timezone_samples: usize,
+    pub repositories: usize,
+    pub manifests_per_repository: usize,
+    pub clone_concurrency: usize,
+    /// Repositories larger than this are not cloned (GitHub's size in KiB).
+    pub max_repository_kib: u32,
+    pub organizations: usize,
 }
 
 impl Default for Limits {
     fn default() -> Self {
         Self {
-            deadline: Duration::from_secs(38),
-            max_years: 10,
-            owned_pages: 3,
-            pull_request_pages: 2,
-            primary_repositories: 24,
-            history_years: 3,
-            timezone_samples: 24,
+            repositories: 50,
+            manifests_per_repository: 12,
+            clone_concurrency: 6,
+            max_repository_kib: 1_500_000,
+            organizations: 6,
         }
     }
 }
@@ -58,280 +51,668 @@ pub enum CollectError {
     Fetch(FetchError),
 }
 
-/// The collected snapshot plus whether the ownership code appeared in the profile bio.
+impl From<FetchError> for CollectError {
+    fn from(error: FetchError) -> Self {
+        match error {
+            FetchError::NotFound => Self::UnknownAccount,
+            other => Self::Fetch(other),
+        }
+    }
+}
+
+/// Reports the current stage and an approximate percentage.
+pub type Progress = Arc<dyn Fn(&str, u8) + Send + Sync>;
+
+pub struct Collector {
+    pub client: Arc<GitHubClient>,
+    pub git: Arc<Git>,
+    pub limits: Limits,
+}
+
+/// The snapshot plus the profile bio, read for the ownership check and never stored.
 pub struct Collected {
     pub snapshot: Snapshot,
-    pub ownership_code_found: Option<bool>,
+    pub bio: Option<String>,
 }
 
-/// Reads only the bio and reports whether it contains the ownership code.
-pub async fn ownership_code_found(
-    client: &GitHubClient,
-    login: &str,
-    code: &str,
-) -> Result<bool, CollectError> {
-    let data: BioData = client
-        .graphql(BIO_QUERY, json!({ "login": login }))
-        .await
-        .map_err(account_error)?;
-    let user = data.user.ok_or(CollectError::UnknownAccount)?;
-    Ok(user.bio.as_deref().is_some_and(|bio| bio.contains(code)))
-}
-
-pub async fn collect(
-    client: &GitHubClient,
-    login: &str,
-    ownership_code: Option<&str>,
-    limits: &Limits,
-) -> Result<Collected, CollectError> {
-    let started = Instant::now();
-    let profile: ProfileData = client
-        .graphql(PROFILE_QUERY, json!({ "login": login }))
-        .await
-        .map_err(account_error)?;
-    let user = profile.user.ok_or(CollectError::UnknownAccount)?;
-    let ownership_code_found =
-        ownership_code.map(|code| user.bio.as_deref().is_some_and(|bio| bio.contains(code)));
-    let now = Utc::now();
-    let mut snapshot = Snapshot {
-        login: user.login.clone(),
-        created_at: parse_time(&user.created_at),
-        now,
-        followers: user.followers.total_count,
-        restricted_last_year: user.contributions_collection.restricted_contributions_count,
-        owned_total: user.repositories.total_count,
-        ..Snapshot::default()
-    };
-    let mut years = user.contributions_collection.contribution_years;
-    years.sort_unstable_by(|a, b| b.cmp(a));
-    if years.len() > limits.max_years {
-        snapshot.notes.push(format!(
-            "Проанализированы последние {} лет активности из {}.",
-            limits.max_years,
-            years.len()
-        ));
-        years.truncate(limits.max_years);
+impl Collector {
+    /// Reads only the profile: the canonical login and the bio for an ownership check.
+    pub async fn profile(&self, login: &str) -> Result<(String, Option<String>), CollectError> {
+        let user: UserProfile = self.client.rest(&format!("/users/{login}")).await?;
+        if user.kind != "User" {
+            return Err(CollectError::UnknownAccount);
+        }
+        Ok((user.login, user.bio))
     }
 
-    // Pull requests are not needed to choose repositories, so they load alongside everything else.
-    let login = snapshot.login.clone();
-    let final_deadline = started + limits.deadline;
-    let pull_requests = bounded(
-        final_deadline,
-        fetch_pull_requests(client, &login, limits.pull_request_pages),
-    );
-    // Organizations, then the external pull request search excluding them.
-    let social = async {
-        let organizations = bounded(
-            started + limits.deadline.mul_f32(0.5),
-            fetch_organizations(client, &login),
-        )
-        .await;
-        let excluded = match &organizations {
-            Some(Ok(items)) => items
-                .iter()
-                .map(|organization| (organization.login.clone(), true))
-                .collect(),
-            _ => Vec::new(),
+    pub async fn collect(
+        &self,
+        login: &str,
+        progress: Progress,
+    ) -> Result<Collected, CollectError> {
+        let now = Utc::now();
+        let year_ago = (now - Duration::days(365)).format("%Y-%m-%d").to_string();
+        progress("Профиль и организации", 3);
+        let user: UserProfile = self.client.rest(&format!("/users/{login}")).await?;
+        if user.kind != "User" {
+            return Err(CollectError::UnknownAccount);
+        }
+        let login = user.login.clone();
+        let mut snapshot = Snapshot {
+            login: login.clone(),
+            created_at: parse_time(&user.created_at),
+            now,
+            followers: user.followers,
+            ..Snapshot::default()
         };
-        let external = bounded(
-            final_deadline,
-            fetch_external_pull_requests(client, &login, excluded),
-        )
-        .await;
-        (organizations, external)
-    };
-    let pipeline = async {
-        // Stage 2: what selects the primary repositories.
-        let stage_two = started + limits.deadline.mul_f32(0.55);
-        let year_futures = years
-            .iter()
-            .map(|year| bounded(stage_two, fetch_year(client, &login, *year)));
-        let (year_results, owned) = tokio::join!(
-            join_all(year_futures),
-            bounded(stage_two, fetch_owned(client, &login, limits.owned_pages)),
+        snapshot
+            .emails
+            .insert(format!("{login}@users.noreply.github.com").to_ascii_lowercase());
+        snapshot
+            .emails
+            .insert(format!("{}+{login}@users.noreply.github.com", user.id).to_ascii_lowercase());
+        match self
+            .client
+            .rest::<Vec<Named>>(&format!("/users/{login}/orgs?per_page=100"))
+            .await
+        {
+            Ok(organizations) => {
+                snapshot.organizations = organizations.into_iter().map(|item| item.login).collect();
+            }
+            Err(error) => self.miss(&mut snapshot, "organizations", &error)?,
+        }
+
+        // Commit search by window: repositories across the whole history, identities and exact
+        // public totals (the last four quarters, then calendar years back to the account's start).
+        progress("Поиск коммитов по периодам", 6);
+        let windows = windows(now, snapshot.created_at);
+        let mut seen = BTreeSet::new();
+        let mut last_year = 0u32;
+        let mut last_year_known = true;
+        let mut earlier = 0u32;
+        for (index, window) in windows.iter().enumerate() {
+            let query = format!("author:{login} author-date:{}", window.range);
+            match self.commit_search(&query, 1, 100).await {
+                Ok(result) => {
+                    match window.kind {
+                        WindowKind::Quarter => last_year += result.total_count,
+                        WindowKind::Year(year) => {
+                            snapshot
+                                .totals
+                                .yearly_commits
+                                .insert(year, result.total_count);
+                        }
+                        WindowKind::Earlier => earlier = result.total_count,
+                    }
+                    absorb_commits(&mut snapshot, &mut seen, result.items);
+                }
+                Err(error) => {
+                    if window.kind == WindowKind::Quarter {
+                        last_year_known = false;
+                    }
+                    self.miss(&mut snapshot, "commit search", &error)?;
+                }
+            }
+            progress(
+                "Поиск коммитов по периодам",
+                6 + u8::try_from(index * 8 / windows.len().max(1)).unwrap_or(8),
+            );
+        }
+        snapshot.totals.commits_last_year = last_year_known.then_some(last_year);
+        snapshot.totals.commits =
+            Some(snapshot.totals.yearly_commits.values().sum::<u32>() + earlier);
+
+        // The newest pull requests name more of the owners the account works with.
+        progress("Pull request’ы", 14);
+        match self
+            .issue_search(&format!("type:pr author:{login} sort:created-desc"), 100)
+            .await
+        {
+            Ok(result) => {
+                snapshot.totals.pull_requests = Some(result.total_count);
+                snapshot.pull_requests = pull_requests(result.items);
+            }
+            Err(error) => self.miss(&mut snapshot, "pull request search", &error)?,
+        }
+        // Owners: public memberships first, then those holding sampled commits or pull requests;
+        // a search per owner gives its exact commit total and a sample of its repositories.
+        let mut weights = BTreeMap::<String, u32>::new();
+        for item in snapshot.sampled.values() {
+            if item.organization {
+                *weights.entry(item.owner.clone()).or_default() += item.commits;
+            }
+        }
+        for pull in &snapshot.pull_requests {
+            if !snapshot.is_self(&pull.owner) {
+                *weights.entry(pull.owner.clone()).or_default() += 1;
+            }
+        }
+        let mut owners = snapshot.organizations.clone();
+        let mut ranked = weights
+            .into_iter()
+            .filter(|(owner, _)| !owners.contains(owner))
+            .collect::<Vec<_>>();
+        ranked.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+        owners.extend(ranked.into_iter().map(|(owner, _)| owner));
+        owners.truncate(self.limits.organizations);
+        progress("Коммиты в организациях", 16);
+        for owner in &owners {
+            match self
+                .commit_search(&format!("author:{login} user:{owner}"), 1, 100)
+                .await
+            {
+                Ok(result) => {
+                    snapshot
+                        .totals
+                        .owner_commits
+                        .insert(owner.clone(), result.total_count);
+                    absorb_commits(&mut snapshot, &mut seen, result.items);
+                }
+                Err(error) => self.miss(&mut snapshot, "organization commit search", &error)?,
+            }
+        }
+        let organizations = owners
+            .into_iter()
+            .filter(|owner| {
+                snapshot.organizations.contains(owner)
+                    || snapshot
+                        .sampled
+                        .values()
+                        .any(|item| &item.owner == owner && item.organization)
+            })
+            .collect::<Vec<_>>();
+
+        // Repository metadata through repository search (no REST budget).
+        progress("Метаданные репозиториев", 22);
+        let mut metadata_queries = vec![format!("user:{login} fork:true")];
+        metadata_queries.extend(
+            organizations
+                .iter()
+                .map(|organization| format!("org:{organization}")),
         );
-        let mut truncated_days = false;
-        for result in year_results {
-            match result {
-                Some(Ok((year, days, truncated))) => {
-                    snapshot.years.push(year);
-                    truncated_days |= truncated;
-                    for (date, activity) in days {
-                        let entry = snapshot.days.entry(date).or_default();
-                        entry.commits += activity.commits;
-                        entry.pull_requests += activity.pull_requests;
-                        entry.reviews += activity.reviews;
-                        entry.issues += activity.issues;
+        for query in metadata_queries {
+            match self.repository_search(&query).await {
+                Ok(items) => {
+                    for item in items {
+                        snapshot.repositories.insert(item.full_name.clone(), item);
                     }
                 }
-                Some(Err(FetchError::RateLimited {
-                    retry_after_seconds,
-                })) => {
-                    return Err(CollectError::Fetch(FetchError::RateLimited {
-                        retry_after_seconds,
-                    }));
+                Err(error) => self.miss(&mut snapshot, "repository search", &error)?,
+            }
+        }
+        let missing = snapshot
+            .sampled
+            .keys()
+            .filter(|name| !snapshot.repositories.contains_key(*name))
+            .cloned()
+            .collect::<Vec<_>>();
+        for batch in batches(&missing) {
+            match self.repository_search(&batch).await {
+                Ok(items) => {
+                    for item in items {
+                        snapshot.repositories.insert(item.full_name.clone(), item);
+                    }
                 }
-                other => {
-                    log_miss("year", &other);
-                    snapshot.partial = true;
+                Err(error) => self.miss(&mut snapshot, "repository metadata", &error)?,
+            }
+        }
+
+        // Clones of the repositories the account works in.
+        let targets = self.clone_targets(&snapshot);
+        if targets.len() < snapshot.sampled.len() {
+            snapshot.notes.push(format!(
+                "Проанализированы {} репозиториев с наибольшим вкладом из {} найденных.",
+                targets.len(),
+                snapshot.sampled.len().max(targets.len())
+            ));
+        }
+        let total = targets.len().max(1);
+        let done = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let permits = Arc::new(Semaphore::new(self.limits.clone_concurrency));
+        let emails = snapshot.emails.clone();
+        let clones = targets.iter().map(|name| {
+            let permits = permits.clone();
+            let done = done.clone();
+            let progress = progress.clone();
+            let emails = &emails;
+            async move {
+                let _permit = permits.acquire().await.ok()?;
+                let result = self.git.analyze(name, emails).await;
+                let finished = done.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+                progress(
+                    "Клонирование и разбор истории",
+                    30 + u8::try_from(finished * 50 / total).unwrap_or(50),
+                );
+                result
+            }
+        });
+        let analyzed = join_all(clones).await;
+        let failed = analyzed.iter().filter(|result| result.is_none()).count();
+        if failed > 0 {
+            snapshot.partial = true;
+            snapshot.notes.push(format!(
+                "{failed} репозиториев не удалось склонировать за отведённое время."
+            ));
+        }
+        snapshot.analyzed = analyzed.into_iter().flatten().collect();
+
+        // Manifests of the analyzed repositories.
+        progress("Манифесты и зависимости", 82);
+        let requests = snapshot
+            .analyzed
+            .iter()
+            .enumerate()
+            .flat_map(|(index, repository)| {
+                manifest_paths(&repository.files, self.limits.manifests_per_repository)
+                    .into_iter()
+                    .map(move |path| (index, path))
+            })
+            .collect::<Vec<_>>();
+        let permits = Arc::new(Semaphore::new(8));
+        let downloads = requests.iter().map(|(index, path)| {
+            let permits = permits.clone();
+            let name = snapshot.analyzed[*index].full_name.clone();
+            async move {
+                let _permit = permits.acquire().await.ok()?;
+                self.client
+                    .raw_file(&name, path)
+                    .await
+                    .map(|text| (*index, path.clone(), text))
+            }
+        });
+        for (index, path, text) in join_all(downloads).await.into_iter().flatten() {
+            snapshot.analyzed[index].manifests.push((path, text));
+        }
+
+        // Pull requests, approvals and reviews.
+        progress("Pull request’ы и ревью", 88);
+        for (query, slot) in [
+            (format!("type:pr author:{login} created:>={year_ago}"), 0),
+            (format!("type:pr author:{login} review:approved"), 1),
+            (format!("type:pr reviewed-by:{login} -author:{login}"), 2),
+            (format!("type:issue author:{login}"), 3),
+        ] {
+            match self.issue_search(&query, 1).await {
+                Ok(result) => {
+                    let total = Some(result.total_count);
+                    match slot {
+                        0 => snapshot.totals.pull_requests_last_year = total,
+                        1 => snapshot.totals.approved_pull_requests = total,
+                        2 => snapshot.totals.reviews_of_others = total,
+                        _ => snapshot.totals.issues = total,
+                    }
+                }
+                Err(error) => self.miss(&mut snapshot, "contribution count", &error)?,
+            }
+        }
+
+        // Other owners' projects, now that the account's organizations are known.
+        progress("Вклад в независимые проекты", 94);
+        // Owners where merged pull requests span three repositories or exceed thirty are the
+        // account's own as well (it holds merge rights there); the search repeats without them.
+        let mut external = String::new();
+        for _ in 0..3 {
+            let exclusions = exclusions(&snapshot);
+            external = format!("type:pr author:{login} -user:{login}{exclusions}");
+            match self.issue_search(&external, 100).await {
+                Ok(result) => {
+                    snapshot.totals.external_pull_requests = Some(result.total_count);
+                    snapshot.external_pull_requests = pull_requests(result.items);
+                }
+                Err(error) => {
+                    self.miss(&mut snapshot, "external pull requests", &error)?;
+                    break;
+                }
+            }
+            let mut per_owner: BTreeMap<String, (BTreeSet<String>, u32)> = BTreeMap::new();
+            for pull in snapshot
+                .external_pull_requests
+                .iter()
+                .filter(|pull| pull.state == PullRequestState::Merged)
+            {
+                let entry = per_owner.entry(pull.owner.clone()).or_default();
+                entry.0.insert(pull.repository.clone());
+                entry.1 += 1;
+            }
+            let found = per_owner
+                .into_iter()
+                .filter(|(_, (repositories, merged))| repositories.len() >= 3 || *merged >= 30)
+                .map(|(owner, _)| owner)
+                .filter(|owner| !snapshot.merge_rights.contains(owner))
+                .collect::<Vec<_>>();
+            if found.is_empty() {
+                break;
+            }
+            snapshot.merge_rights.extend(found);
+        }
+        match self.issue_search(&format!("{external} is:merged"), 1).await {
+            Ok(result) => snapshot.totals.external_merged = Some(result.total_count),
+            Err(error) => self.miss(&mut snapshot, "external merges", &error)?,
+        }
+        match self
+            .issue_search(
+                &format!(
+                    "type:pr reviewed-by:{login} -author:{login} -user:{login}{}",
+                    exclusions(&snapshot)
+                ),
+                1,
+            )
+            .await
+        {
+            Ok(result) => snapshot.totals.independent_reviews = Some(result.total_count),
+            Err(error) => self.miss(&mut snapshot, "independent reviews", &error)?,
+        }
+        // Metadata for external repositories that accepted pull requests (stars of notable work).
+        let external_repositories = snapshot
+            .external_pull_requests
+            .iter()
+            .filter(|pull| pull.state == PullRequestState::Merged)
+            .map(|pull| pull.repository.clone())
+            .filter(|name| !snapshot.repositories.contains_key(name))
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .take(16)
+            .collect::<Vec<_>>();
+        for batch in batches(&external_repositories) {
+            if let Ok(items) = self.repository_search(&batch).await {
+                for item in items {
+                    snapshot.repositories.insert(item.full_name.clone(), item);
                 }
             }
         }
-        if truncated_days {
+        if snapshot.partial {
             snapshot.notes.push(
-                "В репозиториях с более чем 100 активными днями за год GitHub отдаёт только 100 дней; итоговые счётчики точные."
+                "Часть данных GitHub не удалось получить: показатели рассчитаны по доступной выборке."
                     .into(),
             );
         }
-        snapshot.years.sort_by_key(|year| year.year);
-        log_miss("owned", &owned);
-        match owned {
-            Some(Ok((repositories, complete))) => {
-                snapshot.owned = repositories;
-                if !complete {
-                    snapshot.notes.push(format!(
-                        "Учтены {} последних обновлённых собственных репозиториев из {}.",
-                        snapshot.owned.len(),
-                        snapshot.owned_total
-                    ));
-                }
-            }
-            _ => snapshot.partial = true,
-        }
+        progress("Расчёт показателей", 98);
+        Ok(Collected {
+            snapshot,
+            bio: user.bio,
+        })
+    }
 
-        // Stage 3: details and commit histories of the primary repositories. Each batch has its
-        // own deadline, so one slow repository does not discard the others.
-        let stage_three = started + limits.deadline.mul_f32(0.88);
-        let targets = primary_targets(&snapshot, limits.primary_repositories);
-        let since = now
-            .checked_sub_months(Months::new(12 * limits.history_years))
-            .unwrap_or(now);
-        let detail_batches = targets
-            .chunks(4)
-            .map(|chunk| bounded(stage_three, fetch_details(client, chunk.to_vec())));
-        let history_batches = targets.chunks(2).map(|chunk| {
-            bounded(
-                stage_three,
-                fetch_histories(client, chunk.to_vec(), &user.id, since),
-            )
-        });
-        let (details, histories) =
-            tokio::join!(join_all(detail_batches), join_all(history_batches));
-        let contributions = commit_contributions(&snapshot);
-        for batch in details {
-            log_miss("details", &batch);
-            match batch {
-                Some(Ok(items)) => snapshot.primary.extend(items),
-                _ => snapshot.partial = true,
+    /// A rate limit beyond the wait budget aborts so the job can retry later; other failures
+    /// only mark the snapshot partial.
+    fn miss(
+        &self,
+        snapshot: &mut Snapshot,
+        stage: &str,
+        error: &FetchError,
+    ) -> Result<(), CollectError> {
+        tracing::warn!(stage, ?error, "github stage failed");
+        if let FetchError::RateLimited { .. } = error {
+            return Err(CollectError::Fetch(error.clone()));
+        }
+        snapshot.partial = true;
+        Ok(())
+    }
+
+    fn clone_targets(&self, snapshot: &Snapshot) -> Vec<String> {
+        let fits = |name: &str| {
+            snapshot
+                .repositories
+                .get(name)
+                .is_none_or(|meta| !meta.fork && meta.size_kib <= self.limits.max_repository_kib)
+        };
+        let mut ranked = snapshot
+            .sampled
+            .iter()
+            .filter(|(name, _)| fits(name))
+            .map(|(name, item)| (name.clone(), item.commits))
+            .collect::<Vec<_>>();
+        ranked.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+        let mut targets = ranked
+            .into_iter()
+            .map(|(name, _)| name)
+            .take(self.limits.repositories)
+            .collect::<Vec<_>>();
+        // Owned repositories without sampled commits, most recently pushed first.
+        let mut owned = snapshot
+            .repositories
+            .values()
+            .filter(|meta| snapshot.is_self(&meta.owner) && fits(&meta.full_name))
+            .collect::<Vec<_>>();
+        owned.sort_by_key(|meta| std::cmp::Reverse(meta.pushed_at));
+        for meta in owned {
+            if targets.len() >= self.limits.repositories {
+                break;
+            }
+            if !targets.contains(&meta.full_name) {
+                targets.push(meta.full_name.clone());
             }
         }
-        for repository in &mut snapshot.primary {
-            repository.contributions = contributions
-                .get(&repository.reference.name_with_owner)
-                .copied()
-                .unwrap_or(0);
+        targets
+    }
+
+    async fn commit_search(
+        &self,
+        query: &str,
+        page: u32,
+        per_page: u32,
+    ) -> Result<Search<CommitItem>, FetchError> {
+        self.client
+            .search(&format!(
+                "/search/commits?q={}&sort=author-date&order=desc&per_page={per_page}&page={page}",
+                encode_query(query)
+            ))
+            .await
+    }
+
+    async fn issue_search(
+        &self,
+        query: &str,
+        per_page: u32,
+    ) -> Result<Search<IssueItem>, FetchError> {
+        self.client
+            .search(&format!(
+                "/search/issues?q={}&per_page={per_page}",
+                encode_query(query)
+            ))
+            .await
+    }
+
+    async fn repository_search(&self, query: &str) -> Result<Vec<RepositoryMeta>, FetchError> {
+        let result: Search<RepositoryItem> = self
+            .client
+            .search(&format!(
+                "/search/repositories?q={}&sort=updated&per_page=100",
+                encode_query(query)
+            ))
+            .await?;
+        Ok(result
+            .items
+            .into_iter()
+            .filter(|item| !item.private)
+            .map(RepositoryItem::into_meta)
+            .collect())
+    }
+}
+
+/// Adds sampled commits once each: windows and owner searches overlap.
+fn absorb_commits(snapshot: &mut Snapshot, seen: &mut BTreeSet<String>, items: Vec<CommitItem>) {
+    for item in items {
+        if item.repository.private || !seen.insert(item.sha.clone()) {
+            continue;
+        }
+        if item
+            .author
+            .as_ref()
+            .is_some_and(|author| author.login.eq_ignore_ascii_case(&snapshot.login))
+        {
+            snapshot
+                .emails
+                .insert(item.commit.author.email.to_ascii_lowercase());
         }
         snapshot
-            .primary
-            .sort_by_key(|repository| std::cmp::Reverse(repository.contributions));
-        let mut seen = HashSet::new();
-        for batch in histories {
-            log_miss("history", &batch);
-            match batch {
-                Some(Ok((commits, shares))) => {
-                    snapshot.commits.extend(
-                        commits
-                            .into_iter()
-                            .filter(|commit| seen.insert(commit.oid.clone())),
-                    );
-                    snapshot.history_shares.extend(shares);
-                }
-                _ => snapshot.partial = true,
-            }
-        }
-        snapshot.commits.sort_by_key(|commit| commit.authored_at);
-
-        // Stage 4: one small commit per month keeps the author's UTC offset over time.
-        let samples = timezone_targets(&snapshot.commits, limits.timezone_samples);
-        let sample_futures = samples.into_iter().map(|commit| async move {
-            bounded(
-                final_deadline,
-                client.commit_offset_minutes(&commit.repository, &commit.oid),
-            )
-            .await
-            .and_then(Result::ok)
-            .flatten()
-            .map(|offset_minutes| TimezoneSample {
-                at: commit.authored_at,
-                offset_minutes,
+            .sampled
+            .entry(item.repository.full_name.clone())
+            .or_insert_with(|| SampledRepository {
+                commits: 0,
+                owner: item.repository.owner.login.clone(),
+                organization: item.repository.owner.kind == "Organization",
             })
+            .commits += 1;
+    }
+}
+
+/// Owners outside "other people's projects": public organizations, owners where the account
+/// pushes directly, and owners where it commits to three or more repositories.
+pub fn affiliated_owners(snapshot: &Snapshot) -> BTreeMap<String, bool> {
+    let mut owners = BTreeMap::new();
+    for organization in &snapshot.organizations {
+        owners.insert(organization.clone(), true);
+    }
+    let mut per_owner: BTreeMap<&str, (u32, bool)> = BTreeMap::new();
+    for item in snapshot.sampled.values() {
+        let entry = per_owner
+            .entry(&item.owner)
+            .or_insert((0, item.organization));
+        entry.0 += 1;
+    }
+    for (owner, (repositories, organization)) in per_owner {
+        if repositories >= 3 && !snapshot.is_self(owner) {
+            owners.insert(owner.to_owned(), organization);
+        }
+    }
+    for owner in &snapshot.merge_rights {
+        owners.entry(owner.clone()).or_insert(true);
+    }
+    for repository in snapshot
+        .analyzed
+        .iter()
+        .filter(|repository| repository.direct_pushes > 0)
+    {
+        let owner = repository.full_name.split('/').next().unwrap_or_default();
+        if !snapshot.is_self(owner) {
+            let organization = snapshot
+                .repositories
+                .get(&repository.full_name)
+                .is_none_or(|meta| meta.owner_is_organization);
+            owners.insert(owner.to_owned(), organization);
+        }
+    }
+    owners
+}
+
+fn exclusions(snapshot: &Snapshot) -> String {
+    let mut text = String::new();
+    // GitHub rejects search queries over 256 characters; the analysis filters the rest.
+    for (owner, organization) in affiliated_owners(snapshot) {
+        let qualifier = format!(" -{}:{owner}", if organization { "org" } else { "user" });
+        if text.len() + qualifier.len() > 160 {
+            break;
+        }
+        text.push_str(&qualifier);
+    }
+    text
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum WindowKind {
+    /// One of the last four quarters; together they give the last year's total.
+    Quarter,
+    Year(i32),
+    /// Everything before the searched calendar years.
+    Earlier,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Window {
+    range: String,
+    kind: WindowKind,
+}
+
+/// Commit-search windows, newest first: four quarters of the last year, then calendar years back
+/// to the account's creation (at most eight) and one window for anything older.
+fn windows(now: DateTime<Utc>, created: Option<DateTime<Utc>>) -> Vec<Window> {
+    let day = |time: DateTime<Utc>| time.format("%Y-%m-%d").to_string();
+    let mut windows = Vec::new();
+    for quarter in 0..4 {
+        let to = now - Duration::days(91 * quarter);
+        let from = if quarter == 3 {
+            now - Duration::days(364)
+        } else {
+            now - Duration::days(91 * (quarter + 1) - 1)
+        };
+        windows.push(Window {
+            range: format!("{}..{}", day(from), day(to)),
+            kind: WindowKind::Quarter,
         });
-        snapshot.timezone_samples = join_all(sample_futures)
-            .await
-            .into_iter()
-            .flatten()
-            .collect();
-        Ok(())
-    };
-    let (pull_requests, (organizations, external), pipeline) =
-        tokio::join!(pull_requests, social, pipeline);
-    pipeline?;
-    log_miss("organizations", &organizations);
-    match organizations {
-        Some(Ok(items)) => snapshot.organizations = items,
-        _ => snapshot.partial = true,
     }
-    log_miss("external_pull_requests", &external);
-    match external {
-        Some(Ok((items, total))) => {
-            snapshot.external_pull_requests = items;
-            snapshot.external_pull_requests_total = total;
+    let first_year = created.map_or(now.year() - 8, |created| created.year());
+    let mut year = now.year();
+    while year >= first_year && year > now.year() - 8 {
+        let to = if year == now.year() {
+            day(now)
+        } else {
+            format!("{year}-12-31")
+        };
+        windows.push(Window {
+            range: format!("{year}-01-01..{to}"),
+            kind: WindowKind::Year(year),
+        });
+        year -= 1;
+    }
+    if year >= first_year {
+        windows.push(Window {
+            range: format!("<{}-01-01", year + 1),
+            kind: WindowKind::Earlier,
+        });
+    }
+    windows
+}
+
+/// `repo:` queries that fit GitHub's 256-character limit.
+fn batches(names: &[String]) -> Vec<String> {
+    let mut batches = Vec::new();
+    let mut current = String::new();
+    for name in names {
+        let qualifier = format!("repo:{name}");
+        if !current.is_empty() && current.len() + qualifier.len() + 1 > 240 {
+            batches.push(std::mem::take(&mut current));
         }
-        _ => snapshot.partial = true,
-    }
-    log_miss("pull_requests", &pull_requests);
-    match pull_requests {
-        Some(Ok((items, total))) => {
-            snapshot.pull_requests = items;
-            snapshot.pull_requests_total = total;
+        if !current.is_empty() {
+            current.push(' ');
         }
-        _ => snapshot.partial = true,
+        current.push_str(&qualifier);
     }
-    if snapshot.partial {
-        snapshot.notes.push(
-            "Часть данных GitHub не успела загрузиться: показатели рассчитаны по доступной выборке."
-                .into(),
-        );
+    if !current.is_empty() {
+        batches.push(current);
     }
-    Ok(Collected {
-        snapshot,
-        ownership_code_found,
-    })
+    batches
 }
 
-/// Logs a stage that missed its deadline or failed; the account is not logged.
-fn log_miss<T>(stage: &'static str, result: &Option<Result<T, FetchError>>) {
-    match result {
-        Some(Ok(_)) => {}
-        Some(Err(error)) => tracing::warn!(stage, ?error, "github stage failed"),
-        None => tracing::warn!(stage, "github stage missed its deadline"),
-    }
+fn pull_requests(items: Vec<IssueItem>) -> Vec<PullRequestFact> {
+    items
+        .into_iter()
+        .filter_map(|item| {
+            let repository = item.repository_url.rsplit("/repos/").next()?.to_owned();
+            let owner = repository.split('/').next()?.to_owned();
+            Some(PullRequestFact {
+                url: item.html_url,
+                owner,
+                repository,
+                created_at: parse_time(&item.created_at)?,
+                state: if item
+                    .pull_request
+                    .as_ref()
+                    .is_some_and(|pull| pull.merged_at.is_some())
+                {
+                    PullRequestState::Merged
+                } else if item.state == "open" {
+                    PullRequestState::Open
+                } else {
+                    PullRequestState::Closed
+                },
+            })
+        })
+        .collect()
 }
 
-fn account_error(error: FetchError) -> CollectError {
-    match error {
-        FetchError::NotFound => CollectError::UnknownAccount,
-        other => CollectError::Fetch(other),
-    }
-}
-
-async fn bounded<F: Future>(deadline: Instant, future: F) -> Option<F::Output> {
-    tokio::time::timeout_at(deadline, future).await.ok()
-}
-
-/// Polls all futures together; the client's semaphore bounds the real request concurrency.
-async fn join_all<F: Future>(futures: impl IntoIterator<Item = F>) -> Vec<F::Output> {
+/// Polls all futures together; semaphores bound the real concurrency.
+pub async fn join_all<F: Future>(futures: impl IntoIterator<Item = F>) -> Vec<F::Output> {
     let mut futures = futures.into_iter().map(Box::pin).collect::<Vec<_>>();
     let mut output = futures.iter().map(|_| None).collect::<Vec<_>>();
     std::future::poll_fn(|context| {
@@ -354,1110 +735,215 @@ async fn join_all<F: Future>(futures: impl IntoIterator<Item = F>) -> Vec<F::Out
     output.into_iter().flatten().collect()
 }
 
-type YearResult = (YearFact, BTreeMap<NaiveDate, DayActivity>, bool);
-
-async fn fetch_year(
-    client: &GitHubClient,
-    login: &str,
-    year: i32,
-) -> Result<YearResult, FetchError> {
-    let variables = json!({
-        "login": login,
-        "from": format!("{year}-01-01T00:00:00Z"),
-        "to": format!("{year}-12-31T23:59:59Z"),
-    });
-    let (commits, others) = tokio::join!(
-        client.graphql::<YearCommitData>(&YEAR_COMMITS_QUERY, variables.clone()),
-        client.graphql::<YearOtherData>(&YEAR_OTHER_QUERY, variables),
-    );
-    let commits = commits?
-        .user
-        .ok_or(FetchError::NotFound)?
-        .contributions_collection;
-    let others = others?
-        .user
-        .ok_or(FetchError::NotFound)?
-        .contributions_collection;
-    let mut days: BTreeMap<NaiveDate, DayActivity> = BTreeMap::new();
-    let mut truncated = false;
-    let mut private = PeriodTotals::default();
-    let mut add_days = |items: &[ByRepository], kind: fn(&mut DayActivity, u32)| {
-        for item in items.iter().filter(|item| !item.repository.is_private) {
-            let nodes = &item.contributions.nodes;
-            truncated |= (nodes.len() as u32) < item.contributions.total_count;
-            for node in nodes.iter().flatten() {
-                // Commit days arrive as the start of the contribution day; others as event times.
-                let Some(date) = node
-                    .occurred_at
-                    .get(..10)
-                    .and_then(|date| NaiveDate::parse_from_str(date, "%Y-%m-%d").ok())
-                else {
-                    continue;
-                };
-                if date.year() == year {
-                    kind(
-                        days.entry(date).or_default(),
-                        node.commit_count.unwrap_or(1),
-                    );
-                }
-            }
-        }
-    };
-    add_days(&commits.commit_contributions_by_repository, |day, n| {
-        day.commits += n;
-    });
-    add_days(
-        &others.pull_request_contributions_by_repository,
-        |day, n| {
-            day.pull_requests += n;
-        },
-    );
-    add_days(
-        &others.pull_request_review_contributions_by_repository,
-        |day, n| day.reviews += n,
-    );
-    add_days(&others.issue_contributions_by_repository, |day, n| {
-        day.issues += n;
-    });
-    let private_count = |items: &[ByRepository]| -> u32 {
-        items
-            .iter()
-            .filter(|item| item.repository.is_private)
-            .map(|item| item.contributions.total_count)
-            .sum()
-    };
-    private.commits = private_count(&commits.commit_contributions_by_repository);
-    private.pull_requests = private_count(&others.pull_request_contributions_by_repository);
-    private.reviews = private_count(&others.pull_request_review_contributions_by_repository);
-    private.issues = private_count(&others.issue_contributions_by_repository);
-    let year_fact = YearFact {
-        year,
-        restricted: commits.restricted_contributions_count,
-        totals: PeriodTotals {
-            commits: commits
-                .total_commit_contributions
-                .saturating_sub(private.commits),
-            pull_requests: others
-                .total_pull_request_contributions
-                .saturating_sub(private.pull_requests),
-            reviews: others
-                .total_pull_request_review_contributions
-                .saturating_sub(private.reviews),
-            issues: others
-                .total_issue_contributions
-                .saturating_sub(private.issues),
-        },
-        commit_repositories: public_contributions(commits.commit_contributions_by_repository),
-        pull_request_repositories: public_contributions(
-            others.pull_request_contributions_by_repository,
-        ),
-        review_repositories: public_contributions(
-            others.pull_request_review_contributions_by_repository,
-        ),
-        issue_repositories: public_contributions(others.issue_contributions_by_repository),
-    };
-    Ok((year_fact, days, truncated))
-}
-
-async fn fetch_owned(
-    client: &GitHubClient,
-    login: &str,
-    pages: usize,
-) -> Result<(Vec<OwnedRepository>, bool), FetchError> {
-    let mut repositories = Vec::new();
-    let mut after: Option<String> = None;
-    for _ in 0..pages {
-        let data: OwnedData = client
-            .graphql(OWNED_QUERY, json!({ "login": login, "after": after }))
-            .await?;
-        let connection = data.user.ok_or(FetchError::NotFound)?.repositories;
-        repositories.extend(
-            connection
-                .nodes
-                .into_iter()
-                .flatten()
-                .filter(|node| !node.is_private)
-                .map(|node| OwnedRepository {
-                    name_with_owner: node.name_with_owner,
-                    fork: node.is_fork,
-                    archived: node.is_archived,
-                    created_at: parse_time(&node.created_at),
-                    pushed_at: node.pushed_at.as_deref().and_then(parse_time),
-                    stars: node.stargazer_count,
-                    forks: node.fork_count,
-                    disk_kib: node.disk_usage.unwrap_or(0),
-                }),
-        );
-        if !connection.page_info.has_next_page {
-            return Ok((repositories, true));
-        }
-        after = connection.page_info.end_cursor;
-    }
-    Ok((repositories, false))
-}
-
-async fn fetch_pull_requests(
-    client: &GitHubClient,
-    login: &str,
-    pages: usize,
-) -> Result<(Vec<PullRequestFact>, u32), FetchError> {
-    let mut items = Vec::new();
-    let mut total = 0;
-    let mut after: Option<String> = None;
-    for _ in 0..pages {
-        let data: PullRequestData = client
-            .graphql(
-                PULL_REQUEST_QUERY,
-                json!({ "login": login, "after": after }),
-            )
-            .await?;
-        let connection = data.user.ok_or(FetchError::NotFound)?.pull_requests;
-        total = connection.total_count;
-        items.extend(
-            connection
-                .nodes
-                .into_iter()
-                .flatten()
-                .filter_map(|node| pull_request_fact(node, login)),
-        );
-        if !connection.page_info.has_next_page {
-            break;
-        }
-        after = connection.page_info.end_cursor;
-    }
-    Ok((items, total))
-}
-
-fn pull_request_fact(node: PullRequestNode, login: &str) -> Option<PullRequestFact> {
-    let repository = node.repository?;
-    if repository.is_private {
-        return None;
-    }
-    let is_other_human = |actor: &Option<Actor>| {
-        actor.as_ref().is_some_and(|actor| {
-            actor.typename == "User" && !actor.login.eq_ignore_ascii_case(login)
-        })
-    };
-    Some(PullRequestFact {
-        url: node.url.clone(),
-        repository: repository.into_ref(),
-        created_at: parse_time(&node.created_at)?,
-        state: if node.merged {
-            PullRequestState::Merged
-        } else if node.state == "OPEN" {
-            PullRequestState::Open
-        } else {
-            PullRequestState::Closed
-        },
-        additions: node.additions,
-        deletions: node.deletions,
-        merged_by_other: node.merged && is_other_human(&node.merged_by),
-        merged_by_self: node.merged
-            && node
-                .merged_by
-                .as_ref()
-                .is_some_and(|actor| actor.login.eq_ignore_ascii_case(login)),
-        reviewed_by_other: node
-            .reviews
-            .nodes
-            .iter()
-            .flatten()
-            .any(|review| is_other_human(&review.author)),
-    })
-}
-
-/// Pull requests into public repositories of other owners. A separate search keeps them visible
-/// when automated pull requests to the account's own organizations dominate its recent history.
-/// Owners where a round finds self-merged pull requests, or that fill half of a full page, are
-/// excluded and the search repeats, up to three rounds, so one busy owner cannot hide the rest.
-async fn fetch_external_pull_requests(
-    client: &GitHubClient,
-    login: &str,
-    mut excluded: Vec<(String, bool)>,
-) -> Result<(Vec<PullRequestFact>, u32), FetchError> {
-    let mut found = Vec::new();
-    let mut total = 0;
-    for _ in 0..3 {
-        let mut query = format!("is:pr is:public author:{login} -user:{login} sort:created-desc");
-        for (owner, organization) in &excluded {
-            let qualifier = format!(" -{}:{owner}", if *organization { "org" } else { "user" });
-            // GitHub rejects search queries over 256 characters; the analysis filters the rest.
-            if query.len() + qualifier.len() > 250 {
-                break;
-            }
-            query.push_str(&qualifier);
-        }
-        let data: SearchData = client
-            .graphql(EXTERNAL_PULL_REQUEST_QUERY, json!({ "query": query }))
-            .await?;
-        total = data.search.issue_count;
-        let round = data
-            .search
-            .nodes
-            .into_iter()
-            .flatten()
-            .filter_map(|node| pull_request_fact(node, login))
-            .collect::<Vec<_>>();
-        // Owners that dominate a full page hide everything else: search past them next round.
-        let mut per_owner: BTreeMap<String, u32> = BTreeMap::new();
-        for pull in &round {
-            *per_owner
-                .entry(pull.repository.owner_login.to_ascii_lowercase())
-                .or_insert(0) += 1;
-        }
-        let mut affiliated = BTreeMap::new();
-        for pull in round.iter().filter(|pull| {
-            pull.merged_by_self
-                || (round.len() >= 100
-                    && per_owner
-                        .get(&pull.repository.owner_login.to_ascii_lowercase())
-                        .is_some_and(|count| *count >= 50))
-        }) {
-            affiliated.insert(
-                pull.repository.owner_login.to_ascii_lowercase(),
-                (
-                    pull.repository.owner_login.clone(),
-                    pull.repository.owner_is_organization,
-                ),
-            );
-        }
-        let new_owners = affiliated
-            .into_values()
-            .filter(|(owner, _)| {
-                !excluded
-                    .iter()
-                    .any(|(known, _)| known.eq_ignore_ascii_case(owner))
-            })
-            .collect::<Vec<_>>();
-        let complete = round.len() < 100 || new_owners.is_empty();
-        found.extend(round);
-        if complete {
-            break;
-        }
-        excluded.extend(new_owners);
-    }
-    Ok((found, total))
-}
-
-/// Public memberships: GitHub's REST endpoint lists only public memberships whatever the token.
-async fn fetch_organizations(
-    client: &GitHubClient,
-    login: &str,
-) -> Result<Vec<OrganizationFact>, FetchError> {
-    let listed: Vec<OrganizationLogin> = client
-        .rest(&format!("/users/{login}/orgs?per_page=100"))
-        .await?;
-    if listed.is_empty() {
-        return Ok(Vec::new());
-    }
-    let mut query = String::from("query {\n");
-    for (index, organization) in listed.iter().enumerate() {
-        query.push_str(&format!(
-            "  o{index}: organization(login: {}) {{ login name membersWithRole {{ totalCount }} repositories(privacy: PUBLIC) {{ totalCount }} }}\n",
-            json!(organization.login)
-        ));
-    }
-    query.push('}');
-    let data: BTreeMap<String, Option<OrganizationNode>> =
-        client.graphql(&query, json!({})).await?;
-    Ok((0..listed.len())
-        .filter_map(|index| data.get(&format!("o{index}")).cloned().flatten())
-        .map(|organization| OrganizationFact {
-            login: organization.login,
-            name: organization.name,
-            members: organization.members_with_role.total_count,
-            public_repositories: organization.repositories.total_count,
-        })
-        .collect())
-}
-
-fn commit_contributions(snapshot: &Snapshot) -> BTreeMap<String, u32> {
-    let mut counts = BTreeMap::new();
-    for year in &snapshot.years {
-        for item in &year.commit_repositories {
-            *counts
-                .entry(item.repository.name_with_owner.clone())
-                .or_insert(0) += item.count;
-        }
-    }
-    counts
-}
-
-/// Public repositories with the most commit contributions, owned or not, then recently pushed owned
-/// repositories without counted contributions.
-fn primary_targets(snapshot: &Snapshot, limit: usize) -> Vec<String> {
-    let mut ranked = commit_contributions(snapshot)
-        .into_iter()
-        .collect::<Vec<_>>();
-    ranked.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
-    let mut targets = ranked
-        .into_iter()
-        .map(|(name, _)| name)
-        .take(limit)
-        .collect::<Vec<_>>();
-    for repository in &snapshot.owned {
-        if targets.len() >= limit {
-            break;
-        }
-        if !repository.fork && !targets.contains(&repository.name_with_owner) {
-            targets.push(repository.name_with_owner.clone());
-        }
-    }
-    targets
-}
-
-/// The smallest commit of each month, most recent months first.
-fn timezone_targets(commits: &[CommitFact], limit: usize) -> Vec<CommitFact> {
-    let mut by_month: BTreeMap<(i32, u32), &CommitFact> = BTreeMap::new();
-    for commit in commits.iter().filter(|commit| !commit.is_merge()) {
-        let key = (commit.authored_at.year(), commit.authored_at.month());
-        by_month
-            .entry(key)
-            .and_modify(|current| {
-                if commit.lines() < current.lines() {
-                    *current = commit;
-                }
-            })
-            .or_insert(commit);
-    }
-    by_month.into_values().rev().take(limit).cloned().collect()
-}
-
-fn aliased_repositories(targets: &[String], fragment: &str) -> String {
-    let mut query = String::new();
-    for (index, name) in targets.iter().enumerate() {
-        let (owner, repository) = name.split_once('/').unwrap_or((name, ""));
-        query.push_str(&format!(
-            "  r{index}: repository(owner: {}, name: {}) {{ ...{fragment} }}\n",
-            json!(owner),
-            json!(repository)
-        ));
-    }
-    query
-}
-
-async fn fetch_details(
-    client: &GitHubClient,
-    targets: Vec<String>,
-) -> Result<Vec<PrimaryRepository>, FetchError> {
-    let query = format!(
-        "query {{\n{}}}\n{DETAIL_FRAGMENT}",
-        aliased_repositories(&targets, "Detail")
-    );
-    let data: BTreeMap<String, Option<DetailNode>> = client.graphql(&query, json!({})).await?;
-    Ok((0..targets.len())
-        .filter_map(|index| data.get(&format!("r{index}")).cloned().flatten())
-        .filter(|node| !node.is_private)
-        .map(DetailNode::into_primary)
-        .collect())
-}
-
-async fn fetch_histories(
-    client: &GitHubClient,
-    targets: Vec<String>,
-    author_id: &str,
-    since: DateTime<Utc>,
-) -> Result<(Vec<CommitFact>, Vec<(String, HistoryShare)>), FetchError> {
-    let query = format!(
-        "query($author: ID!, $since: GitTimestamp!) {{\n{}}}\n{HISTORY_FRAGMENT}",
-        aliased_repositories(&targets, "History")
-    );
-    let data: BTreeMap<String, Option<HistoryRepository>> = client
-        .graphql(
-            &query,
-            json!({ "author": author_id, "since": since.to_rfc3339() }),
-        )
-        .await?;
-    let mut commits = Vec::new();
-    let mut shares = Vec::new();
-    for (index, name) in targets.into_iter().enumerate() {
-        let Some(Some(repository)) = data.get(&format!("r{index}")) else {
-            continue;
-        };
-        if repository.is_private {
-            continue;
-        }
-        let Some(target) = repository
-            .default_branch_ref
-            .as_ref()
-            .and_then(|branch| branch.target.as_ref())
-        else {
-            continue;
-        };
-        if let (Some(history), Some(all)) = (&target.history, &target.all) {
-            shares.push((
-                name.clone(),
-                HistoryShare {
-                    authored: history.total_count,
-                    total: all.total_count,
-                },
-            ));
-        }
-        let Some(history) = target.history.as_ref() else {
-            continue;
-        };
-        commits.extend(history.nodes.iter().flatten().filter_map(|node| {
-            Some(CommitFact {
-                repository: name.clone(),
-                oid: node.oid.clone(),
-                authored_at: parse_time(&node.authored_date)?,
-                committed_at: parse_time(&node.committed_date)?,
-                additions: node.additions,
-                deletions: node.deletions,
-                headline: node.message_headline.clone(),
-                parents: node.parents.total_count,
-                signed: node
-                    .signature
-                    .as_ref()
-                    .is_some_and(|signature| signature.is_valid),
-            })
-        }));
-    }
-    Ok((commits, shares))
-}
-
 fn parse_time(value: &str) -> Option<DateTime<Utc>> {
     DateTime::parse_from_rfc3339(value)
         .ok()
         .map(|time| time.with_timezone(&Utc))
 }
 
-fn public_contributions(items: Vec<ByRepository>) -> Vec<RepositoryContribution> {
-    items
-        .into_iter()
-        .filter(|item| !item.repository.is_private)
-        .map(|item| RepositoryContribution {
-            count: item.contributions.total_count,
-            repository: item.repository.into_ref(),
-        })
-        .collect()
-}
-
-const BIO_QUERY: &str = "query($login: String!) { user(login: $login) { bio } }";
-
-const PROFILE_QUERY: &str = r"
-query($login: String!) {
-  user(login: $login) {
-    id login createdAt bio
-    followers { totalCount }
-    repositories(ownerAffiliations: OWNER, privacy: PUBLIC) { totalCount }
-    contributionsCollection { contributionYears restrictedContributionsCount }
-  }
-}";
-
-const REPOSITORY_REF: &str = "nameWithOwner isFork isPrivate stargazerCount owner { __typename login } primaryLanguage { name }";
-
-static YEAR_COMMITS_QUERY: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
-    format!(
-        r"
-query($login: String!, $from: DateTime!, $to: DateTime!) {{
-  user(login: $login) {{
-    contributionsCollection(from: $from, to: $to) {{
-      totalCommitContributions restrictedContributionsCount
-      commitContributionsByRepository(maxRepositories: 100) {{
-        repository {{ {REPOSITORY_REF} }}
-        contributions(first: 100) {{ totalCount nodes {{ occurredAt commitCount }} }}
-      }}
-    }}
-  }}
-}}"
-    )
-});
-
-static YEAR_OTHER_QUERY: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
-    let by_repository = format!(
-        "(maxRepositories: 100) {{ repository {{ {REPOSITORY_REF} }} contributions(first: 100) {{ totalCount nodes {{ occurredAt }} }} }}"
-    );
-    format!(
-        r"
-query($login: String!, $from: DateTime!, $to: DateTime!) {{
-  user(login: $login) {{
-    contributionsCollection(from: $from, to: $to) {{
-      totalPullRequestContributions totalPullRequestReviewContributions totalIssueContributions
-      pullRequestContributionsByRepository{by_repository}
-      pullRequestReviewContributionsByRepository{by_repository}
-      issueContributionsByRepository{by_repository}
-    }}
-  }}
-}}"
-    )
-});
-
-const OWNED_QUERY: &str = r"
-query($login: String!, $after: String) {
-  user(login: $login) {
-    repositories(first: 100, after: $after, ownerAffiliations: OWNER, privacy: PUBLIC,
-                 orderBy: {field: PUSHED_AT, direction: DESC}) {
-      pageInfo { hasNextPage endCursor }
-      nodes { nameWithOwner isFork isPrivate isArchived createdAt pushedAt stargazerCount forkCount diskUsage }
-    }
-  }
-}";
-
-const PULL_REQUEST_QUERY: &str = r"
-query($login: String!, $after: String) {
-  user(login: $login) {
-    pullRequests(first: 100, after: $after, orderBy: {field: CREATED_AT, direction: DESC}) {
-      totalCount pageInfo { hasNextPage endCursor }
-      nodes {
-        url createdAt state merged additions deletions
-        mergedBy { __typename login }
-        reviews(first: 10) { nodes { author { __typename login } } }
-        repository { nameWithOwner isFork isPrivate stargazerCount owner { __typename login } primaryLanguage { name } }
-      }
-    }
-  }
-}";
-
-const EXTERNAL_PULL_REQUEST_QUERY: &str = r"
-query($query: String!) {
-  search(type: ISSUE, query: $query, first: 100) {
-    issueCount
-    nodes {
-      ... on PullRequest {
-        url createdAt state merged additions deletions
-        mergedBy { __typename login }
-        reviews(first: 10) { nodes { author { __typename login } } }
-        repository { nameWithOwner isFork isPrivate stargazerCount owner { __typename login } primaryLanguage { name } }
-      }
-    }
-  }
-}";
-
-const DETAIL_FRAGMENT: &str = r#"
-fragment Detail on Repository {
-  nameWithOwner isFork isPrivate isArchived isTemplate createdAt pushedAt stargazerCount forkCount
-  description licenseInfo { spdxId } primaryLanguage { name } owner { __typename login }
-  repositoryTopics(first: 20) { nodes { topic { name } } }
-  languages(first: 10, orderBy: {field: SIZE, direction: DESC}) { edges { size node { name } } }
-  root: object(expression: "HEAD:") { ... on Tree { entries { name type } } }
-  github: object(expression: "HEAD:.github") { ... on Tree { entries { name } } }
-  workflows: object(expression: "HEAD:.github/workflows") { ... on Tree { entries { name } } }
-  cargo: object(expression: "HEAD:Cargo.toml") { ... on Blob { byteSize text } }
-  npm: object(expression: "HEAD:package.json") { ... on Blob { byteSize text } }
-}"#;
-
-const HISTORY_FRAGMENT: &str = r"
-fragment History on Repository {
-  isPrivate
-  defaultBranchRef { target { ... on Commit {
-    all: history(since: $since) { totalCount }
-    history(first: 100, author: {id: $author}, since: $since) {
-      totalCount
-      nodes {
-        oid authoredDate committedDate additions deletions messageHeadline
-        parents { totalCount } signature { isValid }
-      }
-    }
-  } } }
-}";
-
-#[derive(Deserialize, Clone)]
-struct Count {
-    #[serde(rename = "totalCount")]
-    total_count: u32,
-}
-
 #[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct PageInfo {
-    has_next_page: bool,
-    end_cursor: Option<String>,
-}
-
-#[derive(Deserialize)]
-struct BioData {
-    user: Option<BioUser>,
-}
-
-#[derive(Deserialize)]
-struct BioUser {
-    bio: Option<String>,
-}
-
-#[derive(Deserialize)]
-struct ProfileData {
-    user: Option<ProfileUser>,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct ProfileUser {
-    id: String,
+struct UserProfile {
     login: String,
+    id: u64,
+    #[serde(rename = "type")]
+    kind: String,
     created_at: String,
+    #[serde(default)]
+    followers: u32,
     bio: Option<String>,
-    followers: Count,
-    repositories: Count,
-    contributions_collection: ProfileCollection,
 }
 
 #[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct ProfileCollection {
-    contribution_years: Vec<i32>,
-    restricted_contributions_count: u32,
-}
-
-#[derive(Deserialize)]
-struct Nodes<T> {
-    nodes: Vec<Option<T>>,
-}
-
-#[derive(Deserialize)]
-struct OrganizationLogin {
-    login: String,
-}
-
-#[derive(Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
-struct OrganizationNode {
-    login: String,
-    name: Option<String>,
-    members_with_role: Count,
-    repositories: Count,
-}
-
-#[derive(Deserialize)]
-struct YearCommitData {
-    user: Option<YearCommitUser>,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct YearCommitUser {
-    contributions_collection: YearCommitCollection,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct YearCommitCollection {
-    total_commit_contributions: u32,
-    restricted_contributions_count: u32,
-    commit_contributions_by_repository: Vec<ByRepository>,
-}
-
-#[derive(Deserialize)]
-struct YearOtherData {
-    user: Option<YearOtherUser>,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct YearOtherUser {
-    contributions_collection: YearOtherCollection,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct YearOtherCollection {
-    total_pull_request_contributions: u32,
-    total_pull_request_review_contributions: u32,
-    total_issue_contributions: u32,
-    pull_request_contributions_by_repository: Vec<ByRepository>,
-    pull_request_review_contributions_by_repository: Vec<ByRepository>,
-    issue_contributions_by_repository: Vec<ByRepository>,
-}
-
-#[derive(Deserialize)]
-struct ByRepository {
-    repository: RepositoryNode,
-    contributions: DayConnection,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct DayConnection {
-    total_count: u32,
-    nodes: Vec<Option<DayNode>>,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct DayNode {
-    occurred_at: String,
-    commit_count: Option<u32>,
-}
-
-#[derive(Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
-struct RepositoryNode {
-    name_with_owner: String,
-    is_fork: bool,
-    is_private: bool,
-    stargazer_count: u32,
-    owner: OwnerNode,
-    primary_language: Option<Named>,
-}
-
-impl RepositoryNode {
-    fn into_ref(self) -> RepositoryRef {
-        RepositoryRef {
-            name_with_owner: self.name_with_owner,
-            owner_is_organization: self.owner.typename == "Organization",
-            owner_login: self.owner.login,
-            fork: self.is_fork,
-            stars: self.stargazer_count,
-            primary_language: self.primary_language.map(|language| language.name),
-        }
-    }
-}
-
-#[derive(Deserialize, Clone)]
-struct OwnerNode {
-    #[serde(rename = "__typename")]
-    typename: String,
-    login: String,
-}
-
-#[derive(Deserialize, Clone)]
 struct Named {
-    name: String,
-}
-
-#[derive(Deserialize)]
-struct OwnedData {
-    user: Option<OwnedUser>,
-}
-
-#[derive(Deserialize)]
-struct OwnedUser {
-    repositories: OwnedConnection,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct OwnedConnection {
-    page_info: PageInfo,
-    nodes: Vec<Option<OwnedNode>>,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct OwnedNode {
-    name_with_owner: String,
-    is_fork: bool,
-    is_private: bool,
-    is_archived: bool,
-    created_at: String,
-    pushed_at: Option<String>,
-    stargazer_count: u32,
-    fork_count: u32,
-    disk_usage: Option<u32>,
-}
-
-#[derive(Deserialize)]
-struct PullRequestData {
-    user: Option<PullRequestUser>,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct PullRequestUser {
-    pull_requests: PullRequestConnection,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct PullRequestConnection {
-    total_count: u32,
-    page_info: PageInfo,
-    nodes: Vec<Option<PullRequestNode>>,
-}
-
-#[derive(Deserialize)]
-struct SearchData {
-    search: SearchConnection,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct SearchConnection {
-    issue_count: u32,
-    nodes: Vec<Option<PullRequestNode>>,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct PullRequestNode {
-    url: String,
-    created_at: String,
-    state: String,
-    merged: bool,
-    additions: u32,
-    deletions: u32,
-    merged_by: Option<Actor>,
-    reviews: Nodes<ReviewNode>,
-    repository: Option<RepositoryNode>,
-}
-
-#[derive(Deserialize)]
-struct ReviewNode {
-    author: Option<Actor>,
-}
-
-#[derive(Deserialize)]
-struct Actor {
-    #[serde(rename = "__typename")]
-    typename: String,
     login: String,
 }
 
-#[derive(Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
-struct DetailNode {
-    name_with_owner: String,
-    is_fork: bool,
-    is_private: bool,
-    is_archived: bool,
-    is_template: bool,
+#[derive(Deserialize)]
+pub struct Search<T> {
+    total_count: u32,
+    items: Vec<T>,
+}
+
+#[derive(Deserialize)]
+struct CommitItem {
+    sha: String,
+    commit: CommitBody,
+    author: Option<Named>,
+    repository: MinimalRepository,
+}
+
+#[derive(Deserialize)]
+struct CommitBody {
+    author: Identity,
+}
+
+#[derive(Deserialize)]
+struct Identity {
+    email: String,
+}
+
+#[derive(Deserialize)]
+struct MinimalRepository {
+    full_name: String,
+    #[serde(default)]
+    private: bool,
+    owner: Owner,
+}
+
+#[derive(Deserialize)]
+struct Owner {
+    login: String,
+    #[serde(rename = "type")]
+    kind: String,
+}
+
+#[derive(Deserialize)]
+struct IssueItem {
+    html_url: String,
+    repository_url: String,
+    state: String,
     created_at: String,
-    pushed_at: Option<String>,
-    stargazer_count: u32,
-    fork_count: u32,
+    pull_request: Option<PullRequestLink>,
+}
+
+#[derive(Deserialize)]
+struct PullRequestLink {
+    merged_at: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct RepositoryItem {
+    full_name: String,
+    #[serde(default)]
+    private: bool,
+    owner: Owner,
+    #[serde(default)]
+    fork: bool,
+    #[serde(default)]
+    archived: bool,
+    #[serde(default)]
+    stargazers_count: u32,
+    #[serde(default)]
+    forks_count: u32,
+    #[serde(default)]
+    size: u32,
+    language: Option<String>,
+    #[serde(default)]
+    topics: Vec<String>,
     description: Option<String>,
-    license_info: Option<License>,
-    primary_language: Option<Named>,
-    owner: OwnerNode,
-    repository_topics: TopicNodes,
-    languages: Option<LanguageConnection>,
-    root: Option<TreeNode>,
-    github: Option<TreeNode>,
-    workflows: Option<TreeNode>,
-    cargo: Option<BlobNode>,
-    npm: Option<BlobNode>,
+    license: Option<License>,
+    default_branch: Option<String>,
+    pushed_at: Option<String>,
 }
 
-impl DetailNode {
-    fn into_primary(self) -> PrimaryRepository {
-        let names = |tree: Option<TreeNode>| -> Vec<(String, bool)> {
-            tree.and_then(|tree| tree.entries)
-                .map(|entries| {
-                    entries
-                        .into_iter()
-                        .map(|entry| (entry.name, entry.kind.as_deref() == Some("tree")))
-                        .collect()
-                })
-                .unwrap_or_default()
-        };
-        PrimaryRepository {
-            reference: RepositoryRef {
-                name_with_owner: self.name_with_owner,
-                owner_is_organization: self.owner.typename == "Organization",
-                owner_login: self.owner.login,
-                fork: self.is_fork,
-                stars: self.stargazer_count,
-                primary_language: self.primary_language.map(|language| language.name),
-            },
-            contributions: 0,
-            archived: self.is_archived,
-            template: self.is_template,
-            created_at: parse_time(&self.created_at),
-            pushed_at: self.pushed_at.as_deref().and_then(parse_time),
-            forks: self.fork_count,
-            has_description: self
-                .description
-                .is_some_and(|description| !description.trim().is_empty()),
-            license: self
-                .license_info
-                .and_then(|license| license.spdx_id)
-                .filter(|id| id != "NOASSERTION"),
-            topics: self
-                .repository_topics
-                .nodes
-                .into_iter()
-                .flatten()
-                .map(|node| node.topic.name)
-                .collect(),
-            languages: self
-                .languages
-                .map(|languages| {
-                    languages
-                        .edges
-                        .into_iter()
-                        .map(|edge| (edge.node.name, edge.size))
-                        .collect()
-                })
-                .unwrap_or_default(),
-            root: names(self.root),
-            github_dir: names(self.github)
-                .into_iter()
-                .map(|(name, _)| name)
-                .collect(),
-            workflows: u32::try_from(names(self.workflows).len()).unwrap_or(u32::MAX),
-            cargo_manifest: self.cargo.and_then(BlobNode::small_text),
-            npm_manifest: self.npm.and_then(BlobNode::small_text),
-        }
-    }
-}
-
-#[derive(Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
+#[derive(Deserialize)]
 struct License {
     spdx_id: Option<String>,
 }
 
-#[derive(Deserialize, Clone)]
-struct TopicNodes {
-    nodes: Vec<Option<TopicNode>>,
-}
-
-#[derive(Deserialize, Clone)]
-struct TopicNode {
-    topic: Named,
-}
-
-#[derive(Deserialize, Clone)]
-struct LanguageConnection {
-    edges: Vec<LanguageEdge>,
-}
-
-#[derive(Deserialize, Clone)]
-struct LanguageEdge {
-    size: u64,
-    node: Named,
-}
-
-#[derive(Deserialize, Clone)]
-struct TreeNode {
-    entries: Option<Vec<TreeEntry>>,
-}
-
-#[derive(Deserialize, Clone)]
-struct TreeEntry {
-    name: String,
-    #[serde(rename = "type")]
-    kind: Option<String>,
-}
-
-#[derive(Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
-struct BlobNode {
-    byte_size: Option<u64>,
-    text: Option<String>,
-}
-
-impl BlobNode {
-    /// Manifests over 256 KiB are generated or vendored; skip them.
-    fn small_text(self) -> Option<String> {
-        if self.byte_size.unwrap_or(0) <= 256 * 1024 {
-            self.text
-        } else {
-            None
+impl RepositoryItem {
+    fn into_meta(self) -> RepositoryMeta {
+        RepositoryMeta {
+            owner_is_organization: self.owner.kind == "Organization",
+            owner: self.owner.login,
+            full_name: self.full_name,
+            fork: self.fork,
+            archived: self.archived,
+            stars: self.stargazers_count,
+            forks: self.forks_count,
+            size_kib: self.size,
+            language: self.language,
+            topics: self.topics,
+            description: self
+                .description
+                .filter(|description| !description.trim().is_empty()),
+            license: self
+                .license
+                .and_then(|license| license.spdx_id)
+                .filter(|id| id != "NOASSERTION"),
+            default_branch: self.default_branch,
+            pushed_at: self.pushed_at.as_deref().and_then(parse_time),
         }
     }
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct HistoryRepository {
-    is_private: bool,
-    default_branch_ref: Option<HistoryBranch>,
-}
-
-#[derive(Deserialize)]
-struct HistoryBranch {
-    target: Option<HistoryTarget>,
-}
-
-#[derive(Deserialize)]
-struct HistoryTarget {
-    all: Option<Count>,
-    history: Option<AuthoredHistory>,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct AuthoredHistory {
-    total_count: u32,
-    nodes: Vec<Option<HistoryCommit>>,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct HistoryCommit {
-    oid: String,
-    authored_date: String,
-    committed_date: String,
-    additions: u32,
-    deletions: u32,
-    message_headline: String,
-    parents: Count,
-    signature: Option<Signature>,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct Signature {
-    is_valid: bool,
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::TimeZone;
 
-    fn commit(month: u32, lines: u32) -> CommitFact {
-        CommitFact {
-            repository: "a/b".into(),
-            oid: format!("{month}-{lines}"),
-            authored_at: Utc.with_ymd_and_hms(2026, month, 3, 12, 0, 0).unwrap(),
-            committed_at: Utc.with_ymd_and_hms(2026, month, 3, 12, 0, 0).unwrap(),
-            additions: lines,
-            deletions: 0,
-            headline: "change".into(),
-            parents: 1,
-            signed: false,
-        }
+    #[test]
+    fn windows_cover_the_last_year_and_every_calendar_year() {
+        let now = "2026-10-10T12:00:00Z".parse::<DateTime<Utc>>().unwrap();
+        let created = "2022-04-01T00:00:00Z".parse::<DateTime<Utc>>().ok();
+        let windows = windows(now, created);
+        let ranges = windows
+            .iter()
+            .map(|window| window.range.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            ranges,
+            [
+                "2026-07-12..2026-10-10",
+                "2026-04-12..2026-07-11",
+                "2026-01-11..2026-04-11",
+                "2025-10-11..2026-01-10",
+                "2026-01-01..2026-10-10",
+                "2025-01-01..2025-12-31",
+                "2024-01-01..2024-12-31",
+                "2023-01-01..2023-12-31",
+                "2022-01-01..2022-12-31",
+            ]
+        );
+        assert_eq!(windows[4].kind, WindowKind::Year(2026));
+        let old = "2010-01-01T00:00:00Z".parse::<DateTime<Utc>>().ok();
+        let windows = super::windows(now, old);
+        assert_eq!(windows.len(), 13);
+        assert_eq!(windows[11].range, "2019-01-01..2019-12-31");
+        assert_eq!(windows[12].range, "<2019-01-01");
+        assert_eq!(windows[12].kind, WindowKind::Earlier);
     }
 
     #[test]
-    fn timezone_samples_take_the_smallest_commit_of_recent_months() {
-        let commits = vec![commit(1, 50), commit(1, 3), commit(2, 9), commit(3, 1)];
-        let picked = timezone_targets(&commits, 2);
+    fn repository_batches_stay_under_the_query_limit() {
+        let names = (0..30)
+            .map(|index| format!("organization-name/repository-{index:02}"))
+            .collect::<Vec<_>>();
+        let batches = batches(&names);
+        assert!(batches.len() > 1);
+        assert!(batches.iter().all(|batch| batch.len() <= 240));
         assert_eq!(
-            picked.iter().map(|c| c.oid.as_str()).collect::<Vec<_>>(),
-            ["3-1", "2-9"]
+            batches
+                .iter()
+                .map(|batch| batch.matches("repo:").count())
+                .sum::<usize>(),
+            30
         );
     }
 
     #[test]
-    fn primary_targets_rank_contributions_then_owned_repositories() {
-        let reference = |name: &str| RepositoryRef {
-            name_with_owner: name.into(),
-            ..RepositoryRef::default()
-        };
-        let snapshot = Snapshot {
-            years: vec![YearFact {
-                year: 2026,
-                commit_repositories: vec![
-                    RepositoryContribution {
-                        repository: reference("org/small"),
-                        count: 2,
-                    },
-                    RepositoryContribution {
-                        repository: reference("org/main"),
-                        count: 40,
-                    },
-                ],
-                ..YearFact::default()
-            }],
-            owned: vec![
-                OwnedRepository {
-                    name_with_owner: "me/fork".into(),
-                    fork: true,
-                    ..OwnedRepository::default()
-                },
-                OwnedRepository {
-                    name_with_owner: "me/tool".into(),
-                    ..OwnedRepository::default()
-                },
-            ],
-            ..Snapshot::default()
-        };
-        assert_eq!(
-            primary_targets(&snapshot, 3),
-            ["org/main", "org/small", "me/tool"]
-        );
+    fn pull_request_states_and_repositories_come_from_search_items() {
+        let items = vec![
+            IssueItem {
+                html_url: "https://github.com/a/b/pull/1".into(),
+                repository_url: "https://api.github.com/repos/a/b".into(),
+                state: "closed".into(),
+                created_at: "2026-01-02T03:04:05Z".into(),
+                pull_request: Some(PullRequestLink {
+                    merged_at: Some("2026-01-03T00:00:00Z".into()),
+                }),
+            },
+            IssueItem {
+                html_url: "https://github.com/a/b/pull/2".into(),
+                repository_url: "https://api.github.com/repos/a/b".into(),
+                state: "open".into(),
+                created_at: "2026-01-02T03:04:05Z".into(),
+                pull_request: Some(PullRequestLink { merged_at: None }),
+            },
+        ];
+        let facts = pull_requests(items);
+        assert_eq!(facts[0].repository, "a/b");
+        assert_eq!(facts[0].owner, "a");
+        assert_eq!(facts[0].state, PullRequestState::Merged);
+        assert_eq!(facts[1].state, PullRequestState::Open);
     }
 }
