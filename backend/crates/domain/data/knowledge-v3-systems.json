@@ -327,7 +327,7 @@
       "id": "c-middle-3",
       "grade": "middle",
       "skillId": "c",
-      "prompt": "Как установить третий бит переменной reg?",
+      "prompt": "Как установить бит номер 3 (счёт с нуля) в переменной reg?",
       "options": [
         {
           "id": "c-middle-3-a",
