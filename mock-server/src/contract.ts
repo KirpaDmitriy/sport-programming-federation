@@ -183,7 +183,7 @@ export const schemas = {
   }),
   EstimateFactor: obj({ id: str(), label: str(), points: share, max: share, detail: str() }),
   ProfileEstimate: obj({
-    version: en('estimate-v1', 'estimate-v2', 'estimate-v3'),
+    version: en('estimate-v1', 'estimate-v2', 'estimate-v3', 'estimate-v4'),
     computedAt: dt,
     specialization: nullable(specialization),
     specializations: arr(obj({ id: specialization, percent: share })),
@@ -202,7 +202,9 @@ export const schemas = {
     sources: arr(provider, { uniqueItems: true }),
     insufficient: nullable(str()),
     notes: arr(str()),
-    review: nullable(obj({ specialization, grade, rationale: str(), agrees: bool })),
+    growth: arr(obj({ id: str(), title: str(), action: str(), points: share })),
+    focusSkills: arr(skillId),
+    review: nullable(obj({ specialization, grade, rationale: str(), agrees: bool, recommendations: arr(str()) })),
   }),
   EmployerEstimate: obj({
     score: share,
@@ -567,10 +569,11 @@ export const schemas = {
   SourceConnectInput: obj({ account: str({ minLength: 1, maxLength: 100 }) }),
   GraphNode: obj({
     id,
-    kind: en('role', 'skill', 'evidence'),
+    kind: en('role', 'concept', 'skill', 'source', 'evidence'),
     label: str(),
     skillId: nullable(skillId),
     status: nullable(skillStatus),
+    detail: nullable(str()),
   }),
   GraphEdge: obj({ id, from: id, to: id, relation: en('requires', 'supports', 'uses') }),
   Graph: obj({

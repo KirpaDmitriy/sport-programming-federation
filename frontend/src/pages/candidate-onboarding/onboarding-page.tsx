@@ -69,7 +69,7 @@ function FspSource({ source, consent }: { source: Source; consent: boolean }) {
         label="ФСП ID участника соревнований"
         placeholder="FSP-DEMO-024"
         submitLabel="Подключить ФСП"
-        hint="Демонстрационный сервис: FSP-DEMO-024 — командный результат, FSP-DEMO-031 — команда и личный зачёт."
+        hint="Демонстрационный сервис с вымышленными данными: FSP-DEMO-024 — командный результат, FSP-DEMO-031 — история побед в командном и личном зачёте."
       />
     ) : null;
   }

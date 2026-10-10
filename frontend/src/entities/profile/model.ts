@@ -18,7 +18,6 @@ export async function updateProfile(patch: ProfilePatch) {
   return requireData(await api.PATCH('/api/v1/me/profile', { body: patch }));
 }
 
-/** Recomputes the estimate from the connected sources and answers the questionnaire fields still automatic. */
 /** `keep` answers only the fields the candidate has not edited; `replace` rebuilds every answer but the name. */
 export type EstimateAnswers = 'keep' | 'replace';
 

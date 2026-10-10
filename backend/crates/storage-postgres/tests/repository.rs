@@ -401,12 +401,6 @@ impl fsp_application::LlmGateway for Reviewer {
     ) -> Result<fsp_domain::AssessmentHelpReply, fsp_application::IntegrationError> {
         unreachable!()
     }
-    async fn extract_graph(
-        &self,
-        _: &fsp_domain::GraphExtractionRequest,
-    ) -> Result<fsp_domain::ExtractedGraph, fsp_application::IntegrationError> {
-        unreachable!()
-    }
     async fn match_repository(
         &self,
         _: &fsp_domain::RepositoryMatchRequest,
@@ -426,6 +420,7 @@ impl fsp_application::LlmGateway for Reviewer {
             rationale: "Стабильная работа над собственными проектами".into(),
             experience: "Разрабатывает API на Rust и веб-интерфейсы на TypeScript.".into(),
             team_role: "Ведёт бэкенд-проекты".into(),
+            recommendations: vec!["Добавьте ревью чужого кода".into()],
         })
     }
 }
@@ -604,6 +599,19 @@ async fn connecting_github_builds_the_profile_and_an_estimated_category() {
         );
     }
     assert_ne!(rebuilt.experience_months, Some(5));
+
+    // An estimate of earlier rules updates itself the next time the candidate opens the profile.
+    let id = session.candidate_id.as_deref().unwrap();
+    let mut stored = repository.candidate(id).await.unwrap().unwrap();
+    if let Some(estimate) = stored.estimate.as_mut() {
+        estimate.version = "estimate-v3".into();
+        estimate.growth.clear();
+    }
+    repository.save_candidate(&stored).await.unwrap();
+    let opened = service.my_profile(&session).await.unwrap();
+    let estimate = opened.estimate.as_ref().unwrap();
+    assert_eq!(estimate.version, fsp_domain::ESTIMATE_VERSION);
+    assert!(!estimate.growth.is_empty());
 }
 
 #[tokio::test(flavor = "current_thread")]

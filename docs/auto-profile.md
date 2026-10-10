@@ -38,7 +38,7 @@ the mock; the frontend receives labels through the generated types and `/meta`.
 - GitHub detection maps its technologies and languages (including `.bsl`/`.os` 1C sources and 1C configuration
   dumps) to catalog skills, so evidence covers the whole catalog.
 
-## Estimate (`estimate-v3`)
+## Estimate (`estimate-v4`)
 
 A pure domain function turns the GitHub report, FSP results and the stated experience into an estimate:
 
@@ -82,6 +82,17 @@ A pure domain function turns the GitHub report, FSP results and the stated exper
 - Every factor carries points and an explanation shown to the candidate; employers see the grade, confidence and
   the source.
 
+### How to raise the grade (`estimate-v4`)
+
+Every estimate carries `growth`: the conditions that hold the grade back (tenure, work with people), then the GitHub
+factors with the most points left as concrete actions with the candidate's own numbers (for example, the shares of
+projects without tests or linters, approved pull requests and independent reviews), FSP results and, last, the
+optional test. `focusSkills` lists up to five catalog skills of the specialization the evidence does not show —
+general ones first, then frameworks of languages the candidate already uses, never another language. The review adds
+two to five personal recommendations. The UI shows them as «Как повысить грейд» and in «Следующий шаг» instead of
+pushing a test. FSP results together add at most 30 to the specialization scores, so a long competition history never
+outweighs the work.
+
 ### What public evidence cannot show
 
 No study validates a GitHub-to-seniority mapping: research predicts long-time contributors or identifies library
@@ -94,8 +105,10 @@ category, and confirmed candidates rank first.
 
 ### Answers the candidate owns
 
-The questionnaire takes experience as years and months. Editing the stated experience or team role recomputes the
-estimate at once. «Заполнить анкету по источникам» (`POST /me/profile/estimate?answers=replace`) hands every answer but an
+The questionnaire takes experience as years and months, and the estimate card asks only the two answers evidence
+cannot give — total experience and role — in «Уточните два ответа». Editing the stated experience or team role
+recomputes the estimate at once. Opening the profile refreshes an estimate of earlier rules (or a missing one with
+finished sources); «Пересчитать» also re-syncs FSP sources. «Заполнить анкету по источникам» (`POST /me/profile/estimate?answers=replace`) hands every answer but an
 edited name back to the evidence; stated experience then no longer counts until it is typed again. «Пересчитать»
 also re-analyzes a GitHub report from an earlier analysis version; the job applies the new estimate when it ends.
 
@@ -107,7 +120,10 @@ and stated tenure, FSP results — and grades it with a decomposed rubric (scope
 quality, influence, tenure) anchored per grade, as recommended for LLM judges
 ([calibrating LLM evaluators](https://kinde.com/learn/ai-for-software-engineering/best-practice/llm-as-a-judge-done-right-calibrating-guarding-debiasing-your-evaluators/)).
 It returns, validated against the catalog, a second opinion on specialization and grade with a rationale naming the
-deciding axes and the missing evidence, and the experience and team-role texts. The category stays deterministic:
+deciding axes and the missing evidence, growth recommendations, and the experience and team-role texts. The review
+runs in the background with `reasoning_effort` set by `BIFROST_REASONING_EFFORT` (default `high`; grok-4.7 on the
+stand accepts it and reasons longer), a 16k-token budget and up to four minutes; calls inside an HTTP request keep the
+model's default reasoning and the 45-second ceiling. The category stays deterministic:
 the LLM may only choose between close specializations, and a disagreement on the grade lowers the confidence one
 level and is shown. Without Bifrost the rule-based estimate and template texts work alone.
 
@@ -140,5 +156,8 @@ existing junior–senior structure for Rust, PostgreSQL, TypeScript and React.
 4. Estimate v3 (`feat/estimate-v3`): the scope dimension and level-framework weights, stated experience that never
    lowers evidence, notes, soft skills, rebuilding answers from sources, re-estimating on edited experience,
    re-analysis of outdated reports and the rubric review.
+5. Estimate v4 (`feat/growth-plan`): the growth plan, focus skills and review advice with deep reasoning, automatic
+   refresh of outdated estimates, FSP re-sync on recalculation, the short refine form, one-click rebuild and the
+   deterministic competence graph.
 
 Each phase goes through the usual gates and deployment; business rules, traceability and screenshots change with it.

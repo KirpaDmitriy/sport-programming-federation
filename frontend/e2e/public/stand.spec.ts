@@ -84,14 +84,18 @@ test('a new candidate and two companies complete the reverse-hiring flow', async
     .getByLabel(/Ваш ответ|Расшифровка ответа/)
     .fill('Сначала соберу логи и попробую воспроизвести проблему.');
   await candidate.getByRole('button', { name: 'Отправить ответ' }).click();
-  const interviews = await (await candidate.request.get('/api/v1/me/interviews')).json();
-  expect(interviews.items[0].currentQuestion.nodeId).toBe('backend.unique-operation');
+  // The stand evaluates the answer with a real model, which takes seconds: wait until the interview moves on.
+  const currentNode = async () =>
+    (await (await candidate.request.get('/api/v1/me/interviews')).json()).items[0].currentQuestion?.nodeId;
+  await expect.poll(currentNode, { timeout: 120_000 }).not.toBe('backend.idempotency');
+  expect(await currentNode()).toBe('backend.unique-operation');
   await candidate.reload();
   await expect(candidate.getByLabel(/Ваш ответ|Расшифровка ответа/)).toBeVisible();
   const profile = await (await candidate.request.get('/api/v1/me/profile')).json();
   const alias: string = profile.alias;
   const candidateId: string = profile.id;
 
+  await candidate.goto('/candidate/overview');
   const downloadPromise = candidate.waitForEvent('download');
   await candidate.getByRole('button', { name: 'Скачать PDF' }).click();
   const download = await downloadPromise;

@@ -23,7 +23,13 @@ const estimated = (overrides: Partial<Profile> = {}): Profile =>
     gradeConfirmedAt: null,
     estimate: {
       ...github,
-      review: { specialization: 'backend', grade: 'middle', rationale: 'Мало ревью чужого кода.', agrees: false },
+      review: {
+        specialization: 'backend',
+        grade: 'middle',
+        rationale: 'Мало ревью чужого кода.',
+        agrees: false,
+        recommendations: ['Ревьюйте чужие изменения в открытых проектах'],
+      },
     },
     category: { specialization: 'backend', grade: 'senior', eligible: true, source: 'estimate', confidence: 'medium' },
     ...overrides,
@@ -37,14 +43,38 @@ describe('profile estimate card', () => {
     });
     expect(screen.getByText('Бэкенд · Сеньор · оценка, средняя уверенность')).toBeTruthy();
     expect(screen.getByText(`Балл уровня ${github.score} из 100`)).toBeTruthy();
-    for (const factor of github.factors) expect(screen.getByText(factor.label)).toBeTruthy();
+    for (const factor of github.factors) expect(screen.getAllByText(factor.label).length).toBeGreaterThan(0);
     expect(screen.getByText(/Оценивает грейд как «Мидл», поэтому уверенность снижена/)).toBeTruthy();
-    expect(screen.getByRole('link', { name: /Подтвердить тестом/ })).toBeTruthy();
+    expect(screen.getByRole('link', { name: /Пройти тест/ })).toBeTruthy();
     // The notes say why the grade is what it is and what the next one needs.
     for (const note of github.notes) expect(screen.getByText(note)).toBeTruthy();
+    // The growth plan: rule-based steps with points, skills to work on and the AI's advice.
+    for (const step of github.growth.filter((item) => item.id !== 'assessment'))
+      expect(screen.getByText(step.action)).toBeTruthy();
+    expect(screen.getByRole('list', { name: 'Навыки для развития' })).toBeTruthy();
+    expect(screen.getByText('Ревьюйте чужие изменения в открытых проектах')).toBeTruthy();
   });
 
-  it('rebuilds every answer from the sources after a confirmation', async () => {
+  it('re-estimates with the two answers evidence cannot give', async () => {
+    let patch: unknown = null;
+    server.use(
+      http.patch(`${API}/api/v1/me/profile`, async ({ request }) => {
+        patch = await request.json();
+        return HttpResponse.json(estimated());
+      }),
+    );
+    await renderWithProviders(<ProfileEstimateCard profile={estimated({ experienceMonths: 21 })} canEstimate />, {
+      session: candidateSession,
+      prefill,
+    });
+    fireEvent.change(screen.getByLabelText('Общий стаж, лет'), { target: { value: '6' } });
+    fireEvent.change(screen.getByLabelText('Ещё месяцев'), { target: { value: '0' } });
+    fireEvent.change(screen.getByLabelText('Роль в команде'), { target: { value: 'Тимлид' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Пересчитать с уточнениями' }));
+    await waitFor(() => expect(patch).toEqual({ experienceMonths: 72, teamRole: 'Тимлид' }));
+  });
+
+  it('rebuilds every answer from the sources in one click', async () => {
     const rebuilt = estimated();
     let mode: string | null = null;
     server.use(
@@ -57,9 +87,8 @@ describe('profile estimate card', () => {
       session: candidateSession,
       prefill,
     });
+    // One click, no confirmation: edited answers come back from the sources.
     fireEvent.click(screen.getByRole('button', { name: 'Заполнить анкету по источникам' }));
-    expect(screen.getByText(/Имя останется вашим/)).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Заполнить' }));
     await waitFor(() => expect(mode).toBe('replace'));
     await waitFor(() => expect(queryClient.getQueryData(profileKey(scopeOf(candidateSession)))).toEqual(rebuilt));
   });

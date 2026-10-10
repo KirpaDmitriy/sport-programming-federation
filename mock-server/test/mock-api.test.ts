@@ -481,6 +481,15 @@ test('source enrichment is automatic, asynchronous, private and never infers gra
   });
   const graph = (await request('GET', '/api/v1/me/graph', { actor: candidate })).body;
   assertGraph(graph);
+  // Category → concepts → technologies with levels; GitHub and FSP as sources.
+  const kinds = (kind: string) => graph.nodes.filter((node: Body) => node.kind === kind);
+  assert.equal(kinds('role').length, 1);
+  assert.ok(kinds('concept').length > 0);
+  assert.ok(kinds('skill').every((node: Body) => node.detail));
+  const sourceIds = kinds('source').map((node: Body) => node.id);
+  assert.ok(sourceIds.includes('source-github') && sourceIds.includes('source-fsp'), sourceIds.join());
+  for (const skill of kinds('skill'))
+    assert.ok(graph.edges.some((edge: Body) => edge.to === skill.id && edge.from.startsWith('concept-')));
   const skills = (await request('GET', '/api/v1/me/skills', { actor: candidate })).body.items;
   assert.ok(skills.some((skill: Body) => skill.evidence.some((evidence: Body) => evidence.reference === 'PR #17')));
   assert.equal((await request('GET', '/api/v1/me/profile', { actor: candidate })).body.verifiedGrade, 'junior');
@@ -921,9 +930,13 @@ test('connecting GitHub builds the profile and an estimated category; edited ans
   assert.equal(profile.selectedGrade, 'middle');
   assert.equal(profile.stack.length, 12);
   assert.equal(profile.experienceMonths, 45);
-  assert.equal(profile.estimate.version, 'estimate-v3');
+  assert.equal(profile.estimate.version, 'estimate-v4');
   assert.ok(profile.softSkills.length > 0);
   assert.ok(profile.estimate.notes.length > 0);
+  // The growth plan names concrete steps; focus skills are catalog skills the evidence lacks.
+  assert.ok(profile.estimate.growth.some((step: Body) => step.id === 'github_scope' && step.points > 0));
+  assert.equal(profile.estimate.growth.at(-1).id, 'assessment');
+  assert.ok(profile.estimate.focusSkills.length > 0);
   assert.deepEqual([...profile.autoFields].sort(), [
     'experience',
     'experienceMonths',
