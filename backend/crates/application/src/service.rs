@@ -89,6 +89,8 @@ pub struct PlatformService {
     interviews: Option<Arc<dyn InterviewGateway>>,
     grade_cooldown_days: u16,
     auth_key: Option<Vec<u8>>,
+    /// Candidates with a profile review running, and whether a newer estimate awaits one.
+    reviews: Arc<std::sync::Mutex<std::collections::HashMap<String, bool>>>,
 }
 
 impl PlatformService {
@@ -107,6 +109,7 @@ impl PlatformService {
             interviews: None,
             grade_cooldown_days: 90,
             auth_key: None,
+            reviews: Arc::default(),
         }
     }
 
