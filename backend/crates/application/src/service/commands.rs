@@ -354,10 +354,7 @@ impl Commands {
                 "Подтвердите почту и заполните анкету",
             ));
         }
-        if input.specialization == Specialization::Fullstack
-            || (input.specialization == Specialization::Frontend
-                && input.grade == fsp_domain::Grade::Senior)
-        {
+        if !fsp_domain::knowledge_available(input.specialization, input.grade) {
             return Err(ApplicationError::new(
                 422,
                 "assessment_scope_unavailable",

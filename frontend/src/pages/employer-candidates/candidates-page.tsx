@@ -15,7 +15,15 @@ import { useScope } from '@/entities/session';
 import { shortlistsQuery } from '@/entities/shortlist';
 import { BookmarkButton, useShortlistMembership } from '@/features/shortlist-membership';
 import { isApiError } from '@/shared/api';
-import { gradeLabel, gradeOrder, specializationLabel, specializationOrder, useDocumentTitle } from '@/shared/lib';
+import {
+  gradeLabel,
+  gradeOrder,
+  skillOptions,
+  specializationLabel,
+  specializationOptions,
+  type specializationOrder,
+  useDocumentTitle,
+} from '@/shared/lib';
 import {
   Button,
   ButtonLink,
@@ -178,10 +186,7 @@ export function EmployerCandidatesPage({ search, onSearchChange }: Props) {
             label="Специализация"
             value={search.specialization ?? ''}
             onValueChange={(value) => onSearchChange({ specialization: value || undefined, page: undefined })}
-            options={[
-              { value: '', label: 'Любая' },
-              ...specializationOrder.map((value) => ({ value, label: specializationLabel[value] })),
-            ]}
+            options={[{ value: '', label: 'Любая' }, ...specializationOptions]}
           />
           <SelectField
             id="filter-grade"
@@ -200,10 +205,7 @@ export function EmployerCandidatesPage({ search, onSearchChange }: Props) {
             onValueChange={(value) =>
               onSearchChange({ skill: (value || undefined) as SkillId | undefined, page: undefined })
             }
-            options={[
-              { value: '', label: 'Любой' },
-              ...meta.skills.map((skill) => ({ value: skill.id, label: skill.label })),
-            ]}
+            options={[{ value: '', label: 'Любой' }, ...skillOptions]}
           />
           <SelectField
             id="filter-fsp"

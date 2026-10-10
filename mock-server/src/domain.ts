@@ -1,3 +1,11 @@
+import {
+  CATALOG_VERSION,
+  GRADE_ORDER,
+  GRADES,
+  SKILL_CATEGORIES,
+  SPECIALIZATIONS,
+  specializationShort,
+} from './catalog.ts';
 import type { OperationId, Route } from './contract.ts';
 import {
   type Actor,
@@ -33,7 +41,13 @@ import {
   githubSource,
   parseGitHubLogin,
 } from './github-fixture.ts';
-import { knowledgeCompletion, knowledgeTask, scoreKnowledge, validKnowledgeAnswer } from './knowledge.ts';
+import {
+  knowledgeCompletion,
+  knowledgeScopes,
+  knowledgeTask,
+  scoreKnowledge,
+  validKnowledgeAnswer,
+} from './knowledge.ts';
 
 type Schemas = components['schemas'];
 
@@ -63,7 +77,7 @@ const must = <T>(value: T | null | undefined, what: string): T => {
   if (value === null || value === undefined) throw new Error(`Inconsistent mock state: ${what}`);
   return value;
 };
-const rank: Record<Grade, number> = { junior: 1, middle: 2, senior: 3 };
+const rank = Object.fromEntries(GRADE_ORDER.map((grade, index) => [grade, index])) as Record<Grade, number>;
 // A missing grade compares as NaN, so every comparison with it is false.
 const rankOf = (grade: Grade | null | undefined) => (grade ? rank[grade] : Number.NaN);
 const activeAssessment = new Set<AssessmentRecord['status']>(['draft', 'in_progress', 'submitted', 'evaluating']);
@@ -373,13 +387,12 @@ function githubProjection(candidate: Candidate): Schemas['GitHubSignal'] | null 
   const github = candidate.sources.find((source) => source.provider === 'github')?.github;
   return github?.report ? githubSignal(github.report, github.ownership.verified) : null;
 }
-const roleLabels = { backend: 'Бэкенд', frontend: 'Фронтенд', fullstack: 'Фулстек' } as const;
 function graph(candidate: Candidate, audience: Schemas['Graph']['audience']): Schemas['Graph'] {
   const nodes: Schemas['GraphNode'][] = [
     {
       id: 'role-main',
       kind: 'role',
-      label: roleLabels[candidate.verifiedSpecialization ?? candidate.specialization],
+      label: specializationShort(candidate.verifiedSpecialization ?? candidate.specialization),
       skillId: null,
       status: null,
     },
@@ -957,12 +970,13 @@ const handlers: Handlers = {
       sameGradeRetryCooldownDays: 0,
       aiAllowed: true,
       externalAiAllowed: true,
-      supportedScopes: [
-        { specialization: 'backend', grades: ['junior', 'middle', 'senior'] },
-        { specialization: 'frontend', grades: ['junior', 'middle'] },
-      ],
+      supportedScopes: knowledgeScopes(),
     },
     competitions: COMPETITIONS,
+    catalogVersion: CATALOG_VERSION,
+    grades: GRADES,
+    specializations: SPECIALIZATIONS,
+    skillCategories: SKILL_CATEGORIES,
     skills: SKILLS,
   }),
   createEmailChallenge: ({ s, body }) => {

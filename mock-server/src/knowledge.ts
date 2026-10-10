@@ -1,5 +1,6 @@
 import legacy from '../../backend/crates/domain/data/knowledge-v1.json';
 import additions from '../../backend/crates/domain/data/knowledge-v2-additions.json';
+import { GRADE_ORDER, SPECIALIZATIONS, testTopics } from './catalog.ts';
 import type { components } from './generated/schema.d.ts';
 
 type Schemas = components['schemas'];
@@ -19,18 +20,7 @@ type BankQuestion = {
   explanation: string;
   source: string;
 };
-type TopicPair = readonly [readonly [SkillId, string], readonly [SkillId, string]];
-
-const topics: Partial<Record<Specialization, TopicPair>> = {
-  backend: [
-    ['rust', 'Rust'],
-    ['postgresql', 'PostgreSQL'],
-  ],
-  frontend: [
-    ['typescript', 'TypeScript'],
-    ['react', 'React'],
-  ],
-};
+const topics = (specialization: Specialization) => testTopics(specialization);
 
 const bank: BankQuestion[] = [
   ...legacy.questions.map((question) => ({
@@ -53,9 +43,16 @@ function stableHash(value: string): number {
   return hash >>> 0;
 }
 
+/** Specializations and grades the bank can test: five questions for each of the two topics. */
+export function knowledgeScopes(): { specialization: Specialization; grades: Grade[] }[] {
+  return SPECIALIZATIONS.map((item) => ({
+    specialization: item.id,
+    grades: GRADE_ORDER.filter((grade) => knowledgeTask(item.id, grade, 'availability') !== null),
+  })).filter((scope) => scope.grades.length > 0);
+}
+
 export function knowledgeTask(specialization: Specialization, grade: Grade, variantKey: string): Task | null {
-  const selectedTopics = topics[specialization];
-  if (!selectedTopics) return null;
+  const selectedTopics = topics(specialization);
   const questions = selectedTopics.flatMap(([skillId]) =>
     bank
       .filter(
@@ -70,7 +67,7 @@ export function knowledgeTask(specialization: Specialization, grade: Grade, vari
   );
   if (questions.length !== 10) return null;
   const fingerprint = questions.map((question) => question.id).join('.');
-  const specializationTitle = specialization === 'backend' ? 'Rust и PostgreSQL' : 'TypeScript и React';
+  const specializationTitle = `${selectedTopics[0][1]} и ${selectedTopics[1][1]}`;
   return {
     id: `knowledge-${specialization}-${grade}-knowledge-v2`,
     family: `${specialization}-knowledge`,
@@ -79,7 +76,7 @@ export function knowledgeTask(specialization: Specialization, grade: Grade, vari
     title: `Тест знаний: ${specializationTitle}`,
     prompt:
       'Выберите один ответ в каждом из 10 вопросов. Для зачёта нужны минимум 8 верных ответов из 10 и минимум 3 из 5 по каждой теме. ИИ и справочники разрешены. Результат показывает знания по этому тесту, а не опыт написания кода.',
-    language: specialization === 'backend' ? 'backend' : 'frontend',
+    language: specialization,
     starterCode: '',
     execution: 'questionnaire',
     aiAllowed: true,
@@ -127,13 +124,8 @@ export function knowledgeCompletion(task: Task, answer: Answer): Schemas['Check'
 }
 
 export function scoreKnowledge(specialization: Specialization, grade: Grade, task: Task, answer: Answer) {
-  const selectedTopics = topics[specialization];
-  if (
-    !selectedTopics ||
-    task.version !== 'knowledge-v2' ||
-    !validKnowledgeAnswer(task, answer) ||
-    answer.responses?.length !== 10
-  )
+  const selectedTopics = topics(specialization);
+  if (task.version !== 'knowledge-v2' || !validKnowledgeAnswer(task, answer) || answer.responses?.length !== 10)
     return null;
   const selected = new Set(task.questions?.map((question) => question.id));
   const questions = bank.filter(
