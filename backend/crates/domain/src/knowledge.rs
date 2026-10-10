@@ -35,8 +35,9 @@ pub struct KnowledgeResponse {
 struct BankQuestion {
     #[serde(flatten)]
     question: KnowledgeQuestion,
-    #[serde(default = "backend_specialization")]
-    specialization: crate::Specialization,
+    /// `None` in the topic banks: the question serves every specialization tested on its topic.
+    #[serde(default)]
+    specialization: Option<crate::Specialization>,
     grade: Grade,
     correct_option_id: String,
     explanation: String,
@@ -49,10 +50,6 @@ struct Bank {
     questions: Vec<BankQuestion>,
 }
 
-fn backend_specialization() -> crate::Specialization {
-    crate::Specialization::Backend
-}
-
 static BANK: LazyLock<Bank> = LazyLock::new(|| {
     serde_json::from_str(include_str!("../data/knowledge-v1.json"))
         .expect("versioned knowledge bank must be valid")
@@ -62,6 +59,46 @@ static V2_ADDITIONS: LazyLock<Bank> = LazyLock::new(|| {
     serde_json::from_str(include_str!("../data/knowledge-v2-additions.json"))
         .expect("knowledge-v2 additions must be valid")
 });
+
+/// Topic banks: questions per catalog skill and grade, shared by the specializations tested on them.
+static TOPIC_BANKS: LazyLock<Vec<Bank>> = LazyLock::new(|| {
+    [
+        include_str!("../data/knowledge-v3-data.json"),
+        include_str!("../data/knowledge-v3-enterprise.json"),
+        include_str!("../data/knowledge-v3-infrastructure.json"),
+        include_str!("../data/knowledge-v3-mobile.json"),
+        include_str!("../data/knowledge-v3-product.json"),
+        include_str!("../data/knowledge-v3-quality.json"),
+        include_str!("../data/knowledge-v3-systems.json"),
+        include_str!("../data/knowledge-v3-web.json"),
+    ]
+    .into_iter()
+    .map(|text| serde_json::from_str(text).expect("knowledge topic banks must be valid"))
+    .collect()
+});
+
+/// Questions a test of this specialization and grade may draw from. The first bank has no
+/// specialization field and belongs to backend; topic-bank questions belong to their topic.
+fn question_pool(
+    specialization: crate::Specialization,
+    grade: Grade,
+) -> impl Iterator<Item = &'static BankQuestion> {
+    BANK.questions
+        .iter()
+        .chain(V2_ADDITIONS.questions.iter())
+        .filter(move |item| {
+            item.specialization
+                .unwrap_or(crate::Specialization::Backend)
+                == specialization
+        })
+        .chain(
+            TOPIC_BANKS
+                .iter()
+                .flat_map(|bank| bank.questions.iter())
+                .filter(|item| item.specialization.is_none()),
+        )
+        .filter(move |item| item.grade == grade)
+}
 
 const V2_VERSION: &str = "knowledge-v2";
 
@@ -88,15 +125,8 @@ fn v2_questions(
     let topics = topics(specialization);
     let mut selected = Vec::with_capacity(10);
     for (topic_id, _) in topics {
-        let mut questions = BANK
-            .questions
-            .iter()
-            .chain(V2_ADDITIONS.questions.iter())
-            .filter(|item| {
-                item.specialization == specialization
-                    && item.grade == grade
-                    && item.question.skill_id == topic_id
-            })
+        let mut questions = question_pool(specialization, grade)
+            .filter(|item| item.question.skill_id == topic_id)
             .collect::<Vec<_>>();
         questions.sort_by_key(|item| {
             stable_hash(&format!("{variant_key}:{topic_id}:{}", item.question.id))
@@ -273,15 +303,8 @@ pub fn score_knowledge(
             .iter()
             .map(|question| question.id.as_str())
             .collect::<HashSet<_>>();
-        let bank_questions = BANK
-            .questions
-            .iter()
-            .chain(V2_ADDITIONS.questions.iter())
-            .filter(|item| {
-                item.specialization == specialization
-                    && item.grade == grade
-                    && selected.contains(item.question.id.as_str())
-            })
+        let bank_questions = question_pool(specialization, grade)
+            .filter(|item| selected.contains(item.question.id.as_str()))
             .collect::<Vec<_>>();
         if bank_questions.len() != 10
             || topic_list.iter().any(|(topic, _)| {
@@ -482,22 +505,82 @@ mod tests {
                     && !wire.contains("https://")
             );
         }
-        assert!(
-            knowledge_task(
-                crate::Specialization::Frontend,
-                Grade::Senior,
-                "candidate-a"
-            )
-            .is_none()
-        );
-        assert!(
-            knowledge_task(
-                crate::Specialization::Fullstack,
-                Grade::Junior,
-                "candidate-a"
-            )
-            .is_none()
-        );
+        // Every catalog specialization is testable at every grade.
+        assert_eq!(knowledge_scopes().len(), crate::Specialization::ALL.len());
+        for (_, grades) in knowledge_scopes() {
+            assert_eq!(grades, Grade::ALL);
+        }
+    }
+
+    fn bank_question(id: &str) -> &'static BankQuestion {
+        BANK.questions
+            .iter()
+            .chain(V2_ADDITIONS.questions.iter())
+            .chain(TOPIC_BANKS.iter().flat_map(|bank| bank.questions.iter()))
+            .find(|item| item.question.id == id)
+            .unwrap()
+    }
+
+    #[test]
+    fn topic_banks_are_complete_consistent_and_not_guessable_by_length() {
+        let mut ids = HashSet::new();
+        let mut longest = 0;
+        let mut total = 0;
+        let mut counts = std::collections::BTreeMap::<(&str, Grade), usize>::new();
+        let topics = crate::catalog::catalog()
+            .specializations
+            .iter()
+            .flat_map(|item| item.test_topics.iter().map(String::as_str))
+            .collect::<HashSet<_>>();
+        for item in BANK
+            .questions
+            .iter()
+            .chain(V2_ADDITIONS.questions.iter())
+            .chain(TOPIC_BANKS.iter().flat_map(|bank| bank.questions.iter()))
+        {
+            assert!(
+                ids.insert(item.question.id.as_str()),
+                "{}",
+                item.question.id
+            );
+            assert_eq!(item.question.options.len(), 3, "{}", item.question.id);
+            let correct = item
+                .question
+                .options
+                .iter()
+                .filter(|option| option.id == item.correct_option_id)
+                .collect::<Vec<_>>();
+            assert_eq!(correct.len(), 1, "{}", item.question.id);
+            assert!(!item.explanation.is_empty() && item.source.starts_with("https://"));
+            assert!(topics.contains(item.question.skill_id.as_str()));
+            *counts
+                .entry((item.question.skill_id.as_str(), item.grade))
+                .or_default() += 1;
+            if item.specialization.is_none() {
+                total += 1;
+                let correct_length = correct[0].label.chars().count();
+                if item
+                    .question
+                    .options
+                    .iter()
+                    .filter(|option| option.id != item.correct_option_id)
+                    .all(|option| option.label.chars().count() < correct_length)
+                {
+                    longest += 1;
+                }
+            }
+        }
+        for topic in &topics {
+            for grade in Grade::ALL {
+                assert!(
+                    counts.get(&(*topic, grade)).copied().unwrap_or(0) >= 6,
+                    "{topic} {}",
+                    grade.as_str()
+                );
+            }
+        }
+        // Picking the longest option must not pass the test: at most half of the answers are longest.
+        assert!(longest * 2 <= total, "{longest} of {total}");
     }
 
     #[test]
@@ -505,18 +588,16 @@ mod tests {
         for (specialization, grade) in [
             (crate::Specialization::Backend, Grade::Senior),
             (crate::Specialization::Frontend, Grade::Middle),
+            (crate::Specialization::Onec, Grade::Middle),
+            (crate::Specialization::Dba, Grade::Lead),
+            (crate::Specialization::DataAnalytics, Grade::Intern),
         ] {
             let task = knowledge_task(specialization, grade, "scoring-test").unwrap();
             let responses = task
                 .questions
                 .iter()
                 .map(|question| {
-                    let bank_question = BANK
-                        .questions
-                        .iter()
-                        .chain(V2_ADDITIONS.questions.iter())
-                        .find(|item| item.question.id == question.id)
-                        .unwrap();
+                    let bank_question = bank_question(&question.id);
                     KnowledgeResponse {
                         question_id: question.id.clone(),
                         option_id: bank_question.correct_option_id.clone(),
