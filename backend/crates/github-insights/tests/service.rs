@@ -276,7 +276,10 @@ async fn an_account_is_analyzed_in_the_background_from_public_data() {
     assert_eq!(done["ownershipCodeFound"], true);
     let report = &done["report"];
     assert_eq!(report["login"], "Dev");
-    assert_eq!(report["algorithmVersion"], "github-insights-v2");
+    assert_eq!(
+        report["algorithmVersion"],
+        fsp_domain::GITHUB_INSIGHTS_VERSION
+    );
     assert_eq!(report["coverage"]["repositoriesAnalyzed"], 2);
     let repositories = report["repositories"].as_array().unwrap();
     let tool = repositories

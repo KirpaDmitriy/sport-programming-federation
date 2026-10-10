@@ -38,34 +38,78 @@ the mock; the frontend receives labels through the generated types and `/meta`.
 - GitHub detection maps its technologies and languages (including `.bsl`/`.os` 1C sources and 1C configuration
   dumps) to catalog skills, so evidence covers the whole catalog.
 
-## Estimate (`estimate-v2`)
+## Estimate (`estimate-v3`)
 
-A pure domain function turns the GitHub report, FSP results and optional imported experience into an estimate:
+A pure domain function turns the GitHub report, FSP results and the stated experience into an estimate:
 
 - **Specialization:** shares from the candidate's own changed files by area and from the stack each specialization
   indicates; fullstack when backend and frontend both carry substantial shares. When the top two are close, the
-  LLM review may choose between them.
-- **Seniority score (0–100) → grade:** saturating, documented factors — sustained years of public work, led and
-  maintained projects and own organizations, engineering practices, accepted work in independent projects and
-  reviews of others, breadth and depth of the stack, consistency and volume (capped so volume alone never reaches
-  senior), and FSP results (finals, places, individual versus team). Bands: < 20 intern, 20–39 junior, 40–59 middle,
-  60–79 senior, ≥ 80 lead. Senior needs 24 months of public work or stated experience and lead 48, counted in
-  months (`estimate-v2`; `estimate-v1` counted calendar years, so thirteen months across a new year passed as two).
+  LLM review may choose between them. The candidate may pick any of the leading specializations shown; the
+  category then uses that choice. Outside them the estimate's leader stands.
+- **Seniority score (0–100) → grade.** The factors follow the axes engineering level frameworks rank by: scope and
+  complexity, tenure, ownership, technical quality, influence and impact
+  ([levels.fyi framework](https://www.levels.fyi/blog/swe-level-framework.html),
+  [Monzo progression framework](https://monzo.com/documents/engineering-progression-framework-v4-0.pdf),
+  [Staff Engineer archetypes](https://lethain.com/static/blog/staffeng/staffeng-2020-12-16.pdf)). Weights of the
+  GitHub dimensions: scope and complexity 20, tenure 15, own projects 15, engineering practices 15, collaboration 15,
+  recognition 10, engagement 5, regularity 5. Volume and rhythm together stay at a tenth: they show sustained
+  practice, not level. FSP results add up to 15 (doubled when they are the only evidence). Bands: < 20 intern,
+  20–39 junior, 40–59 middle, 60–79 senior, ≥ 80 lead.
+- **Scope and complexity** (GitHub dimension `scope`, `github-insights-v3`): own projects developed for half a year or
+  longer, engineering areas with at least a 15% share, system layers used in two or more projects, and projects with
+  architecture decisions, API contracts or schema migrations.
+- **Tenure.** Senior needs 24 months of experience and lead 48, counted in months. Public months run from the first
+  analyzed commit or the first year with ten active days. Stated experience never lowers the evidence: it may stand
+  in for the tenure dimension when it is longer than the public record (full at six years) and lifts the caps, but a
+  grade that only stated experience unlocks keeps the confidence at medium until a test. Without GitHub, stated
+  experience alone gives up to 30 points. (`estimate-v2` blended stated experience into the score, so five months
+  typed for five years cut a strong profile by about twenty points.)
+- **Lead means leading people.** The catalog defines лид as «ведёт направление и людей, определяет технические
+  решения». Scope shows the direction; working with people needs confirmed public collaboration (the collaboration
+  dimension at 50 or more, where the report calls it confirmed) or a leading team role the candidate states
+  (тимлид, руководитель, архитектор, head, principal, staff…). Otherwise a lead-band score gives сеньор. A lead
+  grade that only the stated role unlocks keeps the confidence at medium.
+- **Notes** say in plain words why the grade is what it is: which cap applied and what removes it, that tenure came
+  from the questionnaire, that lead needs work with people, that the GitHub report is from an earlier analysis
+  version, and how many points the next band needs with the two factors that have the most points left.
 - **Confidence** follows the amount and coverage of evidence; with too little public data the estimate says so and
-  gives no category until a test or more evidence.
+  gives no category until a test or more evidence. An outdated GitHub report lowers it one level.
 - **Profile answers:** industry IT, specialization, target grade = estimated grade, stack (top evidenced catalog
-  skills), experience text and duration of public work, team role from ownership and collaboration, name from the
-  public GitHub profile when the candidate has none.
+  skills), experience text and duration (the longer of public and stated), team role from ownership and
+  collaboration, soft skills with public evidence behind them (documentation, descriptive commits, led projects,
+  several related projects, reviews, accepted outside contributions, issues, team competitions), and the name from
+  the public GitHub profile when the candidate has none.
 - Every factor carries points and an explanation shown to the candidate; employers see the grade, confidence and
   the source.
 
+### What public evidence cannot show
+
+No study validates a GitHub-to-seniority mapping: research predicts long-time contributors or identifies library
+experts with modest precision ([Montandon et al., MSR 2019](https://ar5iv.arxiv.org/html/1903.08113);
+[Bao et al., TSE](https://xin-xia.github.io/publication/tse191.pdf)). Staff-level work — direction across teams,
+mentoring, organizational influence — rarely leaves public traces, and private repositories are invisible without
+the account owner's authorization (GitHub OAuth is deferred; the profile page's calendar is not scraped). The
+estimate therefore states its limits and stays an estimate: the knowledge test for the target grade confirms the
+category, and confirmed candidates rank first.
+
+### Answers the candidate owns
+
+The questionnaire takes experience as years and months. Editing the stated experience or team role recomputes the
+estimate at once. «Заполнить анкету по источникам» (`POST /me/profile/estimate?answers=replace`) hands every answer but an
+edited name back to the evidence; stated experience then no longer counts until it is typed again. «Пересчитать»
+also re-analyzes a GitHub report from an earlier analysis version; the job applies the new estimate when it ends.
+
 ### LLM assistance
 
-Bifrost (Grok) receives the anonymized evidence (portrait, factors, project descriptions, FSP results) and returns,
-validated against the catalog: a second opinion on specialization and grade with a short rationale, and the
-experience and team-role texts. The category stays deterministic: the LLM may only choose between close
-specializations, and a disagreement on the grade lowers the confidence one level and is shown. Without Bifrost the
-rule-based estimate and template texts work alone.
+Bifrost (Grok) receives the anonymized evidence — the portrait, engineering areas, technologies by layer, led
+projects (descriptions without the login, names or organizations), every report metric, factors and notes, public
+and stated tenure, FSP results — and grades it with a decomposed rubric (scope, complexity, ownership, technical
+quality, influence, tenure) anchored per grade, as recommended for LLM judges
+([calibrating LLM evaluators](https://kinde.com/learn/ai-for-software-engineering/best-practice/llm-as-a-judge-done-right-calibrating-guarding-debiasing-your-evaluators/)).
+It returns, validated against the catalog, a second opinion on specialization and grade with a rationale naming the
+deciding axes and the missing evidence, and the experience and team-role texts. The category stays deterministic:
+the LLM may only choose between close specializations, and a disagreement on the grade lowers the confidence one
+level and is shown. Without Bifrost the rule-based estimate and template texts work alone.
 
 ## Category and search
 
@@ -93,5 +137,8 @@ existing junior–senior structure for Rust, PostgreSQL, TypeScript and React.
    applies the rules at once; the LLM review runs in the background after commit (live Grok answers took over 20
    seconds) and joins the estimate only if it is unchanged. The mock serves Rust-generated golden estimates.
 3. Question banks for every specialization and grade. Delivered on `feat/knowledge-banks`.
+4. Estimate v3 (`feat/estimate-v3`): the scope dimension and level-framework weights, stated experience that never
+   lowers evidence, notes, soft skills, rebuilding answers from sources, re-estimating on edited experience,
+   re-analysis of outdated reports and the rubric review.
 
 Each phase goes through the usual gates and deployment; business rules, traceability and screenshots change with it.

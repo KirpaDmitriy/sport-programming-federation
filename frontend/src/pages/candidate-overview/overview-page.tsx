@@ -222,7 +222,7 @@ export function CandidateOverviewPage() {
             <Avatar kind="initials" text={initials(profile.name)} size="lg" />
             <div className={styles.identityText}>
               <h2 className={styles.name}>{profile.name}</h2>
-              <p className="muted">{roleTitle[profile.specialization]}</p>
+              <p className="muted">{roleTitle[profile.category.specialization ?? profile.specialization]}</p>
               <div className="row">
                 <CategoryBadge {...profile.category} />
                 {showTarget && <TargetGradeBadge grade={profile.selectedGrade} />}

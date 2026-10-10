@@ -479,14 +479,32 @@ async fn get_profile(
         .map_err(api_error)
 }
 
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct EstimateQuery {
+    answers: Option<EstimateAnswersMode>,
+}
+
+/// `keep` answers only the fields the candidate has not edited; `replace` rebuilds them all.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum EstimateAnswersMode {
+    Keep,
+    Replace,
+}
+
 async fn refresh_estimate(
     State(state): State<AppState>,
     headers: HeaderMap,
+    ContractQuery(query): ContractQuery<EstimateQuery>,
 ) -> Result<Json<fsp_application::ProfileView>, ApiError> {
     let session = authenticated(&state, &headers).await?;
     state
         .service
-        .refresh_estimate(&session)
+        .refresh_estimate(
+            &session,
+            query.answers == Some(EstimateAnswersMode::Replace),
+        )
         .await
         .map(Json)
         .map_err(api_error)

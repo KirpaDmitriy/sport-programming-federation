@@ -918,22 +918,25 @@ test('connecting GitHub builds the profile and an estimated category; edited ans
   profile = (await request('GET', '/api/v1/me/profile', { actor: candidate })).body;
   assert.equal(profile.name, 'Иван Петров');
   assert.equal(profile.specialization, 'backend');
-  assert.equal(profile.selectedGrade, 'senior');
+  assert.equal(profile.selectedGrade, 'middle');
   assert.equal(profile.stack.length, 12);
   assert.equal(profile.experienceMonths, 45);
-  assert.equal(profile.estimate.version, 'estimate-v2');
+  assert.equal(profile.estimate.version, 'estimate-v3');
+  assert.ok(profile.softSkills.length > 0);
+  assert.ok(profile.estimate.notes.length > 0);
   assert.deepEqual([...profile.autoFields].sort(), [
     'experience',
     'experienceMonths',
     'name',
     'selectedGrade',
+    'softSkills',
     'specialization',
     'stack',
     'teamRole',
   ]);
   assert.deepEqual(profile.category, {
     specialization: 'backend',
-    grade: 'senior',
+    grade: 'middle',
     eligible: true,
     source: 'estimate',
     confidence: 'high',
@@ -950,7 +953,7 @@ test('connecting GitHub builds the profile and an estimated category; edited ans
   assert.ok(profile.autoFields.includes('name'));
   profile = (await request('POST', '/api/v1/me/profile/estimate', { actor: candidate })).body;
   assert.equal(profile.teamRole, 'Тимлид');
-  assert.equal(profile.selectedGrade, 'senior');
+  assert.equal(profile.selectedGrade, 'middle');
   // Employers see the estimated category, its source and factors; no names or the experience text.
   const employer = await login('employer-a');
   const estimated = (
@@ -959,14 +962,28 @@ test('connecting GitHub builds the profile and an estimated category; edited ans
   assertAnonymous(estimated);
   assert.ok(!JSON.stringify(estimated).includes('Иван'));
   const card = estimated.items.find((item: Body) => item.id === profile.id);
-  assert.equal(card.grade, 'senior');
+  assert.equal(card.grade, 'middle');
   assert.equal(card.categorySource, 'estimate');
   assert.equal(card.categoryConfidence, 'high');
   assert.equal(card.verifiedGrade, null);
-  assert.equal(card.estimate.factors.length, 7);
+  assert.equal(card.estimate.factors.length, 8);
   const confirmed = (await request('GET', '/api/v1/candidates?categorySource=assessment', { actor: employer })).body;
   assert.ok(confirmed.items.length > 0);
   assert.ok(confirmed.items.every((item: Body) => item.categorySource === 'assessment' && item.estimate === null));
+  // The candidate may pick another specialization the evidence supports; the category follows it.
+  const supported = profile.estimate.specializations[1].id;
+  profile = (await request('PATCH', '/api/v1/me/profile', { actor: candidate, body: { specialization: supported } }))
+    .body;
+  assert.equal(profile.category.specialization, supported);
+  profile = (await request('PATCH', '/api/v1/me/profile', { actor: candidate, body: { specialization: 'design' } }))
+    .body;
+  assert.equal(profile.category.specialization, 'backend');
+  // Rebuilding hands every answer back to the evidence; an unknown mode is a contract error.
+  profile = (await request('POST', '/api/v1/me/profile/estimate?answers=replace', { actor: candidate })).body;
+  assert.notEqual(profile.teamRole, 'Тимлид');
+  assert.equal(profile.specialization, 'backend');
+  assert.ok(profile.autoFields.includes('teamRole') && profile.autoFields.includes('specialization'));
+  await request('POST', '/api/v1/me/profile/estimate?answers=all', { actor: candidate, status: 400 });
 });
 
 test('every catalog specialization is testable; a 1C test confirms the category', async (t) => {

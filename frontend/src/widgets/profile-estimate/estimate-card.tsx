@@ -4,7 +4,9 @@ import { useMeta } from '@/entities/meta';
 import { type Profile, type ProfileEstimate, profileQuery } from '@/entities/profile';
 import { CategoryBadge, estimateConfidenceLabel } from '@/entities/qualification';
 import { useScope } from '@/entities/session';
-import { useRefreshEstimate } from '@/features/refresh-estimate';
+import { mySourcesQuery } from '@/entities/source';
+import { useSourceProcessing } from '@/features/connect-source';
+import { RebuildProfileButton, useRefreshEstimate } from '@/features/refresh-estimate';
 import { describeError } from '@/shared/api';
 import { formatDateTime, gradeLabel, specializationName } from '@/shared/lib';
 import { Button, ButtonLink, Callout, Card, EmptyState, InlineStatus, StatusChip } from '@/shared/ui';
@@ -17,7 +19,7 @@ const share = (value: number) => ({ '--value': String(value) }) as CSSProperties
 /** How long after an estimate its background LLM review is awaited. */
 const REVIEW_WAIT_MS = 2 * 60_000;
 
-/** Grade bands of the seniority score, as `estimate-v2` defines them. */
+/** Grade bands of the seniority score, as `estimate-v3` defines them. */
 const BANDS = 'до 20 — стажёр, 20–39 — джуниор, 40–59 — мидл, 60–79 — сеньор, от 80 — лид';
 
 function Bars({ items }: { items: { id: string; label: string; value: number; max: number; detail?: string }[] }) {
@@ -66,11 +68,15 @@ export function ProfileEstimateCard({ profile, canEstimate, title = 'Автом�
       Date.now() - Date.parse(estimate.computedAt) < REVIEW_WAIT_MS,
   );
   useQuery({ ...profileQuery(scope), refetchInterval: reviewPending ? 4_000 : false });
+  // A recalculation may re-analyze an outdated GitHub report; its job applies the new estimate.
+  const sources = useQuery(mySourcesQuery(scope));
+  const analyzing = sources.data?.items.find((item) => item.provider === 'github' && item.activeJobId);
+  const analysis = useSourceProcessing(analyzing);
   const recalculate = (
     <Button
       size="sm"
       icon="refresh"
-      onClick={() => refresh.mutate()}
+      onClick={() => refresh.mutate('keep')}
       pending={refresh.isPending}
       pendingLabel="Оцениваем…"
       disabled={!canEstimate || !profile.consents.processing}
@@ -109,7 +115,12 @@ export function ProfileEstimateCard({ profile, canEstimate, title = 'Автом�
     <Card
       title={title}
       subtitle={`Рассчитано ${formatDateTime(estimate.computedAt)} · ${estimate.sources.map((item) => sourceLabel[item]).join(' и ') || 'нет данных'}`}
-      actions={recalculate}
+      actions={
+        <div className="row">
+          <RebuildProfileButton disabled={!canEstimate || !profile.consents.processing} />
+          {recalculate}
+        </div>
+      }
     >
       <div className="stack">
         <div className="row">
@@ -135,10 +146,23 @@ export function ProfileEstimateCard({ profile, canEstimate, title = 'Автом�
             </span>
           </div>
           <p className="small muted" style={{ margin: 0 }}>
-            Балл уровня из 100 по факторам ниже: {BANDS}. Сеньору нужно не меньше двух лет публичной работы или опыта,
-            лиду — четырёх. Объём коммитов сам по себе грейд не повышает.
+            Балл уровня из 100 по факторам ниже: {BANDS}. Сеньору нужно не меньше двух лет опыта, лиду — четырёх: по
+            публичной работе или по анкете. Стаж из анкеты никогда не снижает оценку. Объём коммитов сам по себе грейд
+            не повышает.
           </p>
         </div>
+        {analysis.processing && (
+          <InlineStatus>Обновляем анализ GitHub — оценка пересчитается, когда он закончится…</InlineStatus>
+        )}
+        {estimate.notes.length > 0 && (
+          <Callout tone="neutral" title="Почему такой уровень">
+            <ul className={styles.notes}>
+              {estimate.notes.map((note) => (
+                <li key={note}>{note}</li>
+              ))}
+            </ul>
+          </Callout>
+        )}
         {estimate.specializations.length > 0 && (
           <section className="stack" aria-label="Направления">
             <h3 className={styles.heading}>Направления</h3>
