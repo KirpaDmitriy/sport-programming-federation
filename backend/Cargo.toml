@@ -20,6 +20,7 @@ fsp-integration-bifrost = { path = "crates/integration-bifrost" }
 fsp-integration-fsp-synthetic = { path = "crates/integration-fsp-synthetic" }
 fsp-interview-service = { path = "crates/interview-service" }
 fsp-github-insights = { path = "crates/github-insights" }
+fsp-integration-interview = { path = "crates/integration-interview" }
 axum = { version = "0.8.9", features = ["multipart"] }
 krilla = { version = "0.8.2", default-features = false, features = ["simple-text"] }
 async-trait = "0.1.89"

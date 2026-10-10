@@ -1,11 +1,12 @@
 # Graph-guided interview service
 
-`fsp-interview-service` is an internal Rust HTTP service for adaptive interviews. The platform API and frontend do
-not call it yet. It deliberately has its own process and bearer token so the interview algorithm can evolve without
-changing the public platform contract or the GitHub integration work.
+`fsp-interview-service` is an internal Rust HTTP service for adaptive interviews. The browser uses the authenticated
+platform routes under `/api/v1/me/interviews`; the platform resolves the candidate identity and calls this service
+with a private bearer token. The token never reaches the browser.
 
-Sessions are currently held in process memory and are lost on restart. Durable storage and platform identity mapping
-belong to the later integration change; the current service proves the graph traversal and model boundary.
+Sessions are stored in PostgreSQL as versioned JSON documents. A conditional revision update rejects stale answers,
+and a partial unique index permits only one active interview per candidate. The service can restart or be replaced by
+a release without losing the current question or evidence.
 
 ## Product boundary
 
@@ -39,6 +40,7 @@ Required configuration:
 | Variable | Meaning |
 | --- | --- |
 | `INTERVIEW_API_TOKEN` | Internal bearer token; there is no insecure default in the binary |
+| `DATABASE_URL` | PostgreSQL connection used for durable sessions |
 | `INTERVIEW_HOST` | Bind host, default `127.0.0.1` |
 | `INTERVIEW_PORT` | Bind port, default `4040`; `4030` belongs to GitHub insights |
 | `BIFROST_CHAT_URL` | Optional OpenAI-compatible Bifrost chat endpoint |
@@ -53,6 +55,7 @@ All routes except `/health` require `Authorization: Bearer $INTERVIEW_API_TOKEN`
 
 ```text
 GET  /v1/blueprints/backend-middle-v1
+GET  /v1/candidates/{candidateId}/interviews
 POST /v1/interviews
 GET  /v1/interviews/{id}
 POST /v1/interviews/{id}/answers
@@ -78,27 +81,26 @@ Answer payload uses optimistic concurrency:
 }
 ```
 
-The returned question contains identical `prompt` and `delivery.speechText` fields plus an `avatarCue`. This is the
-stable boundary for later voice delivery without coupling the interview algorithm to a speech provider.
+The returned question contains identical `prompt` and `delivery.speechText` fields plus an `avatarCue`. The product UI
+uses the browser's Russian speech synthesizer when the candidate asks it to read the question; text always remains
+available.
 
 ## Voice and avatar decision
 
-The first user experience should be text plus optional voice, not generated talking-head video. Real-time video
+The implemented experience is text plus optional local voice, not generated talking-head video. Real-time video
 generation adds latency, cost, an external biometric processor and no evidence quality. The recommended delivery is:
 
-1. Yandex SpeechKit streaming STT converts an opt-in microphone stream to editable text.
-2. The interview service receives only the confirmed transcript.
-3. YandexGPT through Bifrost creates scenario variants and evaluates evidence.
-4. SpeechKit TTS voices `delivery.speechText`.
-5. A code-rendered SVG or Rive character switches between idle, listening, thinking and speaking. Mouth movement is
-   driven by client-side audio amplitude, not generated video.
+1. The candidate types and confirms an answer; no microphone or camera permission is required.
+2. Bifrost creates scenario variants and evaluates evidence when configured.
+3. The browser can voice `delivery.speechText` with a locally available Russian voice.
+4. A code-rendered avatar indicates the speaking state without sending biometric data to a provider.
 
 Candidate camera recording should remain optional, stored only with explicit consent, and never be used to infer
 emotion, honesty, accent, gaze or personality. It can be added later as a replay artifact for a human employer; it
 is not part of automated scoring.
 
-This service currently implements text delivery and the speaking cue. STT, TTS, media storage, platform auth and
-public-contract integration are intentionally not claimed as implemented.
+Camera recording, STT and media storage are not part of automated scoring. They are deliberately absent until there
+is a reviewed consent, retention and human-replay workflow.
 
 ## Verification
 

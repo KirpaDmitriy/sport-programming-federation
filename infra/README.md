@@ -13,6 +13,7 @@ key, host key, droplet metadata) lives in the git-ignored `.fsp-infra/` at the r
 | `fsp-mock-api.service` | Hardened systemd unit for the mock API (user `fsp`, `127.0.0.1:4010`) |
 | `fsp-simulator.service` | Fictional participant-results HTTP service on private loopback 4020; released with the API, no public nginx route |
 | `fsp-github-insights.service` | Tokenless public GitHub analysis on private loopback 4030 with `git` clones in its `CacheDirectory`; an optional `GITHUB_TOKEN` in root-private `/etc/fsp/github-insights.env` only raises limits; released with the API, no public nginx route |
+| `fsp-interview.service` | Graph-guided interview engine on private loopback 4040; PostgreSQL sessions, Bifrost/offline evaluation and an internal token shared with the API; released with the API, no public nginx route |
 | `fsp-api.service` | Hardened systemd unit for the Rust API (same user and port; `StateDirectory=fsp` gives it `/var/lib/fsp`) |
 | `nginx/` | Site config (SPA fallback, `/api/v1/` proxy, `/__mock__` → 404), ACME bootstrap config, security headers |
 
@@ -123,7 +124,7 @@ The additional GitHub mirror is retired; synchronize permanent local branches on
 
 | Task on the host | Command |
 | --- | --- |
-| API status / logs | `systemctl status fsp-api fsp-simulator fsp-github-insights`, `journalctl -u fsp-api -n 100` |
+| API status / logs | `systemctl status fsp-api fsp-simulator fsp-github-insights fsp-interview`, `journalctl -u fsp-api -n 100` |
 | Which API serves | `cat /etc/fsp/api-backend` |
 | Certificate | `certbot certificates`; renewal by `snap.certbot.renew.timer` using each certificate's policy (the short-lived IP certificate uses three days), then the nginx reload hook |
 | Renewal dry run | `certbot renew --cert-name nddev.link --dry-run --no-random-sleep-on-renew` |
