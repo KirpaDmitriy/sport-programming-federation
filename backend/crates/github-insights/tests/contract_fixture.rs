@@ -165,6 +165,7 @@ fn snapshot() -> Snapshot {
         created_at: Some(Utc.with_ymd_and_hms(2020, 1, 1, 0, 0, 0).unwrap()),
         now: now(),
         followers: 25,
+        display_name: Some("Иван Петров".into()),
         organizations: vec!["acme-labs".into()],
         emails: BTreeSet::from(["owner@users.noreply.github.com".into()]),
         totals: SearchTotals {

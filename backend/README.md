@@ -81,7 +81,7 @@ for canonical PRs, and gates integration/deployment with `fsp/backend`.
 | [`../contracts/API_INTEGRATION.md`](../contracts/API_INTEGRATION.md) | Session cookie, origin checks, validation, error envelope, idempotency, jobs, pagination, PDF, time, metadata, the cutover checklist |
 | [`../mock-server`](../mock-server/README.md) | The rules as running code (`src/domain.ts`) and as HTTP tests (`test/mock-api.test.ts`), ported to `crates/server/tests/contract.rs` |
 
-Rust implements the 74 application operations plus `/health`; `/__mock__` controls are absent. Sessions,
+Rust implements the 75 application operations plus `/health`; `/__mock__` controls are absent. Sessions,
 roles, tenant scoping and PostgreSQL persistence are real. Email ownership is verified by Resend in `resend` mode; local `demo` mode retains a fixed code;
 FSP uses a separate fictional HTTP provider. Knowledge tests are scored deterministically; no code executes. PDF text extraction uses a bounded, isolated
 Poppler process and Bifrost proposes fields with validated page excerpts. The assessment assistant calls Bifrost

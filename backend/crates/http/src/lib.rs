@@ -177,6 +177,7 @@ pub fn router(config: HttpConfig, service: Arc<PlatformService>) -> Router {
             get(get_candidate_gap_plan),
         )
         .route("/api/v1/me/profile/export", get(export_profile))
+        .route("/api/v1/me/profile/estimate", post(refresh_estimate))
         .route("/api/v1/me/assessments", get(get_my_assessments))
         .route(
             "/api/v1/me/assessments/{assessment_id}",
@@ -470,6 +471,19 @@ async fn get_profile(
         .map_err(api_error)
 }
 
+async fn refresh_estimate(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<fsp_application::ProfileView>, ApiError> {
+    let session = authenticated(&state, &headers).await?;
+    state
+        .service
+        .refresh_estimate(&session)
+        .await
+        .map(Json)
+        .map_err(api_error)
+}
+
 async fn update_profile(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -699,6 +713,7 @@ struct CandidateQuery {
     mode: Option<String>,
     specialization: Option<Specialization>,
     grade: Option<Grade>,
+    category_source: Option<fsp_domain::CategorySource>,
     skill: Option<String>,
     fsp: Option<String>,
     page: Option<usize>,
@@ -744,6 +759,7 @@ async fn search_candidates(
                 recommended: query.mode.as_deref() == Some("recommended"),
                 specialization: query.specialization,
                 grade: query.grade,
+                category_source: query.category_source,
                 skill: query.skill,
                 fsp_verified: query.fsp.as_deref() == Some("verified"),
                 page,

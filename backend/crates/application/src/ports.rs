@@ -441,6 +441,16 @@ pub trait LlmGateway: Send + Sync {
         &self,
         request: &fsp_domain::RepositoryMatchRequest,
     ) -> Result<fsp_domain::RepositoryCompetitionMatch, IntegrationError>;
+    /// A second opinion on an automatic profile estimate from anonymized evidence.
+    async fn review_profile(
+        &self,
+        _request: &fsp_domain::ProfileReviewRequest,
+    ) -> Result<fsp_domain::ProfileReviewReply, IntegrationError> {
+        Err(IntegrationError {
+            code: "bifrost_unavailable",
+            message: "Сервис анализа не настроен".into(),
+        })
+    }
 }
 
 #[async_trait]

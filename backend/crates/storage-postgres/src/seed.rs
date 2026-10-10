@@ -458,6 +458,8 @@ fn demo_candidates(now: &str) -> Vec<CandidateProfile> {
                 Specialization::Backend
             }),
             grade_confirmed_at: Some(now.into()),
+            estimate: None,
+            auto_fields: Vec::new(),
             revision: 1,
             updated_at: now.into(),
         },

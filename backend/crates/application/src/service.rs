@@ -21,19 +21,19 @@ use crate::{
     AssessmentView, AssessmentsView, AssistantInput, AssistantReplyView, CandidateMatchView,
     CandidatePageView, CandidateSearch, CategoryView, CompanyCardView, CompanyPatch, CompanyView,
     ConsumeChallenge, DisclosureFieldsView, DisclosureView, EmailChallengeInput,
-    EmailChallengeView, EmailVerifyInput, EvidencePolicyView, EvidenceView, FreshnessView,
-    FspGateway, GapItemView, GapPlanView, GitHubGateway, GradeEligibilityView, GraphEdgeView,
-    GraphNodeView, GraphView, IdempotencyClaim, ImportConfirmInput, IntegrationError,
-    InvitationInput, InvitationNeedView, InvitationView, InvitationsView, JobResultView, JobView,
-    LlmGateway, MatchRequirementView, MyTasksView, NeedInput, NeedPatch, NeedView, NeedsView,
-    OfferedCompanyView, OfferedTaskView, OnboardingView, PendingChallenge, PlatformRepository,
-    ProfilePatch, ProfileView, RepositoryError, RequirementInput, RequirementView, SalaryView,
-    SelfSkillView, SessionView, ShortlistInput, ShortlistMemberView, ShortlistSummaryView,
-    ShortlistView, ShortlistsView, SkillView, SkillsView, SourceConnectInput, SourceView,
-    SourcesView, TaskInput, TaskPeriodView, TaskResponseInput, TaskResponseView, TaskResponsesView,
-    TaskReviewInput, TaskReviewOutcome, TaskView, TasksView, VacancyPageView,
-    VacancyRequirementView, VacancySearch, VacancyView, VerificationDelivery, job_view,
-    match_status, source_view,
+    EmailChallengeView, EmailVerifyInput, EmployerEstimateFactorView, EmployerEstimateView,
+    EvidencePolicyView, EvidenceView, FreshnessView, FspGateway, GapItemView, GapPlanView,
+    GitHubGateway, GradeEligibilityView, GraphEdgeView, GraphNodeView, GraphView, IdempotencyClaim,
+    ImportConfirmInput, IntegrationError, InvitationInput, InvitationNeedView, InvitationView,
+    InvitationsView, JobResultView, JobView, LlmGateway, MatchRequirementView, MyTasksView,
+    NeedInput, NeedPatch, NeedView, NeedsView, OfferedCompanyView, OfferedTaskView, OnboardingView,
+    PendingChallenge, PlatformRepository, ProfilePatch, ProfileView, RepositoryError,
+    RequirementInput, RequirementView, SalaryView, SelfSkillView, SessionView, ShortlistInput,
+    ShortlistMemberView, ShortlistSummaryView, ShortlistView, ShortlistsView, SkillView,
+    SkillsView, SourceConnectInput, SourceView, SourcesView, TaskInput, TaskPeriodView,
+    TaskResponseInput, TaskResponseView, TaskResponsesView, TaskReviewInput, TaskReviewOutcome,
+    TaskView, TasksView, VacancyPageView, VacancyRequirementView, VacancySearch, VacancyView,
+    VerificationDelivery, job_view, match_status, source_view,
 };
 
 #[derive(Debug)]
@@ -845,14 +845,12 @@ impl PlatformService {
         need_id: &str,
     ) -> Result<ApplicationEligibilityView, ApplicationError> {
         let profile = &record.profile;
-        let assessment_passed =
-            profile.verified_grade.is_some() && profile.verified_specialization.is_some();
         let reason = if !record.email_verified {
             Some("email")
         } else if !profile.questionnaire_complete() {
             Some("questionnaire")
-        } else if !assessment_passed {
-            Some("assessment")
+        } else if profile.category().is_none() {
+            Some("category")
         } else if !profile.consents.processing {
             Some("processing_consent")
         } else if self
@@ -903,9 +901,8 @@ impl PlatformService {
             .ok_or_else(|| {
                 ApplicationError::new(500, "internal_error", "Сервис временно недоступен")
             })?;
-        let assessment_passed = candidate.profile.verified_grade.is_some()
-            && candidate.profile.verified_specialization.is_some();
-        let qualified = assessment_passed && candidate.profile.consents.processing;
+        let qualified =
+            candidate.profile.category().is_some() && candidate.profile.consents.processing;
         let company_card = CompanyCardView {
             id: company.id,
             display_name: company.display_name,
@@ -2044,15 +2041,13 @@ impl PlatformService {
                 reason: None,
             });
         }
-        if candidate.profile.verified_grade.is_none()
-            || candidate.profile.verified_specialization.is_none()
-        {
+        let Some(category) = candidate.profile.category() else {
             return Ok(TaskOffer {
                 current: None,
                 current_response: None,
-                reason: Some("assessment"),
+                reason: Some("category"),
             });
-        }
+        };
         if !candidate.profile.consents.processing {
             return Ok(TaskOffer {
                 current: None,
@@ -2070,7 +2065,7 @@ impl PlatformService {
             .iter()
             .map(|item| item.task.id.as_str())
             .collect::<std::collections::BTreeSet<_>>();
-        let verified = candidate.profile.verified_grade.unwrap_or(Grade::Junior);
+        let verified = category.grade;
         let mut pool = self
             .repository
             .active_tasks()
@@ -2885,37 +2880,36 @@ impl PlatformService {
             }
             None => None,
         };
-        let mut records =
-            self.repository
-                .candidates()
-                .await
-                .map_err(ApplicationError::storage)?
-                .into_iter()
-                .filter(|item| item.profile.visible_to_employers(item.email_verified))
-                .filter(|item| {
-                    item.profile.verified_specialization.is_some_and(|value| {
-                        search.specialization.is_none_or(|filter| filter == value)
-                    }) && item
-                        .profile
-                        .verified_grade
-                        .is_some_and(|value| search.grade.is_none_or(|filter| filter == value))
-                        && search.skill.as_ref().is_none_or(|filter| {
-                            item.skills.iter().any(|skill| {
-                                skill.skill_id == *filter
-                                    && skill.status != EvidenceStatus::Insufficient
-                            })
-                        })
-                        && (!search.fsp_verified || item.fsp_verified)
-                })
-                .collect::<Vec<_>>();
+        let mut records = self
+            .repository
+            .candidates()
+            .await
+            .map_err(ApplicationError::storage)?
+            .into_iter()
+            .filter(|item| item.profile.visible_to_employers(item.email_verified))
+            .filter(|item| {
+                item.profile.category().is_some_and(|category| {
+                    search
+                        .specialization
+                        .is_none_or(|filter| filter == category.specialization)
+                        && search.grade.is_none_or(|filter| filter == category.grade)
+                        && search
+                            .category_source
+                            .is_none_or(|filter| filter == category.source)
+                }) && search.skill.as_ref().is_none_or(|filter| {
+                    item.skills.iter().any(|skill| {
+                        skill.skill_id == *filter && skill.status != EvidenceStatus::Insufficient
+                    })
+                }) && (!search.fsp_verified || item.fsp_verified)
+            })
+            .collect::<Vec<_>>();
         if search.recommended {
             let selected = need.as_ref().expect("recommended search has a need");
             records.retain(|item| {
-                item.profile.verified_specialization == Some(selected.need.specialization)
-                    && item
-                        .profile
-                        .verified_grade
-                        .is_some_and(|grade| grade >= selected.need.grade)
+                item.profile.category().is_some_and(|category| {
+                    category.specialization == selected.need.specialization
+                        && category.grade >= selected.need.grade
+                })
             });
         }
         if let Some(selected) = &need {
@@ -2930,18 +2924,16 @@ impl PlatformService {
                 .collect::<std::collections::HashMap<_, _>>();
             records.sort_by_key(|item| order.get(&item.profile.id).copied().unwrap_or(usize::MAX));
         } else {
-            records.sort_by(|left, right| {
-                left.profile
-                    .verified_specialization
-                    .cmp(&right.profile.verified_specialization)
-                    .then_with(|| {
-                        right
-                            .profile
-                            .verified_grade
-                            .cmp(&left.profile.verified_grade)
-                    })
-                    .then_with(|| right.fsp_verified.cmp(&left.fsp_verified))
-                    .then_with(|| left.profile.id.cmp(&right.profile.id))
+            // Visible candidates all have a category; test-confirmed ones lead within a grade.
+            records.sort_by_cached_key(|item| {
+                let category = item.profile.category();
+                (
+                    category.as_ref().map(|category| category.specialization),
+                    std::cmp::Reverse(category.as_ref().map(|category| category.grade)),
+                    std::cmp::Reverse(category.as_ref().map_or(0, fsp_domain::Category::strength)),
+                    !item.fsp_verified,
+                    item.profile.id.clone(),
+                )
             });
         }
         let total = records.len();
@@ -3334,7 +3326,7 @@ impl PlatformService {
                 id: candidate_id.clone(),
                 alias: format!("Кандидат №{}", suffix[..3].to_uppercase()),
                 email: email.clone(),
-                name: "Новый кандидат".into(),
+                name: fsp_domain::DEFAULT_CANDIDATE_NAME.into(),
                 specialization: Specialization::Backend,
                 selected_grade: Grade::Junior,
                 stack: Vec::new(),
@@ -3349,6 +3341,8 @@ impl PlatformService {
                 verified_grade: None,
                 verified_specialization: None,
                 grade_confirmed_at: None,
+                estimate: None,
+                auto_fields: Vec::new(),
                 revision: 1,
                 updated_at: now(),
             })
@@ -3540,13 +3534,38 @@ fn anonymous_candidate(
     github: Option<fsp_domain::GitHubSignal>,
 ) -> AnonymousCandidateView {
     let rankable = record.rankable().expect("visible candidate is rankable");
+    let category = record
+        .profile
+        .category()
+        .expect("visible candidate has a category");
     let candidate_match = need.map(|selected| match_view(&rankable, selected));
+    let estimate = (category.source == fsp_domain::CategorySource::Estimate)
+        .then_some(record.profile.estimate.as_ref())
+        .flatten()
+        .map(|estimate| EmployerEstimateView {
+            score: estimate.score,
+            computed_at: estimate.computed_at.clone(),
+            factors: estimate
+                .factors
+                .iter()
+                .map(|factor| EmployerEstimateFactorView {
+                    id: factor.id.clone(),
+                    label: factor.label.clone(),
+                    points: factor.points,
+                    max: factor.max,
+                })
+                .collect(),
+        });
     AnonymousCandidateView {
         id: record.profile.id,
         alias: record.profile.alias,
         specialization: rankable.specialization,
-        verified_grade: rankable.verified_grade,
-        grade_confirmed_at: record.profile.grade_confirmed_at.unwrap_or_default(),
+        grade: rankable.grade,
+        category_source: category.source,
+        category_confidence: category.confidence,
+        verified_grade: record.profile.verified_grade,
+        grade_confirmed_at: record.profile.grade_confirmed_at,
+        estimate,
         work_modes: record.work_modes,
         available_for_offers: record.available_for_offers,
         skills: record
@@ -3600,7 +3619,7 @@ fn match_view(
                 result.required_met, result.required_total
             )
         } else {
-            "Подтверждённая специализация или грейд пока не соответствуют потребности.".into()
+            "Специализация или грейд категории пока не соответствуют потребности.".into()
         },
         algorithm_version: result.algorithm_version,
     }
@@ -3872,6 +3891,7 @@ fn profile_view(
     let questionnaire_complete = profile.questionnaire_complete();
     let assessment_passed =
         profile.verified_grade.is_some() && profile.verified_specialization.is_some();
+    let category = profile.category();
     let visible = profile.visible_to_employers(email_verified);
     let mut blockers = Vec::new();
     if !email_verified {
@@ -3880,8 +3900,8 @@ fn profile_view(
     if !questionnaire_complete {
         blockers.push("questionnaire");
     }
-    if !assessment_passed {
-        blockers.push("assessment");
+    if category.is_none() {
+        blockers.push("category");
     }
     if !profile.consents.processing {
         blockers.push("processing_consent");
@@ -3951,10 +3971,14 @@ fn profile_view(
         verified_specialization: profile.verified_specialization,
         grade_confirmed_at: profile.grade_confirmed_at.clone(),
         category: CategoryView {
-            specialization: profile.verified_specialization,
-            grade: profile.verified_grade,
+            specialization: category.map(|item| item.specialization),
+            grade: category.map(|item| item.grade),
             eligible: visible,
+            source: category.map(|item| item.source),
+            confidence: category.and_then(|item| item.confidence),
         },
+        estimate: profile.estimate,
+        auto_fields: profile.auto_fields,
         freshness: freshness_view(signals),
         onboarding: OnboardingView {
             email_verified,
@@ -3962,7 +3986,7 @@ fn profile_view(
             assessment_passed,
             ready_for_publication: email_verified
                 && questionnaire_complete
-                && assessment_passed
+                && category.is_some()
                 && processing_consent,
             visible_to_employers: visible,
             blockers,
@@ -4001,30 +4025,45 @@ fn unique(values: Vec<String>) -> Vec<String> {
 }
 
 /// Applies a validated `ProfilePatch`, like the mock's `patchProfile`. The
-/// publication consent cannot outlive the processing consent.
+/// publication consent cannot outlive the processing consent. An answer the
+/// candidate changes is theirs from then on: estimates no longer overwrite it.
 fn apply_profile_patch(
     profile: &mut CandidateProfile,
     patch: ProfilePatch,
 ) -> Result<(), ApplicationError> {
     if let Some(name) = patch.name {
-        profile.name = name.trim().to_owned();
+        let name = name.trim().to_owned();
+        claim_field(profile, "name", profile.name != name);
+        profile.name = name;
     }
     if let Some(value) = patch.specialization {
+        claim_field(profile, "specialization", profile.specialization != value);
         profile.specialization = value;
     }
     if let Some(value) = patch.selected_grade {
+        claim_field(profile, "selectedGrade", profile.selected_grade != value);
         profile.selected_grade = value;
     }
     if let Some(value) = patch.stack {
-        profile.stack = unique(value);
+        let value = unique(value);
+        claim_field(profile, "stack", profile.stack != value);
+        profile.stack = value;
     }
     if let Some(value) = patch.team_role {
-        profile.team_role = value.trim().to_owned();
+        let value = value.trim().to_owned();
+        claim_field(profile, "teamRole", profile.team_role != value);
+        profile.team_role = value;
     }
     if let Some(value) = patch.experience_months {
+        claim_field(
+            profile,
+            "experienceMonths",
+            profile.experience_months != value,
+        );
         profile.experience_months = value;
     }
     if let Some(value) = patch.experience {
+        claim_field(profile, "experience", profile.experience != value);
         profile.experience = value;
     }
     if let Some(value) = patch.soft_skills {
@@ -4041,6 +4080,12 @@ fn apply_profile_patch(
         ));
     }
     Ok(())
+}
+
+fn claim_field(profile: &mut CandidateProfile, field: &str, changed: bool) {
+    if changed {
+        profile.auto_fields.retain(|item| item != field);
+    }
 }
 
 fn validate_profile_patch(patch: &ProfilePatch) -> Result<(), ApplicationError> {

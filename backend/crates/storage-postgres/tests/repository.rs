@@ -384,6 +384,176 @@ async fn signed_in_candidate(
     session
 }
 
+/// An LLM that keeps the specialization, rates one grade lower and rewrites the team role.
+struct Reviewer;
+
+#[async_trait::async_trait]
+impl fsp_application::LlmGateway for Reviewer {
+    async fn extract_resume(
+        &self,
+        _: &[fsp_domain::PdfPage],
+    ) -> Result<fsp_domain::ResumeExtraction, fsp_application::IntegrationError> {
+        unreachable!()
+    }
+    async fn assessment_help(
+        &self,
+        _: &fsp_domain::AssessmentHelpRequest,
+    ) -> Result<fsp_domain::AssessmentHelpReply, fsp_application::IntegrationError> {
+        unreachable!()
+    }
+    async fn extract_graph(
+        &self,
+        _: &fsp_domain::GraphExtractionRequest,
+    ) -> Result<fsp_domain::ExtractedGraph, fsp_application::IntegrationError> {
+        unreachable!()
+    }
+    async fn match_repository(
+        &self,
+        _: &fsp_domain::RepositoryMatchRequest,
+    ) -> Result<fsp_domain::RepositoryCompetitionMatch, fsp_application::IntegrationError> {
+        unreachable!()
+    }
+    async fn review_profile(
+        &self,
+        request: &fsp_domain::ProfileReviewRequest,
+    ) -> Result<fsp_domain::ProfileReviewReply, fsp_application::IntegrationError> {
+        // The review sees anonymized evidence only.
+        let serialized = serde_json::to_string(request).unwrap();
+        assert!(!serialized.contains("Иван") && !serialized.contains("auto-dev"));
+        Ok(fsp_domain::ProfileReviewReply {
+            specialization: Specialization::Backend,
+            grade: Grade::Middle,
+            rationale: "Стабильная работа над собственными проектами".into(),
+            experience: "Разрабатывает API на Rust и веб-интерфейсы на TypeScript.".into(),
+            team_role: "Ведёт бэкенд-проекты".into(),
+        })
+    }
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn connecting_github_builds_the_profile_and_an_estimated_category() {
+    let (repository, _database) = repository().await;
+    let repository = Arc::new(repository);
+    let service = PlatformService::new(repository.clone(), Arc::new(FixedDelivery))
+        .with_github_insights(Arc::new(Insights::finished(&[])))
+        .with_llm(Arc::new(Reviewer));
+    service.initialize().await.unwrap();
+    let session = signed_in_candidate(&service, &repository, "auto-profile@example.com").await;
+    let profile = service.profile(&session).await.unwrap();
+    assert_eq!(profile.name, fsp_domain::DEFAULT_CANDIDATE_NAME);
+    assert!(profile.estimate.is_none());
+    assert!(profile.onboarding.blockers.contains(&"category"));
+    let error = service.refresh_estimate(&session).await.unwrap_err();
+    assert_eq!(error.code, "source_not_connected");
+
+    service
+        .connect_source(
+            &session,
+            "github",
+            fsp_application::SourceConnectInput {
+                account: "auto-dev".into(),
+            },
+        )
+        .await
+        .unwrap();
+    let profile = service.profile(&session).await.unwrap();
+    assert_eq!(profile.name, "Иван Петров");
+    assert_eq!(profile.specialization, Specialization::Backend);
+    assert_eq!(profile.selected_grade, Grade::Senior);
+    assert_eq!(profile.stack.len(), 12);
+    assert_eq!(profile.auto_fields.len(), fsp_domain::AUTO_FIELDS.len());
+    assert_eq!(profile.team_role, "Ведёт бэкенд-проекты");
+    let estimate = profile.estimate.as_ref().unwrap();
+    assert_eq!(
+        estimate.grade,
+        Some(Grade::Senior),
+        "the grade stays rule-based"
+    );
+    assert!(!estimate.review.as_ref().unwrap().agrees);
+    assert_eq!(estimate.confidence, fsp_domain::SignalConfidence::Medium);
+    assert_eq!(
+        profile.category.source,
+        Some(fsp_domain::CategorySource::Estimate)
+    );
+    assert_eq!(profile.category.grade, Some(Grade::Senior));
+    assert!(!profile.onboarding.blockers.contains(&"category"));
+    assert!(!profile.onboarding.blockers.contains(&"questionnaire"));
+
+    // An edited answer stays the candidate's; publication makes the estimated category searchable.
+    service
+        .update_profile(
+            &session,
+            ProfilePatch {
+                team_role: Some("Тимлид".into()),
+                consents: Some(fsp_domain::Consents {
+                    processing: true,
+                    publication: true,
+                }),
+                ..ProfilePatch::default()
+            },
+        )
+        .await
+        .unwrap();
+    let refreshed = service.refresh_estimate(&session).await.unwrap();
+    assert_eq!(refreshed.team_role, "Тимлид");
+    assert!(
+        !refreshed
+            .auto_fields
+            .iter()
+            .any(|field| field == "teamRole")
+    );
+    assert!(refreshed.onboarding.visible_to_employers);
+
+    let challenge = service
+        .request_challenge(EmailChallengeInput {
+            email: "hr@sever-tech.example".into(),
+            role: Role::Employer,
+        })
+        .await
+        .unwrap();
+    let (employer, _) = service
+        .verify_email(EmailVerifyInput {
+            challenge_id: challenge.challenge_id,
+            code: "123456".into(),
+        })
+        .await
+        .unwrap();
+    let search = |source| CandidateSearch {
+        specialization: Some(Specialization::Backend),
+        category_source: Some(source),
+        page: 1,
+        page_size: 50,
+        ..CandidateSearch::default()
+    };
+    let estimated = service
+        .candidate_search(&employer, search(fsp_domain::CategorySource::Estimate))
+        .await
+        .unwrap();
+    let card = estimated
+        .items
+        .iter()
+        .find(|item| Some(item.id.as_str()) == session.candidate_id.as_deref())
+        .expect("the estimated candidate is in the bank");
+    assert_eq!(card.grade, Grade::Senior);
+    assert_eq!(card.verified_grade, None);
+    assert_eq!(
+        card.category_confidence,
+        Some(fsp_domain::SignalConfidence::Medium)
+    );
+    assert_eq!(card.estimate.as_ref().unwrap().factors.len(), 7);
+    let confirmed = service
+        .candidate_search(&employer, search(fsp_domain::CategorySource::Assessment))
+        .await
+        .unwrap();
+    assert!(!confirmed.items.is_empty());
+    assert!(
+        confirmed
+            .items
+            .iter()
+            .all(|item| item.category_source == fsp_domain::CategorySource::Assessment)
+    );
+}
+
 #[tokio::test(flavor = "current_thread")]
 async fn source_ingestion_updates_evidence_without_inventing_or_overwriting_grades() {
     let (repository, _database) = repository().await;

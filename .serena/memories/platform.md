@@ -1,7 +1,7 @@
 # Platform behavior
 
 Rust/PostgreSQL implements the stand; the HTTP mock is a development behavior reference. OpenAPI contains
-74 application operations, health and four mock-only controls. Update every contract consumer together.
+75 application operations, health and four mock-only controls. Update every contract consumer together.
 Commands and idempotency replay commit atomically. PostgreSQL serializes email budgets, profile/source/assessment,
 company/shortlist and disclosure changes. Viewed flags never replace terminal decisions. Nullable patches and
 bounded fields follow the contract. Candidate/company ownership and anonymous projections are server-enforced.
