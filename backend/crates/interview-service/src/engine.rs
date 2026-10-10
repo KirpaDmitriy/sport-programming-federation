@@ -4,8 +4,9 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::domain::{
-    AvatarCue, EvidenceState, InterviewEvidence, InterviewListView, InterviewQuestion,
-    InterviewSession, InterviewStatus, InterviewView, QuestionDelivery, blueprint,
+    AvatarCue, CompetencyKind, EvidenceState, InterviewEvidence, InterviewListView,
+    InterviewQuestion, InterviewSession, InterviewStatus, InterviewView, QuestionDelivery,
+    ResponseMode, blueprint,
 };
 use crate::model::{AnswerContext, InterviewModel, ModelError, QuestionContext};
 use crate::storage::{InterviewRepository, MemoryInterviewRepository, RepositoryError};
@@ -154,6 +155,7 @@ impl InterviewService {
         id: &str,
         question_id: &str,
         answer: &str,
+        response_mode: ResponseMode,
         revision: u32,
     ) -> Result<InterviewView, ServiceError> {
         if answer.trim().is_empty() || answer.chars().count() > 8_000 {
@@ -182,6 +184,7 @@ impl InterviewService {
                 node,
                 question: &question.prompt,
                 answer,
+                response_mode,
             })
             .await?;
 
@@ -199,6 +202,12 @@ impl InterviewService {
             rationale: evaluation.rationale,
             evaluator: evaluation.evaluator,
             rubric_version: RUBRIC_VERSION.into(),
+            response_mode,
+            signal_strength: if response_mode == ResponseMode::Voice {
+                2
+            } else {
+                1
+            },
         });
         let next = select_next_node(blueprint, &updated, node.id);
         if updated.evidence.len() >= usize::from(updated.max_turns) || next.is_none() {
@@ -233,6 +242,13 @@ impl InterviewService {
         Ok(InterviewQuestion {
             id: format!("q-{sequence}-{}", Uuid::new_v4()),
             node_id: node.id.to_owned(),
+            recommended_response_mode: if node.kind == CompetencyKind::Behavioral
+                || sequence % 4 == 0
+            {
+                ResponseMode::Voice
+            } else {
+                ResponseMode::Text
+            },
             delivery: QuestionDelivery {
                 speech_text: prompt.clone(),
                 avatar_cue: AvatarCue::Speaking,
@@ -360,6 +376,7 @@ mod tests {
                 &started.id,
                 &started.current_question.unwrap().id,
                 "Я бы сначала посмотрел логи.",
+                ResponseMode::Text,
                 started.revision,
             )
             .await
@@ -381,21 +398,48 @@ mod tests {
         for _ in 0..3 {
             let question = interview.current_question.as_ref().unwrap();
             interview = service
-                .answer(&interview.id, &question.id, answer, interview.revision)
+                .answer(
+                    &interview.id,
+                    &question.id,
+                    answer,
+                    ResponseMode::Text,
+                    interview.revision,
+                )
                 .await
                 .unwrap();
         }
-        let current = interview.current_question.as_ref().unwrap();
+        let current = interview.current_question.clone().unwrap();
         assert_eq!(current.node_id, "collaboration.requirements");
         assert_eq!(
             BACKEND_MIDDLE.node(&current.node_id).unwrap().kind,
             crate::domain::CompetencyKind::Behavioral
         );
+        assert_eq!(current.recommended_response_mode, ResponseMode::Voice);
+
+        interview = service
+            .answer(
+                &interview.id,
+                &current.id,
+                answer,
+                ResponseMode::Voice,
+                interview.revision,
+            )
+            .await
+            .unwrap();
+        let voice_evidence = interview.evidence.last().unwrap();
+        assert_eq!(voice_evidence.response_mode, ResponseMode::Voice);
+        assert_eq!(voice_evidence.signal_strength, 2);
 
         while interview.status == InterviewStatus::Active {
             let question = interview.current_question.as_ref().unwrap();
             interview = service
-                .answer(&interview.id, &question.id, answer, interview.revision)
+                .answer(
+                    &interview.id,
+                    &question.id,
+                    answer,
+                    ResponseMode::Text,
+                    interview.revision,
+                )
                 .await
                 .unwrap();
         }
@@ -422,6 +466,7 @@ mod tests {
                 &started.id,
                 &question.id,
                 "Ключ идемпотентности защищает уникальный индекс; в транзакции сохраняю ответ для повтора.",
+                ResponseMode::Text,
                 0,
             )
             .await
@@ -431,7 +476,9 @@ mod tests {
             "backend.idempotency"
         );
         assert!(matches!(
-            service.answer(&started.id, &question.id, "повтор", 0).await,
+            service
+                .answer(&started.id, &question.id, "повтор", ResponseMode::Text, 0)
+                .await,
             Err(ServiceError::Conflict)
         ));
     }
@@ -445,12 +492,20 @@ mod tests {
             .unwrap();
         let question = started.current_question.unwrap();
         assert!(matches!(
-            service.answer(&started.id, &question.id, "  ", 0).await,
+            service
+                .answer(&started.id, &question.id, "  ", ResponseMode::Text, 0)
+                .await,
             Err(ServiceError::InvalidInput)
         ));
         assert!(matches!(
             service
-                .answer(&started.id, &question.id, &"a".repeat(8_001), 0)
+                .answer(
+                    &started.id,
+                    &question.id,
+                    &"a".repeat(8_001),
+                    ResponseMode::Text,
+                    0
+                )
                 .await,
             Err(ServiceError::InvalidInput)
         ));
