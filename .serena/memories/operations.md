@@ -13,7 +13,8 @@ Controller installation is reviewed separately; no PR auto-updates it. Root-only
 builds run as fsp-ci with no injected secrets. Docker is root-equivalent; trusted private maintainers only.
 CI timer/OS lock serialize jobs, retain logs 14 days, refuse builds below 15 GiB free. See infra/ci/README.md.
 
-Stand units: fsp-api:4010, fsp-simulator:4020, fsp-bifrost, fsp-cliproxy, nginx, postgresql@16-main.
+Stand units: fsp-api:4010, fsp-simulator:4020, fsp-github-insights:4030 (tokenless; needs git, clones in its
+CacheDirectory; API needs FSP_GITHUB_INSIGHTS_URL), fsp-bifrost, fsp-cliproxy, nginx, postgresql@16-main.
 /health is unversioned. Full-SHA immutable releases, host lock, nginx checks and rollback preserve current data.
 Same-SHA replay health-checks without rebuilding. Current/previous releases are retained. Schema guards reject
 changed histories/legacy strict SQLx archives; only additive forward-compatible migrations are supported.
@@ -31,4 +32,4 @@ requested later. FSP backup units are masked; provisioning/CI must not recreate 
 archives were deleted. Sync local branches with canonical upstream only. No OpenObserve: inspect systemd/nginx logs.
 GitHub OAuth remains deferred. No production DB reset, unrelated-host changes or unrequested credential rotation.
 
-Last commit: 5ff1527ab772df15fab3fa6cd4598ed84d5e4e3b (accepted baseline); no-backup policy/latest receipt: #54.
+Release identity: upstream/main, /opt/fsp/current and deployed.json agree; receipts: #54 (no-backup policy), #67 (GitHub insights).

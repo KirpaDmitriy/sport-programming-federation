@@ -50,6 +50,7 @@ The specification supplies no FSP API, schema or dataset (§2, p2; §4, p6), so 
 | Vacancy browsing, self-application, application history | Desirable, not MVP (§2.1, p3) | done: «Вакансии» with filters and the candidate's fit, an application that opens only the chosen contacts, «Отклики» with statuses and withdrawal (e2e «UI-27»–«UI-30», mock tests «vacancy publication…», «applications disclose…») |
 | Vacancy publication and incoming applications | Desirable, not MVP (§2.1, p4) | done: publish and unpublish a need, edit it while published, «Отклики» with the frozen terms, the match and accept or decline ([`BUSINESS_RULES.md` §10](BUSINESS_RULES.md#10-vacancies-and-applications)) |
 | Recurring short employer tasks | Desirable, not MVP (§2, p2; §2.1, p3) | done: companies author short tasks and review answers; each week a qualified candidate gets one task on an evidenced skill, solves it or proposes an approach, and the answer keeps the profile fresh for employers. Review stays human-owned until an opt-in evaluator has a reference contract and measured error rates ([`BUSINESS_RULES.md` §11](BUSINESS_RULES.md#11-short-tasks-and-profile-freshness); e2e «UI-31», «UI-32», mock tests «weekly tasks…», «companies author…») |
+| Public GitHub activity as an additional, explainable signal | Team choice: data from open sources (§2, p2) | done: connect by login or link, tokenless background analysis of public work on our server, ownership proof by a bio code, a developer portrait (areas, languages, stack, main projects), a 0–100 index over seven dimensions, rhythm, own projects and organizations, collaboration validated by others and integrity flags; employers see an anonymous rounded projection that never changes the grade or order ([GitHub insights](../github-insights.md); Rust unit, golden and fake-GitHub service tests, PostgreSQL job-flow test, golden contract fixtures, mock test «GitHub connects by login…», e2e «UI-06 UI-07 GitHub connects by login…») |
 | Anti-fraud checks for employers, ATS integration | After MVP (§2, p2–3) | not implemented; no «verified company» badge |
 | Keycloak or FSP ID sign-in | Future recommendation (§2, p2; §3.5, p6) | not implemented; e-mail sign-in only |
 | Docker images and `docker-compose.yml` | Desirable, a plus at evaluation (§3.5, p5) | done: `docker compose up --build` runs the frontend behind nginx and the API; images for the mock, the frontend and the Rust API, checked by `infra/ci/gate.sh compose` ([`infra/README.md`](../../infra/README.md#docker)) |
@@ -58,7 +59,8 @@ The specification supplies no FSP API, schema or dataset (§2, p2; §4, p6), so 
 
 ## Outside the current code
 
-Real email delivery is implemented through Resend; GitHub OAuth setup remains deferred by the user. An official FSP integration and code execution
+Real email delivery is implemented through Resend; public GitHub analysis runs in a separate service with ownership
+proven by a bio code, while GitHub OAuth setup remains deferred by the user. An official FSP integration and code execution
 are outside the chosen scope. Measured assessment/matching quality and production security review remain limitations.
 Bifrost powers configured graph extraction, PDF-field analysis and contextual assistance. These are explicit product boundaries
 ([`BUSINESS_RULES.md` §15](BUSINESS_RULES.md#15-capabilities-and-simulation)).

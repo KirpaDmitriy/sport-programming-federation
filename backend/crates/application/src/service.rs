@@ -81,6 +81,7 @@ pub struct PlatformService {
     repository: Arc<dyn PlatformRepository>,
     delivery: Arc<dyn VerificationDelivery>,
     github: Option<Arc<dyn GitHubGateway>>,
+    github_insights: Option<Arc<dyn crate::GitHubInsightsGateway>>,
     pdf: Option<Arc<dyn crate::PdfGateway>>,
     llm: Option<Arc<dyn LlmGateway>>,
     fsp: Option<Arc<dyn FspGateway>>,
@@ -97,6 +98,7 @@ impl PlatformService {
             repository,
             delivery,
             github: None,
+            github_insights: None,
             llm: None,
             pdf: None,
             fsp: None,
@@ -140,6 +142,12 @@ impl PlatformService {
     #[must_use]
     pub fn with_github(mut self, github: Arc<dyn GitHubGateway>) -> Self {
         self.github = Some(github);
+        self
+    }
+
+    #[must_use]
+    pub fn with_github_insights(mut self, insights: Arc<dyn crate::GitHubInsightsGateway>) -> Self {
+        self.github_insights = Some(insights);
         self
     }
 
@@ -189,6 +197,17 @@ impl PlatformService {
     #[must_use]
     pub fn github_configured(&self) -> bool {
         self.github.is_some()
+    }
+
+    #[must_use]
+    pub fn github_insights_configured(&self) -> bool {
+        self.github_insights.is_some()
+    }
+
+    /// A stable per-candidate code: placing it in the GitHub bio proves account ownership.
+    pub(crate) fn github_ownership_code(&self, candidate_id: &str) -> String {
+        let hash = self.credential_hash("github-ownership", "v1", candidate_id);
+        format!("fsp-{}", &hash[..10])
     }
 
     #[must_use]
@@ -2937,7 +2956,13 @@ impl PlatformService {
                     candidate.profile.grade_confirmed_at.as_deref(),
                 )
                 .await?;
-            items.push(anonymous_candidate(candidate, need.as_ref(), &signals));
+            let github = self.github_signal(&candidate.profile.id).await?;
+            items.push(anonymous_candidate(
+                candidate,
+                need.as_ref(),
+                &signals,
+                github,
+            ));
         }
         Ok(CandidatePageView {
             items,
@@ -2976,7 +3001,13 @@ impl PlatformService {
                 candidate.profile.grade_confirmed_at.as_deref(),
             )
             .await?;
-        Ok(anonymous_candidate(candidate, need.as_ref(), &signals))
+        let github = self.github_signal(&candidate.profile.id).await?;
+        Ok(anonymous_candidate(
+            candidate,
+            need.as_ref(),
+            &signals,
+            github,
+        ))
     }
 
     pub async fn github_authorization_url(
@@ -3058,10 +3089,14 @@ impl PlatformService {
             }
         }
         records.sort_by_key(|record| source_provider(record.provider));
-        Ok(SourcesView {
-            simulation: records.iter().any(|record| record.synthetic),
-            items: records.into_iter().map(source_view).collect(),
-        })
+        let simulation = records.iter().any(|record| record.synthetic);
+        let code = self.github_ownership_code(candidate_id);
+        let mut items = Vec::with_capacity(records.len());
+        for record in records {
+            let progress = self.github_progress(&record).await;
+            items.push(source_view(record, &code, progress));
+        }
+        Ok(SourcesView { simulation, items })
     }
 
     pub async fn skills(&self, session: &SessionView) -> Result<SkillsView, ApplicationError> {
@@ -3147,6 +3182,27 @@ impl PlatformService {
 
     /// The mock's `freshness()` inputs: the verified-grade signal plus every
     /// counted task response (not marked `needs_work`), assessment first.
+    /// The anonymous GitHub projection of a candidate's latest report, if any.
+    async fn github_signal(
+        &self,
+        candidate_id: &str,
+    ) -> Result<Option<fsp_domain::GitHubSignal>, ApplicationError> {
+        Ok(self
+            .repository
+            .sources(candidate_id)
+            .await
+            .map_err(ApplicationError::storage)?
+            .into_iter()
+            .filter(|source| source.provider == fsp_domain::SourceProvider::Github)
+            .find_map(|source| {
+                let analysis = source.analysis?;
+                let verified = analysis.ownership.is_some();
+                analysis
+                    .report
+                    .map(|report| report.employer_signal(verified))
+            }))
+    }
+
     async fn freshness_signals(
         &self,
         candidate_id: &str,
@@ -3216,6 +3272,13 @@ impl PlatformService {
             .await
             .map_err(ApplicationError::storage)?
             .ok_or_else(|| ApplicationError::new(404, "not_found", "Задача не найдена"))?;
+        // Only a GitHub analysis outlives the request that started it; polling advances it.
+        if record.kind == "source_sync"
+            && record.status == "running"
+            && let Some(candidate_id) = session.candidate_id.as_deref()
+        {
+            return self.advance_github_job(candidate_id, record).await;
+        }
         let source = if let Some(source_id) = record.result_source_id.as_ref() {
             self.repository
                 .sources(owner_id)
@@ -3223,11 +3286,21 @@ impl PlatformService {
                 .map_err(ApplicationError::storage)?
                 .into_iter()
                 .find(|source| &source.id == source_id)
-                .map(source_view)
+                .map(|source| source_view(source, &self.github_ownership_code(owner_id), None))
         } else {
             None
         };
         Ok(job_view(record, source))
+    }
+
+    fn github_insights(&self) -> Result<&Arc<dyn crate::GitHubInsightsGateway>, ApplicationError> {
+        self.github_insights.as_ref().ok_or_else(|| {
+            ApplicationError::new(
+                503,
+                "github_not_configured",
+                "Подключение GitHub временно недоступно",
+            )
+        })
     }
 
     fn github(&self) -> Result<&Arc<dyn GitHubGateway>, ApplicationError> {
@@ -3345,7 +3418,12 @@ fn candidate_id(session: &SessionView) -> Result<&str, ApplicationError> {
 }
 
 fn integration_error(error: IntegrationError) -> ApplicationError {
-    ApplicationError::new(502, error.code, error.message)
+    let status = match error.code {
+        "github_login_invalid" | "github_account_not_found" => 422,
+        "github_rate_limited" | "github_not_configured" => 503,
+        _ => 502,
+    };
+    ApplicationError::new(status, error.code, error.message)
 }
 
 fn source_provider(provider: fsp_domain::SourceProvider) -> &'static str {
@@ -3461,6 +3539,7 @@ fn anonymous_candidate(
     record: CandidateIndexRecord,
     need: Option<&HiringNeedRecord>,
     signals: &[(String, &'static str)],
+    github: Option<fsp_domain::GitHubSignal>,
 ) -> AnonymousCandidateView {
     let rankable = record.rankable().expect("visible candidate is rankable");
     let candidate_match = need.map(|selected| match_view(&rankable, selected));
@@ -3491,6 +3570,7 @@ fn anonymous_candidate(
         fsp_verified: record.fsp_verified,
         freshness: freshness_view(signals),
         r#match: candidate_match,
+        github,
         simulation: true,
     }
 }

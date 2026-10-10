@@ -37,8 +37,11 @@ export function ConnectSourceForm({ provider, label, submitLabel, hint, placehol
     onSubmit: ({ value }) => connect.mutateAsync(value.account.trim()).catch(() => {}),
   });
   const available =
-    provider !== 'github' || meta.capabilities.githubOAuth || (meta.mode === 'mock' && meta.capabilities.githubFixture);
-  if (!available) return <Callout tone="neutral">Подключение GitHub запланировано позже.</Callout>;
+    provider !== 'github' ||
+    meta.capabilities.githubInsights ||
+    meta.capabilities.githubOAuth ||
+    (meta.mode === 'mock' && meta.capabilities.githubFixture);
+  if (!available) return <Callout tone="neutral">Анализ GitHub сейчас не настроен на сервере.</Callout>;
   return (
     <form
       className="stack"
@@ -70,7 +73,7 @@ export function ConnectSourceForm({ provider, label, submitLabel, hint, placehol
           {describeError(connect.error ?? authorization.error).message}
         </Callout>
       )}
-      {provider === 'github' && meta.mode === 'mock' && !meta.capabilities.githubOAuth && (
+      {provider === 'github' && meta.mode === 'mock' && !meta.capabilities.githubInsights && (
         <Callout tone="info">
           Демонстрационное подключение: данные вымышленные, владение аккаунтом не проверяется.
         </Callout>
@@ -83,7 +86,7 @@ export function ConnectSourceForm({ provider, label, submitLabel, hint, placehol
           pendingLabel="Переходим в GitHub…"
           onClick={() => authorization.mutate()}
         >
-          Авторизовать GitHub
+          Подтвердить владение через GitHub
         </Button>
       )}
       <Button

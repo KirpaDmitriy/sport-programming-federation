@@ -785,6 +785,8 @@ pub struct AnonymousCandidateView {
     pub fsp_verified: bool,
     pub freshness: FreshnessView,
     pub r#match: Option<CandidateMatchView>,
+    /// Anonymous public-GitHub signal: no login, names, links or calendars.
+    pub github: Option<fsp_domain::GitHubSignal>,
     pub simulation: bool,
 }
 
@@ -892,6 +894,38 @@ pub struct SourceView {
     pub competition_ids: Vec<String>,
     pub notice: String,
     pub fsp_results: Vec<fsp_domain::FspResult>,
+    /// GitHub only: ownership state, the public-activity report and the employer projection.
+    pub github: Option<GitHubSourceView>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitHubSourceView {
+    pub ownership: GitHubOwnershipView,
+    pub report: Option<fsp_domain::GitHubReport>,
+    /// Exactly what employers see before any disclosure.
+    pub employer_preview: Option<fsp_domain::GitHubSignal>,
+    /// The background analysis while it runs; `None` when none is in flight.
+    pub analysis: Option<GitHubAnalysisView>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitHubAnalysisView {
+    /// `queued`, `running` or `failed`.
+    pub state: &'static str,
+    pub stage: String,
+    pub progress: u8,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitHubOwnershipView {
+    pub verified: bool,
+    pub method: Option<fsp_domain::OwnershipMethod>,
+    pub verified_at: Option<String>,
+    /// The candidate's code; adding it to the GitHub bio proves ownership on the next update.
+    pub code: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -971,8 +1005,33 @@ pub struct JobErrorView {
     pub retryable: bool,
 }
 
-pub fn source_view(record: SourceRecord) -> SourceView {
+pub fn source_view(
+    record: SourceRecord,
+    ownership_code: &str,
+    progress: Option<GitHubAnalysisView>,
+) -> SourceView {
     let analysis = record.analysis;
+    let github = (record.provider == SourceProvider::Github).then(|| {
+        let ownership = analysis
+            .as_ref()
+            .and_then(|analysis| analysis.ownership.clone());
+        let report = analysis
+            .as_ref()
+            .and_then(|analysis| analysis.report.clone());
+        GitHubSourceView {
+            employer_preview: report
+                .as_ref()
+                .map(|report| report.employer_signal(ownership.is_some())),
+            report,
+            analysis: progress,
+            ownership: GitHubOwnershipView {
+                verified: ownership.is_some(),
+                method: ownership.as_ref().map(|ownership| ownership.method),
+                verified_at: ownership.map(|ownership| ownership.verified_at),
+                code: ownership_code.into(),
+            },
+        }
+    });
     let repositories = analysis
         .as_ref()
         .map(|value| {
@@ -1023,17 +1082,23 @@ pub fn source_view(record: SourceRecord) -> SourceView {
         notice: if record.synthetic {
             "Вымышленные данные ФСП. Командный результат не подтверждает индивидуальные навыки или грейд.".into()
         } else if analysis.is_some() {
-            "Метрики рассчитаны по данным GitHub".into()
+            "Только публичные данные GitHub: приватные репозитории не анализируются. Метрики — сигналы активности, а не оценка навыков.".into()
         } else {
             String::new()
         },
+        github,
     }
 }
 
 pub fn job_view(record: JobRecord, source: Option<SourceView>) -> JobView {
-    // The mock asks clients to poll in-flight jobs every 250 ms and stops
-    // polling once a job is terminal.
+    // The mock asks clients to poll in-flight jobs every 250 ms and stops polling once a job is
+    // terminal. A GitHub analysis runs for minutes, so its source sync is polled every two seconds.
     let terminal = record.status == "succeeded" || record.status == "failed";
+    let poll_after_ms = match (terminal, record.kind.as_str()) {
+        (true, _) => 0,
+        (false, "source_sync") => 2_000,
+        (false, _) => 250,
+    };
     let result = record
         .result_json
         .as_deref()
@@ -1073,7 +1138,7 @@ pub fn job_view(record: JobRecord, source: Option<SourceView>) -> JobView {
             message: record.error_message.unwrap_or_default(),
             retryable: true,
         }),
-        poll_after_ms: if terminal { 0 } else { 250 },
+        poll_after_ms,
         simulation,
     }
 }

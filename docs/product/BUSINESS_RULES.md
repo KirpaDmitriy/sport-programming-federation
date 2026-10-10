@@ -65,18 +65,30 @@ ones and the UI lists them on the overview, profile and settings pages:
 
 - Two providers, GitHub and FSP. In the mock both are synthetic (`synthetic: true`, links under
   `example.com/fixtures`), and the UI labels them «Демо-источник».
-- Connecting a source requires processing consent. The mock starts a `source_sync` timer job at once;
-  Rust performs bounded provider I/O and commits connected data inline. In both implementations there
+- Connecting a source requires processing consent. The mock starts a `source_sync` timer job at once.
+  Rust commits the FSP source inline; a GitHub analysis runs for minutes, so connecting or syncing GitHub records a
+  running `source_sync` job in `Source.activeJobId`, and polling the job applies the finished report in one
+  transaction (`Source.github.analysis` shows the stage and progress meanwhile). In both implementations there
   is no manual repository selection. A connected source can be synced again (`409 source_not_connected` otherwise);
-  the mock returns the same running job for overlapping syncs. Rust detects a source changed during its
+  both return the same running job for overlapping syncs. Rust detects a source changed during its
   provider call and returns a failed `stale_input` job instead of overwriting newer data. Disconnecting is not supported.
-- GitHub reports `found` (total), `processed`, `queued` and `unavailable` repositories; a finished sync processes the
-  queued ones, unavailable ones stay unavailable. Active days and the observation period are observations; there is
-  no worked-hours value.
-- Rust derives allowlisted GitHub technologies as `evidence` during connect/sync, preserves assessment
-  confirmations and removes superseded GitHub support. The mock uses synthetic evidence for empty profiles.
-  Sources never create a confirmed grade: a technology in a repository is not proof of personal skill or
-  level.
+- GitHub connects by login, `@login` or a profile link (`422 github_login_invalid` for repository links and other
+  hosts; `422 github_account_not_found` at once for a mistyped login or an organization account). Updating within
+  six hours of the last analysis reuses its report and re-checks the bio, so ownership is confirmed in seconds. The insights service analyzes **public** data only, without a token, on our
+  server, and returns a report (`Source.github.report`): a developer portrait (summary, areas of work with evidence,
+  languages by the candidate's changed files, stack by category, topics, main projects), a 0–100 index with band and
+  confidence, seven dimensions with metrics, a commit calendar, yearly public commits, an estimated work rhythm in the
+  author's own time zone, own projects and organizations, collaboration validated by other people, repository
+  practices and integrity flags. Work in the candidate's own organizations counts as own work; collaboration counts
+  only work accepted or reviewed by others outside them. Time per active day and week is an explicitly labelled
+  estimate from commit timestamps, not worked hours. The method is in [GitHub insights](../github-insights.md).
+- Ownership: a login alone is a claim. Placing the candidate's code (`Source.github.ownership.code`) in the GitHub bio
+  and syncing, or an OAuth token of the same account, proves it; a proven login belongs to one candidate
+  (`409 github_account_taken`). Employers see whether ownership is proven.
+- Rust derives catalog technologies as `evidence` only from repositories the candidate owns or substantially
+  develops, preserves assessment confirmations and removes superseded GitHub support. The mock uses synthetic
+  evidence for empty profiles. Sources never create a confirmed grade: a technology in a repository is not proof of
+  personal skill or level, and the GitHub index never changes matching or order.
 - FSP is optional. Rust calls the private HTTP simulator on both connect and sync. Fictional results distinguish
   published, pending, disqualified and empty histories, individual and team scope, event dates and protocol references.
   Only published results count as participation for filtering/ranking; team placement never confirms individual skills
@@ -220,7 +232,9 @@ FSP participation only breaks ties; its absence never disqualifies.
 Every employer response about a candidate (search, profile, graph) contains only: ID, alias, verified specialization
 and grade with confirmation date, work modes, `availableForOffers`, skills (state, evidence grade, source kinds,
 summary, evidence count, confirmation date — no evidence items), source kinds, verified FSP flag, profile freshness
-(section 11) and the match. It
+(section 11), the match and the anonymous GitHub signal (`github`: index, public summary, areas of work, dimensions
+with rounded metrics, ownership state, languages, technologies, rhythm bands, highlights and warnings — no login,
+names, links, calendar or exact counts). It
 never contains a name, e-mail, handles, repository names, links or evidence titles. A profile that is not visible
 answers `404`, except to a company the candidate applied to (section 10) until the application is withdrawn.
 
@@ -350,14 +364,14 @@ initiating candidate; failures carry `{ code, message, retryable }`. No backgrou
 ## 15. Capabilities and simulation
 
 `GET /api/v1/meta` reports the configured capabilities. The mock reports `mode: mock`; Rust reports `mode: live`
-while still marking demo features as simulated. Real LLM and GitHub OAuth flags indicate configured adapters.
-The stand currently enables Bifrost and leaves GitHub OAuth unconfigured. Development demo controls are absent
+while still marking demo features as simulated. Real LLM, GitHub OAuth and `githubInsights` (public GitHub analysis)
+flags indicate configured adapters. The stand enables Bifrost and GitHub insights and leaves GitHub OAuth unconfigured. Development demo controls are absent
 from production bundles. The `live` mode does not turn fixed-code email verification into proof of email ownership.
 
 The development mock uses demo email identity; Rust uses actual Resend delivery when configured. Both use fictional FSP participation. Knowledge tests have deterministic
 scoring; their public bank has no measured psychometric validity. Only the development mock simulates PDF extraction
 and assistant replies. Rust uses isolated Poppler extraction and Bifrost with validated evidence and no canned fallback.
-Rust persists application records and sessions; its initial candidate bank is synthetic. GitHub calls are real only
-when configured. Graph output is validated against input skills and references; employer projections remove evidence
+Rust persists application records and sessions; its initial candidate bank is synthetic. GitHub analysis is real
+when the insights service is configured; the mock returns the labelled fictional report of a synthetic account. Graph output is validated against input skills and references; employer projections remove evidence
 nodes. An LLM relation is a suggestion, not a qualification verdict. Real email delivery is implemented through Resend; GitHub OAuth setup remains
-deferred; official FSP integration and arbitrary code execution are outside the chosen product scope.
+deferred (ownership is proven by the bio code instead); official FSP integration and arbitrary code execution are outside the chosen product scope.
