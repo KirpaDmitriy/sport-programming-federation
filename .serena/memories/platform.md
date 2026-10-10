@@ -22,7 +22,9 @@ PDF import uses bounded bwrap/prlimit/Poppler extraction, page-cited Bifrost fie
 The contextual assistant uses saved responses and never grades. Real extraction is a startup/pre-release probe.
 GitHub/Bifrost deadlines are 45 seconds inside the 55-second HTTP and 60-second nginx deadlines.
 FSP uses a private fictional HTTP provider. Published participation counts; team results never certify skills.
-Failed provider sync preserves snapshots. GitHub OAuth implementation exists but live setup remains deferred.
+Failed provider sync preserves snapshots. GitHub connects by login/link through the loopback insights service
+(github-insights-v1, docs/github-insights.md): public data only, ownership by bio code (OAuth optional, deferred),
+one proven login per candidate, evidence only from owned/led repos, anonymous rounded employer signal, no grade/order effect.
 
 Limits: public study bank lacks demonstrated leak resistance/professional calibration; model suggestions never
 prove qualifications. Jobs finish inline; search ranks collections in memory. No OCR, durable worker, measured

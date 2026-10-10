@@ -4,7 +4,8 @@ React/strict TypeScript 7, FSD and generated contracts; Russian UI and server-ow
 Assessment draft saves queue; submission waits for acknowledgment and locks editing. Knowledge workspace uses
 labelled radios and saved counts; failed tests preserve grades and final results explain knowledge-only scope.
 PDF previews show cited excerpts; profile changes invalidate stale confirmation. FSP cards identify fictional
-records and distinguish pending/empty/DQ/outage. Deferred GitHub OAuth has no active connect control.
+records and distinguish pending/empty/DQ/outage. GitHub connects by login/link with ownership code,
+full report widget and «Как вас видит работодатель»; employers see GitHubSignalCard.
 Graph generation runs only in graph view; failures show explicit retry without stale success/fallback graphs.
 
 Login uses capabilities.realEmail to hide seed-account/demo-code hints in Resend mode. It explains inbox/spam

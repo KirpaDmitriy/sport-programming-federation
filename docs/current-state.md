@@ -13,6 +13,7 @@ release identity instead of treating a SHA in historical documentation as the la
 | Authentication | Resend OTP mail, random six-digit codes, challenge/session HMAC separation, durable issuance/attempt limits, secure session cookies | [Email adapter](../backend/crates/integration-email/src/lib.rs), PostgreSQL HTTP regressions, owner real-mail login |
 | Privacy and writes | Role/company scoping, anonymous candidate projections, selected disclosure, atomic idempotency, guarded terminal decisions | [Business rules](product/BUSINESS_RULES.md), Rust HTTP/storage and two-company browser scenarios |
 | Assessment | Versioned knowledge questions (backend junior–senior, frontend junior/middle; balanced 5+5 variants per attempt), deterministic scoring, saved drafts, immutable results, preserved grade on failure | [Knowledge tests](knowledge-tests.md), component/HTTP/browser regressions |
+| GitHub insights | Connect by login or link; a separate loopback Rust service analyzes public data only into an explainable index, dimensions, rhythm and integrity flags; ownership by bio code; employers get an anonymous rounded projection | [GitHub insights](github-insights.md), unit, fake-GitHub and golden-fixture tests, calibration on public accounts |
 | PDF and assistance | Actual bounded isolated text extraction and cited Bifrost import; contextual assistant and graphs call Bifrost | [Backend runtime](../backend/README.md#pdf-import-runtime), exact-systemd PDF probe, earlier live feature evidence in #31 |
 | FSP | Separate private HTTP simulator with explicit fictional provenance and preserved snapshots on outage | [FSP simulator](fsp-simulator.md), HTTP and browser evidence |
 | Delivery | Four private-server CI gates, checked personal → dev → main PRs, exact-main deployment and actual Resend browser acceptance | [CI runbook](../infra/ci/README.md); no GitHub Actions dependency |
@@ -24,7 +25,9 @@ uses actual Rust/PostgreSQL and real received email, creates fresh actors and ne
 
 ## Explicit remaining limits
 
-- GitHub OAuth setup is deferred by the owner. Official FSP integration and arbitrary candidate code execution
+- GitHub OAuth setup is deferred by the owner; GitHub ownership is proven by a bio code instead. The GitHub index is
+  a transparent rule set over public evidence, not a calibrated predictor of performance, and it never confirms a
+  skill or changes matching. Official FSP integration and arbitrary candidate code execution
   are outside the chosen scope; the fictional provider and knowledge tests are intentional.
 - The published study bank is not professionally calibrated or resistant to leaked answers. Results do not
   certify practical experience; LLM suggestions never decide grades.
