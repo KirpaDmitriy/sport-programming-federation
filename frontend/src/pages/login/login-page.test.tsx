@@ -20,7 +20,7 @@ function renderLogin(realEmail = false) {
 }
 
 describe('email sign-in', () => {
-  it('shows real mail guidance and hides demo accounts when the server sends email', async () => {
+  it('shows real mail guidance and keeps demo accounts available when the server sends email', async () => {
     server.use(
       unauthenticated,
       http.post(`${API}/api/v1/auth/email/challenges`, () =>
@@ -31,7 +31,7 @@ describe('email sign-in', () => {
       ),
     );
     await renderLogin(true);
-    expect(screen.queryByText('Демонстрационные аккаунты')).toBeNull();
+    expect(screen.getByText('Демонстрационные аккаунты')).toBeTruthy();
     await userEvent.type(screen.getByLabelText(/Электронная почта/), 'real@example.com');
     await userEvent.click(screen.getByRole('button', { name: 'Получить код' }));
     expect(await screen.findByText('Проверьте почту')).toBeTruthy();
