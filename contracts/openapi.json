@@ -1672,7 +1672,21 @@
               }
             }
           }
-        }
+        },
+        "parameters": [
+          {
+            "name": "answers",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "keep",
+                "replace"
+              ]
+            }
+          }
+        ]
       }
     },
     "/api/v1/me/profile/export": {
@@ -14748,7 +14762,8 @@
             "type": "string",
             "enum": [
               "estimate-v1",
-              "estimate-v2"
+              "estimate-v2",
+              "estimate-v3"
             ]
           },
           "computedAt": {
@@ -15168,6 +15183,14 @@
                     "type": "null"
                   }
                 ]
+              },
+              "softSkills": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "maxLength": 100
+                },
+                "maxItems": 12
               }
             },
             "required": [
@@ -15175,7 +15198,8 @@
               "experienceMonths",
               "experience",
               "teamRole",
-              "name"
+              "name",
+              "softSkills"
             ],
             "additionalProperties": false
           },
@@ -15199,6 +15223,12 @@
                 "type": "null"
               }
             ]
+          },
+          "notes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           },
           "review": {
             "anyOf": [
@@ -15278,6 +15308,7 @@
           "answers",
           "sources",
           "insufficient",
+          "notes",
           "review"
         ],
         "additionalProperties": false
@@ -15847,7 +15878,8 @@
                 "stack",
                 "experienceMonths",
                 "experience",
-                "teamRole"
+                "teamRole",
+                "softSkills"
               ]
             },
             "uniqueItems": true
@@ -17851,7 +17883,8 @@
               "collaboration",
               "ownership",
               "craft",
-              "impact"
+              "impact",
+              "scope"
             ]
           },
           "label": {
@@ -17944,7 +17977,8 @@
           "algorithmVersion": {
             "type": "string",
             "enum": [
-              "github-insights-v2"
+              "github-insights-v2",
+              "github-insights-v3"
             ]
           },
           "generatedAt": {
@@ -19543,7 +19577,8 @@
           "algorithmVersion": {
             "type": "string",
             "enum": [
-              "github-insights-v2"
+              "github-insights-v2",
+              "github-insights-v3"
             ]
           },
           "generatedAt": {
@@ -19606,7 +19641,8 @@
                     "collaboration",
                     "ownership",
                     "craft",
-                    "impact"
+                    "impact",
+                    "scope"
                   ]
                 },
                 "label": {

@@ -247,6 +247,8 @@ fn snapshot() -> Snapshot {
                     "src/main.rs",
                     "src/api.rs",
                     "src/storage.rs",
+                    "migrations/0001_init.sql",
+                    "docs/adr/0001-storage.md",
                     "tests/api.rs",
                     "web/package.json",
                     "web/bun.lock",
@@ -409,6 +411,55 @@ fn ownership_and_collaboration_separate_own_and_independent_work() {
         GitHubDimensionId::Craft,
     ] {
         assert!(report.dimensions.iter().any(|item| item.id == dimension));
+    }
+}
+
+#[test]
+fn scope_counts_sustained_systems_areas_layers_and_design_work() {
+    let report = report();
+    let scope = report
+        .dimensions
+        .iter()
+        .find(|item| item.id == GitHubDimensionId::Scope)
+        .unwrap();
+    let metric = |id: &str| {
+        scope
+            .metrics
+            .iter()
+            .find(|metric| metric.id == id)
+            .unwrap()
+            .value
+    };
+    // The owned project spans a year of the account's own commits; the organization one is short.
+    assert_eq!(metric("sustained_systems"), 1);
+    // Migrations and an architecture decision record are design work; vendored copies are not.
+    assert_eq!(metric("design_artifacts"), 1);
+    assert!(metric("engineering_areas") >= 1);
+    assert!(metric("system_layers") >= 1);
+}
+
+#[test]
+fn design_artifacts_are_decisions_contracts_and_migrations() {
+    use fsp_github_insights::analysis::design_artifact;
+    for path in [
+        "docs/adr/0001-storage.md",
+        "docs/decisions/0002.md",
+        "ARCHITECTURE.md",
+        "docs/architecture/overview.md",
+        "api/openapi.yaml",
+        "proto/service.proto",
+        "db/migrate/20240101_create_users.rb",
+        "app/migrations/0001_initial.py",
+    ] {
+        assert!(design_artifact(path), "{path}");
+    }
+    for path in [
+        "README.md",
+        "src/main.rs",
+        "node_modules/pkg/migrations/1.sql",
+        "docs/usage.md",
+    ] {
+        assert!(!design_artifact(path), "{path}");
     }
 }
 
