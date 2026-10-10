@@ -479,7 +479,7 @@ async fn a_running_github_analysis_is_applied_when_its_job_is_polled() {
     let (repository, _database) = repository().await;
     let repository = Arc::new(repository);
     let service = PlatformService::new(repository.clone(), Arc::new(FixedDelivery))
-        .with_github_insights(Arc::new(Insights::after(2, &[])));
+        .with_github_insights(Arc::new(Insights::after(3, &[])));
     service.initialize().await.unwrap();
     let session = signed_in_candidate(&service, &repository, "async@example.com").await;
     let id = session.candidate_id.as_deref().unwrap();
@@ -518,6 +518,21 @@ async fn a_running_github_analysis_is_applied_when_its_job_is_polled() {
     // A sync while the analysis runs follows the same job.
     let again = service.sync_source(&session, &source.id).await.unwrap();
     assert_eq!(again.id, job_id);
+    // Connecting again replaces the running analysis; the replaced job fails as stale.
+    let replaced = service
+        .connect_source(
+            &session,
+            "github",
+            fsp_application::SourceConnectInput {
+                account: "@owner".into(),
+            },
+        )
+        .await
+        .unwrap();
+    let stale = service.job(&session, &job_id).await.unwrap();
+    assert_eq!(stale.status, "failed");
+    assert_eq!(stale.error.unwrap().code, "stale_input");
+    let job_id = replaced.active_job_id.unwrap();
     let running = service.job(&session, &job_id).await.unwrap();
     assert_eq!(
         (running.status.as_str(), running.poll_after_ms),

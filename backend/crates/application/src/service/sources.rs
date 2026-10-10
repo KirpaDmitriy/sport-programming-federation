@@ -296,6 +296,29 @@ impl PlatformService {
             ..self.clone()
         };
         scoped.require_processing_consent(candidate_id).await?;
+        // The analysis this connection replaces can no longer apply: its job fails as stale.
+        let replaced = tx
+            .sources(candidate_id)
+            .await
+            .map_err(ApplicationError::storage)?
+            .into_iter()
+            .find(|source| source.provider == fsp_domain::SourceProvider::Github)
+            .and_then(|source| source.active_job_id);
+        if let Some(replaced) = replaced
+            && let Some(mut stale) = tx
+                .job(candidate_id, &replaced)
+                .await
+                .map_err(ApplicationError::storage)?
+                .filter(|stale| stale.status == "running")
+        {
+            stale.status = "failed".into();
+            stale.updated_at = now();
+            stale.error_code = Some("stale_input".into());
+            stale.error_message = Some("Источник изменился во время синхронизации".into());
+            tx.save_job(&stale)
+                .await
+                .map_err(ApplicationError::storage)?;
+        }
         let mut candidate = scoped.candidate_index(candidate_id).await?;
         scoped.save_source_evidence(&mut candidate, &record).await?;
         if let Some(job) = &job {
