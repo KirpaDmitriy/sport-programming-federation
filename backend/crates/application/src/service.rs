@@ -24,13 +24,14 @@ use crate::{
     EmailChallengeView, EmailVerifyInput, EmployerEstimateFactorView, EmployerEstimateView,
     EvidencePolicyView, EvidenceView, FreshnessView, FspGateway, GapItemView, GapPlanView,
     GitHubGateway, GradeEligibilityView, GraphEdgeView, GraphNodeView, GraphView, IdempotencyClaim,
-    ImportConfirmInput, IntegrationError, InvitationInput, InvitationNeedView, InvitationView,
-    InvitationsView, JobResultView, JobView, LlmGateway, MatchRequirementView, MyTasksView,
-    NeedInput, NeedPatch, NeedView, NeedsView, OfferedCompanyView, OfferedTaskView, OnboardingView,
-    PendingChallenge, PlatformRepository, ProfilePatch, ProfileView, RepositoryError,
-    RequirementInput, RequirementView, SalaryView, SelfSkillView, SessionView, ShortlistInput,
-    ShortlistMemberView, ShortlistSummaryView, ShortlistView, ShortlistsView, SkillView,
-    SkillsView, SourceConnectInput, SourceView, SourcesView, TaskInput, TaskPeriodView,
+    ImportConfirmInput, IntegrationError, InterviewAnswerInput, InterviewGateway,
+    InterviewStartInput, InterviewView, InterviewsView, InvitationInput, InvitationNeedView,
+    InvitationView, InvitationsView, JobResultView, JobView, LlmGateway, MatchRequirementView,
+    MyTasksView, NeedInput, NeedPatch, NeedView, NeedsView, OfferedCompanyView, OfferedTaskView,
+    OnboardingView, PendingChallenge, PlatformRepository, ProfilePatch, ProfileView,
+    RepositoryError, RequirementInput, RequirementView, SalaryView, SelfSkillView, SessionView,
+    ShortlistInput, ShortlistMemberView, ShortlistSummaryView, ShortlistView, ShortlistsView,
+    SkillView, SkillsView, SourceConnectInput, SourceView, SourcesView, TaskInput, TaskPeriodView,
     TaskResponseInput, TaskResponseView, TaskResponsesView, TaskReviewInput, TaskReviewOutcome,
     TaskView, TasksView, VacancyPageView, VacancyRequirementView, VacancySearch, VacancyView,
     VerificationDelivery, job_view, match_status, source_view,
@@ -85,6 +86,7 @@ pub struct PlatformService {
     pdf: Option<Arc<dyn crate::PdfGateway>>,
     llm: Option<Arc<dyn LlmGateway>>,
     fsp: Option<Arc<dyn FspGateway>>,
+    interviews: Option<Arc<dyn InterviewGateway>>,
     grade_cooldown_days: u16,
     auth_key: Option<Vec<u8>>,
 }
@@ -102,6 +104,7 @@ impl PlatformService {
             llm: None,
             pdf: None,
             fsp: None,
+            interviews: None,
             grade_cooldown_days: 90,
             auth_key: None,
         }
@@ -167,6 +170,83 @@ impl PlatformService {
     pub fn with_pdf(mut self, pdf: Arc<dyn crate::PdfGateway>) -> Self {
         self.pdf = Some(pdf);
         self
+    }
+
+    #[must_use]
+    pub fn with_interviews(mut self, interviews: Arc<dyn InterviewGateway>) -> Self {
+        self.interviews = Some(interviews);
+        self
+    }
+
+    #[must_use]
+    pub fn interviews_configured(&self) -> bool {
+        self.interviews.is_some()
+    }
+
+    pub async fn my_interviews(
+        &self,
+        session: &SessionView,
+    ) -> Result<InterviewsView, ApplicationError> {
+        let candidate_id = candidate_id(session)?;
+        self.interviews
+            .as_ref()
+            .ok_or_else(interviews_unavailable)?
+            .list(candidate_id)
+            .await
+            .map_err(integration_error)
+    }
+
+    pub async fn start_interview(
+        &self,
+        session: &SessionView,
+        input: InterviewStartInput,
+    ) -> Result<InterviewView, ApplicationError> {
+        let candidate_id = candidate_id(session)?;
+        self.require_processing_consent(candidate_id).await?;
+        self.interviews
+            .as_ref()
+            .ok_or_else(interviews_unavailable)?
+            .start(candidate_id, &input)
+            .await
+            .map_err(integration_error)
+    }
+
+    pub async fn get_interview(
+        &self,
+        session: &SessionView,
+        interview_id: &str,
+    ) -> Result<InterviewView, ApplicationError> {
+        let candidate_id = candidate_id(session)?;
+        let interview = self
+            .interviews
+            .as_ref()
+            .ok_or_else(interviews_unavailable)?
+            .get(interview_id)
+            .await
+            .map_err(integration_error)?;
+        if interview.candidate_id != candidate_id {
+            return Err(ApplicationError::new(
+                404,
+                "interview_not_found",
+                "Собеседование не найдено",
+            ));
+        }
+        Ok(interview)
+    }
+
+    pub async fn answer_interview(
+        &self,
+        session: &SessionView,
+        interview_id: &str,
+        input: InterviewAnswerInput,
+    ) -> Result<InterviewView, ApplicationError> {
+        self.get_interview(session, interview_id).await?;
+        self.interviews
+            .as_ref()
+            .ok_or_else(interviews_unavailable)?
+            .answer(interview_id, &input)
+            .await
+            .map_err(integration_error)
     }
 
     #[must_use]
@@ -245,7 +325,8 @@ impl PlatformService {
                 "Этот адрес зарегистрирован с другой ролью",
             ));
         }
-        let code = self.delivery.code_for().map_err(|error| {
+        let delivery = self.delivery.contract_name_for_email(&email);
+        let code = self.delivery.code_for_email(&email).map_err(|error| {
             ApplicationError::new(502, "verification_delivery_failed", error.message)
         })?;
         let challenge_id = format!("challenge-{}", Uuid::new_v4().simple());
@@ -264,7 +345,7 @@ impl PlatformService {
         // the cumulative five-attempt lockout across reissued codes.
         let issued = self
             .repository
-            .issue_challenge(&challenge, self.delivery.contract_name() == "email")
+            .issue_challenge(&challenge, delivery == "email")
             .await
             .map_err(ApplicationError::storage)?;
         match issued {
@@ -293,7 +374,7 @@ impl PlatformService {
         Ok(EmailChallengeView {
             challenge_id: challenge.id,
             expires_at: challenge.expires_at,
-            delivery: self.delivery.contract_name(),
+            delivery,
         })
     }
 
@@ -3435,9 +3516,21 @@ fn integration_error(error: IntegrationError) -> ApplicationError {
     let status = match error.code {
         "github_login_invalid" | "github_account_not_found" => 422,
         "github_rate_limited" | "github_not_configured" => 503,
+        "interview_not_found" => 404,
+        "interview_conflict" => 409,
+        "interview_input_invalid" => 422,
+        "interview_model_unavailable" | "interview_service_unavailable" => 503,
         _ => 502,
     };
     ApplicationError::new(status, error.code, error.message)
+}
+
+fn interviews_unavailable() -> ApplicationError {
+    ApplicationError::new(
+        503,
+        "interview_service_unavailable",
+        "Сервис собеседований временно недоступен",
+    )
 }
 
 fn source_provider(provider: fsp_domain::SourceProvider) -> &'static str {

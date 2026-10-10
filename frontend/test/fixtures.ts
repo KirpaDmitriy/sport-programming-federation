@@ -123,6 +123,7 @@ export const meta: S['Meta'] = {
     githubFixture: true,
     githubOAuth: false,
     githubInsights: false,
+    graphInterviews: true,
     fspFixture: true,
     matching: true,
     directInvitations: true,

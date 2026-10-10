@@ -7,7 +7,7 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
 
-use crate::domain::{BACKEND_MIDDLE, InterviewView};
+use crate::domain::{BACKEND_MIDDLE, InterviewListView, InterviewView};
 use crate::engine::{InterviewService, ServiceError};
 
 #[derive(Clone)]
@@ -25,6 +25,10 @@ pub fn router(service: Arc<InterviewService>, api_token: String) -> Router {
         .route("/health", get(health))
         .route("/v1/blueprints/backend-middle-v1", get(get_blueprint))
         .route("/v1/interviews", post(start_interview))
+        .route(
+            "/v1/candidates/{candidate_id}/interviews",
+            get(list_interviews),
+        )
         .route("/v1/interviews/{interview_id}", get(get_interview))
         .route(
             "/v1/interviews/{interview_id}/answers",
@@ -34,8 +38,18 @@ pub fn router(service: Arc<InterviewService>, api_token: String) -> Router {
         .with_state(state)
 }
 
-async fn health() -> Json<Health> {
-    Json(Health { status: "ok" })
+async fn health(State(state): State<HttpState>) -> Result<Json<Health>, ApiError> {
+    state.service.healthy().await?;
+    Ok(Json(Health { status: "ok" }))
+}
+
+async fn list_interviews(
+    State(state): State<HttpState>,
+    headers: HeaderMap,
+    Path(candidate_id): Path<String>,
+) -> Result<Json<InterviewListView>, ApiError> {
+    authorize(&state, &headers)?;
+    Ok(Json(state.service.list(&candidate_id).await?))
 }
 
 async fn get_blueprint(
@@ -161,6 +175,11 @@ impl IntoResponse for ApiError {
                 StatusCode::SERVICE_UNAVAILABLE,
                 "interview_model_unavailable",
                 "Модель собеседования временно недоступна",
+            ),
+            Self::Service(ServiceError::Unavailable) => (
+                StatusCode::SERVICE_UNAVAILABLE,
+                "interview_service_unavailable",
+                "Сервис собеседований временно недоступен",
             ),
         };
         (status, Json(ErrorBody { code, message })).into_response()

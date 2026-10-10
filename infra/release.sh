@@ -15,6 +15,13 @@ SCRIPTS="$(cd "$(dirname "$0")" && pwd)"
 # Shared by CI, manual deployments and rollbacks through build and health verification.
 exec 9>"$ROOT/deploy.lock"
 flock -w 1800 9
+if [[ ! -f "$CONFIG/interview.env" ]]; then
+  interview_env="$(mktemp "$CONFIG/interview.env.XXXXXXXX")"
+  printf 'INTERVIEW_API_TOKEN=%s\n' "$(openssl rand -hex 32)" > "$interview_env"
+  chown root:fsp "$interview_env"
+  chmod 640 "$interview_env"
+  mv "$interview_env" "$CONFIG/interview.env"
+fi
 IMPL="$(cat "$CONFIG/api-backend" 2>/dev/null || echo mock)"
 case "$IMPL" in
   rust) active=fsp-api; inactive=fsp-mock-api ;;
@@ -30,6 +37,9 @@ healthy() {
   fi
   if [[ "$(cat "$CONFIG/api-backend")" == rust && -x "$ROOT/current/bin/fsp-github-insights" ]]; then
     curl --max-time 5 -fsS http://127.0.0.1:4030/health >/dev/null 2>&1 || return 1
+  fi
+  if [[ "$(cat "$CONFIG/api-backend")" == rust && -x "$ROOT/current/bin/fsp-interview-service" ]]; then
+    curl --max-time 5 -fsS http://127.0.0.1:4040/health >/dev/null 2>&1 || return 1
   fi
 }
 
@@ -58,10 +68,11 @@ if [[ ! -d "$DIR" ]]; then
     [[ -x "$rust_bin/cargo" ]] || { echo "Missing Rust $toolchain; run provisioning" >&2; exit 1; }
     (cd "$STAGE/backend" && PATH="$rust_bin:$PATH" RUSTUP_HOME="${FSP_RUSTUP_ROOT:-/opt/rustup}" \
       CARGO_TARGET_DIR="$ROOT/target-cache" "$rust_bin/cargo" build --release --locked \
-        -p fsp-server -p fsp-integration-fsp-synthetic -p fsp-github-insights --bins)
+        -p fsp-server -p fsp-integration-fsp-synthetic -p fsp-github-insights -p fsp-interview-service --bins)
     install -D -m 755 "$ROOT/target-cache/release/fsp-career-api" "$STAGE/bin/fsp-career-api"
     install -D -m 755 "$ROOT/target-cache/release/fsp-simulator" "$STAGE/bin/fsp-simulator"
     install -D -m 755 "$ROOT/target-cache/release/fsp-github-insights" "$STAGE/bin/fsp-github-insights"
+    install -D -m 755 "$ROOT/target-cache/release/fsp-interview-service" "$STAGE/bin/fsp-interview-service"
   fi
   mv "$STAGE" "$DIR"
   if [[ "$SCRIPTS" == "$STAGE/infra" ]]; then SCRIPTS="$DIR/infra"; fi
@@ -83,6 +94,7 @@ backup="$(mktemp -d "$ROOT/.activation-XXXXXXXX")"
 config_files=(
   etc/systemd/system/fsp-mock-api.service etc/systemd/system/fsp-api.service
   etc/systemd/system/fsp-simulator.service etc/systemd/system/fsp-github-insights.service
+  etc/systemd/system/fsp-interview.service
   etc/systemd/system/fsp-cliproxy.service etc/systemd/system/fsp-bifrost.service
   etc/nginx/sites-available/fsp-demo.conf etc/nginx/snippets/fsp-security-headers.conf
 )
@@ -124,6 +136,12 @@ rollback() {
     else
       systemctl disable --now fsp-github-insights 2>/dev/null || true
     fi
+    if [[ "$PREV_ACTIVE" == fsp-api && -x "$PREV/bin/fsp-interview-service" ]]; then
+      systemctl enable fsp-interview
+      systemctl restart fsp-interview
+    else
+      systemctl disable --now fsp-interview 2>/dev/null || true
+    fi
     if [[ "$PREV_ACTIVE" == fsp-api ]]; then
       echo rust > "$CONFIG/api-backend"
       systemctl disable --now fsp-mock-api
@@ -139,6 +157,7 @@ rollback() {
     systemctl stop "$active"
     systemctl disable --now fsp-simulator
     systemctl disable --now fsp-github-insights 2>/dev/null || true
+    systemctl disable --now fsp-interview 2>/dev/null || true
     rm -f "$ROOT/current"
     echo 'No previous release available' >&2
   fi
@@ -157,6 +176,9 @@ fi
 if [[ -f "$DIR/infra/fsp-github-insights.service" ]]; then
   install -m 644 "$DIR/infra/fsp-github-insights.service" "$SYSTEM_ROOT/etc/systemd/system/fsp-github-insights.service"
 fi
+if [[ -f "$DIR/infra/fsp-interview.service" ]]; then
+  install -m 644 "$DIR/infra/fsp-interview.service" "$SYSTEM_ROOT/etc/systemd/system/fsp-interview.service"
+fi
 bash "$DIR/infra/render-nginx.sh" "$CONFIG/rust-api.env" > "$SYSTEM_ROOT/etc/nginx/sites-available/fsp-demo.conf"
 install -m 644 "$DIR/infra/nginx/fsp-security-headers.conf" "$SYSTEM_ROOT/etc/nginx/snippets/fsp-security-headers.conf"
 nginx -t
@@ -174,6 +196,12 @@ if [[ "$IMPL" == rust && -x "$DIR/bin/fsp-github-insights" ]]; then
 else
   # Releases before the insights service have no unit to disable.
   systemctl disable --now fsp-github-insights 2>/dev/null || true
+fi
+if [[ "$IMPL" == rust && -x "$DIR/bin/fsp-interview-service" ]]; then
+  systemctl enable fsp-interview
+  systemctl restart fsp-interview
+else
+  systemctl disable --now fsp-interview 2>/dev/null || true
 fi
 systemctl disable --now "$inactive"
 systemctl enable "$active"

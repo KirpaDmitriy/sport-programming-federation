@@ -457,6 +457,9 @@ pub trait FspGateway: Send + Sync {
 #[async_trait]
 pub trait VerificationDelivery: Send + Sync {
     fn code_for(&self) -> Result<String, IntegrationError>;
+    fn code_for_email(&self, _email: &str) -> Result<String, IntegrationError> {
+        self.code_for()
+    }
     async fn deliver(
         &self,
         email: &str,
@@ -464,9 +467,28 @@ pub trait VerificationDelivery: Send + Sync {
         challenge_id: &str,
     ) -> Result<(), IntegrationError>;
     fn contract_name(&self) -> &'static str;
+    fn contract_name_for_email(&self, _email: &str) -> &'static str {
+        self.contract_name()
+    }
 }
 
 #[async_trait]
 pub trait PdfGateway: Send + Sync {
     async fn extract(&self, bytes: &[u8]) -> Result<Vec<fsp_domain::PdfPage>, IntegrationError>;
+}
+
+#[async_trait]
+pub trait InterviewGateway: Send + Sync {
+    async fn list(&self, candidate_id: &str) -> Result<crate::InterviewsView, IntegrationError>;
+    async fn start(
+        &self,
+        candidate_id: &str,
+        input: &crate::InterviewStartInput,
+    ) -> Result<crate::InterviewView, IntegrationError>;
+    async fn get(&self, interview_id: &str) -> Result<crate::InterviewView, IntegrationError>;
+    async fn answer(
+        &self,
+        interview_id: &str,
+        input: &crate::InterviewAnswerInput,
+    ) -> Result<crate::InterviewView, IntegrationError>;
 }

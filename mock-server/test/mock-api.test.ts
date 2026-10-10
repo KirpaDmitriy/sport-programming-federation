@@ -495,6 +495,46 @@ test('source enrichment is automatic, asynchronous, private and never infers gra
   assert.equal((await request('GET', '/api/v1/me/profile', { actor: candidate })).body.verifiedGrade, 'junior');
 });
 
+test('graph interview follows prerequisites and rejects a stale answer', async (t) => {
+  const { request, login } = await setup(t);
+  const candidate = await login('candidate024');
+  const empty = (await request('GET', '/api/v1/me/interviews', { actor: candidate })).body;
+  assert.deepEqual(empty.items, []);
+
+  const started = (
+    await request('POST', '/api/v1/me/interviews', {
+      actor: candidate,
+      body: { blueprintId: 'backend-middle-v1', maxTurns: 10 },
+      status: 201,
+    })
+  ).body;
+  assert.equal(started.currentQuestion.nodeId, 'backend.idempotency');
+  await request('GET', `/api/v1/me/interviews/${started.id}`, { actor: candidate });
+
+  const answered = (
+    await request('POST', `/api/v1/me/interviews/${started.id}/answers`, {
+      actor: candidate,
+      body: {
+        questionId: started.currentQuestion.id,
+        answer: 'Сначала уточню ожидаемое поведение повторного запроса.',
+        revision: started.revision,
+      },
+    })
+  ).body;
+  assert.equal(answered.currentQuestion.nodeId, 'backend.unique-operation');
+  assert.equal(answered.evidence[0].state, 'observed');
+
+  await request('POST', `/api/v1/me/interviews/${started.id}/answers`, {
+    actor: candidate,
+    body: {
+      questionId: started.currentQuestion.id,
+      answer: 'Устаревший ответ',
+      revision: started.revision,
+    },
+    status: 409,
+  });
+});
+
 test('assessment workflow uses jobs, preserves unrelated evidence, and applies a successful grade change', async (t) => {
   const { request, login, job } = await setup(t);
   const candidate = await login('candidate024');

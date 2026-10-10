@@ -18,6 +18,7 @@ import {
   createState,
   evidenceFor,
   type Grade,
+  type Interview,
   type InvitationRecord,
   type JobRecord,
   type JobResult,
@@ -100,6 +101,61 @@ const specializationRank = Object.fromEntries(SPECIALIZATIONS.map((item, index) 
   number
 >;
 const activeAssessment = new Set<AssessmentRecord['status']>(['draft', 'in_progress', 'submitted', 'evaluating']);
+
+const interviewNodes: Interview['nodes'] = [
+  {
+    id: 'backend.idempotency',
+    label: 'Проектирует идемпотентную запись',
+    kind: 'technical',
+    criticality: 5,
+    prerequisites: ['backend.unique-operation', 'backend.transactions'],
+    state: 'unknown',
+  },
+  {
+    id: 'backend.unique-operation',
+    label: 'Определяет уникальность операции',
+    kind: 'technical',
+    criticality: 4,
+    prerequisites: [],
+    state: 'unknown',
+  },
+  {
+    id: 'backend.transactions',
+    label: 'Использует транзакционные границы',
+    kind: 'technical',
+    criticality: 5,
+    prerequisites: [],
+    state: 'unknown',
+  },
+  {
+    id: 'collaboration.requirements',
+    label: 'Проясняет неоднозначные требования и риски',
+    kind: 'behavioral',
+    criticality: 3,
+    prerequisites: [],
+    state: 'unknown',
+  },
+];
+
+const interviewPrompt = (nodeId: string) =>
+  nodeId === 'backend.idempotency'
+    ? 'Клиент повторяет POST-запрос после таймаута, и заказ создаётся дважды. Как вы измените систему?'
+    : nodeId === 'backend.unique-operation'
+      ? 'Как сформировать и ограничить область действия ключа операции, чтобы не склеить разные запросы?'
+      : nodeId === 'backend.transactions'
+        ? 'Какие изменения должны попасть в одну транзакцию при создании заказа и записи результата операции?'
+        : 'Требование допускает два толкования, а срок уже близко. Как вы будете действовать?';
+
+function interviewQuestion(nodeId: string, sequence: number): NonNullable<Interview['currentQuestion']> {
+  const prompt = interviewPrompt(nodeId);
+  return {
+    id: `question-${sequence}-${nodeId.replaceAll('.', '-')}`,
+    nodeId,
+    prompt,
+    sequence,
+    delivery: { speechText: prompt, avatarCue: 'speaking' },
+  };
+}
 const terminalStatus = new Set<InvitationRecord['status']>(['accepted', 'declined', 'withdrawn']);
 const pick = <T, K extends keyof T>(value: T, keys: readonly K[]): Pick<T, K> =>
   Object.fromEntries(keys.map((key) => [key, value[key]])) as Pick<T, K>;
@@ -157,6 +213,7 @@ const applicationFor = ({ s, actor }: Ctx, id: string): ApplicationRecord => {
     : fail(404, 'not_found', 'Ресурс не найден');
 };
 const assessmentFor = ({ s, actor }: Ctx, id: string) => own(s.assessments.get(id), actor, 'candidateId');
+const interviewFor = ({ s, actor }: Ctx, id: string) => own(s.interviews.get(id), actor, 'candidateId');
 const jobFor = ({ s, actor }: Ctx, id: string): JobRecord => {
   const job = s.jobs.get(id);
   return job?.ownerActorId === actor.id ? job : fail(404, 'not_found', 'Ресурс не найден');
@@ -1104,6 +1161,7 @@ const handlers: Handlers = {
       githubFixture: true,
       githubOAuth: false,
       githubInsights: false,
+      graphInterviews: true,
       fspFixture: true,
       matching: true,
       directInvitations: true,
@@ -1460,6 +1518,90 @@ const handlers: Handlers = {
     return createJob(ctx.s, ctx.actor, 'assessment', () => completeAssessment(ctx.s, candidate, item), {
       assessmentId: item.id,
     });
+  },
+  listMyInterviews: (ctx) => ({
+    items: [...ctx.s.interviews.values()]
+      .filter((item) => item.candidateId === ctx.actor.candidateId)
+      .sort((a, b) => b.id.localeCompare(a.id)),
+  }),
+  startInterview: (ctx) => {
+    const candidate = me(ctx);
+    processing(candidate);
+    const active = [...ctx.s.interviews.values()].find(
+      (item) => item.candidateId === candidate.id && item.status === 'active',
+    );
+    if (active) return active;
+    const id = nextId(ctx.s, 'interview');
+    const item: Interview = {
+      id,
+      candidateId: candidate.id,
+      blueprintId: 'backend-middle-v1',
+      status: 'active',
+      revision: 0,
+      currentQuestion: interviewQuestion('backend.idempotency', 1),
+      nodes: structuredClone(interviewNodes),
+      evidence: [],
+      modelMode: 'mock_rubric',
+    };
+    ctx.s.interviews.set(id, item);
+    return item;
+  },
+  getInterview: (ctx) => interviewFor(ctx, param(ctx, 'interviewId')),
+  answerInterview: (ctx) => {
+    const item = interviewFor(ctx, param(ctx, 'interviewId'));
+    processing(me(ctx));
+    if (
+      item.status !== 'active' ||
+      item.revision !== ctx.body.revision ||
+      item.currentQuestion?.id !== ctx.body.questionId
+    )
+      fail(409, 'interview_conflict', 'Состояние собеседования изменилось; обновите данные');
+    const question = must(item.currentQuestion, 'active interview question');
+    const answer = ctx.body.answer.trim();
+    const normalized = answer.toLocaleLowerCase('ru');
+    const groups =
+      question.nodeId === 'backend.idempotency'
+        ? ['ключ', 'уникаль', 'транзакц', 'повтор']
+        : question.nodeId === 'backend.unique-operation'
+          ? ['ключ', 'уникаль', 'област']
+          : question.nodeId === 'backend.transactions'
+            ? ['транзакц', 'атомар', 'откат']
+            : ['уточ', 'соглас', 'риск'];
+    const matched = groups.filter((term) => normalized.includes(term)).length;
+    const state: Interview['nodes'][number]['state'] =
+      matched === groups.length ? 'confirmed' : matched * 2 >= groups.length ? 'partial' : 'observed';
+    const node = must(
+      item.nodes.find((candidate) => candidate.id === question.nodeId),
+      'interview node',
+    );
+    node.state = state;
+    item.evidence.push({
+      nodeId: node.id,
+      state,
+      questionId: question.id,
+      answerExcerpt: answer.slice(0, 300),
+      rationale: `Распознано ${matched} из ${groups.length} элементов рубрики`,
+      evaluator: 'mock-rubric-v1',
+      rubricVersion: 'graph-interview-rubric-v1',
+    });
+    item.revision += 1;
+    const unknownPrerequisite =
+      state !== 'confirmed'
+        ? node.prerequisites.find((id) => item.nodes.find((candidate) => candidate.id === id)?.state === 'unknown')
+        : undefined;
+    const next =
+      unknownPrerequisite ??
+      item.nodes.find((candidate) => candidate.state === 'unknown')?.id ??
+      (state !== 'confirmed' && item.evidence.filter((entry) => entry.nodeId === node.id).length < 2
+        ? node.id
+        : undefined);
+    if (!next || item.evidence.length >= 10) {
+      item.status = 'completed';
+      item.currentQuestion = null;
+    } else {
+      item.currentQuestion = interviewQuestion(next, item.evidence.length + 1);
+    }
+    return item;
   },
   getJob: (ctx) => jobDto(jobFor(ctx, param(ctx, 'jobId'))),
   getMyTasks: (ctx) => {

@@ -15,6 +15,105 @@ pub struct SessionView {
     pub display_name: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct InterviewStartInput {
+    pub blueprint_id: String,
+    pub max_turns: Option<u8>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct InterviewAnswerInput {
+    pub question_id: String,
+    pub answer: String,
+    pub revision: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum InterviewStatusView {
+    Active,
+    Completed,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EvidenceStateView {
+    Unknown,
+    Observed,
+    Partial,
+    Confirmed,
+    Contradicted,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CompetencyKindView {
+    Technical,
+    Behavioral,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InterviewQuestionView {
+    pub id: String,
+    pub node_id: String,
+    pub prompt: String,
+    pub sequence: u8,
+    pub delivery: InterviewDeliveryView,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InterviewDeliveryView {
+    pub speech_text: String,
+    pub avatar_cue: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InterviewNodeView {
+    pub id: String,
+    pub label: String,
+    pub kind: CompetencyKindView,
+    pub criticality: u8,
+    pub prerequisites: Vec<String>,
+    pub state: EvidenceStateView,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InterviewEvidenceView {
+    pub node_id: String,
+    pub state: EvidenceStateView,
+    pub question_id: String,
+    pub answer_excerpt: String,
+    pub rationale: String,
+    pub evaluator: String,
+    pub rubric_version: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InterviewView {
+    pub id: String,
+    pub candidate_id: String,
+    pub blueprint_id: String,
+    pub status: InterviewStatusView,
+    pub revision: u32,
+    pub current_question: Option<InterviewQuestionView>,
+    pub nodes: Vec<InterviewNodeView>,
+    pub evidence: Vec<InterviewEvidenceView>,
+    pub model_mode: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InterviewsView {
+    pub items: Vec<InterviewView>,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct EmailChallengeInput {

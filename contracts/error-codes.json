@@ -425,6 +425,52 @@
       ]
     },
     {
+      "code": "interview_conflict",
+      "statuses": [
+        409
+      ],
+      "messages": [
+        "Состояние собеседования изменилось; обновите данные"
+      ]
+    },
+    {
+      "code": "interview_input_invalid",
+      "statuses": [
+        422
+      ],
+      "messages": [
+        "Параметры интервью некорректны"
+      ]
+    },
+    {
+      "code": "interview_model_unavailable",
+      "statuses": [
+        503
+      ],
+      "messages": [
+        "Модель собеседования временно недоступна"
+      ]
+    },
+    {
+      "code": "interview_not_found",
+      "statuses": [
+        404
+      ],
+      "messages": [
+        "Собеседование не найдено"
+      ]
+    },
+    {
+      "code": "interview_service_unavailable",
+      "statuses": [
+        503
+      ],
+      "messages": [
+        "Сервис собеседований временно недоступен",
+        "Сервис собеседований вернул некорректный ответ"
+      ]
+    },
+    {
       "code": "invalid_code",
       "statuses": [
         400

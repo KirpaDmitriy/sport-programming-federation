@@ -1,14 +1,14 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use tokio::sync::RwLock;
 use uuid::Uuid;
 
 use crate::domain::{
-    AvatarCue, EvidenceState, InterviewEvidence, InterviewQuestion, InterviewSession,
-    InterviewStatus, InterviewView, QuestionDelivery, blueprint,
+    AvatarCue, EvidenceState, InterviewEvidence, InterviewListView, InterviewQuestion,
+    InterviewSession, InterviewStatus, InterviewView, QuestionDelivery, blueprint,
 };
 use crate::model::{AnswerContext, InterviewModel, ModelError, QuestionContext};
+use crate::storage::{InterviewRepository, MemoryInterviewRepository, RepositoryError};
 
 const RUBRIC_VERSION: &str = "graph-interview-rubric-v1";
 
@@ -18,6 +18,7 @@ pub enum ServiceError {
     NotFound,
     Conflict,
     ModelUnavailable,
+    Unavailable,
 }
 
 impl From<ModelError> for ServiceError {
@@ -26,17 +27,34 @@ impl From<ModelError> for ServiceError {
     }
 }
 
+impl From<RepositoryError> for ServiceError {
+    fn from(value: RepositoryError) -> Self {
+        match value {
+            RepositoryError::Conflict => Self::Conflict,
+            RepositoryError::Unavailable => Self::Unavailable,
+        }
+    }
+}
+
 pub struct InterviewService {
     model: Arc<dyn InterviewModel>,
-    sessions: RwLock<BTreeMap<String, InterviewSession>>,
+    repository: Arc<dyn InterviewRepository>,
 }
 
 impl InterviewService {
     pub fn new(model: Arc<dyn InterviewModel>) -> Self {
-        Self {
-            model,
-            sessions: RwLock::new(BTreeMap::new()),
-        }
+        Self::with_repository(model, Arc::new(MemoryInterviewRepository::default()))
+    }
+
+    pub fn with_repository(
+        model: Arc<dyn InterviewModel>,
+        repository: Arc<dyn InterviewRepository>,
+    ) -> Self {
+        Self { model, repository }
+    }
+
+    pub async fn healthy(&self) -> Result<(), ServiceError> {
+        self.repository.healthy().await.map_err(Into::into)
     }
 
     pub async fn start(
@@ -48,12 +66,21 @@ impl InterviewService {
         if !valid_identifier(candidate_id) || !(4..=20).contains(&max_turns) {
             return Err(ServiceError::InvalidInput);
         }
-        let blueprint = blueprint(blueprint_id).ok_or(ServiceError::InvalidInput)?;
-        blueprint
-            .validate()
-            .map_err(|_| ServiceError::InvalidInput)?;
+        let graph = blueprint(blueprint_id).ok_or(ServiceError::InvalidInput)?;
+        graph.validate().map_err(|_| ServiceError::InvalidInput)?;
+        if let Some(active) = self
+            .repository
+            .list(candidate_id)
+            .await?
+            .into_iter()
+            .find(|session| session.status == InterviewStatus::Active)
+        {
+            let active_blueprint =
+                blueprint(&active.blueprint_id).ok_or(ServiceError::InvalidInput)?;
+            return Ok(active.public_view(active_blueprint));
+        }
         let id = Uuid::new_v4().to_string();
-        let node_states = blueprint
+        let node_states = graph
             .nodes
             .iter()
             .map(|node| (node.id.to_owned(), EvidenceState::Unknown))
@@ -71,21 +98,55 @@ impl InterviewService {
             evidence: Vec::new(),
             model_mode: self.model.mode().into(),
         };
-        session.current_question =
-            Some(self.question_for(&session, blueprint.start_node_id).await?);
-        let view = session.public_view(blueprint);
-        self.sessions
-            .write()
-            .await
-            .insert(session.id.clone(), session);
+        session.current_question = Some(self.question_for(&session, graph.start_node_id).await?);
+        let view = session.public_view(graph);
+        match self.repository.insert(&session).await {
+            Ok(()) => {}
+            Err(RepositoryError::Conflict) => {
+                if let Some(active) = self
+                    .repository
+                    .list(candidate_id)
+                    .await?
+                    .into_iter()
+                    .find(|current| current.status == InterviewStatus::Active)
+                {
+                    let active_blueprint =
+                        blueprint(&active.blueprint_id).ok_or(ServiceError::InvalidInput)?;
+                    return Ok(active.public_view(active_blueprint));
+                }
+                return Err(ServiceError::Conflict);
+            }
+            Err(error) => return Err(error.into()),
+        }
         Ok(view)
     }
 
     pub async fn get(&self, id: &str) -> Result<InterviewView, ServiceError> {
-        let sessions = self.sessions.read().await;
-        let session = sessions.get(id).ok_or(ServiceError::NotFound)?;
+        let session = self
+            .repository
+            .get(id)
+            .await?
+            .ok_or(ServiceError::NotFound)?;
         let blueprint = blueprint(&session.blueprint_id).ok_or(ServiceError::InvalidInput)?;
         Ok(session.public_view(blueprint))
+    }
+
+    pub async fn list(&self, candidate_id: &str) -> Result<InterviewListView, ServiceError> {
+        if !valid_identifier(candidate_id) {
+            return Err(ServiceError::InvalidInput);
+        }
+        let items = self
+            .repository
+            .list(candidate_id)
+            .await?
+            .into_iter()
+            .map(|session| {
+                let blueprint =
+                    blueprint(&session.blueprint_id).ok_or(ServiceError::InvalidInput)?;
+                Ok(session.public_view(blueprint))
+            })
+            .collect::<Result<Vec<_>, ServiceError>>()?;
+        Ok(InterviewListView { items })
     }
 
     pub async fn answer(
@@ -98,10 +159,11 @@ impl InterviewService {
         if answer.trim().is_empty() || answer.chars().count() > 8_000 {
             return Err(ServiceError::InvalidInput);
         }
-        let snapshot = {
-            let sessions = self.sessions.read().await;
-            sessions.get(id).cloned().ok_or(ServiceError::NotFound)?
-        };
+        let snapshot = self
+            .repository
+            .get(id)
+            .await?
+            .ok_or(ServiceError::NotFound)?;
         if snapshot.status != InterviewStatus::Active || snapshot.revision != revision {
             return Err(ServiceError::Conflict);
         }
@@ -136,7 +198,7 @@ impl InterviewService {
             answer_excerpt: evaluation.evidence_quote,
             rationale: evaluation.rationale,
             evaluator: evaluation.evaluator,
-            rubric_version: RUBRIC_VERSION,
+            rubric_version: RUBRIC_VERSION.into(),
         });
         let next = select_next_node(blueprint, &updated, node.id);
         if updated.evidence.len() >= usize::from(updated.max_turns) || next.is_none() {
@@ -146,13 +208,8 @@ impl InterviewService {
             updated.current_question = Some(self.question_for(&updated, next).await?);
         }
 
-        let mut sessions = self.sessions.write().await;
-        let current = sessions.get(id).ok_or(ServiceError::NotFound)?;
-        if current.revision != revision {
-            return Err(ServiceError::Conflict);
-        }
         let view = updated.public_view(blueprint);
-        sessions.insert(id.to_owned(), updated);
+        self.repository.replace(&updated, revision).await?;
         Ok(view)
     }
 
