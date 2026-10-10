@@ -328,7 +328,10 @@ impl PlatformService {
         Ok(source_view(record, &code, progress))
     }
 
-    /// Re-analyzes a connected GitHub account; a running analysis is followed, not restarted.
+    /// Updates a connected GitHub account; a running analysis is followed, not restarted.
+    ///
+    /// The insights service reuses a report younger than six hours and re-reads the bio, so an
+    /// ownership check right after adding the code takes seconds; older reports are rebuilt.
     async fn sync_github(
         &self,
         candidate_id: &str,
@@ -351,7 +354,7 @@ impl PlatformService {
         let gateway = self.github_insights()?;
         let job = running_job(candidate_id, "source_sync");
         let code = self.github_ownership_code(candidate_id);
-        match gateway.submit(&login, Some(&code), true).await {
+        match gateway.submit(&login, Some(&code), false).await {
             Err(error) | Ok(InsightsStatus::Failed(error)) => {
                 self.fail_github_job(candidate_id, job, error.code, error.message)
                     .await
