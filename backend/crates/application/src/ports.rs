@@ -461,6 +461,9 @@ pub trait FspGateway: Send + Sync {
 #[async_trait]
 pub trait VerificationDelivery: Send + Sync {
     fn code_for(&self) -> Result<String, IntegrationError>;
+    fn code_for_email(&self, _email: &str) -> Result<String, IntegrationError> {
+        self.code_for()
+    }
     async fn deliver(
         &self,
         email: &str,
@@ -468,6 +471,9 @@ pub trait VerificationDelivery: Send + Sync {
         challenge_id: &str,
     ) -> Result<(), IntegrationError>;
     fn contract_name(&self) -> &'static str;
+    fn contract_name_for_email(&self, _email: &str) -> &'static str {
+        self.contract_name()
+    }
 }
 
 #[async_trait]

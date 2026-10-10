@@ -30,8 +30,9 @@ Historical cutover commands for another contributor's server are not operating i
 
 ## Explicit demo limits
 
-- Public authentication uses actual Resend delivery, random single-use codes and keyed digests. Local `demo`
-  mode retains the disclosed fixed code; demo verification is not mailbox ownership proof.
+- Public authentication uses actual Resend delivery, random single-use codes and keyed digests for arbitrary
+  addresses. Three exact seeded demo addresses retain the disclosed fixed code; demo verification is not mailbox
+  ownership proof.
 - FSP uses a separate fictional HTTP provider with bounded validation, published/pending/disqualified results
   and durable snapshots. No official API, identity verification or dataset is implied.
 - Knowledge tests use a versioned server-side bank and deterministic scoring. The public study bank is not
