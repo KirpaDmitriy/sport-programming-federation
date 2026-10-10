@@ -3089,13 +3089,14 @@ impl PlatformService {
             }
         }
         records.sort_by_key(|record| source_provider(record.provider));
-        Ok(SourcesView {
-            simulation: records.iter().any(|record| record.synthetic),
-            items: records
-                .into_iter()
-                .map(|record| source_view(record, &self.github_ownership_code(candidate_id)))
-                .collect(),
-        })
+        let simulation = records.iter().any(|record| record.synthetic);
+        let code = self.github_ownership_code(candidate_id);
+        let mut items = Vec::with_capacity(records.len());
+        for record in records {
+            let progress = self.github_progress(&record).await;
+            items.push(source_view(record, &code, progress));
+        }
+        Ok(SourcesView { simulation, items })
     }
 
     pub async fn skills(&self, session: &SessionView) -> Result<SkillsView, ApplicationError> {
@@ -3271,6 +3272,13 @@ impl PlatformService {
             .await
             .map_err(ApplicationError::storage)?
             .ok_or_else(|| ApplicationError::new(404, "not_found", "Задача не найдена"))?;
+        // Only a GitHub analysis outlives the request that started it; polling advances it.
+        if record.kind == "source_sync"
+            && record.status == "running"
+            && let Some(candidate_id) = session.candidate_id.as_deref()
+        {
+            return self.advance_github_job(candidate_id, record).await;
+        }
         let source = if let Some(source_id) = record.result_source_id.as_ref() {
             self.repository
                 .sources(owner_id)
@@ -3278,7 +3286,7 @@ impl PlatformService {
                 .map_err(ApplicationError::storage)?
                 .into_iter()
                 .find(|source| &source.id == source_id)
-                .map(|source| source_view(source, &self.github_ownership_code(owner_id)))
+                .map(|source| source_view(source, &self.github_ownership_code(owner_id), None))
         } else {
             None
         };

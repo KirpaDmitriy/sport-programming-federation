@@ -4,7 +4,9 @@
 use std::time::Duration;
 
 use async_trait::async_trait;
-use fsp_application::{GitHubGateway, GitHubInsights, GitHubInsightsGateway, IntegrationError};
+use fsp_application::{
+    GitHubGateway, GitHubInsights, GitHubInsightsGateway, InsightsStatus, IntegrationError,
+};
 use fsp_domain::GitHubReport;
 use reqwest::{Client, StatusCode, Url};
 use serde::{Deserialize, Serialize};
@@ -106,10 +108,9 @@ impl HttpInsights {
             return Err(unavailable());
         }
         Ok(Self {
-            // The service bounds its own collection to 38 seconds; this stays inside the API's
-            // 45-second integration budget.
+            // Analyses run in the background; each call only queues or reads status.
             client: Client::builder()
-                .timeout(Duration::from_secs(44))
+                .timeout(Duration::from_secs(10))
                 .connect_timeout(Duration::from_secs(2))
                 .redirect(reqwest::redirect::Policy::none())
                 .build()
@@ -121,16 +122,16 @@ impl HttpInsights {
 
 #[async_trait]
 impl GitHubInsightsGateway for HttpInsights {
-    async fn report(
+    async fn submit(
         &self,
         login: &str,
         ownership_code: Option<&str>,
         refresh: bool,
-    ) -> Result<GitHubInsights, IntegrationError> {
+    ) -> Result<InsightsStatus, IntegrationError> {
         let response = self
             .client
-            .post(format!("{}/v1/reports", self.base))
-            .json(&ReportRequest {
+            .post(format!("{}/v1/analyses", self.base))
+            .json(&SubmitRequest {
                 login,
                 ownership_code,
                 refresh,
@@ -138,49 +139,85 @@ impl GitHubInsightsGateway for HttpInsights {
             .send()
             .await
             .map_err(integration)?;
-        let status = response.status();
-        if !status.is_success() {
-            let code = response
-                .json::<ServiceError>()
-                .await
-                .map(|error| error.code)
-                .unwrap_or_default();
-            if code == "github_not_configured" {
-                return Err(IntegrationError {
-                    code: "github_not_configured",
-                    message: "Подключение GitHub временно недоступно".into(),
-                });
-            }
-            return Err(match status {
-                StatusCode::BAD_REQUEST => IntegrationError {
-                    code: "github_login_invalid",
-                    message: "Укажите имя пользователя GitHub или ссылку на профиль".into(),
-                },
-                StatusCode::NOT_FOUND => IntegrationError {
-                    code: "github_account_not_found",
-                    message: "Пользователь GitHub не найден".into(),
-                },
-                StatusCode::TOO_MANY_REQUESTS => IntegrationError {
-                    code: "github_rate_limited",
-                    message: "GitHub временно ограничил запросы, повторите позже".into(),
-                },
-                _ => unavailable(),
-            });
+        read_status(response).await?.ok_or_else(unavailable)
+    }
+
+    async fn status(
+        &self,
+        login: &str,
+        ownership_code: Option<&str>,
+    ) -> Result<Option<InsightsStatus>, IntegrationError> {
+        let mut request = self
+            .client
+            .get(format!("{}/v1/analyses/{login}", self.base));
+        if let Some(code) = ownership_code {
+            request = request.query(&[("ownershipCode", code)]);
         }
-        let body = response
-            .json::<ReportResponse>()
+        read_status(request.send().await.map_err(integration)?).await
+    }
+}
+
+async fn read_status(
+    response: reqwest::Response,
+) -> Result<Option<InsightsStatus>, IntegrationError> {
+    let status = response.status();
+    if status == StatusCode::NOT_FOUND {
+        return Ok(None);
+    }
+    if !status.is_success() {
+        let code = response
+            .json::<ServiceError>()
             .await
-            .map_err(integration)?;
-        Ok(GitHubInsights {
-            report: body.report,
+            .map(|error| error.code)
+            .unwrap_or_default();
+        return Err(service_error(&code));
+    }
+    let body = response
+        .json::<AnalysisResponse>()
+        .await
+        .map_err(integration)?;
+    Ok(Some(match body.state.as_str() {
+        "done" => InsightsStatus::Done(Box::new(GitHubInsights {
+            report: body.report.ok_or_else(unavailable)?,
             ownership_code_found: body.ownership_code_found,
-        })
+        })),
+        "failed" => InsightsStatus::Failed(service_error(
+            body.error.as_ref().map_or("", |error| error.code.as_str()),
+        )),
+        state => InsightsStatus::Pending {
+            queued: state == "queued",
+            stage: body.stage,
+            progress: body.progress,
+        },
+    }))
+}
+
+/// Stable public errors for the service's codes; unknown codes and details are never reflected.
+fn service_error(code: &str) -> IntegrationError {
+    match code {
+        "github_login_invalid" => IntegrationError {
+            code: "github_login_invalid",
+            message: "Укажите имя пользователя GitHub или ссылку на профиль".into(),
+        },
+        "github_account_not_found" => IntegrationError {
+            code: "github_account_not_found",
+            message: "Пользователь GitHub не найден".into(),
+        },
+        "github_rate_limited" => IntegrationError {
+            code: "github_rate_limited",
+            message: "GitHub временно ограничил запросы, повторите позже".into(),
+        },
+        "github_not_configured" => IntegrationError {
+            code: "github_not_configured",
+            message: "Подключение GitHub временно недоступно".into(),
+        },
+        _ => unavailable(),
     }
 }
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct ReportRequest<'a> {
+struct SubmitRequest<'a> {
     login: &'a str,
     ownership_code: Option<&'a str>,
     refresh: bool,
@@ -188,9 +225,13 @@ struct ReportRequest<'a> {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct ReportResponse {
-    report: GitHubReport,
+struct AnalysisResponse {
+    state: String,
+    stage: String,
+    progress: u8,
+    report: Option<GitHubReport>,
     ownership_code_found: Option<bool>,
+    error: Option<ServiceError>,
 }
 
 #[derive(Deserialize)]
@@ -250,38 +291,75 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn insights_errors_keep_their_meaning_without_upstream_details() {
-        use axum::{Router, http::StatusCode, routing::post};
-        let app = Router::new().route(
-            "/v1/reports",
-            post(
-                |axum::Json(body): axum::Json<serde_json::Value>| async move {
+    async fn insights_states_and_errors_keep_their_meaning_without_upstream_details() {
+        use axum::{
+            Router,
+            http::StatusCode,
+            routing::{get, post},
+        };
+        let app = Router::new()
+            .route(
+                "/v1/analyses",
+                post(|axum::Json(body): axum::Json<serde_json::Value>| async move {
                     match body["login"].as_str() {
-                        Some("missing") => (StatusCode::NOT_FOUND, "{}"),
-                        Some("limited") => (StatusCode::TOO_MANY_REQUESTS, "{}"),
                         Some("tokenless") => (
                             StatusCode::SERVICE_UNAVAILABLE,
-                            r#"{"code":"github_not_configured","message":"x"}"#,
+                            r#"{"code":"github_not_configured","message":"x"}"#.to_owned(),
                         ),
-                        _ => (StatusCode::SERVICE_UNAVAILABLE, "secret upstream detail"),
+                        Some("broken") => (StatusCode::BAD_GATEWAY, "secret upstream detail".into()),
+                        _ => (
+                            StatusCode::OK,
+                            r#"{"login":"dev","state":"running","stage":"Поиск коммитов","progress":8,"report":null,"ownershipCodeFound":null,"error":null,"retryAfterSeconds":null}"#.into(),
+                        ),
                     }
-                },
-            ),
-        );
+                }),
+            )
+            .route(
+                "/v1/analyses/{login}",
+                get(|axum::extract::Path(login): axum::extract::Path<String>| async move {
+                    match login.as_str() {
+                        "missing" => (StatusCode::NOT_FOUND, String::new()),
+                        _ => (
+                            StatusCode::OK,
+                            r#"{"login":"x","state":"failed","stage":"Ошибка","progress":0,"report":null,"ownershipCodeFound":null,"error":{"code":"github_account_not_found","message":"secret"},"retryAfterSeconds":null}"#.into(),
+                        ),
+                    }
+                }),
+            );
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
         let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
         let insights = HttpInsights::new(&format!("http://{address}")).unwrap();
-        for (login, code) in [
-            ("missing", "github_account_not_found"),
-            ("limited", "github_rate_limited"),
-            ("tokenless", "github_not_configured"),
-            ("other", "github_unavailable"),
-        ] {
-            let error = insights.report(login, None, false).await.unwrap_err();
-            assert_eq!(error.code, code);
-            assert!(!error.message.contains("secret"));
-        }
+        assert_eq!(
+            insights.submit("dev", None, false).await.unwrap(),
+            InsightsStatus::Pending {
+                queued: false,
+                stage: "Поиск коммитов".into(),
+                progress: 8
+            }
+        );
+        assert_eq!(
+            insights
+                .submit("tokenless", None, false)
+                .await
+                .unwrap_err()
+                .code,
+            "github_not_configured"
+        );
+        let broken = insights.submit("broken", None, false).await.unwrap_err();
+        assert_eq!(broken.code, "github_unavailable");
+        assert!(!broken.message.contains("secret"));
+        assert_eq!(insights.status("missing", None).await.unwrap(), None);
+        let InsightsStatus::Failed(error) = insights
+            .status("x", Some("fsp-0123456789"))
+            .await
+            .unwrap()
+            .unwrap()
+        else {
+            panic!("expected a failed analysis");
+        };
+        assert_eq!(error.code, "github_account_not_found");
+        assert!(!error.message.contains("secret"));
         server.abort();
     }
 

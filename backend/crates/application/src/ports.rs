@@ -367,7 +367,7 @@ pub struct StoredIdempotentResponse {
     pub body: String,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IntegrationError {
     pub code: &'static str,
     pub message: String,
@@ -392,14 +392,34 @@ pub struct GitHubInsights {
     pub ownership_code_found: Option<bool>,
 }
 
+/// A background analysis: still running, finished or failed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum InsightsStatus {
+    Pending {
+        /// Waiting for a worker or for GitHub's rate limit to reset.
+        queued: bool,
+        stage: String,
+        progress: u8,
+    },
+    Done(Box<GitHubInsights>),
+    Failed(IntegrationError),
+}
+
 #[async_trait]
 pub trait GitHubInsightsGateway: Send + Sync {
-    async fn report(
+    /// Starts an analysis, or returns the running or fresh one.
+    async fn submit(
         &self,
         login: &str,
         ownership_code: Option<&str>,
         refresh: bool,
-    ) -> Result<GitHubInsights, IntegrationError>;
+    ) -> Result<InsightsStatus, IntegrationError>;
+    /// The current analysis; `None` when the service does not know it (for example after a restart).
+    async fn status(
+        &self,
+        login: &str,
+        ownership_code: Option<&str>,
+    ) -> Result<Option<InsightsStatus>, IntegrationError>;
 }
 
 #[async_trait]

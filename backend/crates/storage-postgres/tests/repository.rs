@@ -283,73 +283,77 @@ async fn idempotent_command_and_claim_roll_back_if_response_cannot_be_stored() {
     );
 }
 
-/// A public-activity report with one owned Rust/React repository.
+/// The synthetic report of `contracts/fixtures` (an owned Rust/React project, a led organization
+/// project and two commits in someone else's Redis library), under the canonical login.
 fn github_report(login: &str) -> fsp_domain::GitHubReport {
-    serde_json::from_value(serde_json::json!({
-        "algorithmVersion": "github-insights-v1", "generatedAt": "2026-10-09T12:00:00Z",
-        "login": login, "profileUrl": format!("https://github.com/{login}"),
-        "accountCreatedAt": "2020-01-01T00:00:00Z",
-        "coverage": { "from": "2025-01-01T00:00:00Z", "to": "2026-10-09T12:00:00Z", "yearsAnalyzed": 2,
-                      "commitContributions": 40, "commitsSampled": 40, "repositoriesAnalyzed": 1,
-                      "timezoneSamples": 1, "partial": false, "notes": [] },
-        "index": { "score": 52, "band": "strong", "confidence": "medium" },
-        "dimensions": [{ "id": "consistency", "label": "Регулярность", "score": 60, "weight": 25,
-                         "summary": "Активность в основном регулярная",
-                         "metrics": [{ "id": "active_weeks", "label": "Активных недель за год", "value": 31,
-                                       "display": "31 из 52", "publicDisplay": "≈30 из 52", "score": 78 }] }],
-        "activity": { "activeYears": 2, "contributionsLastYear": 40, "privateContributionsLastYear": 0,
-                      "activeDaysLastYear": 20, "activeWeeksLastYear": 12, "longestDailyStreak": 4,
-                      "currentDailyStreak": 1, "longestWeeklyStreak": 6, "currentWeeklyStreak": 2,
-                      "longestGapDaysLastYear": 30, "lastActiveOn": "2026-10-09", "trendPercent": 10,
-                      "calendar": [], "yearly": [] },
-        "rhythm": null,
-        "collaboration": { "pullRequestsTotal": 0, "reviewsTotal": 0, "issuesTotal": 0, "pullRequestsSampled": 0,
-                           "externalPullRequests": 0, "externalMerged": 0, "externalMergeRatePercent": null,
-                           "medianPullRequestLines": null, "externalRepositories": 0, "organizationRepositories": 0,
-                           "affiliatedOrganizations": 0, "notableContributions": [] },
-        "organizations": { "memberships": [], "contributed": [] },
-        "languages": [{ "language": "Rust", "percent": 80 }],
-        "technologies": [{ "skillId": "rust", "repositories": 1, "signals": ["Cargo.toml"], "lastPushedAt": null }],
-        "craft": { "substantiveRepositories": 1, "readmePercent": 100, "licensePercent": 100, "ciPercent": 100,
-                   "testsPercent": 0, "lockfilePercent": 100, "lintPercent": 0, "dependencyUpdatesPercent": 0,
-                   "containerPercent": 0, "conventionalCommitsPercent": null, "descriptiveMessagesPercent": null,
-                   "medianCommitLines": null, "largeCommitsPercent": null, "signedCommitsPercent": null,
-                   "mergeCommitsPercent": null },
-        "repositories": [
-            { "nameWithOwner": format!("{login}/project"), "url": format!("https://github.com/{login}/project"),
-              "owned": true, "fork": false, "archived": false, "stars": 1, "forks": 0, "primaryLanguage": "Rust",
-              "pushedAt": null, "contributions": 40, "sampledCommits": 40, "hygiene": ["readme"],
-              "technologies": ["react", "rust"] },
-            { "nameWithOwner": "other/library", "url": "https://github.com/other/library",
-              "owned": false, "fork": false, "archived": false, "stars": 9000, "forks": 10, "primaryLanguage": "Go",
-              "pushedAt": null, "contributions": 2, "sampledCommits": 2, "hygiene": [],
-              "technologies": ["redis"] }
-        ],
-        "flags": [], "highlights": ["Основные языки: Rust"]
-    }))
-    .unwrap()
+    let mut report: fsp_domain::GitHubReport = serde_json::from_str(include_str!(
+        "../../../../contracts/fixtures/github-report.json"
+    ))
+    .unwrap();
+    report.login = login.into();
+    report
 }
 
-/// Reports the bio code as present only for logins listed in `verified`.
+/// A fake analysis service. Analyses finish after `pending` polls that carry the ownership code
+/// (progress views without the code do not advance them); the bio holds the code only for
+/// logins listed in `verified`.
 struct Insights {
     verified: &'static [&'static str],
+    pending: std::sync::atomic::AtomicU32,
+}
+
+impl Insights {
+    fn finished(verified: &'static [&'static str]) -> Self {
+        Self::after(0, verified)
+    }
+
+    fn after(pending: u32, verified: &'static [&'static str]) -> Self {
+        Self {
+            verified,
+            pending: pending.into(),
+        }
+    }
+
+    fn state(&self, login: &str, ownership_code: Option<&str>) -> fsp_application::InsightsStatus {
+        use std::sync::atomic::Ordering;
+        let pending = self.pending.load(Ordering::SeqCst);
+        if pending > 0 {
+            if ownership_code.is_some() {
+                self.pending.store(pending - 1, Ordering::SeqCst);
+            }
+            return fsp_application::InsightsStatus::Pending {
+                queued: false,
+                stage: "Клонирование и разбор истории".into(),
+                progress: 40,
+            };
+        }
+        // GitHub answers with the canonical login whatever case was typed.
+        let canonical = login.to_ascii_lowercase();
+        fsp_application::InsightsStatus::Done(Box::new(fsp_application::GitHubInsights {
+            ownership_code_found: Some(self.verified.contains(&canonical.as_str())),
+            report: github_report(&canonical),
+        }))
+    }
 }
 
 #[async_trait::async_trait]
 impl fsp_application::GitHubInsightsGateway for Insights {
-    async fn report(
+    async fn submit(
         &self,
         login: &str,
         ownership_code: Option<&str>,
         _: bool,
-    ) -> Result<fsp_application::GitHubInsights, fsp_application::IntegrationError> {
+    ) -> Result<fsp_application::InsightsStatus, fsp_application::IntegrationError> {
         assert!(ownership_code.is_some_and(|code| code.starts_with("fsp-")));
-        // GitHub answers with the canonical login whatever case was typed.
-        let canonical = login.to_ascii_lowercase();
-        Ok(fsp_application::GitHubInsights {
-            ownership_code_found: Some(self.verified.contains(&canonical.as_str())),
-            report: github_report(&canonical),
-        })
+        Ok(self.state(login, ownership_code))
+    }
+
+    async fn status(
+        &self,
+        login: &str,
+        ownership_code: Option<&str>,
+    ) -> Result<Option<fsp_application::InsightsStatus>, fsp_application::IntegrationError> {
+        Ok(Some(self.state(login, ownership_code)))
     }
 }
 
@@ -385,7 +389,7 @@ async fn source_ingestion_updates_evidence_without_inventing_or_overwriting_grad
     let (repository, _database) = repository().await;
     let repository = Arc::new(repository);
     let service = PlatformService::new(repository.clone(), Arc::new(FixedDelivery))
-        .with_github_insights(Arc::new(Insights { verified: &[] }));
+        .with_github_insights(Arc::new(Insights::finished(&[])));
     service.initialize().await.unwrap();
     let session = signed_in_candidate(&service, &repository, "alexey@example.com").await;
     let id = session.candidate_id.as_deref().unwrap();
@@ -404,7 +408,9 @@ async fn source_ingestion_updates_evidence_without_inventing_or_overwriting_grad
     let github = source.github.as_ref().unwrap();
     assert!(!github.ownership.verified);
     assert!(github.ownership.code.starts_with("fsp-"));
-    assert_eq!(github.report.as_ref().unwrap().index.score, 52);
+    assert_eq!(github.report.as_ref().unwrap().login, "owner");
+    assert!(github.analysis.is_none());
+    assert!(source.active_job_id.is_none());
     assert!(!github.employer_preview.as_ref().unwrap().ownership_verified);
     let connected = repository.candidate_index(id).await.unwrap().unwrap();
     assert_eq!(
@@ -469,13 +475,102 @@ async fn source_ingestion_updates_evidence_without_inventing_or_overwriting_grad
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn a_running_github_analysis_is_applied_when_its_job_is_polled() {
+    let (repository, _database) = repository().await;
+    let repository = Arc::new(repository);
+    let service = PlatformService::new(repository.clone(), Arc::new(FixedDelivery))
+        .with_github_insights(Arc::new(Insights::after(2, &[])));
+    service.initialize().await.unwrap();
+    let session = signed_in_candidate(&service, &repository, "async@example.com").await;
+    let id = session.candidate_id.as_deref().unwrap();
+    let source = service
+        .connect_source(
+            &session,
+            "github",
+            fsp_application::SourceConnectInput {
+                account: "owner".into(),
+            },
+        )
+        .await
+        .unwrap();
+    let job_id = source.active_job_id.clone().unwrap();
+    let github = source.github.as_ref().unwrap();
+    assert!(github.report.is_none());
+    assert_eq!(github.analysis.as_ref().unwrap().state, "running");
+    let listed = service.sources(&session).await.unwrap();
+    let listed = listed
+        .items
+        .iter()
+        .find(|item| item.provider == fsp_domain::SourceProvider::Github)
+        .unwrap();
+    assert_eq!(listed.active_job_id.as_deref(), Some(job_id.as_str()));
+    assert_eq!(
+        listed
+            .github
+            .as_ref()
+            .unwrap()
+            .analysis
+            .as_ref()
+            .unwrap()
+            .progress,
+        40
+    );
+    // A sync while the analysis runs follows the same job.
+    let again = service.sync_source(&session, &source.id).await.unwrap();
+    assert_eq!(again.id, job_id);
+    let running = service.job(&session, &job_id).await.unwrap();
+    assert_eq!(
+        (running.status.as_str(), running.poll_after_ms),
+        ("running", 2_000)
+    );
+    assert!(
+        !repository
+            .candidate_index(id)
+            .await
+            .unwrap()
+            .unwrap()
+            .skills
+            .iter()
+            .any(|skill| skill.sources.contains(&fsp_domain::EvidenceSource::Github))
+    );
+    let done = service.job(&session, &job_id).await.unwrap();
+    assert_eq!(done.status, "succeeded");
+    // Polling a finished job replays it.
+    assert_eq!(
+        service.job(&session, &job_id).await.unwrap().status,
+        "succeeded"
+    );
+    let stored = repository.sources(id).await.unwrap();
+    let stored = stored
+        .iter()
+        .find(|item| item.provider == fsp_domain::SourceProvider::Github)
+        .unwrap();
+    assert!(stored.active_job_id.is_none());
+    assert!(
+        stored
+            .analysis
+            .as_ref()
+            .and_then(|analysis| analysis.report.as_ref())
+            .is_some()
+    );
+    let rust = repository
+        .candidate_index(id)
+        .await
+        .unwrap()
+        .unwrap()
+        .skills
+        .into_iter()
+        .find(|skill| skill.skill_id == "rust")
+        .unwrap();
+    assert!(rust.sources.contains(&fsp_domain::EvidenceSource::Github));
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn a_github_account_can_be_proven_by_only_one_candidate() {
     let (repository, _database) = repository().await;
     let repository = Arc::new(repository);
     let service = PlatformService::new(repository.clone(), Arc::new(FixedDelivery))
-        .with_github_insights(Arc::new(Insights {
-            verified: &["owner"],
-        }));
+        .with_github_insights(Arc::new(Insights::finished(&["owner"])));
     service.initialize().await.unwrap();
     let first = signed_in_candidate(&service, &repository, "first@example.com").await;
     let source = service
