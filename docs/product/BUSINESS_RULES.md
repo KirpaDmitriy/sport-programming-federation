@@ -428,13 +428,14 @@ initiating candidate; failures carry `{ code, message, retryable }`. No backgrou
 
 `GET /api/v1/meta` reports the configured capabilities. The mock reports `mode: mock`; Rust reports `mode: live`
 while still marking demo features as simulated. Real LLM, GitHub OAuth and `githubInsights` (public GitHub analysis)
-flags indicate configured adapters. The stand enables Bifrost and GitHub insights and leaves GitHub OAuth unconfigured. Development demo controls are absent
-from production bundles. The `live` mode does not turn fixed-code email verification into proof of email ownership.
+flags indicate configured adapters. The stand enables Bifrost and GitHub insights and leaves GitHub OAuth unconfigured.
+The public demo exposes three seeded synthetic accounts with the disclosed fixed code. The fixed code applies only
+to their exact addresses and is not proof of mailbox ownership; every other address uses Resend.
 
 The development mock uses demo email identity; Rust uses actual Resend delivery when configured. Both use fictional FSP participation. Knowledge tests have deterministic
 scoring; their public bank has no measured psychometric validity. Only the development mock simulates PDF extraction
 and assistant replies. Rust uses isolated Poppler extraction and Bifrost with validated evidence and no canned fallback.
 Rust persists application records and sessions; its initial candidate bank is synthetic. GitHub analysis is real
 when the insights service is configured; the mock returns the labelled fictional report of a synthetic account. Graph output is validated against input skills and references; employer projections remove evidence
-nodes. An LLM relation is a suggestion, not a qualification verdict. Real email delivery is implemented through Resend; GitHub OAuth setup remains
+nodes. An LLM relation is a suggestion, not a qualification verdict. Real email delivery for non-demo addresses is implemented through Resend; GitHub OAuth setup remains
 deferred (ownership is proven by the bio code instead); official FSP integration and arbitrary code execution are outside the chosen product scope.
