@@ -41,7 +41,7 @@ search requests 6.2 seconds apart, reads `x-ratelimit-*` and `retry-after`, and 
 | The newest pull requests | issue search `type:pr author:X` | 100 |
 | Owners the account works with: public memberships, then owners of sampled commits and pull requests | commit search `author:X user:OWNER` | 6 owners; exact commit totals per owner |
 | Repository metadata (stars, forks, language, topics, license, size, default branch) | repository search `user:X`, `org:…`, batches of `repo:` | — |
-| Default-branch history and tree of each repository with sampled commits, owned ones first by commits | `git clone --bare --filter=blob:none --single-branch`, `git log --name-only`, `git ls-tree` | 50 repositories under 1.5 GB, 6 at a time, 3 minutes each; clones are deleted after reading |
+| Default-branch history and tree of repositories with sampled commits (by commits), then owned ones and those pushed within two years in owners where the account has at least 20 public commits, which newest-first samples miss; the last count only with the account's commits | `git clone --bare --filter=blob:none --single-branch`, `git log --name-only`, `git ls-tree` | 80 repositories under 1.5 GB, 6 at a time, 3 minutes each; clones are deleted after reading |
 | Manifests: `Cargo.toml`, `package.json`, `pyproject.toml`, `requirements*.txt`, `go.mod` | `raw.githubusercontent.com` | 12 per repository, shallow paths first, vendored trees skipped |
 | Pull-request counts: last year, approved by others (`review:approved`), reviews of others' pull requests, issues | issue search | totals |
 | Pull requests into other owners' projects | issue search `type:pr author:X -user:X -org:…` | adaptive, up to three rounds of 100 |
@@ -52,14 +52,16 @@ each commit changed, the whole tree, and whether the account committed its own c
 A blobless clone downloads commits and trees but no file contents; rename detection is off so none are fetched.
 Commit search indexes default branches only, so commits on other branches are not counted.
 
-A heavy account (13 000 public commits in a year, 43 repositories) takes about three minutes. A stage that fails
+A heavy account (13 500 public commits in a year, 78 repositories, 92% of the year's commits analyzed) takes about three minutes. A stage that fails
 marks the report partial and keeps what it has.
 
 ### Background analysis
 
 `POST /v1/analyses` queues an analysis or returns the running or fresh one; `GET /v1/analyses/{login}` reports
-`queued`, `running`, `done` or `failed` with the stage and progress. Two analyses run at a time, finished reports stay
-cached for six hours and a failure can be retried after five minutes. In the career API, connecting or updating a
+`queued`, `running`, `done` or `failed` with the stage and progress. Before queuing, one REST request rejects a
+mistyped login or an organization account at once (`github_account_not_found`). Two analyses run at a time,
+finished reports stay cached for six hours and a failure can be retried after five minutes. Updating a source
+within six hours reuses the report and only re-reads the bio, so an ownership check takes seconds. In the career API, connecting or updating a
 GitHub source creates a `source_sync` job and sets the source's `activeJobId`. Each poll of the job (every two
 seconds) asks the service and, once the report is ready, applies it in one transaction with the job's result; a
 concurrent poll finds the job already finished. If the service restarted and forgot the analysis, the poll starts it
@@ -70,7 +72,7 @@ progress of a running analysis.
 
 A login alone is a claim. The candidate proves control by placing a per-candidate code (`fsp-` plus ten hex
 characters, an HMAC of the candidate id under the server key) in the GitHub bio and updating the source; the service
-checks the bio (re-read when older than two minutes) and discards it. An OAuth token of the same account (when OAuth
+checks the bio (re-read when older than ten seconds) and discards it. An OAuth token of the same account (when OAuth
 is configured) proves it too. A proven login belongs to one candidate (`409 github_account_taken`); an unproven claim
 stays visible to employers as «не подтверждено».
 

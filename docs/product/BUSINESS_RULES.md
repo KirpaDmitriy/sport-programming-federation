@@ -73,7 +73,8 @@ ones and the UI lists them on the overview, profile and settings pages:
   both return the same running job for overlapping syncs. Rust detects a source changed during its
   provider call and returns a failed `stale_input` job instead of overwriting newer data. Disconnecting is not supported.
 - GitHub connects by login, `@login` or a profile link (`422 github_login_invalid` for repository links and other
-  hosts; `github_account_not_found`). The insights service analyzes **public** data only, without a token, on our
+  hosts; `422 github_account_not_found` at once for a mistyped login or an organization account). Updating within
+  six hours of the last analysis reuses its report and re-checks the bio, so ownership is confirmed in seconds. The insights service analyzes **public** data only, without a token, on our
   server, and returns a report (`Source.github.report`): a developer portrait (summary, areas of work with evidence,
   languages by the candidate's changed files, stack by category, topics, main projects), a 0–100 index with band and
   confidence, seven dimensions with metrics, a commit calendar, yearly public commits, an estimated work rhythm in the
