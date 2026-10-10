@@ -13,7 +13,8 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -q
 apt-get upgrade -yq
-apt-get install -yq nginx ufw curl unzip build-essential postgresql bubblewrap poppler-utils
+# git: the GitHub insights service reads public repositories through blobless clones.
+apt-get install -yq nginx ufw curl unzip build-essential postgresql bubblewrap poppler-utils git
 install -D -m 644 "$HERE/apparmor/fsp-pdf-bwrap" /etc/apparmor.d/fsp-pdf-bwrap
 apparmor_parser -r /etc/apparmor.d/fsp-pdf-bwrap
 
@@ -118,8 +119,12 @@ FSP_SECURE_COOKIE=1
 FSP_ALLOWED_ORIGINS=https://$PUBLIC_IP
 FSP_PUBLIC_WEB_URL=https://$PUBLIC_IP
 GITHUB_CALLBACK_URL=https://$PUBLIC_IP/api/v1/integrations/github/callback
+FSP_GITHUB_INSIGHTS_URL=http://127.0.0.1:4030
 EOF
 fi
+# The GitHub analysis needs no token. An optional /etc/fsp/github-insights.env (root:fsp, 640) with a
+# read-only GITHUB_TOKEN only raises GitHub's per-IP limits for anonymous requests.
+install -m 644 "$HERE/fsp-github-insights.service" /etc/systemd/system/fsp-github-insights.service
 chown root:fsp /etc/fsp/{mock-api,rust-api,frontend-build}.env
 chmod 640 /etc/fsp/{mock-api,rust-api,frontend-build}.env
 [ -f /etc/fsp/api-backend ] || echo mock > /etc/fsp/api-backend

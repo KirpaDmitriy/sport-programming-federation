@@ -343,7 +343,8 @@ async fn meta(State(state): State<AppState>) -> Json<Value> {
             "fspFixture": true, "matching": true, "directInvitations": true,
             "vacancyPublication": true, "selfApplication": true, "chat": false,
             "recurringTasks": true, "realCodeExecution": false, "realLlm": state.service.llm_configured(),
-            "githubOAuth": state.service.github_configured()
+            "githubOAuth": state.service.github_configured(),
+            "githubInsights": state.service.github_insights_configured()
         },
         "assessmentPolicy": {
             "successfulGradeChangeCooldownDays": state.service.grade_cooldown_days(), "failedAttemptCooldownDays": 0,
@@ -2256,6 +2257,10 @@ mod tests {
         }
 
         async fn sources(&self, _: &str) -> Result<Vec<SourceRecord>, RepositoryError> {
+            Ok(Vec::new())
+        }
+
+        async fn github_sources(&self, _: &str) -> Result<Vec<SourceRecord>, RepositoryError> {
             Ok(Vec::new())
         }
 

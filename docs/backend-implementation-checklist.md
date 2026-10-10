@@ -12,7 +12,9 @@ Historical cutover commands for another contributor's server are not operating i
 - Atomic idempotent commands and response replay; shared email attempt budgets; guarded terminal decisions;
   serialized disclosure and shortlist mutations; profile/assessment/source concurrency protection.
 - Candidate visibility, deterministic ranking, filters, server-returned pagination and anonymous projections.
-- GitHub OAuth identity binding, bounded repository analysis and evidence updates that preserve verified grades.
+- GitHub connection by login through the tokenless public-only insights service as a polled background job,
+  ownership by bio code or OAuth identity, and evidence updates from substantively developed repositories that
+  preserve verified grades.
 - Optional Bifrost graph extraction with structural/reference validation and safe employer projection.
 - Real PDF export/import, revision-checked preview confirmation, contextual Bifrost assistance, source/job privacy and capability flags.
 - Bounded Resend delivery, per-email issuance limits, cumulative wrong-code budgets and challenge/session HMAC separation.

@@ -137,6 +137,17 @@ test('canonical contract matches generator and all declared routes have explicit
     assert.equal(file.paths[route.path]?.[route.method]?.['x-mock-only'], true);
 });
 
+test('the Rust GitHub report and employer projection match the contract schemas', async () => {
+  for (const [file, schema] of [
+    ['github-report.json', 'GitHubReport'],
+    ['github-signal.json', 'GitHubSignal'],
+  ] as const) {
+    const value = JSON.parse(await readFile(new URL(`../../contracts/fixtures/${file}`, import.meta.url), 'utf8'));
+    const validate = validators[schema];
+    assert.ok(validate(value), `${file}: ${JSON.stringify(validate.errors)}`);
+  }
+});
+
 test('error-codes.json lists every code, status and literal message the mock raises', async () => {
   const catalog: Body = JSON.parse(
     await readFile(new URL('../../contracts/error-codes.json', import.meta.url), 'utf8'),
@@ -421,7 +432,7 @@ test('profile category is server-owned and publication consent does not replace 
   await request('GET', '/api/v1/candidates/candidate-new', { actor: employer, status: 404 });
 });
 
-test('source enrichment is automatic, asynchronous, private and does not infer hours or grades', async (t) => {
+test('source enrichment is automatic, asynchronous, private and never infers grades', async (t) => {
   const { request, login, job } = await setup(t);
   const candidate = await login('candidate024');
   const other = await login('candidate-new');
@@ -432,7 +443,9 @@ test('source enrichment is automatic, asynchronous, private and does not infer h
   const github = sources.find((source: Body) => source.provider === 'github');
   assert.deepEqual(github.counts, { found: 12, processed: 8, queued: 3, unavailable: 1 });
   assert.ok(github.activeJobId);
+  // Daily time is only an explicitly labelled estimate inside the GitHub report.
   for (const key of Object.keys(github)) assert.ok(!/hours/i.test(key));
+  assert.ok(github.github.report.rhythm.medianMinutesPerActiveDay > 0);
   await request('GET', `/api/v1/jobs/${github.activeJobId}`, { actor: other, status: 404 });
   await request('GET', `/api/v1/jobs/${github.activeJobId}`, { actor: employer, status: 404 });
   const completed = await job(github.activeJobId, candidate);
@@ -770,6 +783,52 @@ test('need CRUD validates salary and evidence policies without tenant crossover 
   await request('GET', '/api/v1/needs', { actor: b });
   await request('DELETE', `/api/v1/needs/${item.id}`, { actor: b, status: 204 });
   await request('GET', `/api/v1/needs/${item.id}`, { actor: b, status: 404 });
+});
+
+test('GitHub connects by login or profile link, stays unverified without proof and reaches employers anonymously', async (t) => {
+  const { request, login, job } = await setup(t, { scenario: 'qualified' });
+  const candidate = await login('candidate024');
+  const employer = await login('employer-a');
+  for (const account of ['https://github.com/octo-cat/repo', 'octo_cat', 'https://gitlab.com/octo-cat'])
+    assert.equal(
+      (
+        await request('POST', '/api/v1/me/sources/github/connect', {
+          actor: candidate,
+          body: { account },
+          status: 422,
+        })
+      ).body.code,
+      'github_login_invalid',
+    );
+  const source = (
+    await request('POST', '/api/v1/me/sources/github/connect', {
+      actor: candidate,
+      body: { account: 'https://github.com/Octo-Cat/' },
+    })
+  ).body;
+  assert.equal(source.accountLabel, 'Octo-Cat');
+  assert.equal(source.github.ownership.verified, false);
+  assert.match(source.github.ownership.code, /^fsp-/);
+  // The analysis runs in the background; the report arrives with its job.
+  assert.equal(source.github.report, null);
+  assert.equal(source.github.analysis.state, 'running');
+  await job(source.activeJobId, candidate);
+  const analyzed = (await request('GET', '/api/v1/me/sources', { actor: candidate })).body.items.find(
+    (item: Body) => item.provider === 'github',
+  );
+  assert.equal(analyzed.activeJobId, null);
+  assert.equal(analyzed.github.analysis, null);
+  assert.equal(analyzed.github.report.login, 'Octo-Cat');
+  assert.equal(analyzed.github.report.activity.calendar.length, 365);
+  assert.equal(analyzed.github.employerPreview.ownershipVerified, false);
+  const seen = (await request('GET', '/api/v1/candidates/candidate024', { actor: employer })).body;
+  assertAnonymous(seen);
+  assert.equal(seen.github.ownershipVerified, false);
+  assert.deepEqual(seen.github, analyzed.github.employerPreview);
+  const serialized = JSON.stringify(seen.github);
+  for (const hidden of ['Octo-Cat', 'demo-company', 'calendar', 'login', 'url'])
+    assert.ok(!serialized.includes(hidden), `${hidden} leaked to the employer`);
+  assert.equal((await request('GET', '/api/v1/me/profile', { actor: candidate })).body.verifiedGrade, 'middle');
 });
 
 test('candidate bank is anonymous, deterministic and distinguishes qualification from skill evidence', async (t) => {

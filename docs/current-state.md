@@ -1,9 +1,10 @@
 # Current system state
 
-Reviewed on 2026-10-08 against source, accepted release `cd44951`, private CI and the live stand.
-Issue [#54](https://github.com/KirpaDmitriy/sport-programming-federation/issues/54) records the subsequent
-owner no-backup/no-mirror policy and its final integrated SHA; #50 is the earlier consistency review. This page describes behavior; use the receipts below for the current
-release identity instead of treating a SHA in historical documentation as the latest release.
+Reviewed on 2026-10-10 against source, private CI and the live stand. Issue
+[#54](https://github.com/KirpaDmitriy/sport-programming-federation/issues/54) records the owner no-backup/no-mirror
+policy; PR [#67](https://github.com/KirpaDmitriy/sport-programming-federation/pull/67) records the GitHub insights
+delivery and its live check; #50 is the earlier consistency review. This page describes behavior; verify the current
+release identity as described below instead of treating a SHA in documentation as the latest release.
 
 ## Implemented and verified
 
@@ -13,6 +14,7 @@ release identity instead of treating a SHA in historical documentation as the la
 | Authentication | Resend OTP mail, random six-digit codes, challenge/session HMAC separation, durable issuance/attempt limits, secure session cookies | [Email adapter](../backend/crates/integration-email/src/lib.rs), PostgreSQL HTTP regressions, owner real-mail login |
 | Privacy and writes | Role/company scoping, anonymous candidate projections, selected disclosure, atomic idempotency, guarded terminal decisions | [Business rules](product/BUSINESS_RULES.md), Rust HTTP/storage and two-company browser scenarios |
 | Assessment | Versioned knowledge questions (backend junior–senior, frontend junior/middle; balanced 5+5 variants per attempt), deterministic scoring, saved drafts, immutable results, preserved grade on failure | [Knowledge tests](knowledge-tests.md), component/HTTP/browser regressions |
+| GitHub insights | Connect by login or link; a separate loopback Rust service analyzes public work in the background without a token (search, REST, blobless clones) into a developer portrait, an explainable index over seven dimensions, rhythm, own projects and organizations, collaboration and integrity flags; ownership by bio code; employers get an anonymous rounded projection | [GitHub insights](github-insights.md), unit, golden, fake-GitHub service and PostgreSQL job-flow tests, live tokenless calibration on public accounts |
 | PDF and assistance | Actual bounded isolated text extraction and cited Bifrost import; contextual assistant and graphs call Bifrost | [Backend runtime](../backend/README.md#pdf-import-runtime), exact-systemd PDF probe, earlier live feature evidence in #31 |
 | FSP | Separate private HTTP simulator with explicit fictional provenance and preserved snapshots on outage | [FSP simulator](fsp-simulator.md), HTTP and browser evidence |
 | Delivery | Four private-server CI gates, checked personal → dev → main PRs, exact-main deployment and actual Resend browser acceptance | [CI runbook](../infra/ci/README.md); no GitHub Actions dependency |
@@ -24,12 +26,16 @@ uses actual Rust/PostgreSQL and real received email, creates fresh actors and ne
 
 ## Explicit remaining limits
 
-- GitHub OAuth setup is deferred by the owner. Official FSP integration and arbitrary candidate code execution
+- GitHub OAuth setup is deferred by the owner; GitHub ownership is proven by a bio code instead. The GitHub index is
+  a transparent rule set over public evidence, not a calibrated predictor of performance, and it never confirms a
+  skill or changes matching. Official FSP integration and arbitrary candidate code execution
   are outside the chosen scope; the fictional provider and knowledge tests are intentional.
 - The published study bank is not professionally calibrated or resistant to leaked answers. Results do not
   certify practical experience; LLM suggestions never decide grades.
 - Digital PDFs only: OCR is unsupported. External mail/LLM providers can fail; failures remain visible.
-- Source jobs finish inline; candidate ranking still reads collections in memory. There is no durable worker,
+- FSP source jobs finish inline; a GitHub analysis is a job advanced by polling against the insights service, whose
+  queue and six-hour cache live in memory (a restart re-runs analyses). All analyses share the server's anonymous
+  GitHub search budget. Candidate ranking still reads collections in memory. There is no durable worker,
   measured large-bank/load capacity, high availability or comprehensive production security certification.
 - Backups, snapshots and redundant repository mirrors are disabled by explicit owner policy. Existing backup
   archives were deleted; do not reintroduce them. There is no external alerting/APM deployment;
@@ -48,10 +54,10 @@ product requirements need their own concrete acceptance criteria before changing
 2. Compare `upstream/main`, `/opt/fsp/current` on the stand and
    `/var/lib/fsp-ci/deployed.json` on server-gha-runner-2. The accepted-release marker is written only after
    deployment and the real public browser journey pass; check `fsp/deployment` as well as the four build gates.
-3. Inspect active API/simulator/LLM/nginx/PostgreSQL units, recent service/nginx errors, disk space, certificate
+3. Inspect active API/simulator/GitHub insights/LLM/nginx/PostgreSQL units (`curl 127.0.0.1:4030/health` on the stand), recent service/nginx errors, disk space, certificate
    renewal and confirm both `fsp-backup` units are masked/inactive. No public capability flag substitutes for a real integration check.
 4. Use [TESTING.md](../frontend/docs/TESTING.md) for suites and private real-mail acceptance configuration.
    Preserve provider credentials, OTPs and cookies outside git; private evidence lives in `.fsp-infra/`.
 
 Earlier delivery ledgers: #16 (stability), #23/#27 (live browser fixes), #31 (knowledge/PDF/FSP),
-#38 (domain/mail), #40 (private CI). Their plans and screenshots are dated evidence; current source wins.
+#38 (domain/mail), #40 (private CI), #54 (no-backup policy), #67 (GitHub insights). Their plans and screenshots are dated evidence; current source wins.

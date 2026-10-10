@@ -26,6 +26,13 @@ import {
 } from './data.ts';
 import { fspResults } from './fsp-fixture.ts';
 import type { components } from './generated/schema.d.ts';
+import {
+  GITHUB_ANALYSIS_STARTED,
+  githubFixtureReport,
+  githubSignal,
+  githubSource,
+  parseGitHubLogin,
+} from './github-fixture.ts';
 import { knowledgeCompletion, knowledgeTask, scoreKnowledge, validKnowledgeAnswer } from './knowledge.ts';
 
 type Schemas = components['schemas'];
@@ -358,8 +365,13 @@ function anonymous(s: State, candidate: Candidate, need: Need | null = null): Sc
     fspVerified: fspVerified(candidate),
     freshness: freshness(s, candidate),
     match: need ? match(candidate, need) : null,
+    github: githubProjection(candidate),
     simulation: true,
   };
+}
+function githubProjection(candidate: Candidate): Schemas['GitHubSignal'] | null {
+  const github = candidate.sources.find((source) => source.provider === 'github')?.github;
+  return github?.report ? githubSignal(github.report, github.ownership.verified) : null;
 }
 const roleLabels = { backend: 'Бэкенд', frontend: 'Фронтенд', fullstack: 'Фулстек' } as const;
 function graph(candidate: Candidate, audience: Schemas['Graph']['audience']): Schemas['Graph'] {
@@ -743,6 +755,14 @@ function startSourceSync(s: State, actor: Actor, candidate: Candidate, source: S
       };
       source.lastSyncedAt = s.clock;
       source.activeJobId = null;
+      if (source.github) {
+        const login = source.github.report?.login ?? source.accountLabel ?? 'demo';
+        source.github = githubSource(
+          candidate.id,
+          githubFixtureReport(login, s.clock),
+          source.github.ownership.verifiedAt,
+        );
+      }
       if (source.provider === 'github' && !candidate.skills.length)
         candidate.skills = makeSkills(candidate.id).map((skill) =>
           skill.status === 'confirmed'
@@ -763,6 +783,7 @@ function startSourceSync(s: State, actor: Actor, candidate: Candidate, source: S
     { sourceId: source.id },
   );
   source.activeJobId = job.id;
+  if (source.github) source.github.analysis = { ...GITHUB_ANALYSIS_STARTED };
   return job;
 }
 function completeAssessment(s: State, candidate: Candidate, item: AssessmentRecord): JobResult {
@@ -855,6 +876,7 @@ function advanceJob(s: State, job: JobRecord, phase: 'running' | 'complete') {
     if (job.sourceId) {
       const source = candidate.sources.find((item) => item.id === job.sourceId);
       if (source) source.activeJobId = null;
+      if (source?.github) source.github.analysis = null;
     }
     if (job.kind === 'assessment' && assessment) {
       assessment.status = 'service_error';
@@ -917,6 +939,7 @@ const handlers: Handlers = {
       profilePdfImport: true,
       githubFixture: true,
       githubOAuth: false,
+      githubInsights: false,
       fspFixture: true,
       matching: true,
       directInvitations: true,
@@ -1081,11 +1104,20 @@ const handlers: Handlers = {
             fspVerified: ctx.body.account === 'FSP-DEMO-024' || ctx.body.account === 'FSP-DEMO-031',
           });
     const connected = provider === 'github' ? github : fsp;
-    connected.accountLabel = provider === 'fsp' ? ctx.body.account.trim().toUpperCase() : ctx.body.account;
-    if (provider === 'fsp') {
-      if (!/^[A-Za-z0-9_-]+$/.test(connected.accountLabel))
+    if (provider === 'github') {
+      const login =
+        parseGitHubLogin(ctx.body.account) ??
+        fail(422, 'github_login_invalid', 'Укажите имя пользователя GitHub или ссылку на профиль');
+      connected.accountLabel = login;
+      // A fresh claim stays unverified until the bio carries the code; the mock cannot read a bio.
+      // The report arrives when the analysis job completes, as with the insights service.
+      connected.github = githubSource(candidate.id, null, null);
+    } else {
+      const account = ctx.body.account.trim().toUpperCase();
+      if (!/^[A-Za-z0-9_-]+$/.test(account))
         fail(400, 'validation_error', 'Используйте буквы, цифры, дефис или подчёркивание в ФСП ID');
-      connected.fspResults = fspResults(connected.accountLabel);
+      connected.accountLabel = account;
+      connected.fspResults = fspResults(account);
       connected.competitionIds = connected.fspResults
         .filter((r) => r.status === 'published')
         .map((r) => r.competitionId);
