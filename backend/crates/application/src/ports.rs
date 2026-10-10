@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use fsp_domain::{
-    Account, CandidateIndexRecord, CandidateProfile, Company, ExtractedGraph, FspParticipation,
-    GitHubReport, GraphExtractionRequest, HiringNeedRecord, JobRecord, SourceRecord,
+    Account, CandidateIndexRecord, CandidateProfile, Company, FspParticipation, GitHubReport,
+    HiringNeedRecord, JobRecord, SourceRecord,
 };
 
 use crate::PendingChallenge;
@@ -433,10 +433,6 @@ pub trait LlmGateway: Send + Sync {
         request: &fsp_domain::AssessmentHelpRequest,
     ) -> Result<fsp_domain::AssessmentHelpReply, IntegrationError>;
 
-    async fn extract_graph(
-        &self,
-        request: &GraphExtractionRequest,
-    ) -> Result<ExtractedGraph, IntegrationError>;
     async fn match_repository(
         &self,
         request: &fsp_domain::RepositoryMatchRequest,

@@ -465,7 +465,7 @@ async fn get_profile(
     let session = authenticated(&state, &headers).await?;
     state
         .service
-        .profile(&session)
+        .my_profile(&session)
         .await
         .map(Json)
         .map_err(api_error)

@@ -1590,12 +1590,6 @@ impl fsp_application::LlmGateway for TestAnalysis {
             ),
         })
     }
-    async fn extract_graph(
-        &self,
-        _: &fsp_domain::GraphExtractionRequest,
-    ) -> Result<fsp_domain::ExtractedGraph, fsp_application::IntegrationError> {
-        unreachable!()
-    }
     async fn match_repository(
         &self,
         _: &fsp_domain::RepositoryMatchRequest,
@@ -1905,10 +1899,17 @@ async fn fsp_http_sync_preserves_snapshot_on_failure_and_never_changes_grade() {
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{linked}");
-    assert_eq!(linked["fspResults"].as_array().unwrap().len(), 2);
-    assert_eq!(linked["fspResults"][0]["scope"], "team");
-    assert_eq!(linked["fspResults"][1]["status"], "pending");
-    assert_eq!(linked["competitionIds"].as_array().unwrap().len(), 1);
+    // The demo history: four published results (team and individual) and one pending.
+    let results = linked["fspResults"].as_array().unwrap();
+    assert_eq!(results.len(), 5);
+    assert_eq!(results[0]["scope"], "team");
+    assert!(
+        results
+            .iter()
+            .any(|result| result["scope"] == "individual" && result["status"] == "published")
+    );
+    assert_eq!(results[4]["status"], "pending");
+    assert_eq!(linked["competitionIds"].as_array().unwrap().len(), 4);
     let (_, before) = get(&app, "/api/v1/me/sources", Some(&candidate)).await;
     let before = before["items"]
         .as_array()

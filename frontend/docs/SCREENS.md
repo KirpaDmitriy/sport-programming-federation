@@ -41,10 +41,12 @@ Navigation: Обзор, Профиль, Источники, Навыки, Про
 Five steps with done markers: e-mail confirmed; consents (processing and publication as separate controls);
 «Подключите GitHub или ФСП» — GitHub by login or profile link with the running analysis stage, and the FSP ID, both
 after processing consent, plus «Подробный отчёт и подтверждение владения»; «Профиль собран автоматически» — the
-estimate card (category with its source and confidence, score, directions, factors, «Почему такой уровень» with the
-notes on caps, tenure from the questionnaire and what the next grade needs, the LLM's second opinion — «ИИ готовит
-второе мнение об оценке…» while the background review runs, «Обновляем анализ GitHub…» while an outdated report is
-re-analyzed — «Заполнить анкету по источникам» with a confirmation, «Пересчитать», «Подтвердить тестом») and the questionnaire under «Проверить и поправить анкету» («Заполнить анкету
+estimate card (category with its source and confidence, score, «Почему такой уровень» with the notes on caps,
+tenure from the questionnaire and what the next grade needs, «Как повысить грейд» — the steps with their points,
+«С чем поработать» skills and «Советы ИИ» — «Уточните два ответа» (total experience in years and months, role in the
+team, «Пересчитать с уточнениями»), directions, factors, the LLM's second opinion — «ИИ готовит второе мнение об
+оценке…» while the background review runs, «Обновляем анализ GitHub…» while an outdated report is re-analyzed —
+one-click «Заполнить анкету по источникам», «Пересчитать» and «По желанию: … Пройти тест») and the questionnaire under «Проверить и поправить анкету» («Заполнить анкету
 вручную» while it is incomplete, open until the candidate closes it), where automatic answers are marked «Заполнено
 автоматически» and «Заполнить из PDF» is available; «Тест знаний — по желанию» with «Пройти тест» for the saved target
 when the server allows it, otherwise the reason (unsupported specialization, active attempt, cooldown, downgrade).
@@ -65,7 +67,8 @@ Without a source the estimate step says the questionnaire can be filled by hand 
 - «Мои компетенции»: skills with state, confirmed level and evidence sources, plus a summary of GitHub (the running
   analysis stage, then the index, band and ownership state) and FSP.
 - «Следующий шаг» (shared with «Проверки»): continue the questionnaire, continue an active attempt, open an
-  evaluating one, start a check for the target, or the reason why not, with the date the cooldown ends.
+  evaluating one; with an estimated category «Как повысить грейд» — the top three growth steps — and «Пройти тест — по
+  желанию»; otherwise start a check for the target, or the reason why not, with the date the cooldown ends.
 - «История проверок»: the last three attempts.
 
 ### `/candidate/profile` — «Профиль и цели»
@@ -109,7 +112,9 @@ profile invalidates an old preview. Rust uses isolated extraction and Bifrost; m
 
 ![Skills and evidence](screenshots/04-skills-evidence.png)
 
-«Список» or «Граф» (kept in the URL), a filter, and an inspector for the selected skill or evidence: state, the level
+«Список» or «Граф» (kept in the URL), a filter, and an inspector for the selected skill, concept or source. The graph
+shows the sources (GitHub, ФСП, «Тест знаний») on top, the category below them, then the concepts, and each concept's
+technologies in a column with their level («Основная · 49 проектов», «Тест · Мидл»). The skill inspector shows: state, the level
 it was confirmed for and what the target still needs, evidence items with source, date, individual or team scope and
 links (demo links as text, assessment evidence links to its result), and «Что ещё проверить» with the check and
 catalog competitions. The graph and the list share one selection; the graph has zoom and fit controls and a legend.
