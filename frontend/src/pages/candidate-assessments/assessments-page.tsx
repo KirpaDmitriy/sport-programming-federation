@@ -117,7 +117,7 @@ export function CandidateAssessmentsPage() {
     .join('; ');
   return (
     <>
-      <PageHeader title="Проверки" subtitle="Тест знаний с выбором ответов · без написания кода" />
+      <PageHeader title="Проверки" subtitle="Тест знаний и адаптивное собеседование по графу компетенций" />
       <GraphInterview available={meta.capabilities.graphInterviews} />
       <div className="split">
         <Card title="Как устроена проверка">

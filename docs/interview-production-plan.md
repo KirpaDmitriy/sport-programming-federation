@@ -13,15 +13,29 @@ and is released by the same verified `main` pipeline as the rest of the platform
   to the composite node after its prerequisites are confirmed.
 - Machine-readable record: `backend/experiments/graph-interview-traversal-v1.json`.
 
+Behavioral cadence is a separate experiment:
+
+- Algorithmic change: schedule one unresolved behavioral node after each three answers without bypassing its graph
+  prerequisites.
+- Expected effect: a 12-turn interview reaches requirements, disagreement and feedback while technical traversal
+  still descends to missing prerequisites.
+- Failure condition: a behavioral node is omitted, a child is selected before its prerequisite, or technical descent
+  changes.
+- Machine-readable record: `backend/experiments/graph-interview-behavioral-cadence-v1.json`.
+
 ## Definition of done
 
 - [x] Persist interview sessions with optimistic revision checks.
 - [x] Keep a deterministic offline CPU model and use Bifrost when configured.
 - [x] Authenticate browser users through the platform API; never expose the internal service token.
-- [x] Let a candidate start, resume and answer an interview from the product UI.
+- [x] Open start and resume actions in a dedicated interview route.
 - [x] Render graph progress and an accessible list alternative.
-- [x] Keep voice playback optional and local to the browser; text remains the required path.
+- [x] Render prerequisite edges between graph nodes.
+- [x] Voice questions, transcribe microphone answers when the browser supports it and allow an immediate text fallback.
+- [x] Show avatar speaking, listening and analysis states without camera capture or generated video.
+- [x] Assess requirements, disagreement and feedback from answer evidence without personality or emotion inference.
 - [x] Build, install, start, health-check and roll back the service in `infra/release.sh`.
 - [x] Cover the service in backend, Compose and release-safety CI gates.
-- [ ] Pass unit/contract/UI tests, an offline HTTP smoke test and the experiment-record check.
+- [x] Pass service, mock, frontend unit and targeted browser tests plus an offline HTTP smoke test.
+- [x] Validate experiment records with `python3 tools/experiments.py check`.
 - [ ] Deploy verified `main` and confirm the public authenticated journey.
