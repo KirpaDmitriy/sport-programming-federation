@@ -17,7 +17,7 @@ const share = (value: number) => ({ '--value': String(value) }) as CSSProperties
 /** How long after an estimate its background LLM review is awaited. */
 const REVIEW_WAIT_MS = 2 * 60_000;
 
-/** Grade bands of the seniority score, as `estimate-v1` defines them. */
+/** Grade bands of the seniority score, as `estimate-v2` defines them. */
 const BANDS = 'до 20 — стажёр, 20–39 — джуниор, 40–59 — мидл, 60–79 — сеньор, от 80 — лид';
 
 function Bars({ items }: { items: { id: string; label: string; value: number; max: number; detail?: string }[] }) {
@@ -135,8 +135,8 @@ export function ProfileEstimateCard({ profile, canEstimate, title = 'Автом�
             </span>
           </div>
           <p className="small muted" style={{ margin: 0 }}>
-            Балл уровня из 100 по факторам ниже: {BANDS}. Сеньору нужны два года публичной работы или три года опыта,
-            лиду — три и пять. Объём коммитов сам по себе грейд не повышает.
+            Балл уровня из 100 по факторам ниже: {BANDS}. Сеньору нужно не меньше двух лет публичной работы или опыта,
+            лиду — четырёх. Объём коммитов сам по себе грейд не повышает.
           </p>
         </div>
         {estimate.specializations.length > 0 && (

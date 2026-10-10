@@ -38,7 +38,7 @@ the mock; the frontend receives labels through the generated types and `/meta`.
 - GitHub detection maps its technologies and languages (including `.bsl`/`.os` 1C sources and 1C configuration
   dumps) to catalog skills, so evidence covers the whole catalog.
 
-## Estimate (`estimate-v1`)
+## Estimate (`estimate-v2`)
 
 A pure domain function turns the GitHub report, FSP results and optional imported experience into an estimate:
 
@@ -49,7 +49,8 @@ A pure domain function turns the GitHub report, FSP results and optional importe
   maintained projects and own organizations, engineering practices, accepted work in independent projects and
   reviews of others, breadth and depth of the stack, consistency and volume (capped so volume alone never reaches
   senior), and FSP results (finals, places, individual versus team). Bands: < 20 intern, 20–39 junior, 40–59 middle,
-  60–79 senior, ≥ 80 lead.
+  60–79 senior, ≥ 80 lead. Senior needs 24 months of public work or stated experience and lead 48, counted in
+  months (`estimate-v2`; `estimate-v1` counted calendar years, so thirteen months across a new year passed as two).
 - **Confidence** follows the amount and coverage of evidence; with too little public data the estimate says so and
   gives no category until a test or more evidence.
 - **Profile answers:** industry IT, specialization, target grade = estimated grade, stack (top evidenced catalog
@@ -76,8 +77,9 @@ rule-based estimate and template texts work alone.
 ## Question banks
 
 Every specialization has two topics and every grade six questions per topic, as the backend bank does: balanced
-5+5 variants per attempt. Fullstack combines a backend and a frontend topic; intern and lead extend the existing
-junior–senior structure.
+5+5 variants per attempt. Delivered as topic banks (`knowledge-v3-*.json`, 1,230 questions on 39 topics) shared by
+the specializations tested on each topic; fullstack is tested on HTTP/REST API and SQL. Intern and lead extend the
+existing junior–senior structure for Rust, PostgreSQL, TypeScript and React.
 
 ## Delivery phases
 
@@ -90,6 +92,6 @@ junior–senior structure.
    category (`category` reason); migration 0006 adds the estimate and auto-field columns. The source transaction
    applies the rules at once; the LLM review runs in the background after commit (live Grok answers took over 20
    seconds) and joins the estimate only if it is unchanged. The mock serves Rust-generated golden estimates.
-3. Question banks for every specialization and grade, delivered by specialization groups.
+3. Question banks for every specialization and grade. Delivered on `feat/knowledge-banks`.
 
 Each phase goes through the usual gates and deployment; business rules, traceability and screenshots change with it.

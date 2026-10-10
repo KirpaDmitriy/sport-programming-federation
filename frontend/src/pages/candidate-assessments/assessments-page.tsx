@@ -4,15 +4,23 @@ import { type Assessment, AssessmentStatusChip, assessmentsQuery, isEditable } f
 import { useMeta } from '@/entities/meta';
 import { profileQuery } from '@/entities/profile';
 import { useScope } from '@/entities/session';
-import { formatDate, gradeLabel, pluralRu, specializationLabel, useDocumentTitle } from '@/shared/lib';
+import { SPECIALIZATIONS } from '@/shared/api';
+import {
+  formatDate,
+  gradeLabel,
+  pluralRu,
+  skillLabelOf,
+  specializationLabel,
+  specializationName,
+  useDocumentTitle,
+} from '@/shared/lib';
 import { Card, EmptyState, ErrorState, Icon, LoadingState, PageHeader, TableWrap } from '@/shared/ui';
 import { AssessmentNextStep } from '@/widgets/assessment-next-step';
 
-/** The two topics of each specialization's knowledge bank, as the Rust evaluator defines them. */
-const assessmentTopics: Partial<Record<keyof typeof specializationLabel, string>> = {
-  backend: 'Rust и PostgreSQL',
-  frontend: 'TypeScript и React',
-};
+/** The two catalog topics each specialization's knowledge test covers. */
+const assessmentTopics = Object.fromEntries(
+  SPECIALIZATIONS.map((item) => [item.id, item.testTopics.map(skillLabelOf).join(' и ')]),
+) as Record<keyof typeof specializationLabel, string>;
 
 function categoryEffect(assessment: Assessment) {
   const result = assessment.result;
@@ -97,11 +105,13 @@ export function CandidateAssessmentsPage() {
   const meta = useMeta();
   const { data: profile } = useSuspenseQuery(profileQuery(scope));
   const policy = meta.assessmentPolicy;
+  const everyScope =
+    policy.supportedScopes.length === SPECIALIZATIONS.length &&
+    policy.supportedScopes.every((item) => item.grades.length === Object.keys(gradeLabel).length);
   const scopes = policy.supportedScopes
     .map((item) => {
-      const topics = assessmentTopics[item.specialization];
       const grades = item.grades.map((grade) => gradeLabel[grade]).join(', ');
-      return `${specializationLabel[item.specialization]}${topics ? ` (${topics})` : ''}: ${grades}`;
+      return `${specializationLabel[item.specialization]} (${assessmentTopics[item.specialization]}): ${grades}`;
     })
     .join('; ');
   return (
@@ -138,8 +148,22 @@ export function CandidateAssessmentsPage() {
                 ожидания не требует.
               </li>
               <li>Проверка ниже уже подтверждённого грейда не проводится.</li>
-              <li>Доступные направления: {scopes}.</li>
+              <li>
+                {everyScope
+                  ? `Тест есть для всех ${SPECIALIZATIONS.length} направлений и всех грейдов — от стажёра до лида.`
+                  : `Доступные направления: ${scopes}.`}
+              </li>
             </ul>
+            <details>
+              <summary className="small">Темы тестов по направлениям</summary>
+              <ul className="small" style={{ margin: '0.5rem 0 0', paddingLeft: '1.25rem' }}>
+                {policy.supportedScopes.map((item) => (
+                  <li key={item.specialization}>
+                    {specializationName[item.specialization]}: {assessmentTopics[item.specialization]}
+                  </li>
+                ))}
+              </ul>
+            </details>
             <p className="small muted">
               Уровень по этому тесту отражает знания выбранных тем, а не проверенный опыт разработки. Банк вопросов
               открыт для изучения; ИИ и справочники разрешены.
