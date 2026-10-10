@@ -191,7 +191,10 @@ test('UI-06 a new candidate connects GitHub and gets the questionnaire and a cat
   // The analysis job ends with the report; the estimate answers the questionnaire and gives the category.
   await expect(page.getByText(/GitHub «octo-cat» подключён, анализ завершён/)).toBeVisible();
   await expect(page.getByText('Бэкенд · Мидл · оценка, высокая уверенность')).toBeVisible();
-  await expect(page.getByText('Масштаб и сложность', { exact: true })).toBeVisible();
+  await expect(page.getByText('Масштаб и сложность', { exact: true }).first()).toBeVisible();
+  // What raises the grade and the two answers evidence cannot give.
+  await expect(page.getByRole('heading', { name: 'Как повысить грейд' })).toBeVisible();
+  await expect(page.getByText('Уточните два ответа')).toBeVisible();
   // The notes say what the next grade needs; every answer can be rebuilt from the sources.
   await expect(page.getByText('Почему такой уровень')).toBeVisible();
   await expect(page.getByText(/До уровня «Сеньор» не хватает/)).toBeVisible();
@@ -200,8 +203,8 @@ test('UI-06 a new candidate connects GitHub and gets the questionnaire and a cat
   await expect(page.getByText('Проверить и поправить анкету')).toBeVisible();
   await expect(page.getByLabel('Имя и фамилия')).toHaveValue('Иван Петров');
   await expect(page.getByLabel('Грейд для проверки')).toHaveValue('middle');
-  await expect(page.getByLabel('Общий стаж, лет')).toHaveValue('3');
-  await expect(page.getByLabel('Ещё месяцев')).toHaveValue('9');
+  await expect(page.locator('#profile-years')).toHaveValue('3');
+  await expect(page.locator('#profile-months')).toHaveValue('9');
   await expect(page.getByText('Заполнено автоматически.').first()).toBeVisible();
 
   await page.goto('/candidate/overview');
@@ -234,7 +237,7 @@ test('UI-08 UI-09 graph and list share one selection and the list is keyboard-op
   await expect(page.getByRole('button', { name: /^Docker/ })).toBeVisible();
   expect(graphRequests).toHaveLength(0);
   await page.getByRole('button', { name: 'Граф', exact: true }).click();
-  await page.getByRole('button', { name: /Навык: PostgreSQL/ }).click();
+  await page.getByRole('button', { name: /Технология: PostgreSQL/ }).click();
   expect(graphRequests).toHaveLength(1);
   const inspector = page.getByRole('complementary', { name: 'Подробности выбранного элемента' });
   await expect(inspector.getByRole('heading', { name: 'PostgreSQL' })).toBeVisible();
@@ -244,6 +247,12 @@ test('UI-08 UI-09 graph and list share one selection and the list is keyboard-op
   await page.getByRole('button', { name: /^Docker/ }).focus();
   await page.keyboard.press('Enter');
   await expect(inspector.getByRole('heading', { name: 'Docker' })).toBeVisible();
+  // Concepts group the technologies; the inspector lists them with their level.
+  await page.getByRole('button', { name: 'Граф', exact: true }).click();
+  await page.getByRole('button', { name: /^Понятие: Базы данных и хранилища/ }).click();
+  await expect(inspector.getByRole('heading', { name: 'Базы данных и хранилища' })).toBeVisible();
+  await expect(inspector.getByText('PostgreSQL')).toBeVisible();
+  await expect(page.getByRole('button', { name: /^Источник: GitHub/ })).toBeVisible();
 });
 
 test('UI-04 PDF import previews fixture data and applies it only on confirmation', async ({ page }) => {

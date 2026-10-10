@@ -34,6 +34,7 @@ export function AssessmentNextStep({ profile }: { profile: Profile }) {
   }
 
   const active = assessments.data.items.find((item) => isEditable(item) || isEvaluating(item));
+  const growth = (profile.estimate?.growth ?? []).filter((step) => step.id !== 'assessment');
   let body: ReactNode;
 
   if (!profile.onboarding.questionnaireComplete || !profile.consents.processing) {
@@ -74,6 +75,36 @@ export function AssessmentNextStep({ profile }: { profile: Profile }) {
         <ButtonLink to="/candidate/assessments/$assessmentId/result" params={{ assessmentId: active.id }}>
           Открыть статус
         </ButtonLink>
+      </>
+    );
+  } else if (profile.category.source === 'estimate' && growth.length > 0) {
+    // An estimated category grows with evidence first; the test stays an option, not a demand.
+    body = (
+      <>
+        <h3 style={{ margin: 0 }}>Как повысить грейд</h3>
+        <ul className="stack" style={{ margin: 0, paddingLeft: '1.25rem' }}>
+          {growth.slice(0, 3).map((step) => (
+            <li key={step.id}>
+              <strong>{step.title}</strong>
+              {step.points > 0 && ` — до +${step.points}`}
+              <div className="small muted">{step.action}</div>
+            </li>
+          ))}
+        </ul>
+        {eligibility.canStartSelected && (
+          <Button
+            size="sm"
+            iconAfter="arrowRight"
+            pending={start.isPending}
+            pendingLabel="Создаём проверку…"
+            onClick={() =>
+              start.mutate({ specialization: eligibility.selectedSpecialization, grade: eligibility.selectedGrade })
+            }
+          >
+            Пройти тест — по желанию
+          </Button>
+        )}
+        {start.error && <Callout tone="danger">{describeError(start.error).message}</Callout>}
       </>
     );
   } else if (eligibility.canStartSelected) {

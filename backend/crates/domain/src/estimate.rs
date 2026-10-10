@@ -12,7 +12,7 @@ use crate::{
     Archetype, FspResult, GitHubDimensionId, GitHubReport, Grade, SignalConfidence, Specialization,
 };
 
-pub const ESTIMATE_VERSION: &str = "estimate-v3";
+pub const ESTIMATE_VERSION: &str = "estimate-v4";
 
 /// Stack items an automatic profile fills in.
 const STACK_LIMIT: usize = 12;
@@ -43,7 +43,24 @@ pub struct ProfileEstimate {
     /// How tenure and caps shaped the grade and what would raise it, in plain words.
     #[serde(default)]
     pub notes: Vec<String>,
+    /// What raises the grade, most points first.
+    #[serde(default)]
+    pub growth: Vec<GrowthStep>,
+    /// Catalog skills of the specialization that the evidence does not show yet.
+    #[serde(default)]
+    pub focus_skills: Vec<String>,
     pub review: Option<EstimateReview>,
+}
+
+/// One step towards a higher grade: what to do and how many points it can add.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GrowthStep {
+    pub id: String,
+    pub title: String,
+    pub action: String,
+    /// Points the step can still add; zero for a condition such as tenure.
+    pub points: u8,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -85,6 +102,9 @@ pub struct EstimateReview {
     pub rationale: String,
     /// Whether the review agreed with the rule-based grade.
     pub agrees: bool,
+    /// The model's personal advice towards the next grade.
+    #[serde(default)]
+    pub recommendations: Vec<String>,
 }
 
 /// What the LLM returns before it is applied.
@@ -96,6 +116,8 @@ pub struct ProfileReviewReply {
     pub rationale: String,
     pub experience: String,
     pub team_role: String,
+    #[serde(default)]
+    pub recommendations: Vec<String>,
 }
 
 /// Anonymized evidence for the LLM: no login, names, organizations or links.
@@ -124,6 +146,10 @@ pub struct ProfileReviewRequest {
     pub projects: Vec<ReviewProject>,
     /// Every report metric as «label: value», by dimension.
     pub metrics: Vec<String>,
+    /// The rule-based steps towards the next grade.
+    pub growth: Vec<GrowthStep>,
+    /// Labels of the specialization's skills the evidence does not show yet.
+    pub focus_skills: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -248,6 +274,9 @@ pub fn estimate_profile(input: &EstimateInput<'_>) -> ProfileEstimate {
         .clamp(0.0, 100.0) as u8;
 
     let mut from_answers = false;
+    // What held the grade back, for the growth plan: the band the tenure capped and the lead gate.
+    let mut tenure_cap = None;
+    let mut people_cap = false;
     let (grade, insufficient) = if input.github.is_none()
         && published.is_empty()
         && stated_months.is_none()
@@ -285,6 +314,7 @@ pub fn estimate_profile(input: &EstimateInput<'_>) -> ProfileEstimate {
                     ));
                 } else {
                     grade = Grade::Senior;
+                    people_cap = true;
                     people_note = Some(format!(
                         "Баллы соответствуют уровню «Лид», но он означает, что человек ведёт \
                          направление и людей, а публичных следов работы с людьми мало («Совместная \
@@ -297,6 +327,7 @@ pub fn estimate_profile(input: &EstimateInput<'_>) -> ProfileEstimate {
         let months = experience_months.unwrap_or(0);
         let capped = cap_grade(grade, months);
         if capped != grade {
+            tenure_cap = Some(grade);
             notes.push(format!(
                 // Two and four years both read «от 2 лет», «от 4 лет».
                 "Баллы соответствуют уровню «{}», но он требует от {} лет опыта{}; учтено {} {}, \
@@ -344,6 +375,17 @@ pub fn estimate_profile(input: &EstimateInput<'_>) -> ProfileEstimate {
         confidence = SignalConfidence::Medium;
     }
     let answers = answers(input.github, &published, specialization, experience_months);
+    let growth = growth_plan(&GrowthInput {
+        github: input.github,
+        factors: &factors,
+        fsp_points,
+        published: published.len(),
+        tenure_cap: tenure_cap.as_ref(),
+        people_cap,
+        grade,
+        public_months,
+    });
+    let focus_skills = focus_skills(specialization, input.github, &answers.stack);
     ProfileEstimate {
         version: ESTIMATE_VERSION.into(),
         computed_at: input.now.into(),
@@ -357,6 +399,8 @@ pub fn estimate_profile(input: &EstimateInput<'_>) -> ProfileEstimate {
         sources,
         insufficient,
         notes,
+        growth,
+        focus_skills,
         review: None,
     }
 }
@@ -552,6 +596,12 @@ pub fn apply_review(estimate: &mut ProfileEstimate, reply: ProfileReviewReply) {
         grade: reply.grade,
         rationale: clean_text(&reply.rationale, 600).unwrap_or_default(),
         agrees,
+        recommendations: reply
+            .recommendations
+            .iter()
+            .filter_map(|item| clean_text(item, 240))
+            .take(5)
+            .collect(),
     });
 }
 
@@ -589,6 +639,12 @@ pub fn review_request(
         score: estimate.score,
         factors: estimate.factors.clone(),
         notes: estimate.notes.clone(),
+        growth: estimate.growth.clone(),
+        focus_skills: estimate
+            .focus_skills
+            .iter()
+            .map(|skill| crate::catalog::skill_label(skill).to_owned())
+            .collect(),
         stack: estimate
             .answers
             .stack
@@ -824,6 +880,9 @@ fn leading_role(role: &str) -> bool {
 }
 
 const FSP_MAX: u8 = 15;
+
+/// The most all FSP results together add to specialization scores.
+const FSP_SHARE_TOTAL: f64 = 30.0;
 
 fn dimension_key(id: GitHubDimensionId) -> &'static str {
     match id {
@@ -1074,8 +1133,9 @@ fn specialization_shares(
             }
         }
     }
+    // Competitions refine the direction; however many there are, they never outweigh the work.
+    let weight = (FSP_SHARE_TOTAL / published.len().max(1) as f64).min(15.0);
     for result in published {
-        let weight = 15.0;
         for specialization in discipline_specializations(&result.discipline) {
             *scores.entry(specialization).or_default() += weight;
         }
@@ -1144,6 +1204,255 @@ fn discipline_specializations(discipline: &str) -> Vec<Specialization> {
     } else {
         Vec::new()
     }
+}
+
+struct GrowthInput<'a> {
+    github: Option<&'a GitHubReport>,
+    factors: &'a [EstimateFactor],
+    fsp_points: u8,
+    published: usize,
+    /// The band a tenure cap lowered, if one did.
+    tenure_cap: Option<&'a Grade>,
+    people_cap: bool,
+    grade: Option<Grade>,
+    public_months: Option<u32>,
+}
+
+/// Steps towards a higher grade: conditions that hold the grade back first, then the factors with
+/// the most points left, competitions, and the optional test.
+fn growth_plan(input: &GrowthInput<'_>) -> Vec<GrowthStep> {
+    let step = |id: &str, title: &str, action: String, points: u8| GrowthStep {
+        id: id.into(),
+        title: title.into(),
+        action,
+        points,
+    };
+    let mut steps = Vec::new();
+    if input.grade.is_none() && input.github.is_none() && input.published == 0 {
+        return vec![step(
+            "sources",
+            "Источники",
+            "Подключите GitHub и ФСП ID: по ним система заполнит анкету и оценит уровень".into(),
+            0,
+        )];
+    }
+    if let Some(banded) = input.tenure_cap {
+        steps.push(step(
+            "tenure",
+            "Общий стаж",
+            format!(
+                "Укажите в анкете общий стаж с закрытыми проектами: «{}» требует от {} лет, а \
+                 публично видно {}",
+                banded.label(),
+                required_months(*banded) / 12,
+                input
+                    .public_months
+                    .map_or_else(|| "меньше месяца".to_owned(), duration)
+            ),
+            0,
+        ));
+    }
+    if input.people_cap {
+        steps.push(step(
+            "people",
+            "Работа с людьми",
+            "Если руководите людьми или техническим направлением, укажите это в роли в команде. \
+             Публично это видно по ревью чужого кода и принятым изменениям в чужих проектах"
+                .into(),
+            0,
+        ));
+    }
+    if let Some(report) = input.github {
+        let mut open = input
+            .factors
+            .iter()
+            .filter(|factor| factor.id.starts_with("github_") && factor.max >= factor.points + 2)
+            .collect::<Vec<_>>();
+        open.sort_by(|a, b| {
+            (b.max - b.points)
+                .cmp(&(a.max - a.points))
+                .then(a.id.cmp(&b.id))
+        });
+        for factor in open.into_iter().take(4) {
+            if let Some(action) = factor_action(&factor.id, report) {
+                steps.push(step(
+                    &factor.id,
+                    &factor.label,
+                    action,
+                    factor.max - factor.points,
+                ));
+            }
+        }
+    } else {
+        steps.push(step(
+            "github",
+            "GitHub",
+            "Подключите GitHub: собственные проекты, их масштаб и инженерная культура дают \
+             основную часть оценки"
+                .into(),
+            0,
+        ));
+    }
+    if input.fsp_points < FSP_MAX {
+        steps.push(step(
+            "fsp",
+            "Соревнования ФСП",
+            if input.published == 0 {
+                "Укажите ФСП ID или участвуйте в соревнованиях: результат в топ-10% даёт до 10 \
+                 баллов, три опубликованных участия — ещё 5"
+                    .into()
+            } else {
+                "Новые опубликованные результаты ФСП: место в топ-10% и три участия дают до 15 \
+                 баллов"
+                    .into()
+            },
+            FSP_MAX - input.fsp_points,
+        ));
+    }
+    if let Some(grade) = input.grade {
+        steps.push(step(
+            "assessment",
+            "Тест знаний",
+            format!(
+                "По желанию: тест на уровень «{}» подтверждает категорию, и подтверждённые \
+                 кандидаты стоят выше в выдаче",
+                grade.label()
+            ),
+            0,
+        ));
+    }
+    steps
+}
+
+/// A concrete action for a GitHub factor, with the candidate's own numbers where they help.
+fn factor_action(id: &str, report: &GitHubReport) -> Option<String> {
+    let metric = |dimension: GitHubDimensionId, metric: &str| {
+        report
+            .dimensions
+            .iter()
+            .find(|item| item.id == dimension)
+            .and_then(|item| item.metrics.iter().find(|item| item.id == metric))
+            .map_or(0, |item| item.value)
+    };
+    Some(match id {
+        "github_scope" => {
+            let sustained = metric(GitHubDimensionId::Scope, "sustained_systems");
+            let designed = metric(GitHubDimensionId::Scope, "design_artifacts");
+            format!(
+                "Развивайте свои проекты дольше полугода (сейчас таких {sustained}) и фиксируйте \
+                 архитектурные решения, контракты API и миграции (сейчас они есть в {designed} {})",
+                if designed % 10 == 1 && designed % 100 != 11 {
+                    "проекте"
+                } else {
+                    "проектах"
+                }
+            )
+        }
+        "github_longevity" => "Стаж на GitHub растёт со временем; опыт в закрытых проектах учтёт \
+             общий стаж в анкете"
+            .into(),
+        "github_ownership" => "Ведите собственные проекты до стабильного состояния: регулярные \
+             коммиты в течение года, связанные репозитории — в своей организации"
+            .into(),
+        "github_craft" => {
+            let craft = &report.craft;
+            let practices = [
+                (craft.tests_percent, "тесты"),
+                (craft.ci_percent, "CI"),
+                (craft.lint_percent, "линтеры"),
+                (craft.lockfile_percent, "фиксацию зависимостей"),
+                (
+                    craft.dependency_updates_percent,
+                    "автообновление зависимостей",
+                ),
+                (craft.license_percent, "лицензии"),
+                (craft.readme_percent, "README"),
+            ]
+            .into_iter()
+            .filter(|(percent, _)| *percent < 70)
+            .map(|(percent, name)| format!("{name} (сейчас в {percent}% проектов)"))
+            .take(3)
+            .collect::<Vec<_>>();
+            if practices.is_empty() {
+                "Поддерживайте инженерные практики во всех новых проектах".into()
+            } else {
+                format!("Добавьте в проекты {}", practices.join(", "))
+            }
+        }
+        "github_collaboration" => format!(
+            "Ревьюйте чужие pull request'ы и доводите изменения до принятия в независимых проектах: \
+             сейчас одобренных другими PR — {}, ревью в независимых репозиториях — {}",
+            report.collaboration.approved_pull_requests, report.collaboration.independent_reviews
+        ),
+        "github_impact" => "Делайте проекты полезными другим: документация, релизы и анонсы \
+             приносят звёзды и форки, а вклад в проекты от 1000 звёзд ценится отдельно"
+            .into(),
+        "github_engagement" => "Сохраняйте активность: больше активных дней в году".into(),
+        "github_consistency" => {
+            "Работайте регулярно, неделя за неделей, без длинных перерывов".into()
+        }
+        _ => return None,
+    })
+}
+
+/// Frameworks tied to a language: they are worth learning only with that language in the stack.
+const FRAMEWORK_LANGUAGES: [(&str, &[&str]); 16] = [
+    ("spring", &["java", "kotlin"]),
+    ("hibernate", &["java", "kotlin"]),
+    ("django", &["python"]),
+    ("flask", &["python"]),
+    ("fastapi", &["python"]),
+    ("sqlalchemy", &["python"]),
+    ("nodejs", &["javascript", "typescript"]),
+    ("nestjs", &["javascript", "typescript"]),
+    ("react", &["javascript", "typescript"]),
+    ("vue", &["javascript", "typescript"]),
+    ("nextjs", &["javascript", "typescript"]),
+    ("aspnet", &["csharp"]),
+    ("laravel", &["php"]),
+    ("rails", &["ruby"]),
+    ("actix", &["rust"]),
+    ("tokio", &["rust"]),
+];
+
+/// Skills the specialization's catalog lists that the evidence does not show: general ones first,
+/// then frameworks of languages the candidate already uses; never another language.
+fn focus_skills(
+    specialization: Option<Specialization>,
+    github: Option<&GitHubReport>,
+    stack: &[String],
+) -> Vec<String> {
+    let Some(specialization) = specialization else {
+        return Vec::new();
+    };
+    let evidenced = |skill: &str| {
+        stack.iter().any(|item| item == skill)
+            || github.is_some_and(|report| {
+                report
+                    .technologies
+                    .iter()
+                    .any(|item| item.skill_id == skill)
+            })
+    };
+    let mut general = Vec::new();
+    let mut frameworks = Vec::new();
+    for skill in &crate::catalog::specialization(specialization).indicators {
+        if evidenced(skill)
+            || crate::catalog::skill(skill).is_none_or(|info| info.category == "language")
+        {
+            continue;
+        }
+        match FRAMEWORK_LANGUAGES.iter().find(|(id, _)| id == skill) {
+            Some((_, languages)) if languages.iter().any(|language| evidenced(language)) => {
+                frameworks.push(skill.clone());
+            }
+            Some(_) => {}
+            None => general.push(skill.clone()),
+        }
+    }
+    general.extend(frameworks);
+    general.truncate(5);
+    general
 }
 
 /// Questionnaire answers: the strongest catalog skills, experience and role.
@@ -1583,6 +1892,64 @@ mod tests {
     }
 
     #[test]
+    fn the_growth_plan_names_what_holds_the_grade_and_what_to_work_on() {
+        let mut report = report();
+        for dimension in &mut report.dimensions {
+            dimension.score = if dimension.id == GitHubDimensionId::Collaboration {
+                38
+            } else {
+                100
+            };
+        }
+        report.activity.yearly.retain(|year| year.year >= 2025);
+        report.coverage.from = "2025-09-01T00:00:00Z".into();
+        let estimate = estimate_profile(&input(Some(&report), &[]));
+        let ids = estimate
+            .growth
+            .iter()
+            .map(|step| step.id.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(&ids[..3], ["tenure", "people", "github_collaboration"]);
+        assert!(ids.contains(&"fsp"));
+        assert_eq!(ids.last(), Some(&"assessment"));
+        assert!(
+            estimate.growth[0]
+                .action
+                .contains("«Сеньор» требует от 2 лет")
+        );
+        assert!(estimate.growth[2].action.contains("одобренных другими PR"));
+        // Focus skills: the specialization's own, never a language or another language's framework.
+        assert!(!estimate.focus_skills.is_empty());
+        for skill in &estimate.focus_skills {
+            assert_ne!(crate::catalog::skill(skill).unwrap().category, "language");
+            assert!(
+                !["spring", "hibernate", "aspnet", "laravel", "rails"].contains(&skill.as_str())
+            );
+        }
+    }
+
+    #[test]
+    fn competitions_refine_the_direction_without_outweighing_the_work() {
+        let report = report();
+        let two = [
+            fsp("Продуктовое программирование", 1, 64),
+            fsp("Продуктовое программирование", 2, 120),
+        ];
+        let five = [
+            fsp("Продуктовое программирование", 1, 64),
+            fsp("Продуктовое программирование", 2, 120),
+            fsp("Продуктовое программирование", 3, 18),
+            fsp("Продуктовое программирование", 4, 80),
+            fsp("Продуктовое программирование", 5, 90),
+        ];
+        let shares = |results: &[FspResult]| {
+            specialization_shares(Some(&report), &results.iter().collect::<Vec<_>>())
+        };
+        assert_eq!(shares(&two), shares(&five));
+        assert_eq!(shares(&two)[0].id, Specialization::Backend);
+    }
+
+    #[test]
     fn durations_read_as_years_and_months() {
         assert_eq!(duration(5), "5 мес.");
         assert_eq!(duration(12), "1 год");
@@ -1631,6 +1998,10 @@ mod tests {
                 rationale: "Основная работа — платформа и CI".into(),
                 experience: "Строит платформу и автоматизацию.".into(),
                 team_role: "Ведёт инфраструктуру".into(),
+                recommendations: vec![
+                    "Ревьюйте чужие изменения в платформенных проектах".into(),
+                    "См. https://example.test".into(),
+                ],
             },
         );
         assert_eq!(estimate.specialization, Some(Specialization::Devops));
@@ -1642,6 +2013,11 @@ mod tests {
         assert_eq!(estimate.confidence, SignalConfidence::Medium);
         assert!(!estimate.review.as_ref().unwrap().agrees);
         assert_eq!(estimate.answers.team_role, "Ведёт инфраструктуру");
+        // Advice with links is dropped; the rest is kept.
+        assert_eq!(
+            estimate.review.as_ref().unwrap().recommendations,
+            ["Ревьюйте чужие изменения в платформенных проектах"]
+        );
         // A far specialization is not taken.
         apply_review(
             &mut estimate,
@@ -1651,6 +2027,7 @@ mod tests {
                 rationale: String::new(),
                 experience: String::new(),
                 team_role: String::new(),
+                recommendations: Vec::new(),
             },
         );
         assert_eq!(estimate.specialization, Some(Specialization::Devops));
@@ -1663,6 +2040,7 @@ mod tests {
                 rationale: "См. https://example.test".into(),
                 experience: "Пишите на mail@example.test".into(),
                 team_role: "  Ведёт\n платформу  ".into(),
+                recommendations: Vec::new(),
             },
         );
         assert_eq!(
