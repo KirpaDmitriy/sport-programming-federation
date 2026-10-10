@@ -1,6 +1,7 @@
 import { useQuery, useSuspenseQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { AssessmentStatusChip, assessmentsQuery } from '@/entities/assessment';
+import { bandLabel } from '@/entities/github-insights';
 import { skillLabel, useMeta } from '@/entities/meta';
 import { blockerLabel, type Profile, profileQuery } from '@/entities/profile';
 import { FreshnessChip, TargetGradeBadge, VerifiedGradeBadge } from '@/entities/qualification';
@@ -106,7 +107,7 @@ function SkillsCard() {
 function sourceSummary(source: Source): { icon: IconName; text: string; busy: boolean } {
   if (source.provider === 'github') {
     if (source.status !== 'connected')
-      return { icon: 'minusCircle', text: 'Не подключён · необязательно', busy: false };
+      return { icon: 'minusCircle', text: 'Не подключён · добавьте ник, чтобы показать публичную работу', busy: false };
     const { found, processed, unavailable } = source.counts;
     if (source.activeJobId) {
       const analysis = source.github?.analysis;
@@ -116,6 +117,16 @@ function sourceSummary(source: Source): { icon: IconName; text: string; busy: bo
           ? `Идёт анализ · ${analysis.stage} · ${analysis.progress}%`
           : `Анализ продолжается · разобрано ${processed} из ${found} репозиториев`,
         busy: true,
+      };
+    }
+    const report = source.github?.report;
+    if (report) {
+      return {
+        icon: 'checkCircle',
+        text: `Индекс ${report.index.score} из 100 · ${bandLabel[report.index.band].toLowerCase()}${
+          source.github?.ownership.verified ? '' : ' · владение не подтверждено'
+        }`,
+        busy: false,
       };
     }
     return {
