@@ -49,6 +49,7 @@ import {
   tabId,
 } from '@/shared/ui';
 import { CompetenceGraph } from '@/widgets/competence-graph';
+import { GitHubSignalCard } from '@/widgets/github-insights';
 import styles from './candidate-page.module.css';
 
 export type CandidateTab = 'match' | 'skills' | 'checks';
@@ -455,6 +456,7 @@ export function EmployerCandidatePage({ candidateId, needId, tab, shortlistId, o
               <DisclosureCard candidateId={candidateId} />
             </div>
           </Card>
+          {candidate.github && <GitHubSignalCard signal={candidate.github} />}
         </div>
       </div>
       {company.data && composing && (

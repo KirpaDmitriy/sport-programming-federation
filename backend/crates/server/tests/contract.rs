@@ -1609,7 +1609,9 @@ async fn assistant_uses_saved_answer_and_never_issues_a_grade() {
     .await;
     assert_eq!(status, StatusCode::OK, "{reply}");
     assert_eq!(reply["simulation"], false);
-    assert!(reply["message"].as_str().unwrap().contains("mr-arc"));
+    // The variant (and so the questions) depends on the assessment id; the saved answer names them.
+    let question = assessment["task"]["questions"][0]["id"].as_str().unwrap();
+    assert!(reply["message"].as_str().unwrap().contains(question));
     assert!(
         reply["message"]
             .as_str()

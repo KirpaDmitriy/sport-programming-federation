@@ -8,6 +8,7 @@ import {
   matchGroupView,
   RequirementStatusChip,
 } from '@/entities/candidate';
+import { bandLabel } from '@/entities/github-insights';
 import { type SkillId, skillLabel, useMeta } from '@/entities/meta';
 import { needsQuery } from '@/entities/need';
 import { useScope } from '@/entities/session';
@@ -329,6 +330,13 @@ export function EmployerCandidatesPage({ search, onSearchChange }: Props) {
                               </StatusChip>
                             </div>
                             {candidate.fspVerified && <div className="small muted">ФСП: подтверждённое участие</div>}
+                            {candidate.github && (
+                              <div className="small muted">
+                                GitHub: {candidate.github.index.score} из 100,{' '}
+                                {bandLabel[candidate.github.index.band].toLowerCase()}
+                                {candidate.github.ownershipVerified ? '' : ' · владение не подтверждено'}
+                              </div>
+                            )}
                             <div className="small muted">
                               {candidate.freshness.fresh ? 'Профиль актуален' : 'Давно не обновлялся'}
                             </div>

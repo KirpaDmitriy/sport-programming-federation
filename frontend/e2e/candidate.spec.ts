@@ -118,22 +118,39 @@ test('UI-15 cooldown comes from the server', async ({ page }) => {
   await expect(page.getByText(/Доступно с/)).toBeVisible();
 });
 
-test('UI-06 UI-07 sources enrich automatically; empty FSP history is valid', async ({ page }) => {
+test('UI-06 UI-07 GitHub connects by login with a public report; empty FSP history is valid', async ({ page }) => {
   await resetMock('baseline');
   await signIn(page, ALEXEY, 'candidate');
   await page.goto('/candidate/sources');
-  const stats = page.getByRole('definition');
-  await expect(page.getByText('Обновлено', { exact: false })).toBeVisible();
-  const counts = (await stats.allTextContents()).map(Number);
-  const [found = 0, processed = 0, queued = 0, unavailable = 0] = counts;
-  expect(counts).toHaveLength(4);
-  expect(found).toBe(12);
-  expect(processed + queued + unavailable).toBe(found);
-  expect([processed, queued, unavailable]).toEqual([11, 0, 1]);
+  await expect(page.getByRole('heading', { name: 'Отчёт GitHub' })).toBeVisible();
+  await expect(page.getByText('Владение подтверждено', { exact: false })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Портрет разработчика' })).toBeVisible();
+  // Report sections are tabs kept in the URL, so a reload returns to the same section.
+  await page.getByRole('tab', { name: 'Активность' }).click();
+  await expect(page).toHaveURL(/tab=activity/);
+  await page.reload();
+  await expect(page.getByRole('img', { name: /Коммиты за год по дням/ })).toBeVisible();
+  await page.getByRole('tab', { name: 'Для работодателя' }).click();
+  await expect(
+    page.getByText('Этот обезличенный блок работодатель видит в карточке кандидата', { exact: false }),
+  ).toBeVisible();
+  await page.getByRole('tab', { name: 'Обзор' }).click();
+
+  await page.getByRole('button', { name: 'Подключить другой аккаунт' }).click();
+  const login = page.getByLabel('Ник или ссылка на профиль GitHub');
+  await login.fill('https://github.com/octo-cat/repo');
+  await page.getByRole('button', { name: 'Подключить другой аккаунт' }).click();
+  await expect(page.getByText('Укажите имя пользователя GitHub или ссылку на профиль')).toBeVisible();
+  await login.fill('https://github.com/octo-cat');
+  await page.getByRole('button', { name: 'Подключить другой аккаунт' }).click();
+  // The analysis runs as a background job; the report and the employer preview arrive with it.
+  await expect(page.getByText('Владение аккаунтом не подтверждено').first()).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Портрет разработчика' })).toBeVisible();
+  await expect(page.getByText(/^fsp-demo/)).toBeVisible();
 
   await page.getByRole('button', { name: 'Указать ФСП ID' }).click();
   await page.getByLabel('ФСП ID').fill('FSP-UNKNOWN-1');
-  await page.getByRole('button', { name: 'Подключить' }).click();
+  await page.getByRole('button', { name: 'Подключить', exact: true }).click();
   await expect(page.getByText('Истории ФСП нет')).toBeVisible();
 });
 
@@ -143,7 +160,7 @@ test('UI-06 a verified FSP record appears as a labelled demo source', async ({ p
   await page.goto('/candidate/sources');
   await page.getByRole('button', { name: 'Указать ФСП ID' }).click();
   await page.getByLabel('ФСП ID').fill('FSP-DEMO-024');
-  await page.getByRole('button', { name: 'Подключить' }).click();
+  await page.getByRole('button', { name: 'Подключить', exact: true }).click();
   await expect(page.getByText('Подтверждённое участие')).toBeVisible();
   await expect(page.getByText('DEMO-PROTOCOL-API-2026-01', { exact: false })).toBeVisible();
 });

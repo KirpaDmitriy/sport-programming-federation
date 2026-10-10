@@ -776,6 +776,11 @@ impl PlatformRepository for PostgresRepository {
         ops::sources(conn.get()?, candidate_id).await
     }
 
+    async fn github_sources(&self, login: &str) -> Result<Vec<SourceRecord>, RepositoryError> {
+        let mut conn = self.conn().await?;
+        ops::github_sources(conn.get()?, login).await
+    }
+
     async fn save_source(&self, source: &SourceRecord) -> Result<(), RepositoryError> {
         let mut conn = self.conn().await?;
         ops::save_source(conn.get()?, source).await
@@ -1240,6 +1245,10 @@ impl PlatformRepository for TxRepository {
 
     async fn sources(&self, candidate_id: &str) -> Result<Vec<SourceRecord>, RepositoryError> {
         self.repo.sources(candidate_id).await
+    }
+
+    async fn github_sources(&self, login: &str) -> Result<Vec<SourceRecord>, RepositoryError> {
+        self.repo.github_sources(login).await
     }
 
     async fn save_source(&self, source: &SourceRecord) -> Result<(), RepositoryError> {
@@ -2655,6 +2664,22 @@ mod ops {
             "SELECT {SOURCE_COLUMNS} FROM sources WHERE candidate_id=$1 ORDER BY id"
         ))
         .bind(candidate_id)
+        .fetch_all(&mut *conn)
+        .await
+        .map_err(storage)?
+        .iter()
+        .map(source_record)
+        .collect()
+    }
+
+    pub(super) async fn github_sources(
+        conn: &mut PgConnection,
+        login: &str,
+    ) -> Result<Vec<SourceRecord>, RepositoryError> {
+        sqlx::query(&format!(
+            "SELECT {SOURCE_COLUMNS} FROM sources WHERE provider='github' AND lower(account_label)=lower($1) ORDER BY id"
+        ))
+        .bind(login)
         .fetch_all(&mut *conn)
         .await
         .map_err(storage)?

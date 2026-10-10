@@ -119,6 +119,7 @@ export const meta: S['Meta'] = {
     profilePdfImport: true,
     githubFixture: true,
     githubOAuth: false,
+    githubInsights: false,
     fspFixture: true,
     matching: true,
     directInvitations: true,

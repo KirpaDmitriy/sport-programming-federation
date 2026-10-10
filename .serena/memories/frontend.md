@@ -4,7 +4,10 @@ React/strict TypeScript 7, FSD and generated contracts; Russian UI and server-ow
 Assessment draft saves queue; submission waits for acknowledgment and locks editing. Knowledge workspace uses
 labelled radios and saved counts; failed tests preserve grades and final results explain knowledge-only scope.
 PDF previews show cited excerpts; profile changes invalidate stale confirmation. FSP cards identify fictional
-records and distinguish pending/empty/DQ/outage. Deferred GitHub OAuth has no active connect control.
+records and distinguish pending/empty/DQ/outage. GitHub connects by login/link (typos rejected at once), shows the
+running analysis stage, a three-step bio-code ownership check and the report in URL-backed tabs (?tab=: overview,
+activity, work, stack, paginated repositories, score, employer view); employers see GitHubSignalCard and the list
+shows the GitHub index. The sources page is checked at phone width without horizontal scroll.
 Graph generation runs only in graph view; failures show explicit retry without stale success/fallback graphs.
 
 Login uses capabilities.realEmail to hide seed-account/demo-code hints in Resend mode. It explains inbox/spam
@@ -19,6 +22,6 @@ traces/screenshots are disabled to avoid retaining OTPs/cookies. Data persists; 
 Opt-in documentation screenshots are normally skipped. All 36 ordinary browser tests passed in private CI.
 Both live domain scenarios and owner real-email login passed; independent read-only UI/log checks passed.
 Live/demo instructions and CI matrix were reconciled in #50; capture screenshots from scroll position zero.
-Current release execution and exact live SHA: #50; earlier full product/browser evidence: closed issue #31.
+Live verification receipts: #50 (consistency), #67 (GitHub insights); earlier full product/browser evidence: closed issue #31.
 
-Last commit: cd449516828977dd2627dabb094a2ff43600c501 (accepted baseline); consistency review and latest receipt: #50.
+Release identity: upstream/main, /opt/fsp/current and deployed.json agree; receipts: #54 (no-backup policy), #67 (GitHub insights).
