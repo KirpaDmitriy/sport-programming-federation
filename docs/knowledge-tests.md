@@ -5,15 +5,24 @@ the development HTTP mock reads the same question content. The answer key stays 
 bundle and API task projection. This repository is public: the bank is study material, not a secret exam.
 
 Each attempt deterministically selects five questions from each of two topic pools. Every pool holds six
-questions per grade, so two variants differ in at most one question per topic and share at least 8 of 10. Backend supports
-junior/middle/senior with Rust and PostgreSQL; frontend supports junior/middle with TypeScript and React.
+questions per grade, so two variants differ in at most one question per topic and share at least 8 of 10. Every
+catalog specialization is testable at every grade, intern to lead, on the two topics the catalog names for it
+(`testTopics`): backend Rust and PostgreSQL, frontend TypeScript and React, 1C the built-in language and the query
+language, DBA SQL and DBMS administration, and so on. The original backend and frontend pools stay specialization
+bound (`knowledge-v1.json`, `knowledge-v2-additions.json`); the topic banks `knowledge-v3-*.json` (1,230 questions,
+39 topics) hold questions per topic and grade and serve every specialization tested on that topic, so SQL questions
+are shared by fullstack, data engineering, data analytics and DBA. Existing pools are unchanged, so earlier
+variants and in-progress attempts still score.
 The assessment id is the variant key, so idempotent replay returns the same task while separate attempts can
 receive different balanced variants. Pass requires at least 8/10 overall and at least 3/5 in each subject.
 These are explicit prototype thresholds, not a calibrated measurement of professional seniority. AI and
 reference materials are allowed. A pass records knowledge on these topics, not practical coding experience,
 identity assurance or competence across the whole stack.
-Question explanations cite primary language, framework and database documentation. Fullstack and frontend
-senior banks are not available.
+Question explanations cite primary documentation, standards or reference articles; every source link was checked
+when the banks were written. Distractors are written to be plausible and comparable in length: a domain test keeps
+the share of questions whose correct option is the strictly longest at or below half (it is 42% in the topic banks),
+so picking the longest option does not pass. The banks are prototype content written for this platform, not
+calibrated by experts or test–retest data.
 
 The saved public task freezes version, grade, questions and options. Drafts may be partial; duplicate,
 unknown or foreign selections and legacy free text are rejected. Submission requires all ten responses.

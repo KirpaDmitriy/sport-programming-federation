@@ -76,8 +76,9 @@ rule-based estimate and template texts work alone.
 ## Question banks
 
 Every specialization has two topics and every grade six questions per topic, as the backend bank does: balanced
-5+5 variants per attempt. Fullstack combines a backend and a frontend topic; intern and lead extend the existing
-junior–senior structure.
+5+5 variants per attempt. Delivered as topic banks (`knowledge-v3-*.json`, 1,230 questions on 39 topics) shared by
+the specializations tested on each topic; fullstack is tested on HTTP/REST API and SQL. Intern and lead extend the
+existing junior–senior structure for Rust, PostgreSQL, TypeScript and React.
 
 ## Delivery phases
 
@@ -90,6 +91,6 @@ junior–senior structure.
    category (`category` reason); migration 0006 adds the estimate and auto-field columns. The source transaction
    applies the rules at once; the LLM review runs in the background after commit (live Grok answers took over 20
    seconds) and joins the estimate only if it is unchanged. The mock serves Rust-generated golden estimates.
-3. Question banks for every specialization and grade, delivered by specialization groups.
+3. Question banks for every specialization and grade. Delivered on `feat/knowledge-banks`.
 
 Each phase goes through the usual gates and deployment; business rules, traceability and screenshots change with it.

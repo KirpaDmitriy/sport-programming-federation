@@ -150,10 +150,11 @@ are.
 
 ## 4. Assessments
 
-- Supported scope: backend junior/middle/senior and frontend junior/middle
+- Supported scope: every catalog specialization at every grade, intern to lead
   (`meta.assessmentPolicy.supportedScopes`). Each attempt has ten single-choice questions selected
-  deterministically from a larger grade/specialization pool: five Rust and five PostgreSQL for backend, or five
-  TypeScript and five React for frontend. The immutable `knowledge-v2` snapshot is checked against the server bank
+  deterministically from a larger grade pool: five on each of the specialization's two catalog test topics (for
+  example Rust and PostgreSQL for backend, the 1C language and 1C queries for 1C). Topic-bank questions serve every
+  specialization tested on that topic. The immutable `knowledge-v2` snapshot is checked against the server bank
   before grading. Correct options and explanations are returned only in the final result.
 - Passing requires at least 8/10 overall and 3/5 in each subject. This measures knowledge on these questions,
   not practical development experience. The bank is public study material, not a secure certification exam.
