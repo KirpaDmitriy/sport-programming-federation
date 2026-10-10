@@ -939,6 +939,7 @@ export const schemas = {
   InterviewAnswerInput: obj({
     questionId: id,
     answer: str({ minLength: 1, maxLength: 8000 }),
+    responseMode: en('text', 'voice'),
     revision: num({ minimum: 0 }),
   }),
   InterviewDelivery: obj({ speechText: str(), avatarCue: en('speaking') }),
@@ -947,6 +948,7 @@ export const schemas = {
     nodeId: id,
     prompt: str(),
     sequence: num({ minimum: 1, maximum: 20 }),
+    recommendedResponseMode: en('text', 'voice'),
     delivery: ref('InterviewDelivery'),
   }),
   InterviewNode: obj({
@@ -965,6 +967,8 @@ export const schemas = {
     rationale: str(),
     evaluator: str(),
     rubricVersion: str(),
+    responseMode: en('text', 'voice'),
+    signalStrength: num({ minimum: 1, maximum: 2 }),
   }),
   Interview: obj({
     id,
