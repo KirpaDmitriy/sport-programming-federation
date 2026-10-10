@@ -32,4 +32,4 @@ requested later. FSP backup units are masked; provisioning/CI must not recreate 
 archives were deleted. Sync local branches with canonical upstream only. No OpenObserve: inspect systemd/nginx logs.
 GitHub OAuth remains deferred. No production DB reset, unrelated-host changes or unrequested credential rotation.
 
-Last commit: 5ff1527ab772df15fab3fa6cd4598ed84d5e4e3b (accepted baseline); no-backup policy/latest receipt: #54.
+Release identity: upstream/main, /opt/fsp/current and deployed.json agree; receipts: #54 (no-backup policy), #67 (GitHub insights).

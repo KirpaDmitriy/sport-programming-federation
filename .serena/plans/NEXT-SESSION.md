@@ -10,6 +10,9 @@ nddev.link serves Rust/PostgreSQL behind Cloudflare Full (strict), with real Res
 The original IP redirects to the domain. Five additive migrations are applied. Runtime secrets stay on hosts
 and in the original ignored .fsp-infra/. FSP is a deliberately fictional private HTTP provider; knowledge tests
 replace arbitrary code execution. Digital-PDF extraction and Bifrost assistance are real. GitHub OAuth is deferred.
+GitHub connection is real: fsp-github-insights (loopback 4030) analyzes public work without a token in the background
+(search, REST, blobless clones); the API enables it with FSP_GITHUB_INSIGHTS_URL in rust-api.env. Method and limits:
+docs/github-insights.md. Calibrate rule changes on public accounts only and never toward a desired score.
 
 ## Completed work and current evidence
 
@@ -39,4 +42,5 @@ current-state.md: no calibrated/leak-resistant exam, OCR, durable source queue, 
 No pending user permission is needed for the completed scope. Read current open issues for new work.
 
 Memory index: platform.md (auth/data/assessment), frontend.md (UI/proofs), operations.md (deployment/mail/CI/recovery).
-Last commit: 5ff1527ab772df15fab3fa6cd4598ed84d5e4e3b (accepted baseline); current no-backup policy/receipt: #54.
+Release identity: compare upstream/main, /opt/fsp/current and deployed.json instead of trusting a SHA written here.
+Receipts: #54 (no-backup policy), #67 (GitHub insights delivery and live check).

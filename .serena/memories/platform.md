@@ -32,4 +32,4 @@ Limits: public study bank lacks demonstrated leak resistance/professional calibr
 prove qualifications. Jobs finish inline except polled GitHub analyses; search ranks collections in memory. No OCR, durable worker, measured
 large-bank capacity or production load claim. Current behavior/limits: docs/current-state.md; latest consistency evidence: #50; prior product completion #31.
 
-Last commit: cd449516828977dd2627dabb094a2ff43600c501 (accepted baseline); consistency review and latest receipt: #50.
+Release identity: upstream/main, /opt/fsp/current and deployed.json agree; receipts: #54 (no-backup policy), #67 (GitHub insights).

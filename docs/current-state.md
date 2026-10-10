@@ -1,9 +1,10 @@
 # Current system state
 
-Reviewed on 2026-10-08 against source, accepted release `cd44951`, private CI and the live stand.
-Issue [#54](https://github.com/KirpaDmitriy/sport-programming-federation/issues/54) records the subsequent
-owner no-backup/no-mirror policy and its final integrated SHA; #50 is the earlier consistency review. This page describes behavior; use the receipts below for the current
-release identity instead of treating a SHA in historical documentation as the latest release.
+Reviewed on 2026-10-10 against source, private CI and the live stand. Issue
+[#54](https://github.com/KirpaDmitriy/sport-programming-federation/issues/54) records the owner no-backup/no-mirror
+policy; PR [#67](https://github.com/KirpaDmitriy/sport-programming-federation/pull/67) records the GitHub insights
+delivery and its live check; #50 is the earlier consistency review. This page describes behavior; verify the current
+release identity as described below instead of treating a SHA in documentation as the latest release.
 
 ## Implemented and verified
 
@@ -32,7 +33,9 @@ uses actual Rust/PostgreSQL and real received email, creates fresh actors and ne
 - The published study bank is not professionally calibrated or resistant to leaked answers. Results do not
   certify practical experience; LLM suggestions never decide grades.
 - Digital PDFs only: OCR is unsupported. External mail/LLM providers can fail; failures remain visible.
-- Source jobs finish inline; candidate ranking still reads collections in memory. There is no durable worker,
+- FSP source jobs finish inline; a GitHub analysis is a job advanced by polling against the insights service, whose
+  queue and six-hour cache live in memory (a restart re-runs analyses). All analyses share the server's anonymous
+  GitHub search budget. Candidate ranking still reads collections in memory. There is no durable worker,
   measured large-bank/load capacity, high availability or comprehensive production security certification.
 - Backups, snapshots and redundant repository mirrors are disabled by explicit owner policy. Existing backup
   archives were deleted; do not reintroduce them. There is no external alerting/APM deployment;
@@ -51,10 +54,10 @@ product requirements need their own concrete acceptance criteria before changing
 2. Compare `upstream/main`, `/opt/fsp/current` on the stand and
    `/var/lib/fsp-ci/deployed.json` on server-gha-runner-2. The accepted-release marker is written only after
    deployment and the real public browser journey pass; check `fsp/deployment` as well as the four build gates.
-3. Inspect active API/simulator/LLM/nginx/PostgreSQL units, recent service/nginx errors, disk space, certificate
+3. Inspect active API/simulator/GitHub insights/LLM/nginx/PostgreSQL units (`curl 127.0.0.1:4030/health` on the stand), recent service/nginx errors, disk space, certificate
    renewal and confirm both `fsp-backup` units are masked/inactive. No public capability flag substitutes for a real integration check.
 4. Use [TESTING.md](../frontend/docs/TESTING.md) for suites and private real-mail acceptance configuration.
    Preserve provider credentials, OTPs and cookies outside git; private evidence lives in `.fsp-infra/`.
 
 Earlier delivery ledgers: #16 (stability), #23/#27 (live browser fixes), #31 (knowledge/PDF/FSP),
-#38 (domain/mail), #40 (private CI). Their plans and screenshots are dated evidence; current source wins.
+#38 (domain/mail), #40 (private CI), #54 (no-backup policy), #67 (GitHub insights). Their plans and screenshots are dated evidence; current source wins.
