@@ -125,7 +125,8 @@
       "path": "/api/v1/me/sources/{provider}/connect",
       "observedStatuses": [
         200,
-        404
+        404,
+        422
       ]
     },
     {

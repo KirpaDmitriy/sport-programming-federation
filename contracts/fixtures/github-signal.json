@@ -1,0 +1,242 @@
+{
+  "algorithmVersion": "github-insights-v1",
+  "dimensions": [
+    {
+      "id": "consistency",
+      "label": "Регулярность",
+      "metrics": [
+        {
+          "display": "≈50 из 52",
+          "id": "active_weeks",
+          "label": "Активных недель за год"
+        },
+        {
+          "display": "≈55 недель",
+          "id": "longest_weekly_streak",
+          "label": "Самая длинная серия активных недель"
+        },
+        {
+          "display": "≈55 недель",
+          "id": "current_weekly_streak",
+          "label": "Текущая серия активных недель"
+        },
+        {
+          "display": "≈15 месяцев",
+          "id": "active_months_24",
+          "label": "Активных месяцев за два года"
+        },
+        {
+          "display": "равномерная",
+          "id": "regularity",
+          "label": "Равномерность по неделям"
+        }
+      ],
+      "score": 95,
+      "summary": "Стабильная регулярная активность на протяжении года"
+    },
+    {
+      "id": "engagement",
+      "label": "Вовлечённость",
+      "metrics": [
+        {
+          "display": "≈630",
+          "id": "contributions_last_year",
+          "label": "Публичный вклад за год"
+        },
+        {
+          "display": "≈240 дней",
+          "id": "active_days_last_year",
+          "label": "Активных дней за год"
+        },
+        {
+          "display": "5 дней",
+          "id": "longest_daily_streak",
+          "label": "Самая длинная серия дней подряд"
+        },
+        {
+          "display": "5 дней",
+          "id": "days_per_active_week",
+          "label": "Дней в активную неделю (медиана)"
+        },
+        {
+          "display": "1–1,5 ч",
+          "id": "hours_per_active_day",
+          "label": "Оценка времени в активный день (медиана)"
+        },
+        {
+          "display": "до недели",
+          "id": "days_since_last_activity",
+          "label": "Дней с последней активности"
+        }
+      ],
+      "score": 77,
+      "summary": "Высокая вовлечённость: много активных дней и длинные серии"
+    },
+    {
+      "id": "longevity",
+      "label": "Стаж",
+      "metrics": [
+        {
+          "display": "7 лет",
+          "id": "account_age",
+          "label": "Возраст аккаунта"
+        },
+        {
+          "display": "1 год",
+          "id": "active_years",
+          "label": "Лет с публичным вкладом"
+        },
+        {
+          "display": "1 год",
+          "id": "sustained_years",
+          "label": "Лет с 50+ активными днями"
+        }
+      ],
+      "score": 46,
+      "summary": "Небольшой публичный стаж"
+    },
+    {
+      "id": "collaboration",
+      "label": "Совместная работа",
+      "metrics": [
+        {
+          "display": "1",
+          "id": "peer_validated_pull_requests",
+          "label": "PR, принятые или отревьюенные другим человеком"
+        },
+        {
+          "display": "≈25",
+          "id": "reviews_of_others",
+          "label": "Ревью в независимых репозиториях"
+        },
+        {
+          "display": "1",
+          "id": "external_repositories",
+          "label": "Независимых репозиториев с принятым вкладом"
+        },
+        {
+          "display": "1",
+          "id": "external_merged",
+          "label": "Принятых PR в независимые репозитории (выборка)"
+        }
+      ],
+      "score": 34,
+      "summary": "Совместная работа подтверждается слабо"
+    },
+    {
+      "id": "craft",
+      "label": "Инженерная культура",
+      "metrics": [
+        {
+          "display": "≈100%",
+          "id": "readme",
+          "label": "Проекты с README"
+        },
+        {
+          "display": "≈100%",
+          "id": "license",
+          "label": "Проекты с лицензией"
+        },
+        {
+          "display": "≈100%",
+          "id": "ci",
+          "label": "Проекты с CI"
+        },
+        {
+          "display": "≈100%",
+          "id": "tests",
+          "label": "Проекты с тестами"
+        },
+        {
+          "display": "≈100%",
+          "id": "lockfile",
+          "label": "Зафиксированные зависимости"
+        },
+        {
+          "display": "≈100%",
+          "id": "lint",
+          "label": "Линтеры и форматтеры"
+        },
+        {
+          "display": "≈100%",
+          "id": "dependency_updates",
+          "label": "Автообновление зависимостей"
+        },
+        {
+          "display": "≈100%",
+          "id": "descriptive_messages",
+          "label": "Содержательные сообщения коммитов"
+        },
+        {
+          "display": "≈55 строк",
+          "id": "median_commit_lines",
+          "label": "Медианный размер коммита"
+        }
+      ],
+      "score": 100,
+      "summary": "Проекты оформлены зрело: CI, тесты, зависимости и стиль"
+    },
+    {
+      "id": "impact",
+      "label": "Признание",
+      "metrics": [
+        {
+          "display": "≈25",
+          "id": "maintained_stars",
+          "label": "Звёзды основных проектов"
+        },
+        {
+          "display": "4",
+          "id": "owned_forks",
+          "label": "Форки собственных проектов"
+        },
+        {
+          "display": "1",
+          "id": "notable_external",
+          "label": "Принятый вклад в независимые проекты от 1000 звёзд"
+        },
+        {
+          "display": "≈40",
+          "id": "followers",
+          "label": "Подписчики"
+        }
+      ],
+      "score": 44,
+      "summary": "Небольшое признание сообщества"
+    }
+  ],
+  "flags": [
+    {
+      "detail": "50% коммитов выборки сделаны в одну и ту же минуту суток: так выглядит генерация по расписанию.",
+      "id": "uniform_commit_minute",
+      "severity": "warning",
+      "title": "Коммиты в одну и ту же минуту"
+    }
+  ],
+  "generatedAt": "2026-10-09",
+  "highlights": [
+    "Активность около 50 из 52 недель за последний год",
+    "Изменения, проверенные другими людьми: 1",
+    "Ревью в независимых репозиториях: ≈25",
+    "Принятый вклад в крупные независимые open source-проекты",
+    "Основные языки: Rust, Dockerfile"
+  ],
+  "index": {
+    "band": "strong",
+    "confidence": "low",
+    "score": 70
+  },
+  "languages": [
+    {
+      "language": "Rust",
+      "percent": 100
+    }
+  ],
+  "mostlyPrivate": false,
+  "ownershipVerified": true,
+  "rhythm": {
+    "hoursPerActiveDay": "1–1,5 ч",
+    "officeHoursPercent": 75,
+    "weekendPercent": 25
+  }
+}

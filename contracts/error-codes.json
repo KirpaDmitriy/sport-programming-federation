@@ -292,13 +292,30 @@
       ]
     },
     {
-      "code": "github_authorization_required",
+      "code": "github_account_not_found",
+      "statuses": [
+        422
+      ],
+      "messages": [
+        "Пользователь GitHub не найден"
+      ]
+    },
+    {
+      "code": "github_account_taken",
       "statuses": [
         409
       ],
       "messages": [
-        "Сначала авторизуйте доступ к GitHub",
-        "Авторизуйте GitHub повторно"
+        "Владение этим аккаунтом GitHub уже подтвердил другой кандидат"
+      ]
+    },
+    {
+      "code": "github_login_invalid",
+      "statuses": [
+        422
+      ],
+      "messages": [
+        "Укажите имя пользователя GitHub или ссылку на профиль"
       ]
     },
     {
@@ -316,6 +333,15 @@
         502
       ],
       "messages": []
+    },
+    {
+      "code": "github_rate_limited",
+      "statuses": [
+        503
+      ],
+      "messages": [
+        "GitHub временно ограничил запросы, повторите позже"
+      ]
     },
     {
       "code": "github_unavailable",
@@ -806,6 +832,18 @@
     },
     {
       "code": "fixture_job_failed",
+      "retryable": true
+    },
+    {
+      "code": "github_account_not_found",
+      "retryable": true
+    },
+    {
+      "code": "github_account_taken",
+      "retryable": true
+    },
+    {
+      "code": "github_rate_limited",
       "retryable": true
     },
     {
