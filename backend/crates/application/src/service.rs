@@ -831,6 +831,7 @@ impl PlatformService {
             label: record.title,
             skill_id: None,
             status: None,
+            detail: None,
         }];
         let mut edges = Vec::new();
         for requirement in &record.need.requirements {
@@ -841,6 +842,7 @@ impl PlatformService {
                 label: skill_label(&requirement.skill_id).into(),
                 skill_id: Some(requirement.skill_id.clone()),
                 status: None,
+                detail: None,
             });
             edges.push(GraphEdgeView {
                 id: format!("requires-{}", requirement.skill_id),
@@ -3694,14 +3696,7 @@ fn match_requirement(
 }
 
 fn skill_label(skill_id: &str) -> &str {
-    match skill_id {
-        "rust" => "Rust",
-        "postgresql" => "PostgreSQL",
-        "docker" => "Docker",
-        "redis" => "Redis",
-        "react" => "React",
-        _ => skill_id,
-    }
+    fsp_domain::catalog::skill_label(skill_id)
 }
 
 fn skill_summary(status: EvidenceStatus) -> &'static str {

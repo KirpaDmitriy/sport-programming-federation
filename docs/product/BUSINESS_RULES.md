@@ -46,7 +46,7 @@ catalog skill. GitHub evidence maps languages and technologies onto catalog skil
 ### Automatic profile
 
 A candidate does not have to type anything: connecting GitHub and/or FSP builds the profile. The rules are
-`estimate-v3` in [`backend/crates/domain/src/estimate.rs`](../../backend/crates/domain/src/estimate.rs); the plan of
+`estimate-v4` in [`backend/crates/domain/src/estimate.rs`](../../backend/crates/domain/src/estimate.rs); the plan of
 record is [`docs/auto-profile.md`](../auto-profile.md).
 
 - Every finished source write (connecting FSP, a finished GitHub analysis, a sync) recomputes `estimate` from all
@@ -71,6 +71,10 @@ record is [`docs/auto-profile.md`](../auto-profile.md).
   band needs. (`estimate-v2` blended stated experience into the score; `estimate-v1` counted calendar years.)
 - The category uses the candidate's specialization when it is among the estimate's leading specializations,
   otherwise the estimate's leader.
+- `growth` lists what raises the grade (tenure and work-with-people conditions, the GitHub factors with the most
+  points left as concrete actions, FSP, the optional test) and `focusSkills` up to five catalog skills of the
+  specialization the evidence lacks. FSP results together add at most 30 to specialization scores. `GET /me/profile`
+  refreshes an estimate of an earlier version; `POST /me/profile/estimate` re-syncs FSP sources first.
 - The estimate answers the questionnaire fields that are empty, that an earlier estimate filled (`autoFields`), and
   the specialization and target grade while the questionnaire is incomplete. A test-confirmed category keeps its
   specialization and target grade. A field the candidate changes leaves `autoFields`, and estimates never overwrite
@@ -162,9 +166,13 @@ the UI never calls an estimate «подтверждено».
 | `insufficient` | «Недостаточно данных» | No usable evidence; a data gap, not a verdict |
 
 States are categories, not percentages. Each skill lists its evidence items (source `github`/`fsp`/`assessment`,
-title, reference, date, individual or team scope, link). The candidate's graph is role → skills (`uses`) → evidence
-(`supports`); the employer's graph of a candidate has no evidence nodes. The frontend draws server graphs as they
-are.
+title, reference, date, individual or team scope, link). The competence graph is built from stored facts only, so
+every skill appears once: the category (`role`, with «подтверждено тестом» / «оценка по открытым данным») →
+concepts (`concept`, catalog skill categories such as «Бэкенд и API») → technologies (`skill`) with their level in
+`detail` — «Тест · Мидл», «Основная · N проектов» (10+ repositories), «Регулярно» (3–9), «Встречается» (1–2),
+«Указан в анкете» or «Нужно подтверждение». Sources (`source`): GitHub supports the concepts it evidences, a test
+supports the category and its concepts, FSP supports the category only. Employers see no login, links, places or
+evidence titles. The frontend draws server graphs as they are.
 
 ## 4. Assessments
 

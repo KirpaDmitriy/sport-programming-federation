@@ -422,26 +422,143 @@ function githubProjection(candidate: Candidate): Schemas['GitHubSignal'] | null 
   const github = candidate.sources.find((source) => source.provider === 'github')?.github;
   return github?.report ? githubSignal(github.report, github.ownership.verified) : null;
 }
+const pluralRu = (value: number, one: string, few: string, many: string) =>
+  value % 100 >= 11 && value % 100 <= 14
+    ? many
+    : value % 10 === 1
+      ? one
+      : value % 10 >= 2 && value % 10 <= 4
+        ? few
+        : many;
+
+/**
+ * Mirrors the Rust `competence_graph`: the category, the concepts (catalog skill categories), each
+ * technology with its level, and the sources behind them. Employers see no login or evidence titles.
+ */
 function graph(candidate: Candidate, audience: Schemas['Graph']['audience']): Schemas['Graph'] {
+  const node = (id: string, kind: Schemas['GraphNode']['kind'], label: string, detail: string | null) => ({
+    id,
+    kind,
+    label,
+    skillId: null,
+    status: null,
+    detail,
+  });
+  const edge = (from: string, to: string, relation: Schemas['GraphEdge']['relation']) => ({
+    id: `edge-${from}-${to}`,
+    from,
+    to,
+    relation,
+  });
+  const report = candidate.sources.find((source) => source.provider === 'github')?.github?.report ?? null;
+  const repositories = new Map((report?.technologies ?? []).map((item) => [item.skillId, item.repositories]));
+  const category = categoryOf(candidate);
   const nodes: Schemas['GraphNode'][] = [
-    {
-      id: 'role-main',
-      kind: 'role',
-      label: specializationShort(candidate.verifiedSpecialization ?? candidate.specialization),
-      skillId: null,
-      status: null,
-    },
+    node(
+      'role-main',
+      'role',
+      category
+        ? `${specializationShort(category.specialization)} · ${GRADES.find((item) => item.id === category.grade)?.label}`
+        : specializationShort(candidate.specialization),
+      category?.source === 'assessment'
+        ? 'Подтверждено тестом'
+        : category
+          ? 'Оценка по открытым данным'
+          : 'Категории пока нет',
+    ),
   ];
   const edges: Schemas['GraphEdge'][] = [];
-  for (const skill of candidate.skills) {
-    const id = `skill-${skill.skillId}`;
-    nodes.push({ id, kind: 'skill', label: skill.label, skillId: skill.skillId, status: skill.status });
-    edges.push({ id: `edge-role-${skill.skillId}`, from: 'role-main', to: id, relation: 'uses' });
-    if (audience === 'self')
-      for (const evidence of skill.evidence) {
-        nodes.push({ id: evidence.id, kind: 'evidence', label: evidence.title, skillId: null, status: null });
-        edges.push({ id: `edge-${evidence.id}`, from: evidence.id, to: id, relation: 'supports' });
+  const supported = new Map<string, string[]>();
+  const projects = (count: number) => `${count} ${pluralRu(count, 'проект', 'проекта', 'проектов')}`;
+  const level = (skill: Candidate['skills'][number]) => {
+    const count = repositories.get(skill.skillId) ?? 0;
+    if (skill.status === 'confirmed' && skill.evidenceGrade)
+      return `Тест · ${GRADES.find((item) => item.id === skill.evidenceGrade)?.label}`;
+    if (count >= 10) return `Основная · ${projects(count)}`;
+    if (count >= 3) return `Регулярно · ${projects(count)}`;
+    if (count >= 1) return `Встречается · ${projects(count)}`;
+    if (skill.status === 'observed') return 'Указан в анкете';
+    if (skill.status === 'insufficient') return 'Нужно подтверждение';
+    return 'Есть свидетельства';
+  };
+  for (const concept of SKILL_CATEGORIES) {
+    const skills = candidate.skills
+      .filter((skill) => SKILLS.find((item) => item.id === skill.skillId)?.category === concept.id)
+      .sort(
+        (a, b) =>
+          Number(a.status !== 'confirmed') - Number(b.status !== 'confirmed') ||
+          (repositories.get(b.skillId) ?? 0) - (repositories.get(a.skillId) ?? 0) ||
+          a.skillId.localeCompare(b.skillId),
+      );
+    if (!skills.length) continue;
+    const conceptId = `concept-${concept.id}`;
+    nodes.push(
+      node(
+        conceptId,
+        'concept',
+        concept.label,
+        `${skills.length} ${pluralRu(skills.length, 'навык', 'навыка', 'навыков')}`,
+      ),
+    );
+    edges.push(edge('role-main', conceptId, 'uses'));
+    for (const skill of skills) {
+      const id = `skill-${skill.skillId}`;
+      nodes.push({ ...node(id, 'skill', skill.label, level(skill)), skillId: skill.skillId, status: skill.status });
+      edges.push(edge(conceptId, id, 'uses'));
+      for (const source of skill.evidenceSources) {
+        const key = `source-${source}`;
+        const concepts = supported.get(key) ?? [];
+        if (!concepts.includes(conceptId)) supported.set(key, [...concepts, conceptId]);
       }
+    }
+  }
+  if (report) {
+    const count = report.coverage.repositoriesAnalyzed;
+    nodes.push(
+      node(
+        'source-github',
+        'source',
+        'GitHub',
+        audience === 'self'
+          ? `${report.login} · ${count} ${pluralRu(count, 'репозиторий', 'репозитория', 'репозиториев')}`
+          : 'Публичные проекты',
+      ),
+    );
+    for (const concept of supported.get('source-github') ?? []) edges.push(edge('source-github', concept, 'supports'));
+  }
+  const published = candidate.sources
+    .filter((source) => source.provider === 'fsp')
+    .flatMap((source) => source.fspResults ?? [])
+    .filter((result) => result.status === 'published');
+  if (published.length) {
+    const results = `${published.length} ${pluralRu(published.length, 'результат', 'результата', 'результатов')}`;
+    const best = published
+      .filter((result) => result.place !== null)
+      .sort((a, b) => (a.place ?? 0) / a.fieldSize - (b.place ?? 0) / b.fieldSize)[0];
+    nodes.push(
+      node(
+        'source-fsp',
+        'source',
+        'ФСП',
+        audience === 'self' && best ? `${results} · лучшее: ${best.place} из ${best.fieldSize}` : results,
+      ),
+    );
+    edges.push(edge('source-fsp', 'role-main', 'supports'));
+  }
+  const tested = supported.get('source-assessment');
+  if (tested) {
+    nodes.push(
+      node(
+        'source-assessment',
+        'source',
+        'Тест знаний',
+        candidate.verifiedGrade
+          ? `Подтверждён ${GRADES.find((item) => item.id === candidate.verifiedGrade)?.label}`
+          : 'Подтверждённые навыки',
+      ),
+    );
+    edges.push(edge('source-assessment', 'role-main', 'supports'));
+    for (const concept of tested) edges.push(edge('source-assessment', concept, 'supports'));
   }
   return { audience, nodes, edges, simulation: true };
 }
@@ -1474,7 +1591,7 @@ const handlers: Handlers = {
   getNeedGraph: (ctx) => {
     const need = needFor(ctx, param(ctx, 'needId'));
     const nodes: Schemas['GraphNode'][] = [
-      { id: 'need-root', kind: 'role', label: need.title, skillId: null, status: null },
+      { id: 'need-root', kind: 'role', label: need.title, skillId: null, status: null, detail: null },
     ];
     const edges: Schemas['GraphEdge'][] = [];
     for (const requirement of need.requirements) {
@@ -1488,6 +1605,7 @@ const handlers: Handlers = {
         ).label,
         skillId: requirement.skillId,
         status: null,
+        detail: null,
       });
       edges.push({ id: `requires-${requirement.skillId}`, from: 'need-root', to: id, relation: 'requires' });
     }

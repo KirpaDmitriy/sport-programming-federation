@@ -1,25 +1,25 @@
 import { useQuery } from '@tanstack/react-query';
 import type { CSSProperties } from 'react';
-import { useMeta } from '@/entities/meta';
+import { skillLabel, useMeta } from '@/entities/meta';
 import { type Profile, type ProfileEstimate, profileQuery } from '@/entities/profile';
 import { CategoryBadge, estimateConfidenceLabel } from '@/entities/qualification';
 import { useScope } from '@/entities/session';
 import { mySourcesQuery } from '@/entities/source';
 import { useSourceProcessing } from '@/features/connect-source';
-import { RebuildProfileButton, useRefreshEstimate } from '@/features/refresh-estimate';
+import { RebuildProfileButton, RefineEstimateForm, useRefreshEstimate } from '@/features/refresh-estimate';
 import { describeError } from '@/shared/api';
 import { formatDateTime, gradeLabel, specializationName } from '@/shared/lib';
-import { Button, ButtonLink, Callout, Card, EmptyState, InlineStatus, StatusChip } from '@/shared/ui';
+import { Button, ButtonLink, Callout, Card, EmptyState, InlineStatus, StatusChip, TagList } from '@/shared/ui';
 import styles from './estimate-card.module.css';
 
 const sourceLabel: Record<ProfileEstimate['sources'][number], string> = { github: 'GitHub', fsp: 'ФСП' };
 
 const share = (value: number) => ({ '--value': String(value) }) as CSSProperties;
 
-/** How long after an estimate its background LLM review is awaited. */
-const REVIEW_WAIT_MS = 2 * 60_000;
+/** How long after an estimate its background LLM review (deep reasoning) is awaited. */
+const REVIEW_WAIT_MS = 6 * 60_000;
 
-/** Grade bands of the seniority score, as `estimate-v3` defines them. */
+/** Grade bands of the seniority score, as `estimate-v4` defines them. */
 const BANDS = 'до 20 — стажёр, 20–39 — джуниор, 40–59 — мидл, 60–79 — сеньор, от 80 — лид';
 
 function Bars({ items }: { items: { id: string; label: string; value: number; max: number; detail?: string }[] }) {
@@ -41,6 +41,53 @@ function Bars({ items }: { items: { id: string; label: string; value: number; ma
         </li>
       ))}
     </ul>
+  );
+}
+
+/** What raises the grade: the rule-based steps with their points, skills to work on and the AI's advice. */
+function GrowthPlan({ estimate }: { estimate: ProfileEstimate }) {
+  const meta = useMeta();
+  const steps = estimate.growth.filter((step) => step.id !== 'assessment');
+  const advice = estimate.review?.recommendations ?? [];
+  if (!steps.length && !estimate.focusSkills.length && !advice.length) return null;
+  return (
+    <section className="stack" aria-label="Как повысить грейд">
+      <h3 className={styles.heading}>Как повысить грейд</h3>
+      {steps.length > 0 && (
+        <ol className={styles.steps}>
+          {steps.map((step) => (
+            <li key={step.id}>
+              <div className={styles.stepHead}>
+                <strong>{step.title}</strong>
+                {step.points > 0 && (
+                  <StatusChip tone="neutral" icon="chart">
+                    до +{step.points}
+                  </StatusChip>
+                )}
+              </div>
+              <span className="small">{step.action}</span>
+            </li>
+          ))}
+        </ol>
+      )}
+      {estimate.focusSkills.length > 0 && (
+        <div className="stack" style={{ gap: '0.5rem' }}>
+          <span className="small muted">
+            С чем поработать: навыки специализации, которых пока нет в публичных проектах
+          </span>
+          <TagList label="Навыки для развития" items={estimate.focusSkills.map((id) => skillLabel(meta, id))} />
+        </div>
+      )}
+      {advice.length > 0 && (
+        <Callout tone="info" title="Советы ИИ">
+          <ul className={styles.notes}>
+            {advice.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+        </Callout>
+      )}
+    </section>
   );
 }
 
@@ -163,6 +210,8 @@ export function ProfileEstimateCard({ profile, canEstimate, title = 'Автом�
             </ul>
           </Callout>
         )}
+        <GrowthPlan estimate={estimate} />
+        {profile.category.source !== 'assessment' && <RefineEstimateForm key={profile.revision} profile={profile} />}
         {estimate.specializations.length > 0 && (
           <section className="stack" aria-label="Направления">
             <h3 className={styles.heading}>Направления</h3>
@@ -201,11 +250,11 @@ export function ProfileEstimateCard({ profile, canEstimate, title = 'Автом�
         )}
         {estimated && (
           <div className={styles.confirm}>
-            <span className="small">
-              Тест знаний подтверждает категорию: подтверждённые кандидаты стоят выше в выдаче работодателям.
+            <span className="small muted">
+              По желанию: тест знаний подтверждает категорию, и подтверждённые кандидаты стоят выше в выдаче.
             </span>
             <ButtonLink to="/candidate/assessments" size="sm" iconAfter="arrowRight">
-              Подтвердить тестом
+              Пройти тест
             </ButtonLink>
           </div>
         )}
