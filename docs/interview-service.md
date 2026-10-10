@@ -23,8 +23,10 @@ The service stores evidence states rather than personality scores:
 - `confirmed`: every required rubric group is supported;
 - `contradicted`: a configured LLM found an explicit incorrect claim.
 
-Technical and behavioral nodes remain separate. The shipped behavioral node assesses how a candidate clarifies
-ambiguous requirements; it does not infer personality, emotion, honesty or protected traits.
+Technical and behavioral nodes remain separate. The shipped behavioral branch checks three observable skills:
+clarifying ambiguous requirements, resolving disagreement and giving useful feedback. After every three answers the
+engine schedules an untested behavioral node, while weak technical answers still descend to missing prerequisites.
+It evaluates described actions and trade-offs; it does not infer personality, emotion, honesty or protected traits.
 
 ## Runtime modes
 
@@ -67,7 +69,7 @@ Start payload:
 {
   "candidateId": "candidate-024",
   "blueprintId": "backend-middle-v1",
-  "maxTurns": 10
+  "maxTurns": 12
 }
 ```
 
@@ -81,19 +83,24 @@ Answer payload uses optimistic concurrency:
 }
 ```
 
-The returned question contains identical `prompt` and `delivery.speechText` fields plus an `avatarCue`. The product UI
-uses the browser's Russian speech synthesizer when the candidate asks it to read the question; text always remains
-available.
+The returned question contains identical `prompt` and `delivery.speechText` fields plus an `avatarCue`. Starting or
+resuming an interview opens `/candidate/interviews/{id}` instead of expanding the assessments page. The workspace
+shows the question as text, voices it with the browser's Russian speech synthesizer and can transcribe a microphone
+answer with the browser speech-recognition API. The candidate can switch to text at any moment and edit the transcript
+before sending it. Only the confirmed transcript reaches the interview service; raw audio is not stored.
 
 ## Voice and avatar decision
 
-The implemented experience is text plus optional local voice, not generated talking-head video. Real-time video
-generation adds latency, cost, an external biometric processor and no evidence quality. The recommended delivery is:
+The implemented experience uses a code-rendered interactive avatar and optional local voice, not generated
+talking-head video. Real-time generated video adds latency, cost and an external biometric processor without improving
+the evidence used by the rubric. The current delivery is:
 
-1. The candidate types and confirms an answer; no microphone or camera permission is required.
+1. The candidate answers by microphone or switches to text; microphone permission is requested only after a click.
 2. Bifrost creates scenario variants and evaluates evidence when configured.
-3. The browser can voice `delivery.speechText` with a locally available Russian voice.
-4. A code-rendered avatar indicates the speaking state without sending biometric data to a provider.
+3. The browser voices `delivery.speechText` with a locally available Russian voice and turns speech into an editable
+   transcript when recognition is supported.
+4. A code-rendered avatar indicates speaking, listening and analysis states without sending biometric data to a
+   provider.
 
 Candidate camera recording should remain optional, stored only with explicit consent, and never be used to infer
 emotion, honesty, accent, gaze or personality. It can be added later as a replay artifact for a human employer; it

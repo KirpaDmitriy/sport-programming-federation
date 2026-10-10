@@ -20,7 +20,10 @@ async function signIn(page: Page, email: string, role: 'candidate' | 'employer')
 }
 
 async function newPage(browser: Browser) {
-  const context = await browser.newContext({ locale: 'ru-RU', viewport: { width: 1440, height: 900 } });
+  const context = await browser.newContext({
+    locale: 'ru-RU',
+    viewport: { width: 1440, height: 900 },
+  });
   return context.newPage();
 }
 
@@ -28,7 +31,13 @@ test('HTTPS stand serves the app and deep links without mock controls', async ({
   const home = await request.get('/');
   expect(home.status()).toBe(200);
   expect(home.headers()['content-security-policy']).toContain("default-src 'self'");
-  expect((await request.post('/__mock__/session', { data: { actor: 'candidate024' } })).status()).toBe(404);
+  expect(
+    (
+      await request.post('/__mock__/session', {
+        data: { actor: 'candidate024' },
+      })
+    ).status(),
+  ).toBe(404);
   expect((await request.get('/__mock__/email-codes')).status()).toBe(404);
   const metaResponse = await request.get('/api/v1/meta');
   expect(metaResponse.status()).toBe(200);
@@ -48,7 +57,9 @@ test('a new candidate and two companies complete the reverse-hiring flow', async
   await candidate.waitForURL('**/candidate/onboarding');
   await candidate.getByLabel('Согласен на обработку данных').click();
   await expect(candidate.getByLabel('Согласен на обработку данных')).toBeChecked();
-  const publication = candidate.getByRole('switch', { name: 'Показывать профиль работодателям' });
+  const publication = candidate.getByRole('switch', {
+    name: 'Показывать профиль работодателям',
+  });
   await publication.click();
   await expect(publication).toHaveAttribute('aria-checked', 'true');
   await candidate.getByLabel('Имя и фамилия').fill('Ирина Стендова');
@@ -67,13 +78,16 @@ test('a new candidate and two companies complete the reverse-hiring flow', async
   await expect(candidate.getByRole('heading', { name: 'Джуниор подтверждён' })).toBeVisible();
   await candidate.goto('/candidate/assessments');
   await candidate.getByRole('button', { name: 'Начать собеседование' }).click();
-  await expect(candidate.getByLabel('Ваш ответ')).toBeVisible();
-  await candidate.getByLabel('Ваш ответ').fill('Сначала соберу логи и попробую воспроизвести проблему.');
-  await candidate.getByRole('button', { name: 'Ответить' }).click();
+  await candidate.waitForURL(/\/candidate\/interviews\//);
+  await expect(candidate.getByLabel(/Ваш ответ|Расшифровка ответа/)).toBeVisible();
+  await candidate
+    .getByLabel(/Ваш ответ|Расшифровка ответа/)
+    .fill('Сначала соберу логи и попробую воспроизвести проблему.');
+  await candidate.getByRole('button', { name: 'Отправить ответ' }).click();
   const interviews = await (await candidate.request.get('/api/v1/me/interviews')).json();
   expect(interviews.items[0].currentQuestion.nodeId).toBe('backend.unique-operation');
   await candidate.reload();
-  await expect(candidate.getByLabel('Ваш ответ')).toBeVisible();
+  await expect(candidate.getByLabel(/Ваш ответ|Расшифровка ответа/)).toBeVisible();
   const profile = await (await candidate.request.get('/api/v1/me/profile')).json();
   const alias: string = profile.alias;
   const candidateId: string = profile.id;

@@ -60,9 +60,12 @@ test('a graph interview follows a missing prerequisite and survives reload', asy
   await signIn(page, ALEXEY, 'candidate');
   await page.goto('/candidate/assessments');
   await page.getByRole('button', { name: 'Начать собеседование' }).click();
+  await page.waitForURL(/\/candidate\/interviews\//);
   await expect(page.getByText(/Клиент повторяет POST-запрос/)).toBeVisible();
-  await page.getByLabel('Ваш ответ').fill('Сначала посмотрю логи и воспроизведу проблему.');
-  await page.getByRole('button', { name: 'Ответить' }).click();
+  await expect(page.getByLabel('Граф компетенций интервью')).toBeVisible();
+  await expect(page.locator('.react-flow__edge')).not.toHaveCount(0);
+  await page.getByLabel(/Ваш ответ|Расшифровка ответа/).fill('Сначала посмотрю логи и воспроизведу проблему.');
+  await page.getByRole('button', { name: 'Отправить ответ' }).click();
   await expect(page.getByText(/Как сформировать и ограничить область действия ключа операции/)).toBeVisible();
   await expect(page.getByText('Определяет уникальность операции').first()).toBeVisible();
   await page.reload();
@@ -236,7 +239,9 @@ test('UI-08 UI-09 graph and list share one selection and the list is keyboard-op
   await page.getByRole('button', { name: 'Граф', exact: true }).click();
   await page.getByRole('button', { name: /Навык: PostgreSQL/ }).click();
   expect(graphRequests).toHaveLength(1);
-  const inspector = page.getByRole('complementary', { name: 'Подробности выбранного элемента' });
+  const inspector = page.getByRole('complementary', {
+    name: 'Подробности выбранного элемента',
+  });
   await expect(inspector.getByRole('heading', { name: 'PostgreSQL' })).toBeVisible();
   await expect(inspector.getByText('Для уровня «Мидл» нужна проверка')).toBeVisible();
   await page.getByRole('button', { name: 'Список' }).click();
@@ -252,12 +257,18 @@ test('UI-04 PDF import previews fixture data and applies it only on confirmation
   await page.goto('/candidate/profile');
   await page.getByRole('button', { name: 'Импортировать PDF' }).click();
   const dialog = page.getByRole('dialog');
-  await dialog
-    .locator('input[type=file]')
-    .setInputFiles({ name: 'cv.txt', mimeType: 'text/plain', buffer: Buffer.from('hello') });
+  await dialog.locator('input[type=file]').setInputFiles({
+    name: 'cv.txt',
+    mimeType: 'text/plain',
+    buffer: Buffer.from('hello'),
+  });
   await expect(dialog.getByText('Выберите файл в формате PDF.')).toBeVisible();
   const pdf = Buffer.from('%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n');
-  await dialog.locator('input[type=file]').setInputFiles({ name: 'cv.pdf', mimeType: 'application/pdf', buffer: pdf });
+  await dialog.locator('input[type=file]').setInputFiles({
+    name: 'cv.pdf',
+    mimeType: 'application/pdf',
+    buffer: pdf,
+  });
   await expect(dialog.getByText('Демонстрационное извлечение', { exact: true })).toBeVisible();
   await expect(dialog.getByLabel('Стаж, месяцев')).toHaveValue('');
   await dialog.getByLabel('Имя и фамилия').fill('Алексей Морозов');
