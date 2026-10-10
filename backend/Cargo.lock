@@ -617,6 +617,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "fsp-interview-service"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "axum",
+ "http-body-util",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tower",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
+]
+
+[[package]]
 name = "fsp-server"
 version = "0.1.0"
 dependencies = [

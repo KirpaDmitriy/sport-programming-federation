@@ -20,6 +20,33 @@ services:
       retries: 10
     restart: unless-stopped
 
+  interview:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    command: ["/usr/local/bin/fsp-interview-service"]
+    environment:
+      INTERVIEW_HOST: 0.0.0.0
+      INTERVIEW_PORT: 4030
+      INTERVIEW_API_TOKEN: ${INTERVIEW_API_TOKEN:-demo-interview-token}
+      BIFROST_CHAT_URL: ${BIFROST_CHAT_URL_DOCKER:-}
+      BIFROST_API_KEY: ${BIFROST_API_KEY:-}
+      BIFROST_MODEL: ${BIFROST_MODEL:-}
+      INTERVIEW_BIFROST_MODEL: ${INTERVIEW_BIFROST_MODEL:-}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "${FSP_BIND_IP:-127.0.0.1}:${INTERVIEW_PORT:-4030}:4030"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:4030/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
   db:
     image: postgres:17-alpine
     environment:
