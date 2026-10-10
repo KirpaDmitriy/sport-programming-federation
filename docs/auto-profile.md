@@ -121,9 +121,10 @@ quality, influence, tenure) anchored per grade, as recommended for LLM judges
 ([calibrating LLM evaluators](https://kinde.com/learn/ai-for-software-engineering/best-practice/llm-as-a-judge-done-right-calibrating-guarding-debiasing-your-evaluators/)).
 It returns, validated against the catalog, a second opinion on specialization and grade with a rationale naming the
 deciding axes and the missing evidence, growth recommendations, and the experience and team-role texts. The review
-runs in the background with `reasoning_effort` set by `BIFROST_REASONING_EFFORT` (default `high`; grok-4.7 on the
-stand accepts it and reasons longer), a 16k-token budget and up to four minutes; calls inside an HTTP request keep the
-model's default reasoning and the 45-second ceiling. The category stays deterministic:
+runs in the background with `reasoning_effort` set by `BIFROST_REASONING_EFFORT` (default `high`; on the stand
+grok-4.7 spent about 7,000 reasoning tokens and 1.5–3 minutes on a full review), a 16k-token budget and up to 330
+seconds under Bifrost's 360-second provider timeout. One review runs per candidate at a time; a newer estimate is
+reviewed once after it. Calls inside an HTTP request keep the model's default reasoning and the 45-second ceiling. The category stays deterministic:
 the LLM may only choose between close specializations, and a disagreement on the grade lowers the confidence one
 level and is shown. Without Bifrost the rule-based estimate and template texts work alone.
 
