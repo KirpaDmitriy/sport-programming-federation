@@ -1,13 +1,17 @@
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { HttpResponse, http } from 'msw';
 import { describe, expect, it } from 'vitest';
+import { metaQueryOptions } from '@/entities/meta';
 import { type Profile, type ProfileEstimate, profileKey } from '@/entities/profile';
 import { scopeOf } from '@/entities/session';
 import estimates from '../../../../contracts/fixtures/profile-estimates.json' with { type: 'json' };
-import { candidateSession, profile } from '../../../test/fixtures';
+import { candidateSession, meta, profile } from '../../../test/fixtures';
 import { renderWithProviders } from '../../../test/render';
 import { API, server } from '../../../test/server';
 import { ProfileEstimateCard } from './estimate-card';
+
+const prefill = (client: import('@tanstack/react-query').QueryClient) =>
+  client.setQueryData(metaQueryOptions().queryKey, meta);
 
 // The estimates are the Rust rules' serialized output for the shared fixtures.
 const github = estimates.github as ProfileEstimate;
@@ -29,6 +33,7 @@ describe('profile estimate card', () => {
   it('explains the estimated category with every factor and the second opinion', async () => {
     await renderWithProviders(<ProfileEstimateCard profile={estimated()} canEstimate />, {
       session: candidateSession,
+      prefill,
     });
     expect(screen.getByText('Бэкенд · Сеньор · оценка, средняя уверенность')).toBeTruthy();
     expect(screen.getByText(`Балл уровня ${github.score} из 100`)).toBeTruthy();
@@ -42,7 +47,7 @@ describe('profile estimate card', () => {
     server.use(http.post(`${API}/api/v1/me/profile/estimate`, () => HttpResponse.json(refreshed)));
     const { queryClient } = await renderWithProviders(
       <ProfileEstimateCard profile={profile({ estimate: null })} canEstimate />,
-      { session: candidateSession },
+      { session: candidateSession, prefill },
     );
     expect(screen.getByText('Профиль ещё не оценён')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Оценить профиль' }));
@@ -52,8 +57,23 @@ describe('profile estimate card', () => {
   it('points to the sources when nothing is connected', async () => {
     await renderWithProviders(<ProfileEstimateCard profile={profile({ estimate: null })} canEstimate={false} />, {
       session: candidateSession,
+      prefill,
     });
     expect(screen.getByText('Подключите GitHub или ФСП')).toBeTruthy();
     expect(screen.getByRole('link', { name: /Подключить источники/ })).toBeTruthy();
+  });
+
+  it('waits for the background AI review of a fresh estimate', async () => {
+    const fresh = estimated({ estimate: { ...github, computedAt: new Date().toISOString(), review: null } });
+    server.use(http.get(`${API}/api/v1/me/profile`, () => HttpResponse.json(fresh)));
+    await renderWithProviders(<ProfileEstimateCard profile={fresh} canEstimate />, {
+      session: candidateSession,
+      prefill: (client) =>
+        client.setQueryData(metaQueryOptions().queryKey, {
+          ...meta,
+          capabilities: { ...meta.capabilities, realLlm: true },
+        }),
+    });
+    expect(screen.getByText('ИИ готовит второе мнение об оценке…')).toBeTruthy();
   });
 });

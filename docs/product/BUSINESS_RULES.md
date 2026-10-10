@@ -62,9 +62,12 @@ record is [`docs/auto-profile.md`](../auto-profile.md).
   it again; a PATCH that resends an unchanged value keeps the field automatic. A new account starts as «Новый
   кандидат», which the public GitHub name may replace.
 - When Bifrost is configured, the LLM receives the anonymized evidence (no login, names, links or organizations)
-  and gives a second opinion within 20 seconds. It may choose between the two leading specializations when their
-  shares differ by at most ten points and may rewrite the experience and team-role texts (texts with links or
-  addresses are dropped). It never sets the grade: a disagreement lowers the confidence one level and is shown.
+  and gives a second opinion in the background after the source write commits (up to 60 seconds), so a slow model
+  never delays connecting a source. The review applies only while the reviewed estimate is still the stored one and
+  processing consent holds. It may choose between the two leading specializations when their shares differ by at
+  most ten points and may rewrite the experience and team-role texts (texts with links or addresses are dropped). It
+  never sets the grade: a disagreement lowers the confidence one level and is shown. A restart loses a pending
+  review; «Пересчитать» asks again.
 - The mock applies the golden estimates the Rust rules write to
   [`contracts/fixtures/profile-estimates.json`](../../contracts/fixtures/profile-estimates.json) for its fixed GitHub
   report and FSP result; it ignores experience the candidate typed.
