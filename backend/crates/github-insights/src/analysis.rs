@@ -15,6 +15,7 @@ use fsp_domain::{
     GitHubNotableContribution, GitHubOffsetShare, GitHubOrganization, GitHubOrganizations,
     GitHubOwnershipSummary, GitHubProject, GitHubReport, GitHubRepositoryInsight, GitHubRhythm,
     GitHubStackItem, GitHubTechnology, GitHubYear, HygieneSignal, SignalBand, SignalConfidence,
+    StackCategory,
 };
 
 use crate::collect::affiliated_owners;
@@ -130,6 +131,9 @@ pub fn build_report(snapshot: &Snapshot) -> GitHubReport {
     let impact = Impact::compute(&facts, &collaboration);
     let flags = flags(&facts, &activity, rhythm.as_ref(), &craft);
 
+    let languages = languages(&facts);
+    let developer = developer_profile(&facts, &languages, &stack, &ownership, &activity);
+
     let dimensions = vec![
         consistency_dimension(&activity),
         engagement_dimension(&activity, rhythm.as_ref()),
@@ -138,6 +142,7 @@ pub fn build_report(snapshot: &Snapshot) -> GitHubReport {
         ownership_dimension(&facts, &ownership),
         craft_dimension(&craft),
         impact_dimension(&impact),
+        scope_dimension(&facts, &developer, &stack),
     ]
     .into_iter()
     .flatten()
@@ -155,8 +160,6 @@ pub fn build_report(snapshot: &Snapshot) -> GitHubReport {
         .unwrap_or(0) as u8;
     let coverage = coverage(&facts);
     let confidence = confidence(&facts, &activity, &coverage, &flags);
-    let languages = languages(&facts);
-    let developer = developer_profile(&facts, &languages, &stack, &ownership, &activity);
     let highlights = highlights(
         &activity,
         rhythm.as_ref(),
@@ -1351,7 +1354,7 @@ fn consistency_dimension(activity: &Activity) -> Option<GitHubDimension> {
     dimension(
         GitHubDimensionId::Consistency,
         "Регулярность",
-        20,
+        15,
         [
             "Стабильная регулярная активность на протяжении года",
             "Активность в основном регулярная",
@@ -1497,7 +1500,7 @@ fn engagement_dimension(activity: &Activity, rhythm: Option<&Rhythm>) -> Option<
     dimension(
         GitHubDimensionId::Engagement,
         "Вовлечённость",
-        20,
+        15,
         [
             "Высокая вовлечённость: много активных дней, длинные серии и рабочие часы",
             "Заметная вовлечённость",
@@ -1733,6 +1736,134 @@ fn craft_dimension(craft: &Craft) -> Option<GitHubDimension> {
         ],
         metrics,
     )
+}
+
+/// Own work that spans this many days makes a project a sustained system, not an experiment.
+const SUSTAINED_SYSTEM_DAYS: i64 = 180;
+
+/// Scope and complexity, the axis engineering level frameworks rank first: systems the account
+/// sustains, the engineering areas and system layers it covers, and design work beyond code.
+fn scope_dimension(
+    facts: &Facts<'_>,
+    developer: &GitHubDeveloperProfile,
+    stack: &[GitHubStackItem],
+) -> Option<GitHubDimension> {
+    let substantive = facts
+        .snapshot
+        .analyzed
+        .iter()
+        .filter(|repository| facts.substantive(repository))
+        .collect::<Vec<_>>();
+    let sustained = substantive
+        .iter()
+        .filter(|repository| {
+            (facts.owned(&repository.full_name)
+                || facts.led.contains(repository.full_name.as_str()))
+                && repository.user_commits() >= 10
+                && own_span_days(repository) >= SUSTAINED_SYSTEM_DAYS
+        })
+        .count() as u32;
+    let areas = developer
+        .archetypes
+        .iter()
+        .filter(|area| area.percent >= 15)
+        .count() as u32;
+    let layers = stack
+        .iter()
+        .filter(|item| item.category != StackCategory::Language && item.repositories >= 2)
+        .map(|item| item.category)
+        .collect::<BTreeSet<_>>()
+        .len() as u32;
+    let designed = substantive
+        .iter()
+        .filter(|repository| repository.files.iter().any(|path| design_artifact(path)))
+        .count() as u32;
+    dimension(
+        GitHubDimensionId::Scope,
+        "Масштаб и сложность",
+        10,
+        [
+            "Развивает долгоживущие многослойные системы с проектной документацией",
+            "Заметный масштаб: несколько направлений и долгие проекты",
+            "Масштаб работы пока ограничен",
+            "Масштаб и сложность работы почти не видны",
+        ],
+        vec![
+            count_metric(
+                "sustained_systems",
+                "Своих проектов, которые развивает полгода и дольше",
+                sustained,
+                ITEMS,
+                ramp(f64::from(sustained), 0.0, 5.0),
+                35,
+            ),
+            count_metric(
+                "engineering_areas",
+                "Направлений разработки с долей от 15%",
+                areas,
+                ITEMS,
+                ramp(f64::from(areas), 0.0, 3.0),
+                20,
+            ),
+            count_metric(
+                "system_layers",
+                "Слоёв системы, используемых в двух и более проектах",
+                layers,
+                ITEMS,
+                ramp(f64::from(layers), 0.0, 6.0),
+                20,
+            ),
+            count_metric(
+                "design_artifacts",
+                "Проектов с архитектурными решениями, контрактами API или миграциями",
+                designed,
+                ITEMS,
+                ramp(f64::from(designed), 0.0, 5.0),
+                25,
+            ),
+        ],
+    )
+}
+
+/// Days between the account's first and last commit in a repository.
+fn own_span_days(repository: &RepositoryAnalysis) -> i64 {
+    let first = repository.commits.iter().map(GitCommit::utc).min();
+    let last = repository.commits.iter().map(GitCommit::utc).max();
+    match (first, last) {
+        (Some(first), Some(last)) => (last - first).num_days(),
+        _ => 0,
+    }
+}
+
+/// Architecture decision records and design documents, interface contracts (OpenAPI, AsyncAPI,
+/// GraphQL, Protocol Buffers) and database schema migrations.
+pub fn design_artifact(path: &str) -> bool {
+    let lower = path.to_ascii_lowercase();
+    if tech::is_vendored(&lower) {
+        return false;
+    }
+    let mut segments = lower.split('/').collect::<Vec<_>>();
+    let name = segments.pop().unwrap_or_default();
+    segments.iter().any(|directory| {
+        matches!(
+            *directory,
+            "adr" | "adrs" | "decisions" | "rfc" | "rfcs" | "migrations" | "migrate" | "migration"
+        )
+    }) || lower.starts_with("docs/architecture")
+        || lower.starts_with("docs/design")
+        || name.ends_with(".proto")
+        || matches!(
+            name,
+            "architecture.md"
+                | "openapi.json"
+                | "openapi.yaml"
+                | "openapi.yml"
+                | "swagger.json"
+                | "swagger.yaml"
+                | "asyncapi.yaml"
+                | "asyncapi.yml"
+                | "schema.graphql"
+        )
 }
 
 fn impact_dimension(impact: &Impact) -> Option<GitHubDimension> {

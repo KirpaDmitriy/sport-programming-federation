@@ -13,7 +13,7 @@ export type Category = {
 };
 
 /**
- * Behavior fixture for the development API; the Rust backend computes estimates with `estimate-v2`.
+ * Behavior fixture for the development API; the Rust backend computes estimates with `estimate-v3`.
  *
  * The mock's evidence is fixed: one GitHub fixture report and one fictional published FSP result.
  * The Rust rules wrote their estimates to `contracts/fixtures/profile-estimates.json`, so the mock
@@ -42,12 +42,36 @@ export function questionnaireComplete(candidate: Candidate): boolean {
   );
 }
 
+/** Questionnaire fields an estimate may answer, as the Rust `AUTO_FIELDS`. */
+export const AUTO_FIELDS: readonly AutoField[] = [
+  'name',
+  'specialization',
+  'selectedGrade',
+  'stack',
+  'experienceMonths',
+  'experience',
+  'teamRole',
+  'softSkills',
+];
+
+/** Mirrors `CandidateProfile::release_answers`: every answer but an edited name goes back to the evidence. */
+export function releaseAnswers(candidate: Candidate): void {
+  const name = candidate.autoFields.includes('name');
+  candidate.autoFields = AUTO_FIELDS.filter((field) => field !== 'name' || name);
+}
+
+/** Mirrors `CandidateProfile::rebuild_from_estimate`: unanswered released fields return to the candidate. */
+export function rebuildFromEstimate(candidate: Candidate, estimate: Estimate): void {
+  const filled = applyEstimate(candidate, estimate);
+  candidate.autoFields = candidate.autoFields.filter((field) => filled.includes(field));
+}
+
 /**
  * Mirrors the Rust `CandidateProfile::apply_estimate`: answers empty fields, fields an earlier
  * estimate filled, and the specialization and target grade while the questionnaire is incomplete.
- * Edited answers and a test-confirmed category are kept.
+ * Edited answers and a test-confirmed category are kept. Returns the fields it answered.
  */
-export function applyEstimate(candidate: Candidate, estimate: Estimate): void {
+export function applyEstimate(candidate: Candidate, estimate: Estimate): AutoField[] {
   const incomplete = !questionnaireComplete(candidate);
   const confirmed = candidate.verifiedGrade !== null;
   const auto = (field: AutoField) => candidate.autoFields.includes(field);
@@ -82,8 +106,13 @@ export function applyEstimate(candidate: Candidate, estimate: Estimate): void {
     candidate.teamRole = answers.teamRole.slice(0, 120);
     filled.push('teamRole');
   }
+  if (answers.softSkills.length && (auto('softSkills') || !candidate.softSkills.length)) {
+    candidate.softSkills = answers.softSkills.slice(0, 12).map((skill) => skill.slice(0, 100));
+    filled.push('softSkills');
+  }
   for (const field of filled) if (!auto(field)) candidate.autoFields.push(field);
   candidate.estimate = estimate;
+  return filled;
 }
 
 /** A passed test, otherwise an estimate with at least medium confidence. */
@@ -97,8 +126,10 @@ export function categoryOf(candidate: Candidate): Category | null {
     };
   const estimate = candidate.estimate;
   if (!estimate?.specialization || !estimate.grade || estimate.confidence === 'low') return null;
+  // The candidate may choose among the specializations the evidence supports.
+  const chosen = estimate.specializations.some((share) => share.id === candidate.specialization);
   return {
-    specialization: estimate.specialization,
+    specialization: chosen ? candidate.specialization : estimate.specialization,
     grade: estimate.grade,
     source: 'estimate',
     confidence: estimate.confidence,

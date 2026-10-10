@@ -35,12 +35,14 @@ import {
   type TaskResponse,
 } from './data.ts';
 import {
-  type AutoField,
+  AUTO_FIELDS,
   applyEstimate,
   categoryOf,
   categoryStrength,
   DEFAULT_CANDIDATE_NAME,
   questionnaireComplete,
+  rebuildFromEstimate,
+  releaseAnswers,
   sourceEstimate,
 } from './estimate.ts';
 import { fspResults } from './fsp-fixture.ts';
@@ -288,18 +290,9 @@ function profileDto(s: State, candidate: Candidate): Schemas['Profile'] {
     assessmentEligibility: eligibility(s, candidate),
   };
 }
-const autoFields: readonly AutoField[] = [
-  'name',
-  'specialization',
-  'selectedGrade',
-  'stack',
-  'experienceMonths',
-  'experience',
-  'teamRole',
-];
 /** An answer the candidate changes is theirs from then on: estimates no longer overwrite it. */
 function patchProfile(s: State, candidate: Candidate, patch: Schemas['ProfilePatch']): Schemas['Profile'] {
-  const changed = autoFields.filter(
+  const changed = AUTO_FIELDS.filter(
     (field) => field in patch && JSON.stringify(patch[field]) !== JSON.stringify(candidate[field]),
   );
   candidate.autoFields = candidate.autoFields.filter((field) => !changed.includes(field));
@@ -1145,7 +1138,10 @@ const handlers: Handlers = {
     processing(candidate);
     if (!candidate.sources.some((source) => source.status === 'connected' && !source.activeJobId))
       fail(409, 'source_not_connected', 'Подключите GitHub или ФСП, чтобы оценить профиль');
-    applyEstimate(candidate, sourceEstimate(candidate, ctx.s.clock));
+    if (queryText(ctx.query, 'answers') === 'replace') {
+      releaseAnswers(candidate);
+      rebuildFromEstimate(candidate, sourceEstimate(candidate, ctx.s.clock));
+    } else applyEstimate(candidate, sourceEstimate(candidate, ctx.s.clock));
     candidate.revision += 1;
     candidate.updatedAt = ctx.s.clock;
     return profileDto(ctx.s, candidate);

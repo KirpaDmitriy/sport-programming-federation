@@ -236,7 +236,7 @@ pub fn language_of(path: &str) -> Option<&'static str> {
     })
 }
 
-fn is_vendored(path: &str) -> bool {
+pub(crate) fn is_vendored(path: &str) -> bool {
     path.split('/').any(|segment| {
         matches!(
             segment,

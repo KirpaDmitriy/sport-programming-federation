@@ -46,23 +46,40 @@ catalog skill. GitHub evidence maps languages and technologies onto catalog skil
 ### Automatic profile
 
 A candidate does not have to type anything: connecting GitHub and/or FSP builds the profile. The rules are
-`estimate-v2` in [`backend/crates/domain/src/estimate.rs`](../../backend/crates/domain/src/estimate.rs); the plan of
+`estimate-v3` in [`backend/crates/domain/src/estimate.rs`](../../backend/crates/domain/src/estimate.rs); the plan of
 record is [`docs/auto-profile.md`](../auto-profile.md).
 
 - Every finished source write (connecting FSP, a finished GitHub analysis, a sync) recomputes `estimate` from all
   connected sources in the same transaction. A running GitHub analysis keeps the previous estimate.
-  `POST /me/profile/estimate` recomputes on request (`409 source_not_connected` without a finished source).
-- `estimate` holds the leading specializations with shares, a 0–100 seniority score with its factors (seven GitHub
-  dimensions, stated experience, FSP results), the grade band (< 20 стажёр, 20–39 джуниор, 40–59 мидл, 60–79 сеньор,
-  ≥ 80 лид; сеньор needs 24 months of public work or stated experience, лид 48, counted in months from the first analyzed commit or the first year with ten active days, so thirteen months across a new year are not two years; `estimate-v1` counted calendar years), the confidence,
-  the sources, `insufficient` when there is too little evidence, and the answers it suggests.
+  `POST /me/profile/estimate` recomputes on request (`409 source_not_connected` without a finished source) and
+  re-analyzes a GitHub report of an earlier analysis version; that job applies its estimate when it ends.
+  `?answers=replace` («Заполнить анкету по источникам») first hands every answer except an edited name back to the
+  evidence; a released field the estimate cannot answer returns to the candidate. A PATCH that changes the stated
+  experience or team role recomputes the estimate at once.
+- `estimate` holds the leading specializations with shares, a 0–100 seniority score with its factors (eight GitHub
+  dimensions weighted scope 20, tenure 15, own projects 15, practices 15, collaboration 15, recognition 10,
+  engagement 5, regularity 5; or stated experience up to 30 without GitHub; FSP results up to 15), the grade band
+  (< 20 стажёр, 20–39 джуниор, 40–59 мидл, 60–79 сеньор, ≥ 80 лид), the confidence, the sources, `insufficient` when
+  there is too little evidence, `notes` and the answers it suggests. Сеньор needs 24 months of experience and лид 48,
+  counted in months: the longer of public work (from the first analyzed commit or the first year with ten active
+  days) and stated experience. Stated experience never lowers the score: it replaces the tenure dimension only when
+  longer than the public record (full at 72 months), and a grade only it unlocks keeps the confidence at medium.
+  Лид also needs work with people: a collaboration dimension of at least 50 or a leading team role the candidate
+  typed (тимлид, руководитель, архитектор, lead, head, principal, staff, CTO, director); otherwise the band gives
+  сеньор, and a lead that only the stated role unlocks keeps the confidence at medium.
+  `notes` explain an applied cap, tenure taken from the questionnaire, an outdated GitHub report and what the next
+  band needs. (`estimate-v2` blended stated experience into the score; `estimate-v1` counted calendar years.)
+- The category uses the candidate's specialization when it is among the estimate's leading specializations,
+  otherwise the estimate's leader.
 - The estimate answers the questionnaire fields that are empty, that an earlier estimate filled (`autoFields`), and
   the specialization and target grade while the questionnaire is incomplete. A test-confirmed category keeps its
   specialization and target grade. A field the candidate changes leaves `autoFields`, and estimates never overwrite
-  it again; a PATCH that resends an unchanged value keeps the field automatic. A new account starts as «Новый
-  кандидат», which the public GitHub name may replace.
-- When Bifrost is configured, the LLM receives the anonymized evidence (no login, names, links or organizations)
-  and gives a second opinion in the background after the source write commits (up to 60 seconds), so a slow model
+  it again; a PATCH that resends an unchanged value keeps the field automatic. Soft skills are answered from public
+  evidence only (documentation, descriptive commits, led projects, reviews, accepted outside work, issues, team
+  competitions). A new account starts as «Новый кандидат», which the public GitHub name may replace.
+- When Bifrost is configured, the LLM receives the anonymized evidence (no login, names, links or organizations:
+  areas, technologies by layer, led projects' descriptions, all metrics, factors, notes, public and stated tenure),
+  grades it with a rubric by scope, complexity, ownership, quality, influence and tenure, and gives a second opinion in the background after the source write commits (up to 60 seconds), so a slow model
   never delays connecting a source. The review applies only while the reviewed estimate is still the stored one and
   processing consent holds. It may choose between the two leading specializations when their shares differ by at
   most ten points and may rewrite the experience and team-role texts (texts with links or addresses are dropped). It
@@ -70,7 +87,8 @@ record is [`docs/auto-profile.md`](../auto-profile.md).
   review; «Пересчитать» asks again.
 - The mock applies the golden estimates the Rust rules write to
   [`contracts/fixtures/profile-estimates.json`](../../contracts/fixtures/profile-estimates.json) for its fixed GitHub
-  report and FSP result; it ignores experience the candidate typed.
+  report and FSP result; it ignores experience the candidate typed but mirrors `answers=replace` and the category
+  choice among supported specializations.
 
 ### Visibility to employers
 
@@ -116,7 +134,7 @@ the UI never calls an estimate «подтверждено».
   six hours of the last analysis reuses its report and re-checks the bio, so ownership is confirmed in seconds. The insights service analyzes **public** data only, without a token, on our
   server, and returns a report (`Source.github.report`): a developer portrait (summary, areas of work with evidence,
   languages by the candidate's changed files, stack by category, topics, main projects), a 0–100 index with band and
-  confidence, seven dimensions with metrics, a commit calendar, yearly public commits, an estimated work rhythm in the
+  confidence, eight dimensions with metrics (including scope and complexity), a commit calendar, yearly public commits, an estimated work rhythm in the
   author's own time zone, own projects and organizations, collaboration validated by other people, repository
   practices and integrity flags. Work in the candidate's own organizations counts as own work; collaboration counts
   only work accepted or reviewed by others outside them. Time per active day and week is an explicitly labelled

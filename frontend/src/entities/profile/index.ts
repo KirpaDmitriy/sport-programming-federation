@@ -3,6 +3,7 @@ export {
   type AutoField,
   blockerLabel,
   type Eligibility,
+  type EstimateAnswers,
   eligibilityReasonText,
   type Onboarding,
   type Profile,
