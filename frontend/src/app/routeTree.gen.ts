@@ -29,6 +29,7 @@ import { Route as EmployerTasksRouteImport } from './routes/employer/tasks'
 import { Route as CandidateApplicationsIndexRouteImport } from './routes/candidate/applications/index'
 import { Route as CandidateApplicationsApplicationIdRouteImport } from './routes/candidate/applications/$applicationId'
 import { Route as CandidateAssessmentsIndexRouteImport } from './routes/candidate/assessments/index'
+import { Route as CandidateInterviewsInterviewIdRouteImport } from './routes/candidate/interviews/$interviewId'
 import { Route as CandidateInvitationsIndexRouteImport } from './routes/candidate/invitations/index'
 import { Route as CandidateInvitationsInvitationIdRouteImport } from './routes/candidate/invitations/$invitationId'
 import { Route as CandidateVacanciesIndexRouteImport } from './routes/candidate/vacancies/index'
@@ -148,6 +149,12 @@ const CandidateAssessmentsIndexRoute =
     path: '/assessments/',
     getParentRoute: () => CandidateRouteRoute,
   } as any)
+const CandidateInterviewsInterviewIdRoute =
+  CandidateInterviewsInterviewIdRouteImport.update({
+    id: '/interviews/$interviewId',
+    path: '/interviews/$interviewId',
+    getParentRoute: () => CandidateRouteRoute,
+  } as any)
 const CandidateInvitationsIndexRoute =
   CandidateInvitationsIndexRouteImport.update({
     id: '/invitations/',
@@ -252,6 +259,7 @@ export interface FileRoutesByFullPath {
   '/candidate/': typeof CandidateIndexRoute
   '/employer/': typeof EmployerIndexRoute
   '/candidate/applications/$applicationId': typeof CandidateApplicationsApplicationIdRoute
+  '/candidate/interviews/$interviewId': typeof CandidateInterviewsInterviewIdRoute
   '/candidate/invitations/$invitationId': typeof CandidateInvitationsInvitationIdRoute
   '/candidate/vacancies/$vacancyId': typeof CandidateVacanciesVacancyIdRoute
   '/employer/applications/$applicationId': typeof EmployerApplicationsApplicationIdRoute
@@ -287,6 +295,7 @@ export interface FileRoutesByTo {
   '/candidate': typeof CandidateIndexRoute
   '/employer': typeof EmployerIndexRoute
   '/candidate/applications/$applicationId': typeof CandidateApplicationsApplicationIdRoute
+  '/candidate/interviews/$interviewId': typeof CandidateInterviewsInterviewIdRoute
   '/candidate/invitations/$invitationId': typeof CandidateInvitationsInvitationIdRoute
   '/candidate/vacancies/$vacancyId': typeof CandidateVacanciesVacancyIdRoute
   '/employer/applications/$applicationId': typeof EmployerApplicationsApplicationIdRoute
@@ -325,6 +334,7 @@ export interface FileRoutesById {
   '/candidate/': typeof CandidateIndexRoute
   '/employer/': typeof EmployerIndexRoute
   '/candidate/applications/$applicationId': typeof CandidateApplicationsApplicationIdRoute
+  '/candidate/interviews/$interviewId': typeof CandidateInterviewsInterviewIdRoute
   '/candidate/invitations/$invitationId': typeof CandidateInvitationsInvitationIdRoute
   '/candidate/vacancies/$vacancyId': typeof CandidateVacanciesVacancyIdRoute
   '/employer/applications/$applicationId': typeof EmployerApplicationsApplicationIdRoute
@@ -364,6 +374,7 @@ export interface FileRouteTypes {
     | '/candidate/'
     | '/employer/'
     | '/candidate/applications/$applicationId'
+    | '/candidate/interviews/$interviewId'
     | '/candidate/invitations/$invitationId'
     | '/candidate/vacancies/$vacancyId'
     | '/employer/applications/$applicationId'
@@ -399,6 +410,7 @@ export interface FileRouteTypes {
     | '/candidate'
     | '/employer'
     | '/candidate/applications/$applicationId'
+    | '/candidate/interviews/$interviewId'
     | '/candidate/invitations/$invitationId'
     | '/candidate/vacancies/$vacancyId'
     | '/employer/applications/$applicationId'
@@ -436,6 +448,7 @@ export interface FileRouteTypes {
     | '/candidate/'
     | '/employer/'
     | '/candidate/applications/$applicationId'
+    | '/candidate/interviews/$interviewId'
     | '/candidate/invitations/$invitationId'
     | '/candidate/vacancies/$vacancyId'
     | '/employer/applications/$applicationId'
@@ -604,6 +617,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CandidateAssessmentsIndexRouteImport
       parentRoute: typeof CandidateRouteRoute
     }
+    '/candidate/interviews/$interviewId': {
+      id: '/candidate/interviews/$interviewId'
+      path: '/interviews/$interviewId'
+      fullPath: '/candidate/interviews/$interviewId'
+      preLoaderRoute: typeof CandidateInterviewsInterviewIdRouteImport
+      parentRoute: typeof CandidateRouteRoute
+    }
     '/candidate/invitations/': {
       id: '/candidate/invitations/'
       path: '/invitations'
@@ -722,6 +742,7 @@ interface CandidateRouteRouteChildren {
   CandidateTasksRoute: typeof CandidateTasksRoute
   CandidateIndexRoute: typeof CandidateIndexRoute
   CandidateApplicationsApplicationIdRoute: typeof CandidateApplicationsApplicationIdRoute
+  CandidateInterviewsInterviewIdRoute: typeof CandidateInterviewsInterviewIdRoute
   CandidateInvitationsInvitationIdRoute: typeof CandidateInvitationsInvitationIdRoute
   CandidateVacanciesVacancyIdRoute: typeof CandidateVacanciesVacancyIdRoute
   CandidateApplicationsIndexRoute: typeof CandidateApplicationsIndexRoute
@@ -743,6 +764,7 @@ const CandidateRouteRouteChildren: CandidateRouteRouteChildren = {
   CandidateIndexRoute: CandidateIndexRoute,
   CandidateApplicationsApplicationIdRoute:
     CandidateApplicationsApplicationIdRoute,
+  CandidateInterviewsInterviewIdRoute: CandidateInterviewsInterviewIdRoute,
   CandidateInvitationsInvitationIdRoute: CandidateInvitationsInvitationIdRoute,
   CandidateVacanciesVacancyIdRoute: CandidateVacanciesVacancyIdRoute,
   CandidateApplicationsIndexRoute: CandidateApplicationsIndexRoute,

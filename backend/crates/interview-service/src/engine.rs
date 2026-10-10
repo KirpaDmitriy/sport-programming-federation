@@ -271,6 +271,31 @@ fn select_next_node<'a>(
     {
         return Some(prerequisite);
     }
+    let behavioral_answers = session
+        .evidence
+        .iter()
+        .filter(|evidence| {
+            blueprint
+                .node(&evidence.node_id)
+                .is_some_and(|node| node.kind == crate::domain::CompetencyKind::Behavioral)
+        })
+        .count();
+    if session.evidence.len() / 3 > behavioral_answers
+        && let Some(behavioral) = blueprint
+            .nodes
+            .iter()
+            .filter(|node| {
+                node.kind == crate::domain::CompetencyKind::Behavioral
+                    && session.node_states.get(node.id) == Some(&EvidenceState::Unknown)
+                    && node
+                        .prerequisites
+                        .iter()
+                        .all(|id| session.node_states.get(*id) != Some(&EvidenceState::Unknown))
+            })
+            .max_by_key(|node| node.criticality)
+    {
+        return Some(behavioral.id);
+    }
     if matches!(
         current_state,
         EvidenceState::Observed | EvidenceState::Partial
@@ -343,6 +368,45 @@ mod tests {
             next.current_question.as_ref().unwrap().node_id,
             "backend.unique-operation"
         );
+    }
+
+    #[tokio::test]
+    async fn behavioral_questions_are_spaced_through_the_interview() {
+        let service = InterviewService::new(Arc::new(OfflineModel));
+        let mut interview = service
+            .start("candidate-soft", BACKEND_MIDDLE.id, 12)
+            .await
+            .unwrap();
+        let answer = "ключ уникальный scope пользователь транзакция commit rollback атомарный повтор cached response индекс конфликт параллельно race read committed аномалия блокировка retry корреляция лог метрика гипотеза уточняю вопрос предположение ограничение согласуем критерий риск компромисс цель интерес позиция факт данные вариант эксперимент договор решение эскалация конкретный пример наблюдение влияние результат спрошу выслушаю следующая проверка";
+        for _ in 0..3 {
+            let question = interview.current_question.as_ref().unwrap();
+            interview = service
+                .answer(&interview.id, &question.id, answer, interview.revision)
+                .await
+                .unwrap();
+        }
+        let current = interview.current_question.as_ref().unwrap();
+        assert_eq!(current.node_id, "collaboration.requirements");
+        assert_eq!(
+            BACKEND_MIDDLE.node(&current.node_id).unwrap().kind,
+            crate::domain::CompetencyKind::Behavioral
+        );
+
+        while interview.status == InterviewStatus::Active {
+            let question = interview.current_question.as_ref().unwrap();
+            interview = service
+                .answer(&interview.id, &question.id, answer, interview.revision)
+                .await
+                .unwrap();
+        }
+        let behavioral_nodes = interview
+            .evidence
+            .iter()
+            .filter_map(|entry| BACKEND_MIDDLE.node(&entry.node_id))
+            .filter(|node| node.kind == crate::domain::CompetencyKind::Behavioral)
+            .map(|node| node.id)
+            .collect::<std::collections::BTreeSet<_>>();
+        assert_eq!(behavioral_nodes.len(), 3);
     }
 
     #[tokio::test]
