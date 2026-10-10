@@ -1324,10 +1324,13 @@ pub struct GraphView {
 #[serde(rename_all = "camelCase")]
 pub struct GraphNodeView {
     pub id: String,
+    /// `role`, `concept` (a catalog skill category), `skill`, `source` (GitHub, FSP, a test).
     pub kind: String,
     pub label: String,
     pub skill_id: Option<String>,
     pub status: Option<String>,
+    /// The level or the scale behind the node, e.g. «Основная · 49 проектов».
+    pub detail: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]

@@ -27,7 +27,7 @@ test('documentation screenshots of the implemented screens', async ({ browser, p
   await expect(page.getByRole('heading', { name: 'Отчёт GitHub' })).toBeVisible();
   await shot(page, '03-profile-sources');
   await page.goto('/candidate/skills?view=graph&node=skill-postgresql');
-  await expect(page.getByRole('button', { name: /Навык: PostgreSQL/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Технология: PostgreSQL/ })).toBeVisible();
   await shot(page, '04-skills-evidence');
   await page.goto('/candidate/overview');
   await page.getByRole('button', { name: 'Начать проверку' }).click();

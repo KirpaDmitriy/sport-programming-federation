@@ -135,7 +135,7 @@ test('graphs load on demand and a failed employer graph exposes retry instead of
   expect(requests).toBe(1);
   await page.unroute(graphPath);
   await page.getByRole('button', { name: 'Повторить', exact: true }).click();
-  await expect(page.getByRole('button', { name: /Навык: Rust/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Технология: Rust/ })).toBeVisible();
   await expect(page.getByText('Сервис временно недоступен')).toHaveCount(0);
   await page.getByRole('button', { name: 'Список', exact: true }).click();
   await expect(page.getByText('Rust', { exact: true }).first()).toBeVisible();

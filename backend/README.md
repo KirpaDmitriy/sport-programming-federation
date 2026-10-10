@@ -15,7 +15,7 @@ persists accounts, sessions, profiles, sources, processing jobs and the matching
 | `crates/integration-github` | `fsp-integration-github` | Client of the GitHub insights service and GitHub OAuth identity (an optional ownership proof) |
 | `crates/github-insights` | `fsp-github-insights` (binary `fsp-github-insights`) | Separate loopback service: analyzes public GitHub work in the background without a token (search, REST, blobless clones) and computes the documented portrait and heuristics ([GitHub insights](../docs/github-insights.md)) |
 | `crates/integration-fsp-synthetic` | `fsp-integration-fsp-synthetic` | Bounded HTTP adapter and separate fictional FSP simulator |
-| `crates/integration-bifrost` | `fsp-integration-bifrost` | Optional Bifrost adapter for graph extraction and repository-to-competition matching |
+| `crates/integration-bifrost` | `fsp-integration-bifrost` | Optional Bifrost adapter: résumé fields, assessment help, the estimate review (deep reasoning) and repository-to-competition matching |
 | `crates/integration-email` | `fsp-integration-email` | Resend delivery with random codes and bounded HTTP; fixed-code delivery for local demo mode |
 | `crates/integration-pdf` | `fsp-integration-pdf` | Bounded digital-text extraction through isolated Poppler processes |
 | `crates/server` | `fsp-server` (binary `fsp-career-api`) | Composition root: configuration, wiring, graceful shutdown on SIGINT/SIGTERM |
@@ -85,14 +85,15 @@ Rust implements the 75 application operations plus `/health`; `/__mock__` contro
 roles, tenant scoping and PostgreSQL persistence are real. Email ownership is verified by Resend in `resend` mode; local `demo` mode retains a fixed code;
 FSP uses a separate fictional HTTP provider. Knowledge tests are scored deterministically; no code executes. PDF text extraction uses a bounded, isolated
 Poppler process and Bifrost proposes fields with validated page excerpts. The assessment assistant calls Bifrost
-with the current saved answer and question; these replies never establish a grade. GitHub analysis runs in the insights service over public data only; ownership is proven by a per-candidate bio code or, when OAuth is configured, by a token whose `/user` login matches. Bifrost graph extraction is real
-when configured; repository-to-competition matching is an adapter port without a product call path.
+with the current saved answer and question; these replies never establish a grade. GitHub analysis runs in the insights service over public data only; ownership is proven by a per-candidate bio code or, when OAuth is configured, by a token whose `/user` login matches. The competence graph is
+deterministic; repository-to-competition matching is an adapter port without a product call path.
 `GET /api/v1/meta` reports configuration, not proof of a provider's availability or assessment validity.
 
-Request budgets are nested: a call to the GitHub insights service takes at most 10 seconds (the analysis itself runs in the background) and Bifrost completion has a 45-second ceiling;
+Request budgets are nested: a call to the GitHub insights service takes at most 10 seconds (the analysis itself runs in the background) and a Bifrost completion inside a request has a 45-second ceiling (the background estimate review reasons with
+`BIFROST_REASONING_EFFORT`, default `high`, for up to four minutes);
 the HTTP handler has 55 seconds, inside both nginx proxies' 60-second read deadline. This leaves room
 for storage and the contract error envelope. A provider timeout remains a visible integration failure;
-graph requests do not fall back to synthetic data. HTTP timeout regressions use Tokio virtual time.
+no request falls back to synthetic data. HTTP timeout regressions use Tokio virtual time.
 
 Five idempotent commands live in `application/src/service/commands.rs`. The key, domain effects and serialized
 response share one transaction; failed work rolls back. Same-key callers serialize in PostgreSQL and replay the

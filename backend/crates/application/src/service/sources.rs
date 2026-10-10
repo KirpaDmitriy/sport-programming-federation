@@ -8,8 +8,9 @@ use crate::{GitHubAnalysisView, GitHubInsights, InsightsStatus};
 /// A GitHub analysis that has not finished by then is reported as failed.
 const GITHUB_JOB_TIMEOUT_MINUTES: i64 = 90;
 
-/// How long the background LLM review of an estimate may take; without it the rules decide alone.
-const REVIEW_TIMEOUT_SECONDS: u64 = 60;
+/// How long the background LLM review of an estimate may take with deep reasoning; without it
+/// the rules decide alone.
+const REVIEW_TIMEOUT_SECONDS: u64 = 300;
 
 impl PlatformService {
     pub async fn connect_source(
@@ -99,6 +100,18 @@ impl PlatformService {
         source_id: &str,
     ) -> Result<JobView, ApplicationError> {
         let candidate_id = candidate_id(session)?;
+        self.sync_candidate_source(candidate_id, source_id, true)
+            .await
+    }
+
+    /// Syncs one source; `review` asks the LLM for a second opinion on the new estimate, which a
+    /// caller that recomputes the estimate afterwards leaves to itself.
+    async fn sync_candidate_source(
+        &self,
+        candidate_id: &str,
+        source_id: &str,
+        review: bool,
+    ) -> Result<JobView, ApplicationError> {
         self.require_processing_consent(candidate_id).await?;
         let source = self
             .repository
@@ -204,7 +217,9 @@ impl PlatformService {
                 );
                 tx.save_job(&job).await.map_err(ApplicationError::storage)?;
                 tx.commit().await.map_err(ApplicationError::storage)?;
-                self.spawn_estimate_review(candidate_id);
+                if review {
+                    self.spawn_estimate_review(candidate_id);
+                }
                 let view = source_view(updated, &self.github_ownership_code(candidate_id), None);
                 Ok(job_view(job, Some(view)))
             }
@@ -882,6 +897,26 @@ impl PlatformService {
     ) -> Result<ProfileView, ApplicationError> {
         let candidate_id = candidate_id(session)?;
         self.require_processing_consent(candidate_id).await?;
+        // FSP answers inline, so its newest results join this estimate.
+        for source in self
+            .repository
+            .sources(candidate_id)
+            .await
+            .map_err(ApplicationError::storage)?
+            .iter()
+            .filter(|source| {
+                source.provider == fsp_domain::SourceProvider::Fsp
+                    && source.account_label.is_some()
+                    && source.active_job_id.is_none()
+            })
+        {
+            if let Err(error) = self
+                .sync_candidate_source(candidate_id, &source.id, false)
+                .await
+            {
+                tracing::warn!(code = error.code, "FSP source was not refreshed");
+            }
+        }
         let sources = self
             .repository
             .sources(candidate_id)
@@ -966,6 +1001,41 @@ impl PlatformService {
             );
         }
         self.spawn_estimate_review(candidate_id);
+        self.profile(session).await
+    }
+
+    /// The candidate's profile, first bringing an estimate of earlier rules (or a missing one
+    /// with finished sources) up to date, so a new version reaches every candidate unasked.
+    pub async fn my_profile(&self, session: &SessionView) -> Result<ProfileView, ApplicationError> {
+        let candidate_id = candidate_id(session)?;
+        let profile = self
+            .repository
+            .candidate(candidate_id)
+            .await
+            .map_err(ApplicationError::storage)?
+            .ok_or_else(|| ApplicationError::new(404, "not_found", "Профиль не найден"))?;
+        let outdated = profile.consents.processing
+            && match &profile.estimate {
+                Some(estimate) => estimate.version != fsp_domain::ESTIMATE_VERSION,
+                None => self
+                    .repository
+                    .sources(candidate_id)
+                    .await
+                    .map_err(ApplicationError::storage)?
+                    .iter()
+                    .any(|source| {
+                        source.active_job_id.is_none()
+                            && (source.analysis.is_some() || !source.fsp_results.is_empty())
+                    }),
+            };
+        if outdated {
+            match self.refresh_estimate(session, false).await {
+                Ok(profile) => return Ok(profile),
+                Err(error) => {
+                    tracing::warn!(code = error.code, "outdated estimate was not refreshed")
+                }
+            }
+        }
         self.profile(session).await
     }
 

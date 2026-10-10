@@ -83,3 +83,22 @@
   margin: 0;
   padding-left: 1.25rem;
 }
+
+.steps {
+  display: grid;
+  gap: var(--fsp-space-3);
+  margin: 0;
+  padding-left: 1.25rem;
+}
+
+.steps > li {
+  display: grid;
+  gap: var(--fsp-space-1);
+}
+
+.stepHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--fsp-space-2);
+}
