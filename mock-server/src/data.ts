@@ -21,6 +21,7 @@ export type Application = S['Application'];
 export type TaskResponse = S['TaskResponse'];
 export type Job = S['Job'];
 export type Disclosure = S['Disclosure'];
+export type Interview = S['Interview'];
 
 export interface Candidate {
   id: string;
@@ -122,6 +123,7 @@ export interface State {
   taskResponses: Map<string, TaskResponse>;
   disclosures: Map<string, Disclosure>;
   assessments: Map<string, AssessmentRecord>;
+  interviews: Map<string, Interview>;
   jobs: Map<string, JobRecord>;
   idempotency: Map<string, StoredResponse>;
   counters: Record<string, number>;
@@ -767,6 +769,7 @@ export function createState(scenario: Scenario = 'baseline'): State {
     taskResponses: seedTaskResponses(candidates, tasks),
     disclosures: new Map(),
     assessments: new Map([[historyId, history]]),
+    interviews: new Map(),
     jobs: new Map(),
     idempotency: new Map(),
     counters: {},

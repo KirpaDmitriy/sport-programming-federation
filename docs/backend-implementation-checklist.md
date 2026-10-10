@@ -8,7 +8,7 @@ Historical cutover commands for another contributor's server are not operating i
 - Rust hexagonal architecture: domain/application ports, axum transport, PostgreSQL and outbound adapters.
 - All 75 application operations plus `/health`; no production `/__mock__` controls.
 - Persisted accounts, sessions, profiles, consents, needs, vacancies, invitations, applications, shortlists,
-  tasks, assessments, sources and jobs. Roles and tenant boundaries are enforced by the API.
+  tasks, assessments, graph interviews, sources and jobs. Roles and tenant boundaries are enforced by the API.
 - Atomic idempotent commands and response replay; shared email attempt budgets; guarded terminal decisions;
   serialized disclosure and shortlist mutations; profile/assessment/source concurrency protection.
 - Candidate visibility, deterministic ranking, filters, server-returned pagination and anonymous projections.
@@ -21,6 +21,9 @@ Historical cutover commands for another contributor's server are not operating i
   that re-analyzes outdated GitHub reports and can rebuild every answer; category source and confidence in search,
   ranking, applications and weekly tasks.
 - Optional Bifrost graph extraction with structural/reference validation and safe employer projection.
+- Graph-guided candidate interviews through an internal Rust service: authenticated platform routes, PostgreSQL
+  sessions with optimistic revisions, an offline CPU rubric, optional Bifrost generation/evaluation and local-only
+  browser speech playback.
 - Real PDF export/import, revision-checked preview confirmation, contextual Bifrost assistance, source/job privacy and capability flags.
 - Bounded Resend delivery, per-email issuance limits, cumulative wrong-code budgets and challenge/session HMAC separation.
 - Rustfmt, clippy, unit tests and PostgreSQL HTTP/storage regressions; private-server CI gates cover admitted canonical PRs.
@@ -34,6 +37,8 @@ Historical cutover commands for another contributor's server are not operating i
 - Knowledge tests use a versioned server-side bank and deterministic scoring. The public study bank is not
   leak-resistant or professionally calibrated. Legacy simulated code attempts remain archived; no code executes.
 - Contextual assistant replies call Bifrost and never decide grades.
+- Interview evidence is an adaptive rubric signal, not a calibrated hiring score. The shipped graph covers one
+  backend-middle blueprint; video, camera analysis and biometric or inferred-personality scoring are intentionally absent.
 - PDF import extracts digital text in a bounded Poppler sandbox; scans/OCR are unsupported. Bifrost fields require actual page excerpts and user confirmation.
 - Jobs complete inline in Rust; there is no durable background worker.
 - Repository/competition matching has an adapter port but no product workflow. Graph relations are model

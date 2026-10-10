@@ -474,3 +474,19 @@ pub trait VerificationDelivery: Send + Sync {
 pub trait PdfGateway: Send + Sync {
     async fn extract(&self, bytes: &[u8]) -> Result<Vec<fsp_domain::PdfPage>, IntegrationError>;
 }
+
+#[async_trait]
+pub trait InterviewGateway: Send + Sync {
+    async fn list(&self, candidate_id: &str) -> Result<crate::InterviewsView, IntegrationError>;
+    async fn start(
+        &self,
+        candidate_id: &str,
+        input: &crate::InterviewStartInput,
+    ) -> Result<crate::InterviewView, IntegrationError>;
+    async fn get(&self, interview_id: &str) -> Result<crate::InterviewView, IntegrationError>;
+    async fn answer(
+        &self,
+        interview_id: &str,
+        input: &crate::InterviewAnswerInput,
+    ) -> Result<crate::InterviewView, IntegrationError>;
+}
