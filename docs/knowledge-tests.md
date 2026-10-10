@@ -4,7 +4,8 @@ New attempts use `execution: questionnaire` and `knowledge-v2`. The Rust domain 
 the development HTTP mock reads the same question content. The answer key stays outside the frontend
 bundle and API task projection. This repository is public: the bank is study material, not a secret exam.
 
-Each attempt deterministically selects five questions from each of two topic pools. Backend supports
+Each attempt deterministically selects five questions from each of two topic pools. Every pool holds six
+questions per grade, so two variants differ in at most one question per topic and share at least 8 of 10. Backend supports
 junior/middle/senior with Rust and PostgreSQL; frontend supports junior/middle with TypeScript and React.
 The assessment id is the variant key, so idempotent replay returns the same task while separate attempts can
 receive different balanced variants. Pass requires at least 8/10 overall and at least 3/5 in each subject.
