@@ -120,7 +120,11 @@ pub fn area(path: &str, kind: RepositoryKind) -> Option<Archetype> {
             Archetype::Platform
         }
         "HTML" | "CSS" | "SCSS" | "Vue" | "Svelte" | "Astro" => Archetype::Frontend,
-        "Swift" | "Dart" => Archetype::Mobile,
+        "Swift" | "Dart" | "Objective-C" => Archetype::Mobile,
+        // Enterprise platforms: 1C, SAP and classic business stacks.
+        "1C Enterprise" | "ABAP" | "Delphi" | "COBOL" | "Visual Basic" | "PL/SQL" => {
+            Archetype::Backend
+        }
         "Kotlin" if kind.mobile || under(&["android"]) => Archetype::Mobile,
         "TypeScript" | "JavaScript" => {
             if lower.ends_with(".tsx")

@@ -1,19 +1,19 @@
 import { useForm } from '@tanstack/react-form';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { type SkillId, useMeta } from '@/entities/meta';
+import type { SkillId } from '@/entities/meta';
 import { type Profile, type ProfilePatch, profileKey, updateProfile } from '@/entities/profile';
 import { useScope } from '@/entities/session';
 import { describeError, fieldErrors } from '@/shared/api';
-import { gradeLabel, gradeOrder, industryLabel, specializationLabel, specializationOrder } from '@/shared/lib';
+import { gradeLabel, gradeOrder, industryLabel, skillOptions, specializationOptions } from '@/shared/lib';
 import {
   Button,
   Callout,
   SelectField,
   TextareaField,
   TextField,
-  ToggleGroup,
   TokenInput,
+  TokenPicker,
   UnsavedChangesGuard,
   useToast,
 } from '@/shared/ui';
@@ -39,7 +39,6 @@ const required = (message: string) => ({
 type Props = { profile: Profile; submitLabel: string; onSaved?: (profile: Profile) => void };
 
 export function ProfileForm({ profile, submitLabel, onSaved }: Props) {
-  const meta = useMeta();
   const scope = useScope();
   const queryClient = useQueryClient();
   const toast = useToast();
@@ -153,7 +152,7 @@ export function ProfileForm({ profile, submitLabel, onSaved }: Props) {
                   clearServer('specialization');
                 }}
                 error={serverErrors.specialization}
-                options={specializationOrder.map((value) => ({ value, label: specializationLabel[value] }))}
+                options={specializationOptions}
               />
             )}
           </form.Field>
@@ -193,12 +192,13 @@ export function ProfileForm({ profile, submitLabel, onSaved }: Props) {
               validators={{ onSubmit: ({ value }) => (value.length ? undefined : 'Выберите хотя бы одну технологию') }}
             >
               {(field) => (
-                <ToggleGroup<SkillId>
+                <TokenPicker<SkillId>
                   id="profile-stack"
                   label="Стек"
-                  hint="До пяти технологий из каталога платформы"
-                  max={5}
-                  options={meta.skills.map((skill) => ({ value: skill.id, label: skill.label }))}
+                  hint="До 12 технологий из каталога: начните вводить название, например «1С» или «Python»"
+                  placeholder="Найти технологию"
+                  max={12}
+                  options={skillOptions}
                   selected={field.state.value}
                   onChange={(next) => {
                     field.handleChange(next);

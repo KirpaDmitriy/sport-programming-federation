@@ -187,6 +187,12 @@ for _ in {1..60}; do
 done
 [[ "$ready" == 1 ]]
 trap - ERR HUP INT TERM
+# Data this release writes may use catalog-v2 values older releases cannot read: record it once, so
+# later rollbacks to releases without the capability are refused.
+if grep -Fxq catalog-v2 "$DIR/infra/RUNTIME_CAPABILITIES" 2>/dev/null \
+  && ! grep -Fxqs catalog-v2 "$CONFIG/data-capabilities"; then
+  echo catalog-v2 >> "$CONFIG/data-capabilities"
+fi
 rm -rf "$backup"
 
 # Keep the current and previous releases even when rolling back to an older SHA.

@@ -61,8 +61,8 @@ The last step offers «Подтвердить уровень» for the saved tar
 
 ![Profile and goals](screenshots/02-profile-goals.png)
 
-The profile form (name, read-only e-mail, industry, specialization, grade for the check, experience in months, stack
-of up to five, experience, team role, soft skills) with «Сохранить профиль» and «Отменить изменения»; «Импортировать
+The profile form (name, read-only e-mail, industry, specialization grouped by direction, grade for the check,
+experience in months, a searchable stack of up to 12 catalog technologies, experience, team role, soft skills) with «Сохранить профиль» and «Отменить изменения»; «Импортировать
 PDF»; «Для работодателей» — the anonymous preview; privacy settings; «Текущий статус» with the verified grade and the
 selected target shown separately.
 
