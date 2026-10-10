@@ -36,6 +36,9 @@ const count = num({ minimum: 0 });
 const day = str({ format: 'date' });
 const githubDimensionId = en('consistency', 'engagement', 'longevity', 'collaboration', 'ownership', 'craft', 'impact');
 const githubVersion = en('github-insights-v2');
+const confidence = en('low', 'medium', 'high');
+const categorySource = en('assessment', 'estimate');
+const autoField = en('name', 'specialization', 'selectedGrade', 'stack', 'experienceMonths', 'experience', 'teamRole');
 const stackCategory = en(
   'language',
   'backend',
@@ -150,9 +153,41 @@ export const schemas = {
     assessmentPassed: bool,
     readyForPublication: bool,
     visibleToEmployers: bool,
-    blockers: arr(en('email', 'questionnaire', 'assessment', 'processing_consent', 'publication_consent')),
+    blockers: arr(en('email', 'questionnaire', 'category', 'processing_consent', 'publication_consent')),
   }),
-  Category: obj({ specialization: nullable(specialization), grade: nullable(grade), eligible: bool }),
+  Category: obj({
+    specialization: nullable(specialization),
+    grade: nullable(grade),
+    eligible: bool,
+    source: nullable(categorySource),
+    confidence: nullable(confidence),
+  }),
+  EstimateFactor: obj({ id: str(), label: str(), points: share, max: share, detail: str() }),
+  ProfileEstimate: obj({
+    version: en('estimate-v1'),
+    computedAt: dt,
+    specialization: nullable(specialization),
+    specializations: arr(obj({ id: specialization, percent: share })),
+    grade: nullable(grade),
+    score: share,
+    confidence,
+    factors: arr(ref('EstimateFactor')),
+    answers: obj({
+      stack: arr(skillId),
+      experienceMonths: nullable(num({ minimum: 0 })),
+      experience: str(),
+      teamRole: str(),
+      name: nullable(str()),
+    }),
+    sources: arr(provider, { uniqueItems: true }),
+    insufficient: nullable(str()),
+    review: nullable(obj({ specialization, grade, rationale: str(), agrees: bool })),
+  }),
+  EmployerEstimate: obj({
+    score: share,
+    computedAt: dt,
+    factors: arr(obj({ id: str(), label: str(), points: share, max: share })),
+  }),
   Freshness: obj({
     lastSignalAt: nullable(dt),
     lastSignal: nullable(en('assessment', 'task')),
@@ -169,6 +204,8 @@ export const schemas = {
     verifiedSpecialization: nullable(specialization),
     gradeConfirmedAt: nullable(dt),
     category: ref('Category'),
+    estimate: nullable(ref('ProfileEstimate')),
+    autoFields: arr(autoField, { uniqueItems: true }),
     freshness: ref('Freshness'),
     onboarding: ref('Onboarding'),
     assessmentEligibility: ref('GradeEligibility'),
@@ -239,7 +276,7 @@ export const schemas = {
   GitHubIndex: obj({
     score: share,
     band: en('weak', 'moderate', 'strong', 'very_strong'),
-    confidence: en('low', 'medium', 'high'),
+    confidence,
   }),
   GitHubFlag: obj({ id: str(), severity: en('info', 'warning'), title: str(), detail: str() }),
   GitHubMetric: obj({ id: str(), label: str(), value: num(), display: str(), publicDisplay: str(), score: share }),
@@ -262,6 +299,7 @@ export const schemas = {
     algorithmVersion: githubVersion,
     generatedAt: dt,
     login: str(),
+    displayName: nullable(str()),
     profileUrl: url,
     accountCreatedAt: str(),
     coverage: obj({
@@ -622,8 +660,12 @@ export const schemas = {
     id,
     alias: str(),
     specialization,
-    verifiedGrade: grade,
-    gradeConfirmedAt: dt,
+    grade,
+    categorySource,
+    categoryConfidence: nullable(confidence),
+    verifiedGrade: nullable(grade),
+    gradeConfirmedAt: nullable(dt),
+    estimate: nullable(ref('EmployerEstimate')),
     workModes: arr(workMode),
     availableForOffers: bool,
     skills: arr(ref('Skill')),
@@ -690,7 +732,7 @@ export const schemas = {
   VacancyRequirement: obj({ skillId, criticality: en('required', 'desired'), minimumGrade: grade }),
   ApplicationEligibility: obj({
     canApply: bool,
-    reason: nullable(en('email', 'questionnaire', 'assessment', 'processing_consent', 'application_exists')),
+    reason: nullable(en('email', 'questionnaire', 'category', 'processing_consent', 'application_exists')),
   }),
   Vacancy: obj({
     id,
@@ -778,7 +820,7 @@ export const schemas = {
     period: obj({ from: dt, to: dt }),
     current: nullable(ref('OfferedTask')),
     currentResponse: nullable(ref('TaskResponse')),
-    reason: nullable(en('assessment', 'processing_consent', 'no_tasks')),
+    reason: nullable(en('category', 'processing_consent', 'no_tasks')),
     history: arr(ref('TaskResponse')),
     freshness: ref('Freshness'),
   }),
@@ -991,6 +1033,7 @@ export const routes = [
     auth: 'candidate',
     body: 'ImportConfirmInput',
   }),
+  route('post', '/api/v1/me/profile/estimate', 'refreshMyEstimate', 'Profile', { auth: 'candidate' }),
   route('get', '/api/v1/me/profile/export', 'exportMyProfile', null, { auth: 'candidate', pdf: true }),
   route('get', '/api/v1/integrations/github/authorize', 'authorizeGitHub', 'GitHubAuthorization', {
     auth: 'candidate',
@@ -1090,6 +1133,7 @@ export const routes = [
       query('mode', en('bank', 'recommended')),
       query('specialization', specialization),
       query('grade', grade),
+      query('categorySource', categorySource),
       query('skill', skillId),
       query('fsp', en('any', 'verified')),
       query('page', num({ minimum: 1, default: 1 })),

@@ -170,6 +170,7 @@ pub fn build_report(snapshot: &Snapshot) -> GitHubReport {
         algorithm_version: GITHUB_INSIGHTS_VERSION.into(),
         generated_at: iso(snapshot.now),
         login: snapshot.login.clone(),
+        display_name: snapshot.display_name.clone(),
         profile_url: format!("https://github.com/{}", snapshot.login),
         account_created_at: snapshot.created_at.map(iso).unwrap_or_default(),
         coverage,

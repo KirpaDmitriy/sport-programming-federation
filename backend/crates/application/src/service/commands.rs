@@ -197,9 +197,9 @@ impl Commands {
                     "application_not_eligible",
                     "Заполните анкету, чтобы откликаться на вакансии",
                 ),
-                "assessment" => (
+                "category" => (
                     "application_not_eligible",
-                    "Подтвердите грейд тестом знаний, чтобы откликаться на вакансии",
+                    "Подключите GitHub или ФСП либо пройдите тест знаний, чтобы откликаться на вакансии",
                 ),
                 _ => (
                     "application_not_eligible",

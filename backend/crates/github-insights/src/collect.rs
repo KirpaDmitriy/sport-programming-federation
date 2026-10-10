@@ -103,6 +103,11 @@ impl Collector {
             created_at: parse_time(&user.created_at),
             now,
             followers: user.followers,
+            display_name: user
+                .name
+                .clone()
+                .map(|name| name.trim().to_owned())
+                .filter(|name| !name.is_empty()),
             ..Snapshot::default()
         };
         snapshot
@@ -784,6 +789,7 @@ struct UserProfile {
     #[serde(default)]
     followers: u32,
     bio: Option<String>,
+    name: Option<String>,
 }
 
 #[derive(Deserialize)]

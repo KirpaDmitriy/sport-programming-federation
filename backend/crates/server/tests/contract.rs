@@ -229,10 +229,17 @@ async fn fresh_candidate_completes_assessment() {
     .await;
     assert_eq!(status, StatusCode::OK, "{profile}");
     assert_eq!(profile["onboarding"]["questionnaireComplete"], true);
+    assert_eq!(profile["onboarding"]["blockers"], json!(["category"]));
+    assert_eq!(profile["category"]["source"], Value::Null);
+    assert_eq!(profile["estimate"], Value::Null);
     assert_eq!(
         profile["assessmentEligibility"]["selectedReason"],
         Value::Null
     );
+    // Without a connected source there is nothing to estimate from.
+    let (status, refused) = post(&app, "/api/v1/me/profile/estimate", Some(&cookie)).await;
+    assert_eq!(status, StatusCode::CONFLICT, "{refused}");
+    assert_eq!(code(&refused), "source_not_connected");
     let (status, assessment) = send_keyed(
         &app,
         "POST",
@@ -277,6 +284,8 @@ async fn fresh_candidate_completes_assessment() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(profile["verifiedGrade"], "junior");
     assert_eq!(profile["verifiedSpecialization"], "backend");
+    assert_eq!(profile["category"]["source"], "assessment");
+    assert_eq!(profile["category"]["grade"], "junior");
 }
 
 #[tokio::test]
@@ -1343,6 +1352,35 @@ async fn candidate_bank_anonymous_and_sorted() {
             .iter()
             .all(|item| item["fspVerified"] == true)
     );
+    // Seeded categories are test-confirmed; the confirmation filter separates them from estimates.
+    let (status, confirmed) = get(
+        &app,
+        "/api/v1/candidates?categorySource=assessment&page=1&pageSize=10",
+        Some(&employer),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(confirmed["total"], page["total"]);
+    for item in confirmed["items"].as_array().unwrap() {
+        assert_eq!(item["categorySource"], "assessment");
+        assert_eq!(item["grade"], item["verifiedGrade"]);
+        assert_eq!(item["estimate"], Value::Null);
+    }
+    let (status, estimated) = get(
+        &app,
+        "/api/v1/candidates?categorySource=estimate",
+        Some(&employer),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(estimated["total"], 0);
+    let (status, invalid) = get(
+        &app,
+        "/api/v1/candidates?categorySource=guess",
+        Some(&employer),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{invalid}");
 }
 
 #[tokio::test]

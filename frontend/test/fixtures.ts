@@ -40,7 +40,9 @@ export function profile(overrides: Partial<S['Profile']> = {}): S['Profile'] {
     verifiedGrade: 'junior',
     verifiedSpecialization: 'backend',
     gradeConfirmedAt: '2026-06-01T12:00:00.000Z',
-    category: { specialization: 'backend', grade: 'junior', eligible: true },
+    category: { specialization: 'backend', grade: 'junior', eligible: true, source: 'assessment', confidence: null },
+    estimate: null,
+    autoFields: [],
     freshness: { lastSignalAt: '2026-06-01T12:00:00.000Z', lastSignal: 'assessment', fresh: false, windowDays: 90 },
     onboarding: {
       emailVerified: true,

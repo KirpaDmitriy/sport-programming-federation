@@ -39,10 +39,13 @@ export function AssessmentNextStep({ profile }: { profile: Profile }) {
   if (!profile.onboarding.questionnaireComplete || !profile.consents.processing) {
     body = (
       <>
-        <h3 style={{ margin: 0 }}>Заполните анкету</h3>
-        <p className="muted">Отрасль, специализация, стек и согласие на обработку нужны, чтобы назначить проверку.</p>
+        <h3 style={{ margin: 0 }}>Соберите профиль</h3>
+        <p className="muted">
+          Дайте согласие на обработку и подключите GitHub или ФСП — анкета заполнится автоматически. Её можно заполнить
+          и вручную.
+        </p>
         <ButtonLink to="/candidate/onboarding" variant="primary" iconAfter="arrowRight">
-          Продолжить анкету
+          Продолжить
         </ButtonLink>
       </>
     );
@@ -77,9 +80,16 @@ export function AssessmentNextStep({ profile }: { profile: Profile }) {
     body = (
       <>
         <h3 style={{ margin: 0 }}>
-          {profile.verifiedGrade ? `Подтвердить ${gradeLabel[eligibility.selectedGrade]}` : 'Подтвердить уровень'}
+          {profile.verifiedGrade
+            ? `Подтвердить ${gradeLabel[eligibility.selectedGrade]}`
+            : profile.category.source === 'estimate'
+              ? 'Подтвердить категорию тестом'
+              : 'Подтвердить уровень'}
         </h3>
-        <p className="muted">{target}. Тест знаний с выбором ответов, ИИ разрешён.</p>
+        <p className="muted">
+          {target}. Тест знаний с выбором ответов, ИИ разрешён.
+          {profile.category.source === 'estimate' && ' Подтверждённые кандидаты стоят выше в выдаче.'}
+        </p>
         <Button
           variant="primary"
           iconAfter="arrowRight"
