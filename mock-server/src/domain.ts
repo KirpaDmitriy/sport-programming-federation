@@ -26,7 +26,13 @@ import {
 } from './data.ts';
 import { fspResults } from './fsp-fixture.ts';
 import type { components } from './generated/schema.d.ts';
-import { githubFixtureReport, githubSignal, githubSource, parseGitHubLogin } from './github-fixture.ts';
+import {
+  GITHUB_ANALYSIS_STARTED,
+  githubFixtureReport,
+  githubSignal,
+  githubSource,
+  parseGitHubLogin,
+} from './github-fixture.ts';
 import { knowledgeCompletion, knowledgeTask, scoreKnowledge, validKnowledgeAnswer } from './knowledge.ts';
 
 type Schemas = components['schemas'];
@@ -749,6 +755,14 @@ function startSourceSync(s: State, actor: Actor, candidate: Candidate, source: S
       };
       source.lastSyncedAt = s.clock;
       source.activeJobId = null;
+      if (source.github) {
+        const login = source.github.report?.login ?? source.accountLabel ?? 'demo';
+        source.github = githubSource(
+          candidate.id,
+          githubFixtureReport(login, s.clock),
+          source.github.ownership.verifiedAt,
+        );
+      }
       if (source.provider === 'github' && !candidate.skills.length)
         candidate.skills = makeSkills(candidate.id).map((skill) =>
           skill.status === 'confirmed'
@@ -769,6 +783,7 @@ function startSourceSync(s: State, actor: Actor, candidate: Candidate, source: S
     { sourceId: source.id },
   );
   source.activeJobId = job.id;
+  if (source.github) source.github.analysis = { ...GITHUB_ANALYSIS_STARTED };
   return job;
 }
 function completeAssessment(s: State, candidate: Candidate, item: AssessmentRecord): JobResult {
@@ -861,6 +876,7 @@ function advanceJob(s: State, job: JobRecord, phase: 'running' | 'complete') {
     if (job.sourceId) {
       const source = candidate.sources.find((item) => item.id === job.sourceId);
       if (source) source.activeJobId = null;
+      if (source?.github) source.github.analysis = null;
     }
     if (job.kind === 'assessment' && assessment) {
       assessment.status = 'service_error';
@@ -1094,7 +1110,8 @@ const handlers: Handlers = {
         fail(422, 'github_login_invalid', 'Укажите имя пользователя GitHub или ссылку на профиль');
       connected.accountLabel = login;
       // A fresh claim stays unverified until the bio carries the code; the mock cannot read a bio.
-      connected.github = githubSource(candidate.id, githubFixtureReport(login, ctx.s.clock), null);
+      // The report arrives when the analysis job completes, as with the insights service.
+      connected.github = githubSource(candidate.id, null, null);
     } else {
       const account = ctx.body.account.trim().toUpperCase();
       if (!/^[A-Za-z0-9_-]+$/.test(account))

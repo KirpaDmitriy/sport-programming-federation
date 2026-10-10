@@ -14101,24 +14101,6 @@
         ],
         "additionalProperties": false
       },
-      "GitHubLanguageShare": {
-        "type": "object",
-        "properties": {
-          "language": {
-            "type": "string"
-          },
-          "percent": {
-            "type": "integer",
-            "minimum": 0,
-            "maximum": 100
-          }
-        },
-        "required": [
-          "language",
-          "percent"
-        ],
-        "additionalProperties": false
-      },
       "GitHubMetric": {
         "type": "object",
         "properties": {
@@ -14163,6 +14145,7 @@
               "engagement",
               "longevity",
               "collaboration",
+              "ownership",
               "craft",
               "impact"
             ]
@@ -14200,13 +14183,64 @@
         ],
         "additionalProperties": false
       },
+      "GitHubStackItem": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "language",
+              "backend",
+              "frontend",
+              "data",
+              "infrastructure",
+              "quality",
+              "ai",
+              "mobile",
+              "tooling"
+            ]
+          },
+          "repositories": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "signals": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "lastUsedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "category",
+          "repositories",
+          "signals",
+          "lastUsedAt"
+        ],
+        "additionalProperties": false
+      },
       "GitHubReport": {
         "type": "object",
         "properties": {
           "algorithmVersion": {
             "type": "string",
             "enum": [
-              "github-insights-v1"
+              "github-insights-v2"
             ]
           },
           "generatedAt": {
@@ -14235,25 +14269,37 @@
                 "type": "string",
                 "format": "date-time"
               },
-              "yearsAnalyzed": {
-                "type": "integer",
-                "minimum": 0
-              },
-              "commitContributions": {
-                "type": "integer",
-                "minimum": 0
-              },
-              "commitsSampled": {
-                "type": "integer",
-                "minimum": 0
-              },
               "repositoriesAnalyzed": {
                 "type": "integer",
                 "minimum": 0
               },
-              "timezoneSamples": {
+              "commitsAnalyzed": {
                 "type": "integer",
                 "minimum": 0
+              },
+              "commitsPublicTotal": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "commitsLastYearFound": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "commitsLastYearTotal": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "coveragePercent": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 100
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
               },
               "partial": {
                 "type": "boolean"
@@ -14268,11 +14314,12 @@
             "required": [
               "from",
               "to",
-              "yearsAnalyzed",
-              "commitContributions",
-              "commitsSampled",
               "repositoriesAnalyzed",
-              "timezoneSamples",
+              "commitsAnalyzed",
+              "commitsPublicTotal",
+              "commitsLastYearFound",
+              "commitsLastYearTotal",
+              "coveragePercent",
               "partial",
               "notes"
             ],
@@ -14287,6 +14334,142 @@
               "$ref": "#/components/schemas/GitHubDimension"
             }
           },
+          "profile": {
+            "type": "object",
+            "properties": {
+              "summary": {
+                "type": "string"
+              },
+              "publicSummary": {
+                "type": "string"
+              },
+              "archetypes": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "enum": [
+                        "backend",
+                        "frontend",
+                        "platform",
+                        "systems",
+                        "data",
+                        "mobile"
+                      ]
+                    },
+                    "label": {
+                      "type": "string"
+                    },
+                    "percent": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 100
+                    },
+                    "evidence": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "label",
+                    "percent",
+                    "evidence"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "focusTopics": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "topProjects": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "nameWithOwner": {
+                      "type": "string"
+                    },
+                    "url": {
+                      "type": "string",
+                      "format": "uri",
+                      "maxLength": 2048
+                    },
+                    "description": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "primaryLanguage": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "stars": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "userCommits": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "userSharePercent": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 100
+                    },
+                    "lastCommitAt": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "nameWithOwner",
+                    "url",
+                    "description",
+                    "primaryLanguage",
+                    "stars",
+                    "userCommits",
+                    "userSharePercent",
+                    "lastCommitAt"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "summary",
+              "publicSummary",
+              "archetypes",
+              "focusTopics",
+              "topProjects"
+            ],
+            "additionalProperties": false
+          },
           "activity": {
             "type": "object",
             "properties": {
@@ -14294,11 +14477,11 @@
                 "type": "integer",
                 "minimum": 0
               },
-              "contributionsLastYear": {
+              "commitsLastYear": {
                 "type": "integer",
                 "minimum": 0
               },
-              "privateContributionsLastYear": {
+              "pullRequestsLastYear": {
                 "type": "integer",
                 "minimum": 0
               },
@@ -14380,44 +14563,31 @@
                     "year": {
                       "type": "integer"
                     },
-                    "contributions": {
-                      "type": "integer",
-                      "minimum": 0
-                    },
                     "commits": {
-                      "type": "integer",
-                      "minimum": 0
-                    },
-                    "pullRequests": {
-                      "type": "integer",
-                      "minimum": 0
-                    },
-                    "reviews": {
-                      "type": "integer",
-                      "minimum": 0
-                    },
-                    "issues": {
-                      "type": "integer",
-                      "minimum": 0
-                    },
-                    "privateContributions": {
                       "type": "integer",
                       "minimum": 0
                     },
                     "activeDays": {
                       "type": "integer",
                       "minimum": 0
+                    },
+                    "pullRequests": {
+                      "anyOf": [
+                        {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     }
                   },
                   "required": [
                     "year",
-                    "contributions",
                     "commits",
-                    "pullRequests",
-                    "reviews",
-                    "issues",
-                    "privateContributions",
-                    "activeDays"
+                    "activeDays",
+                    "pullRequests"
                   ],
                   "additionalProperties": false
                 }
@@ -14425,8 +14595,8 @@
             },
             "required": [
               "activeYears",
-              "contributionsLastYear",
-              "privateContributionsLastYear",
+              "commitsLastYear",
+              "pullRequestsLastYear",
               "activeDaysLastYear",
               "activeWeeksLastYear",
               "longestDailyStreak",
@@ -14449,9 +14619,6 @@
                   "sampleSize": {
                     "type": "integer",
                     "minimum": 0
-                  },
-                  "timezoneInferred": {
-                    "type": "boolean"
                   },
                   "timezoneOffsets": {
                     "type": "array",
@@ -14526,6 +14693,17 @@
                     "type": "integer",
                     "minimum": 0
                   },
+                  "medianMinutesPerActiveWeek": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
                   "sessionsPerActiveDayTenths": {
                     "type": "integer",
                     "minimum": 0
@@ -14537,7 +14715,6 @@
                 },
                 "required": [
                   "sampleSize",
-                  "timezoneInferred",
                   "timezoneOffsets",
                   "hourlyPercent",
                   "weekdayPercent",
@@ -14548,6 +14725,7 @@
                   "activeDays",
                   "medianMinutesPerActiveDay",
                   "p90MinutesPerActiveDay",
+                  "medianMinutesPerActiveWeek",
                   "sessionsPerActiveDayTenths",
                   "longestSessionMinutes"
                 ],
@@ -14565,15 +14743,19 @@
                 "type": "integer",
                 "minimum": 0
               },
-              "reviewsTotal": {
+              "approvedPullRequests": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "reviewsOfOthers": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "independentReviews": {
                 "type": "integer",
                 "minimum": 0
               },
               "issuesTotal": {
-                "type": "integer",
-                "minimum": 0
-              },
-              "pullRequestsSampled": {
                 "type": "integer",
                 "minimum": 0
               },
@@ -14597,26 +14779,7 @@
                   }
                 ]
               },
-              "medianPullRequestLines": {
-                "anyOf": [
-                  {
-                    "type": "integer",
-                    "minimum": 0
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
-              },
               "externalRepositories": {
-                "type": "integer",
-                "minimum": 0
-              },
-              "organizationRepositories": {
-                "type": "integer",
-                "minimum": 0
-              },
-              "affiliatedOrganizations": {
                 "type": "integer",
                 "minimum": 0
               },
@@ -14637,15 +14800,11 @@
                       "type": "integer",
                       "minimum": 0
                     },
-                    "commits": {
-                      "type": "integer",
-                      "minimum": 0
-                    },
                     "mergedPullRequests": {
                       "type": "integer",
                       "minimum": 0
                     },
-                    "reviews": {
+                    "commits": {
                       "type": "integer",
                       "minimum": 0
                     }
@@ -14654,9 +14813,8 @@
                     "repository",
                     "url",
                     "stars",
-                    "commits",
                     "mergedPullRequests",
-                    "reviews"
+                    "commits"
                   ],
                   "additionalProperties": false
                 }
@@ -14664,17 +14822,48 @@
             },
             "required": [
               "pullRequestsTotal",
-              "reviewsTotal",
+              "approvedPullRequests",
+              "reviewsOfOthers",
+              "independentReviews",
               "issuesTotal",
-              "pullRequestsSampled",
               "externalPullRequests",
               "externalMerged",
               "externalMergeRatePercent",
-              "medianPullRequestLines",
               "externalRepositories",
-              "organizationRepositories",
-              "affiliatedOrganizations",
               "notableContributions"
+            ],
+            "additionalProperties": false
+          },
+          "ownership": {
+            "type": "object",
+            "properties": {
+              "ledRepositories": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "maintainedRepositories": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "ownOrganizations": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "ownOrganizationRepositories": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "directPushRepositories": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "ledRepositories",
+              "maintainedRepositories",
+              "ownOrganizations",
+              "ownOrganizationRepositories",
+              "directPushRepositories"
             ],
             "additionalProperties": false
           },
@@ -14689,36 +14878,15 @@
                     "login": {
                       "type": "string"
                     },
-                    "name": {
-                      "anyOf": [
-                        {
-                          "type": "string"
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    },
                     "url": {
                       "type": "string",
                       "format": "uri",
                       "maxLength": 2048
-                    },
-                    "members": {
-                      "type": "integer",
-                      "minimum": 0
-                    },
-                    "publicRepositories": {
-                      "type": "integer",
-                      "minimum": 0
                     }
                   },
                   "required": [
                     "login",
-                    "name",
-                    "url",
-                    "members",
-                    "publicRepositories"
+                    "url"
                   ],
                   "additionalProperties": false
                 }
@@ -14740,7 +14908,7 @@
                       "type": "integer",
                       "minimum": 0
                     },
-                    "contributions": {
+                    "commits": {
                       "type": "integer",
                       "minimum": 0
                     },
@@ -14752,7 +14920,7 @@
                     "login",
                     "url",
                     "repositories",
-                    "contributions",
+                    "commits",
                     "affiliated"
                   ],
                   "additionalProperties": false
@@ -14768,7 +14936,33 @@
           "languages": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/GitHubLanguageShare"
+              "type": "object",
+              "properties": {
+                "language": {
+                  "type": "string"
+                },
+                "percent": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 100
+                },
+                "filesChanged": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              "required": [
+                "language",
+                "percent",
+                "filesChanged"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "stack": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GitHubStackItem"
             }
           },
           "technologies": {
@@ -14889,7 +15083,7 @@
                   }
                 ]
               },
-              "medianCommitLines": {
+              "medianFilesPerCommit": {
                 "anyOf": [
                   {
                     "type": "integer",
@@ -14901,18 +15095,6 @@
                 ]
               },
               "largeCommitsPercent": {
-                "anyOf": [
-                  {
-                    "type": "integer",
-                    "minimum": 0,
-                    "maximum": 100
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
-              },
-              "signedCommitsPercent": {
                 "anyOf": [
                   {
                     "type": "integer",
@@ -14949,9 +15131,8 @@
               "containerPercent",
               "conventionalCommitsPercent",
               "descriptiveMessagesPercent",
-              "medianCommitLines",
+              "medianFilesPerCommit",
               "largeCommitsPercent",
-              "signedCommitsPercent",
               "mergeCommitsPercent"
             ],
             "additionalProperties": false
@@ -14970,6 +15151,9 @@
                   "maxLength": 2048
                 },
                 "owned": {
+                  "type": "boolean"
+                },
+                "led": {
                   "type": "boolean"
                 },
                 "fork": {
@@ -14996,6 +15180,16 @@
                     }
                   ]
                 },
+                "description": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
                 "pushedAt": {
                   "anyOf": [
                     {
@@ -15007,13 +15201,29 @@
                     }
                   ]
                 },
-                "contributions": {
+                "totalCommits": {
                   "type": "integer",
                   "minimum": 0
                 },
-                "sampledCommits": {
+                "userCommits": {
                   "type": "integer",
                   "minimum": 0
+                },
+                "userSharePercent": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 100
+                },
+                "lastUserCommitAt": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
                 },
                 "hygiene": {
                   "type": "array",
@@ -15045,22 +15255,33 @@
                       "react"
                     ]
                   }
+                },
+                "stack": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
                 }
               },
               "required": [
                 "nameWithOwner",
                 "url",
                 "owned",
+                "led",
                 "fork",
                 "archived",
                 "stars",
                 "forks",
                 "primaryLanguage",
+                "description",
                 "pushedAt",
-                "contributions",
-                "sampledCommits",
+                "totalCommits",
+                "userCommits",
+                "userSharePercent",
+                "lastUserCommitAt",
                 "hygiene",
-                "technologies"
+                "technologies",
+                "stack"
               ],
               "additionalProperties": false
             }
@@ -15087,11 +15308,14 @@
           "coverage",
           "index",
           "dimensions",
+          "profile",
           "activity",
           "rhythm",
           "collaboration",
+          "ownership",
           "organizations",
           "languages",
+          "stack",
           "technologies",
           "craft",
           "repositories",
@@ -15106,7 +15330,7 @@
           "algorithmVersion": {
             "type": "string",
             "enum": [
-              "github-insights-v1"
+              "github-insights-v2"
             ]
           },
           "generatedAt": {
@@ -15118,6 +15342,42 @@
           },
           "index": {
             "$ref": "#/components/schemas/GitHubIndex"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "archetypes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "enum": [
+                    "backend",
+                    "frontend",
+                    "platform",
+                    "systems",
+                    "data",
+                    "mobile"
+                  ]
+                },
+                "label": {
+                  "type": "string"
+                },
+                "percent": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 100
+                }
+              },
+              "required": [
+                "id",
+                "label",
+                "percent"
+              ],
+              "additionalProperties": false
+            }
           },
           "dimensions": {
             "type": "array",
@@ -15131,6 +15391,7 @@
                     "engagement",
                     "longevity",
                     "collaboration",
+                    "ownership",
                     "craft",
                     "impact"
                   ]
@@ -15183,7 +15444,52 @@
           "languages": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/GitHubLanguageShare"
+              "type": "object",
+              "properties": {
+                "language": {
+                  "type": "string"
+                },
+                "percent": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 100
+                }
+              },
+              "required": [
+                "language",
+                "percent"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "stack": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "technology": {
+                  "type": "string"
+                },
+                "category": {
+                  "type": "string",
+                  "enum": [
+                    "language",
+                    "backend",
+                    "frontend",
+                    "data",
+                    "infrastructure",
+                    "quality",
+                    "ai",
+                    "mobile",
+                    "tooling"
+                  ]
+                }
+              },
+              "required": [
+                "technology",
+                "category"
+              ],
+              "additionalProperties": false
             }
           },
           "rhythm": {
@@ -15193,6 +15499,16 @@
                 "properties": {
                   "hoursPerActiveDay": {
                     "type": "string"
+                  },
+                  "hoursPerActiveWeek": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   },
                   "officeHoursPercent": {
                     "type": "integer",
@@ -15207,6 +15523,7 @@
                 },
                 "required": [
                   "hoursPerActiveDay",
+                  "hoursPerActiveWeek",
                   "officeHoursPercent",
                   "weekendPercent"
                 ],
@@ -15228,9 +15545,6 @@
             "items": {
               "$ref": "#/components/schemas/GitHubFlag"
             }
-          },
-          "mostlyPrivate": {
-            "type": "boolean"
           }
         },
         "required": [
@@ -15238,12 +15552,14 @@
           "generatedAt",
           "ownershipVerified",
           "index",
+          "summary",
+          "archetypes",
           "dimensions",
           "languages",
+          "stack",
           "rhythm",
           "highlights",
-          "flags",
-          "mostlyPrivate"
+          "flags"
         ],
         "additionalProperties": false
       },
@@ -15312,12 +15628,47 @@
                 "type": "null"
               }
             ]
+          },
+          "analysis": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "state": {
+                    "type": "string",
+                    "enum": [
+                      "queued",
+                      "running",
+                      "failed"
+                    ]
+                  },
+                  "stage": {
+                    "type": "string"
+                  },
+                  "progress": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 100
+                  }
+                },
+                "required": [
+                  "state",
+                  "stage",
+                  "progress"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
           "ownership",
           "report",
-          "employerPreview"
+          "employerPreview",
+          "analysis"
         ],
         "additionalProperties": false
       },

@@ -31,8 +31,20 @@ const fields = arr(en('name', 'email', 'sourceLinks'), { minItems: 1, uniqueItem
 const share = num({ minimum: 0, maximum: 100 });
 const count = num({ minimum: 0 });
 const day = str({ format: 'date' });
-const githubDimensionId = en('consistency', 'engagement', 'longevity', 'collaboration', 'craft', 'impact');
-const githubVersion = en('github-insights-v1');
+const githubDimensionId = en('consistency', 'engagement', 'longevity', 'collaboration', 'ownership', 'craft', 'impact');
+const githubVersion = en('github-insights-v2');
+const stackCategory = en(
+  'language',
+  'backend',
+  'frontend',
+  'data',
+  'infrastructure',
+  'quality',
+  'ai',
+  'mobile',
+  'tooling',
+);
+const archetype = en('backend', 'frontend', 'platform', 'systems', 'data', 'mobile');
 const hygieneSignal = en(
   'readme',
   'license',
@@ -223,7 +235,6 @@ export const schemas = {
     confidence: en('low', 'medium', 'high'),
   }),
   GitHubFlag: obj({ id: str(), severity: en('info', 'warning'), title: str(), detail: str() }),
-  GitHubLanguageShare: obj({ language: str(), percent: share }),
   GitHubMetric: obj({ id: str(), label: str(), value: num(), display: str(), publicDisplay: str(), score: share }),
   GitHubDimension: obj({
     id: githubDimensionId,
@@ -232,6 +243,13 @@ export const schemas = {
     weight: share,
     summary: str(),
     metrics: arr(ref('GitHubMetric')),
+  }),
+  GitHubStackItem: obj({
+    name: str(),
+    category: stackCategory,
+    repositories: count,
+    signals: arr(str()),
+    lastUsedAt: nullable(dt),
   }),
   GitHubReport: obj({
     algorithmVersion: githubVersion,
@@ -242,20 +260,39 @@ export const schemas = {
     coverage: obj({
       from: dt,
       to: dt,
-      yearsAnalyzed: count,
-      commitContributions: count,
-      commitsSampled: count,
       repositoriesAnalyzed: count,
-      timezoneSamples: count,
+      commitsAnalyzed: count,
+      commitsPublicTotal: count,
+      commitsLastYearFound: count,
+      commitsLastYearTotal: count,
+      coveragePercent: nullable(share),
       partial: bool,
       notes: arr(str()),
     }),
     index: ref('GitHubIndex'),
     dimensions: arr(ref('GitHubDimension')),
+    profile: obj({
+      summary: str(),
+      publicSummary: str(),
+      archetypes: arr(obj({ id: archetype, label: str(), percent: share, evidence: arr(str()) })),
+      focusTopics: arr(str()),
+      topProjects: arr(
+        obj({
+          nameWithOwner: str(),
+          url,
+          description: nullable(str()),
+          primaryLanguage: nullable(str()),
+          stars: count,
+          userCommits: count,
+          userSharePercent: share,
+          lastCommitAt: nullable(dt),
+        }),
+      ),
+    }),
     activity: obj({
       activeYears: count,
-      contributionsLastYear: count,
-      privateContributionsLastYear: count,
+      commitsLastYear: count,
+      pullRequestsLastYear: count,
       activeDaysLastYear: count,
       activeWeeksLastYear: count,
       longestDailyStreak: count,
@@ -266,23 +303,11 @@ export const schemas = {
       lastActiveOn: nullable(day),
       trendPercent: nullable(num()),
       calendar: arr(obj({ date: day, count })),
-      yearly: arr(
-        obj({
-          year: num(),
-          contributions: count,
-          commits: count,
-          pullRequests: count,
-          reviews: count,
-          issues: count,
-          privateContributions: count,
-          activeDays: count,
-        }),
-      ),
+      yearly: arr(obj({ year: num(), commits: count, activeDays: count, pullRequests: nullable(count) })),
     }),
     rhythm: nullable(
       obj({
         sampleSize: count,
-        timezoneInferred: bool,
         timezoneOffsets: arr(obj({ offsetMinutes: num(), percent: share })),
         hourlyPercent: arr(share, { minItems: 24, maxItems: 24 }),
         weekdayPercent: arr(share, { minItems: 7, maxItems: 7 }),
@@ -293,31 +318,38 @@ export const schemas = {
         activeDays: count,
         medianMinutesPerActiveDay: count,
         p90MinutesPerActiveDay: count,
+        medianMinutesPerActiveWeek: nullable(count),
         sessionsPerActiveDayTenths: count,
         longestSessionMinutes: count,
       }),
     ),
     collaboration: obj({
       pullRequestsTotal: count,
-      reviewsTotal: count,
+      approvedPullRequests: count,
+      reviewsOfOthers: count,
+      independentReviews: count,
       issuesTotal: count,
-      pullRequestsSampled: count,
       externalPullRequests: count,
       externalMerged: count,
       externalMergeRatePercent: nullable(share),
-      medianPullRequestLines: nullable(count),
       externalRepositories: count,
-      organizationRepositories: count,
-      affiliatedOrganizations: count,
       notableContributions: arr(
-        obj({ repository: str(), url, stars: count, commits: count, mergedPullRequests: count, reviews: count }),
+        obj({ repository: str(), url, stars: count, mergedPullRequests: count, commits: count }),
       ),
     }),
-    organizations: obj({
-      memberships: arr(obj({ login: str(), name: nullable(str()), url, members: count, publicRepositories: count })),
-      contributed: arr(obj({ login: str(), url, repositories: count, contributions: count, affiliated: bool })),
+    ownership: obj({
+      ledRepositories: count,
+      maintainedRepositories: count,
+      ownOrganizations: count,
+      ownOrganizationRepositories: count,
+      directPushRepositories: count,
     }),
-    languages: arr(ref('GitHubLanguageShare')),
+    organizations: obj({
+      memberships: arr(obj({ login: str(), url })),
+      contributed: arr(obj({ login: str(), url, repositories: count, commits: count, affiliated: bool })),
+    }),
+    languages: arr(obj({ language: str(), percent: share, filesChanged: count })),
+    stack: arr(ref('GitHubStackItem')),
     technologies: arr(obj({ skillId, repositories: count, signals: arr(str()), lastPushedAt: nullable(dt) })),
     craft: obj({
       substantiveRepositories: count,
@@ -331,9 +363,8 @@ export const schemas = {
       containerPercent: share,
       conventionalCommitsPercent: nullable(share),
       descriptiveMessagesPercent: nullable(share),
-      medianCommitLines: nullable(count),
+      medianFilesPerCommit: nullable(count),
       largeCommitsPercent: nullable(share),
-      signedCommitsPercent: nullable(share),
       mergeCommitsPercent: nullable(share),
     }),
     repositories: arr(
@@ -341,16 +372,21 @@ export const schemas = {
         nameWithOwner: str(),
         url,
         owned: bool,
+        led: bool,
         fork: bool,
         archived: bool,
         stars: count,
         forks: count,
         primaryLanguage: nullable(str()),
+        description: nullable(str()),
         pushedAt: nullable(dt),
-        contributions: count,
-        sampledCommits: count,
+        totalCommits: count,
+        userCommits: count,
+        userSharePercent: share,
+        lastUserCommitAt: nullable(dt),
         hygiene: arr(hygieneSignal),
         technologies: arr(skillId),
+        stack: arr(str()),
       }),
     ),
     flags: arr(ref('GitHubFlag')),
@@ -361,6 +397,8 @@ export const schemas = {
     generatedAt: day,
     ownershipVerified: bool,
     index: ref('GitHubIndex'),
+    summary: str(),
+    archetypes: arr(obj({ id: archetype, label: str(), percent: share })),
     dimensions: arr(
       obj({
         id: githubDimensionId,
@@ -370,11 +408,18 @@ export const schemas = {
         metrics: arr(obj({ id: str(), label: str(), display: str() })),
       }),
     ),
-    languages: arr(ref('GitHubLanguageShare')),
-    rhythm: nullable(obj({ hoursPerActiveDay: str(), officeHoursPercent: share, weekendPercent: share })),
+    languages: arr(obj({ language: str(), percent: share })),
+    stack: arr(obj({ technology: str(), category: stackCategory })),
+    rhythm: nullable(
+      obj({
+        hoursPerActiveDay: str(),
+        hoursPerActiveWeek: nullable(str()),
+        officeHoursPercent: share,
+        weekendPercent: share,
+      }),
+    ),
     highlights: arr(str()),
     flags: arr(ref('GitHubFlag')),
-    mostlyPrivate: bool,
   }),
   GitHubSource: obj({
     ownership: obj({
@@ -385,6 +430,13 @@ export const schemas = {
     }),
     report: nullable(ref('GitHubReport')),
     employerPreview: nullable(ref('GitHubSignal')),
+    analysis: nullable(
+      obj({
+        state: en('queued', 'running', 'failed'),
+        stage: str(),
+        progress: share,
+      }),
+    ),
   }),
   FspResult: obj({
     competitionId: id,

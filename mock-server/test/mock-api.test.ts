@@ -809,14 +809,22 @@ test('GitHub connects by login or profile link, stays unverified without proof a
   assert.equal(source.accountLabel, 'Octo-Cat');
   assert.equal(source.github.ownership.verified, false);
   assert.match(source.github.ownership.code, /^fsp-/);
-  assert.equal(source.github.report.login, 'Octo-Cat');
-  assert.equal(source.github.report.activity.calendar.length, 365);
-  assert.equal(source.github.employerPreview.ownershipVerified, false);
+  // The analysis runs in the background; the report arrives with its job.
+  assert.equal(source.github.report, null);
+  assert.equal(source.github.analysis.state, 'running');
   await job(source.activeJobId, candidate);
+  const analyzed = (await request('GET', '/api/v1/me/sources', { actor: candidate })).body.items.find(
+    (item: Body) => item.provider === 'github',
+  );
+  assert.equal(analyzed.activeJobId, null);
+  assert.equal(analyzed.github.analysis, null);
+  assert.equal(analyzed.github.report.login, 'Octo-Cat');
+  assert.equal(analyzed.github.report.activity.calendar.length, 365);
+  assert.equal(analyzed.github.employerPreview.ownershipVerified, false);
   const seen = (await request('GET', '/api/v1/candidates/candidate024', { actor: employer })).body;
   assertAnonymous(seen);
   assert.equal(seen.github.ownershipVerified, false);
-  assert.deepEqual(seen.github, source.github.employerPreview);
+  assert.deepEqual(seen.github, analyzed.github.employerPreview);
   const serialized = JSON.stringify(seen.github);
   for (const hidden of ['Octo-Cat', 'demo-company', 'calendar', 'login', 'url'])
     assert.ok(!serialized.includes(hidden), `${hidden} leaked to the employer`);
