@@ -46,7 +46,7 @@ catalog skill. GitHub evidence maps languages and technologies onto catalog skil
 ### Automatic profile
 
 A candidate does not have to type anything: connecting GitHub and/or FSP builds the profile. The rules are
-`estimate-v1` in [`backend/crates/domain/src/estimate.rs`](../../backend/crates/domain/src/estimate.rs); the plan of
+`estimate-v2` in [`backend/crates/domain/src/estimate.rs`](../../backend/crates/domain/src/estimate.rs); the plan of
 record is [`docs/auto-profile.md`](../auto-profile.md).
 
 - Every finished source write (connecting FSP, a finished GitHub analysis, a sync) recomputes `estimate` from all
@@ -54,7 +54,7 @@ record is [`docs/auto-profile.md`](../auto-profile.md).
   `POST /me/profile/estimate` recomputes on request (`409 source_not_connected` without a finished source).
 - `estimate` holds the leading specializations with shares, a 0–100 seniority score with its factors (seven GitHub
   dimensions, stated experience, FSP results), the grade band (< 20 стажёр, 20–39 джуниор, 40–59 мидл, 60–79 сеньор,
-  ≥ 80 лид; сеньор needs two active years or 36 months of experience, лид three years or 60 months), the confidence,
+  ≥ 80 лид; сеньор needs 24 months of public work or stated experience, лид 48, counted in months from the first analyzed commit or the first year with ten active days, so thirteen months across a new year are not two years; `estimate-v1` counted calendar years), the confidence,
   the sources, `insufficient` when there is too little evidence, and the answers it suggests.
 - The estimate answers the questionnaire fields that are empty, that an earlier estimate filled (`autoFields`), and
   the specialization and target grade while the questionnaire is incomplete. A test-confirmed category keeps its
@@ -150,10 +150,11 @@ are.
 
 ## 4. Assessments
 
-- Supported scope: backend junior/middle/senior and frontend junior/middle
+- Supported scope: every catalog specialization at every grade, intern to lead
   (`meta.assessmentPolicy.supportedScopes`). Each attempt has ten single-choice questions selected
-  deterministically from a larger grade/specialization pool: five Rust and five PostgreSQL for backend, or five
-  TypeScript and five React for frontend. The immutable `knowledge-v2` snapshot is checked against the server bank
+  deterministically from a larger grade pool: five on each of the specialization's two catalog test topics (for
+  example Rust and PostgreSQL for backend, the 1C language and 1C queries for 1C). Topic-bank questions serve every
+  specialization tested on that topic. The immutable `knowledge-v2` snapshot is checked against the server bank
   before grading. Correct options and explanations are returned only in the final result.
 - Passing requires at least 8/10 overall and 3/5 in each subject. This measures knowledge on these questions,
   not practical development experience. The bank is public study material, not a secure certification exam.

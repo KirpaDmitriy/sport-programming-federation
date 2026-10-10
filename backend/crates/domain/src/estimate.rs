@@ -12,7 +12,7 @@ use crate::{
     Archetype, FspResult, GitHubDimensionId, GitHubReport, Grade, SignalConfidence, Specialization,
 };
 
-pub const ESTIMATE_VERSION: &str = "estimate-v1";
+pub const ESTIMATE_VERSION: &str = "estimate-v2";
 
 /// Stack items an automatic profile fills in.
 const STACK_LIMIT: usize = 12;
@@ -191,9 +191,6 @@ pub fn estimate_profile(input: &EstimateInput<'_>) -> ProfileEstimate {
         .round()
         .clamp(0.0, 100.0) as u8;
 
-    let active_years = input
-        .github
-        .map_or(0, |report| report.activity.active_years);
     let (grade, insufficient) = if input.github.is_none()
         && published.is_empty()
         && input.stated_experience_months.is_none()
@@ -213,11 +210,7 @@ pub fn estimate_profile(input: &EstimateInput<'_>) -> ProfileEstimate {
         )
     } else {
         (
-            Some(cap_grade(
-                band(score),
-                active_years,
-                experience_months.unwrap_or(0),
-            )),
+            Some(cap_grade(band(score), experience_months.unwrap_or(0))),
             None,
         )
     };
@@ -455,13 +448,12 @@ fn band(score: u8) -> Grade {
     }
 }
 
-/// Senior needs two active years or three years of experience; lead three and five.
-fn cap_grade(grade: Grade, active_years: u32, experience_months: u32) -> Grade {
-    let lead_ready = active_years >= 3 || experience_months >= 60;
-    let senior_ready = active_years >= 2 || experience_months >= 36;
+/// Senior needs two years of public work or stated experience, lead four. Months, not calendar
+/// years: thirteen months across a new year are not two years of work.
+fn cap_grade(grade: Grade, experience_months: u32) -> Grade {
     match grade {
-        Grade::Lead if !lead_ready => cap_grade(Grade::Senior, active_years, experience_months),
-        Grade::Senior if !senior_ready => Grade::Middle,
+        Grade::Lead if experience_months < 48 => cap_grade(Grade::Senior, experience_months),
+        Grade::Senior if experience_months < 24 => Grade::Middle,
         other => other,
     }
 }
@@ -496,14 +488,26 @@ fn confidence(
     }
 }
 
-/// Months from the first analyzed public commit to the report date (`YYYY-MM` of RFC 3339 times).
+/// Months of public work: from the first analyzed commit, or from the start of the first year with
+/// sustained activity (ten active days) when GitHub search reaches further back, to the report date.
 fn public_experience_months(report: &GitHubReport) -> Option<u32> {
     let month = |value: &str| -> Option<i64> {
         let year = value.get(0..4)?.parse::<i64>().ok()?;
         let month = value.get(5..7)?.parse::<i64>().ok()?;
         Some(year * 12 + month)
     };
-    let span = month(&report.coverage.to)? - month(&report.coverage.from)?;
+    let first_sustained_year = report
+        .activity
+        .yearly
+        .iter()
+        .filter(|year| year.active_days >= 10)
+        .map(|year| i64::from(year.year) * 12 + 1)
+        .min();
+    let start = match (month(&report.coverage.from), first_sustained_year) {
+        (Some(analyzed), Some(searched)) => analyzed.min(searched),
+        (analyzed, searched) => analyzed.or(searched)?,
+    };
+    let span = month(&report.coverage.to)? - start;
     (span > 0).then(|| u32::try_from(span).unwrap_or(0))
 }
 
@@ -910,13 +914,26 @@ mod tests {
         for dimension in &mut report.dimensions {
             dimension.score = 100;
         }
-        report.activity.active_years = 1;
-        report.coverage.from = "2026-01-01T00:00:00Z".into();
+        // Thirteen months across two calendar years are not two years of work.
+        report.activity.active_years = 2;
+        report.activity.yearly.retain(|year| year.year >= 2025);
+        report.coverage.from = "2025-09-01T00:00:00Z".into();
+        report.coverage.to = "2026-10-01T00:00:00Z".into();
+        for year in &mut report.activity.yearly {
+            year.active_days = 9;
+        }
         let estimate = estimate_profile(&input(Some(&report), &[]));
         assert_eq!(estimate.score, 100);
         assert_eq!(estimate.grade, Some(Grade::Middle));
-        report.activity.active_years = 3;
+        // Sustained activity found by search reaches back further than the analyzed commits.
+        report.activity.yearly.push(crate::GitHubYear {
+            year: 2021,
+            commits: 300,
+            active_days: 120,
+            pull_requests: None,
+        });
         let estimate = estimate_profile(&input(Some(&report), &[]));
+        assert_eq!(estimate.answers.experience_months, Some(69));
         assert_eq!(estimate.grade, Some(Grade::Lead));
     }
 
