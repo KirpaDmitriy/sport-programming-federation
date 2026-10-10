@@ -258,6 +258,18 @@ const REQUIREMENTS_CONCEPTS: &[&[&str]] = &[
     &["соглас", "критер"],
     &["риск", "компромисс"],
 ];
+const DISAGREEMENT_CONCEPTS: &[&[&str]] = &[
+    &["цель", "интерес", "позици"],
+    &["факт", "данн", "критер"],
+    &["вариант", "компромисс", "эксперимент"],
+    &["договор", "решен", "эскалац"],
+];
+const FEEDBACK_CONCEPTS: &[&[&str]] = &[
+    &["конкрет", "пример", "наблюден"],
+    &["влия", "последств", "результат"],
+    &["спрос", "выслуш", "точк"],
+    &["договор", "следующ", "провер"],
+];
 
 static BACKEND_MIDDLE_NODES: &[CompetencyNode] = &[
     CompetencyNode {
@@ -348,6 +360,30 @@ static BACKEND_MIDDLE_NODES: &[CompetencyNode] = &[
             "Требование допускает два разных толкования, а срок уже близко. Как вы будете действовать?",
         ],
         concept_groups: REQUIREMENTS_CONCEPTS,
+    },
+    CompetencyNode {
+        id: "collaboration.disagreement",
+        label: "Разбирает рабочее разногласие без эскалации конфликта",
+        kind: CompetencyKind::Behavioral,
+        criticality: 4,
+        prerequisites: &["collaboration.requirements"],
+        question_templates: &[
+            "Вы считаете решение рискованным, а коллега настаивает на нём и встреча зашла в тупик. Как продолжите разговор?",
+            "Архитектор и продуктовый менеджер предлагают несовместимые приоритеты. Как поможете команде принять решение?",
+        ],
+        concept_groups: DISAGREEMENT_CONCEPTS,
+    },
+    CompetencyNode {
+        id: "collaboration.feedback",
+        label: "Даёт и принимает рабочую обратную связь",
+        kind: CompetencyKind::Behavioral,
+        criticality: 3,
+        prerequisites: &["collaboration.requirements"],
+        question_templates: &[
+            "Коллега второй раз срывает договорённость и болезненно реагирует на замечания. Как вы дадите обратную связь?",
+            "На ревью вам резко указали на системную ошибку. Как вы отреагируете и что сделаете дальше?",
+        ],
+        concept_groups: FEEDBACK_CONCEPTS,
     },
 ];
 

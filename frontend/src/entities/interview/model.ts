@@ -14,10 +14,22 @@ export const interviewsQuery = (scope: Scope) =>
     queryFn: async ({ signal }) => requireData(await api.GET('/api/v1/me/interviews', { signal })),
   });
 
+export const interviewQuery = (scope: Scope, id: string) =>
+  queryOptions({
+    queryKey: interviewKey(scope, id),
+    queryFn: async ({ signal }) =>
+      requireData(
+        await api.GET('/api/v1/me/interviews/{interviewId}', {
+          params: { path: { interviewId: id } },
+          signal,
+        }),
+      ),
+  });
+
 export async function startInterview() {
   return requireData(
     await api.POST('/api/v1/me/interviews', {
-      body: { blueprintId: 'backend-middle-v1', maxTurns: 10 },
+      body: { blueprintId: 'backend-middle-v1', maxTurns: 12 },
     }),
   );
 }
