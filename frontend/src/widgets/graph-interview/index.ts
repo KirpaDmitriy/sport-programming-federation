@@ -1,1 +1,1 @@
-export { GraphInterview } from './graph-interview';
+export { GraphInterview, InterviewGraph, InterviewWorkspace } from './graph-interview';

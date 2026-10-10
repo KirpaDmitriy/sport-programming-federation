@@ -135,6 +135,22 @@ const interviewNodes: Interview['nodes'] = [
     prerequisites: [],
     state: 'unknown',
   },
+  {
+    id: 'collaboration.disagreement',
+    label: 'Разбирает рабочее разногласие без эскалации конфликта',
+    kind: 'behavioral',
+    criticality: 4,
+    prerequisites: ['collaboration.requirements'],
+    state: 'unknown',
+  },
+  {
+    id: 'collaboration.feedback',
+    label: 'Даёт и принимает рабочую обратную связь',
+    kind: 'behavioral',
+    criticality: 3,
+    prerequisites: ['collaboration.requirements'],
+    state: 'unknown',
+  },
 ];
 
 const interviewPrompt = (nodeId: string) =>
@@ -144,7 +160,11 @@ const interviewPrompt = (nodeId: string) =>
       ? 'Как сформировать и ограничить область действия ключа операции, чтобы не склеить разные запросы?'
       : nodeId === 'backend.transactions'
         ? 'Какие изменения должны попасть в одну транзакцию при создании заказа и записи результата операции?'
-        : 'Требование допускает два толкования, а срок уже близко. Как вы будете действовать?';
+        : nodeId === 'collaboration.disagreement'
+          ? 'Вы считаете решение рискованным, а коллега настаивает на нём. Как продолжите разговор?'
+          : nodeId === 'collaboration.feedback'
+            ? 'Коллега второй раз срывает договорённость. Как вы дадите обратную связь?'
+            : 'Требование допускает два толкования, а срок уже близко. Как вы будете действовать?';
 
 function interviewQuestion(nodeId: string, sequence: number): NonNullable<Interview['currentQuestion']> {
   const prompt = interviewPrompt(nodeId);
@@ -1566,7 +1586,11 @@ const handlers: Handlers = {
           ? ['ключ', 'уникаль', 'област']
           : question.nodeId === 'backend.transactions'
             ? ['транзакц', 'атомар', 'откат']
-            : ['уточ', 'соглас', 'риск'];
+            : question.nodeId === 'collaboration.disagreement'
+              ? ['цель', 'факт', 'вариант', 'договор']
+              : question.nodeId === 'collaboration.feedback'
+                ? ['пример', 'влия', 'выслуш', 'следующ']
+                : ['уточ', 'соглас', 'риск'];
     const matched = groups.filter((term) => normalized.includes(term)).length;
     const state: Interview['nodes'][number]['state'] =
       matched === groups.length ? 'confirmed' : matched * 2 >= groups.length ? 'partial' : 'observed';
@@ -1589,13 +1613,30 @@ const handlers: Handlers = {
       state !== 'confirmed'
         ? node.prerequisites.find((id) => item.nodes.find((candidate) => candidate.id === id)?.state === 'unknown')
         : undefined;
+    const behavioralAnswers = item.evidence.filter(
+      (entry) => item.nodes.find((candidate) => candidate.id === entry.nodeId)?.kind === 'behavioral',
+    ).length;
+    const dueBehavioral =
+      Math.floor(item.evidence.length / 3) > behavioralAnswers
+        ? item.nodes
+            .filter(
+              (candidate) =>
+                candidate.kind === 'behavioral' &&
+                candidate.state === 'unknown' &&
+                candidate.prerequisites.every(
+                  (id) => item.nodes.find((prerequisite) => prerequisite.id === id)?.state !== 'unknown',
+                ),
+            )
+            .sort((a, b) => b.criticality - a.criticality)[0]?.id
+        : undefined;
     const next =
       unknownPrerequisite ??
+      dueBehavioral ??
       item.nodes.find((candidate) => candidate.state === 'unknown')?.id ??
       (state !== 'confirmed' && item.evidence.filter((entry) => entry.nodeId === node.id).length < 2
         ? node.id
         : undefined);
-    if (!next || item.evidence.length >= 10) {
+    if (!next || item.evidence.length >= 12) {
       item.status = 'completed';
       item.currentQuestion = null;
     } else {
