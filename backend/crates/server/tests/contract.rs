@@ -1006,8 +1006,8 @@ async fn assessment_guards_cooldown_and_downgrade() {
     .await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
     assert_eq!(code(&body), "grade_downgrade_forbidden");
-    // The frontend specialization is outside the supported scope.
-    let (status, body) = send_keyed(
+    // Every catalog specialization and grade has a test now; other guards may still apply.
+    let (_, body) = send_keyed(
         &app,
         "POST",
         "/api/v1/me/assessments",
@@ -1016,8 +1016,7 @@ async fn assessment_guards_cooldown_and_downgrade() {
         json!({"specialization": "frontend", "grade": "senior"}),
     )
     .await;
-    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
-    assert_eq!(code(&body), "assessment_scope_unavailable");
+    assert_ne!(code(&body), "assessment_scope_unavailable");
 }
 
 #[tokio::test]
