@@ -52,6 +52,7 @@ policy, race-safe speech lifecycle and failure-safe acceptance teardown. Detaile
 docs/stability-review-2026-10-11.md. Documentation and project-specific Claude/Serena memories were reconciled.
 External follow-up #139 requires a new dedicated repo-scoped CI token from the owner. Existing shared scopes
 were verified; do not alter or revoke that credential. Read current issue receipts before claiming live completion.
+The tested `infra/ci/install_token.py` prepares guarded installation; it cannot issue the owner's PAT. See the CI runbook.
 
 Memory index: platform.md (auth/data/assessment), frontend.md (UI/proofs), operations.md (deployment/mail/CI/recovery).
 Release identity: compare upstream/main, /opt/fsp/current and deployed.json instead of trusting a SHA written here.
