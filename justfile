@@ -52,7 +52,7 @@ fsp-simulator:
 interview:
     cd backend && INTERVIEW_API_TOKEN=${INTERVIEW_API_TOKEN:-demo-interview-token} DATABASE_URL=${DATABASE_URL:-postgres://fsp:fsp@127.0.0.1:5434/fsp} cargo run -p fsp-interview-service
 
-# Public GitHub analysis on 127.0.0.1:4030; needs GITHUB_TOKEN and FSP_GITHUB_INSIGHTS_URL for the API.
+# Public GitHub analysis on 127.0.0.1:4030; tokenless; set FSP_GITHUB_INSIGHTS_URL for the API.
 github-insights:
     cd backend && cargo run -p fsp-github-insights --bin fsp-github-insights
 

@@ -1,7 +1,7 @@
 # Platform behavior
 
 Rust/PostgreSQL implements the stand; the HTTP mock is a development behavior reference. OpenAPI contains
-75 application operations, health and four mock-only controls. Update every contract consumer together.
+79 application operations, health and four mock-only controls. Update every contract consumer together.
 Commands and idempotency replay commit atomically. PostgreSQL serializes email budgets, profile/source/assessment,
 company/shortlist and disclosure changes. Viewed flags never replace terminal decisions. Nullable patches and
 bounded fields follow the contract. Candidate/company ownership and anonymous projections are server-enforced.
@@ -11,7 +11,8 @@ challenge-bound HMAC digests, separate session namespace, single use and five cu
 Real-mail issuance allows one/minute and five/15 minutes per normalized address, including provider failures.
 Migration 0005 adds created_at/index; never edit earlier SQL. Mandatory production config is validated before
 migrations. Enabling/rotating FSP_AUTH_KEY invalidates old credentials without deleting accounts. Demo/mock delivery
-remains fixed and has no mailbox-ownership assurance. The realEmail capability describes configuration, not health.
+remains fixed and has no mailbox-ownership assurance. In Resend mode only alexey@example.com,
+hr@sever-tech.example and hr@second-company.example retain that disclosed exception. The realEmail capability describes configuration, not health.
 
 New attempts use knowledge-v2 for every catalog specialization and grade (intern–lead) on its two catalog test
 topics; topic banks knowledge-v3-*.json are shared by specializations with the same topic. The attempt id selects
@@ -28,8 +29,14 @@ clones) polled through a running source_sync job; developer portrait, own organi
 only outside them; ownership by bio code (OAuth optional, deferred), one proven login per candidate, evidence only
 from owned/led repos, anonymous rounded employer signal, no grade/order effect.
 
-Limits: public study bank lacks demonstrated leak resistance/professional calibration; model suggestions never
-prove qualifications. Jobs finish inline except polled GitHub analyses; search ranks collections in memory. No OCR, durable worker, measured
-large-bank capacity or production load claim. Current behavior/limits: docs/current-state.md; latest consistency evidence: #50; prior product completion #31.
+Competence graphs are deterministic catalog/evidence projections (service/graphs.rs), not LLM output.
+Graph interviews use private service 4040 and PostgreSQL optimistic revisions; start/answer require processing
+consent, revocation preserves read access. Model evaluation and next question share 45 seconds before persistence,
+inside the 50-second gateway, 55-second API and 60-second nginx deadlines. Failure preserves the current turn.
+Interview voice/text is a client-declared format, not identity/competence evidence; it never changes grade/rank.
 
-Release identity: upstream/main, /opt/fsp/current and deployed.json agree; receipts: #54 (no-backup policy), #67 (GitHub insights).
+Limits: public study bank lacks demonstrated leak resistance/professional calibration; model suggestions never
+prove qualifications. Jobs finish inline except polled GitHub analyses and process-local coalesced estimate reviews; search ranks collections in memory. No OCR, durable worker, measured
+large-bank capacity or production load claim. Current behavior/limits: docs/current-state.md; latest consistency review: #138; prior product completion #31.
+
+Verify release identity against upstream/main, /opt/fsp/current and deployed.json; #138 records final proof.

@@ -4,6 +4,8 @@ set -euo pipefail
 base="${1:?usage: nginx.sh <base-url>}"
 directory="$(mktemp -d)"
 trap 'rm -rf "$directory"' EXIT
+curl --max-time 3 -fsS -D "$directory/headers" -o /dev/null "$base/"
+grep -Eqi '^Permissions-Policy:.*camera=\(\), microphone=\(self\), geolocation=\(\)' "$directory/headers"
 limited=0
 for _ in {1..13}; do
   status="$(curl --max-time 3 -sS -D "$directory/headers" -o "$directory/body" -w '%{http_code}' \

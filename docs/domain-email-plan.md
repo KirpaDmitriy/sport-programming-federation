@@ -83,7 +83,8 @@ recorded in issues #38 and #40; use those ledgers and the CI release marker for 
   verification of the cutover found no JavaScript errors or server 5xx. No OpenObserve is installed;
   operational verification uses systemd/nginx and CI logs.
 
-Private delivery/login proof, provider configuration and backup copies stay in the ignored `.fsp-infra/`.
+Private delivery/login proof and provider configuration stay in the ignored `.fsp-infra/`.
 The CI host records accepted releases only after deployment and the real public mail/browser journey pass;
 `/var/lib/fsp-ci/deployed.json` and `fsp/deployment` are authoritative for that result. CI logs retain 14 days.
-Daily local backups retain 14 days; verified off-host copies are manual, not an automated recovery service.
+Backup creation and off-host copies are disabled by the subsequent owner policy (#54); existing backup archives
+were deleted. The earlier restore receipts above are historical evidence only.

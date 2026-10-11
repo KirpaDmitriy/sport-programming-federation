@@ -1092,6 +1092,50 @@ async fn graph_interview_is_scoped_to_the_authenticated_candidate() {
         get(&app, "/api/v1/me/interviews", Some(&employer)).await.0,
         StatusCode::FORBIDDEN
     );
+
+    let (status, _) = send(
+        &app,
+        "PATCH",
+        "/api/v1/me/profile",
+        Some(&candidate),
+        json!({"consents":{"processing":false,"publication":false}}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    for (path, body) in [
+        (
+            "/api/v1/me/interviews",
+            json!({"blueprintId":"backend-middle-v1","maxTurns":10}),
+        ),
+        (
+            "/api/v1/me/interviews/interview-test/answers",
+            json!({"questionId":"question-1","answer":"Ответ","responseMode":"text","revision":0}),
+        ),
+    ] {
+        let (status, body) = send(&app, "POST", path, Some(&candidate), body).await;
+        assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
+        assert_eq!(code(&body), "processing_consent_required");
+    }
+    // Revocation stops new processing, not access to the candidate's own history.
+    assert_eq!(
+        get(
+            &app,
+            "/api/v1/me/interviews/interview-test",
+            Some(&candidate)
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    let (status, _) = send(
+        &app,
+        "POST",
+        "/api/v1/me/interviews/interview-test/answers",
+        Some(&other_candidate),
+        json!({"questionId":"question-1","answer":"Ответ","responseMode":"text","revision":0}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]

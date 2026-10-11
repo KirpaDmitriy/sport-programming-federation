@@ -124,15 +124,27 @@ Without skills: an empty state with «Подключить GitHub» and «Про
 ### `/candidate/assessments` — «Проверки»
 
 When `graphInterviews` is enabled, «Интервью по карте навыков» starts or resumes an authenticated interview.
-The dependency tree marks the current competency and confirmed gaps; its nested-list structure remains available to
-assistive technology. The adjacent dialogue keeps the text question and answer as the required path, with optional
-local Russian speech playback. A weak composite answer moves to an unresolved prerequisite, evidence remains visible,
-the session survives reloads, and a completed session can be followed by a new one.
+The action opens `/candidate/interviews/{id}`. The session survives reloads, and a completed session can be followed
+by a new one.
 
 Below it, «Как устроена проверка» describes versioned knowledge tests, server drafts, scoring thresholds, allowed AI,
 failure and service-error rules, the server cooldown, grade restrictions and supported scopes. «Следующий шаг» and
 «История попыток» show date, target and variant, status, effect on the category («Джуниор → Мидл», «Грейд сохранён»,
 «Без изменений, штрафа и ожидания нет»), «Продолжить» or «Подробнее».
+
+### `/candidate/interviews/{id}` — graph interview
+
+![Graph interview](screenshots/22-graph-interview.png)
+
+The graph shows prerequisite edges, the current competency and observed/confirmed evidence; «Граф списком» provides
+a text alternative. A weak composite answer moves to an unresolved prerequisite. The adjacent dialogue supports
+text answers and optional browser speech. Before recording, the interface explains that the browser may send audio
+to its recognition service; the platform receives only the confirmed text. Recognition starts on a click and stops
+before submission. Failures preserve the draft; late callbacks cannot alter a sent answer or the next question.
+Input controls are disabled while an answer is being evaluated. The completed state says «Интервью завершено».
+The voice/text format indicator is not proof of identity or a professional grade.
+
+[Mobile example](screenshots/22b-graph-interview-mobile.png). These screenshots use fictional mock data.
 
 ### `/candidate/assessments/{id}/workspace` — knowledge test
 
