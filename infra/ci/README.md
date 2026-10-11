@@ -84,7 +84,7 @@ tooling. Remove the one-time local handoff file after successful replacement; th
 
 Tests run with `python3 -m unittest discover -s infra/ci -p 'test_*.py'` and in `fsp/release-safety`. They cover scope,
 identity, expiry, controller contention, provider errors, failed atomic replacement, private modes and secret-free
-errors. Sources: [GitHub PAT limitations](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens),
+errors; rejected HTTP responses are explicitly closed before reporting a sanitized status code. Sources: [GitHub PAT limitations](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens),
 [scope headers](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/scopes-for-oauth-apps),
 [expiration header](https://github.blog/changelog/2021-07-26-expiration-options-for-personal-access-tokens/).
 
@@ -102,7 +102,9 @@ Inspect `journalctl -u fsp-ci.service` and private `/var/lib/fsp-ci/logs/<sha>/*
 `/var/lib/fsp-ci/evidence/`. A failed revision is retried by removing only its matching evidence JSON and requesting a
 cycle. New content automatically receives new checks. A deployment failure remains red, retries at most three times with five-minute spacing, and never blocks
 PR checks needed to fix it. After fixing infrastructure, remove only `deploy-attempts.json` to retry; a new main
-SHA or changed public URL/auth mode/inbox key starts a fresh acceptance cycle. `deployed.json` records only actual accepted releases. Stop the timer to pause
+SHA or changed public URL/auth mode/inbox key starts a fresh acceptance cycle. `deployed.json` records only actual accepted releases. If GitHub rejects the final success-status write, the next
+cycle reconciles it from the matching accepted SHA/configuration without redeploying or repeating browser
+acceptance; successful status receipts still bound duplicate writes. Stop the timer to pause
 new cycles; stop the service separately only when deliberately interrupting a running check/release.
 
 For controller upgrades: stop the timer, wait for the current service to finish, review the diff, run `install-host.sh`
