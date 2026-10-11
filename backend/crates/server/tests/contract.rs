@@ -2275,3 +2275,61 @@ async fn production_secret_invalidates_demo_credentials_and_rotates_sessions() {
         StatusCode::UNAUTHORIZED
     );
 }
+
+#[tokio::test]
+async fn vacancy_fit_is_identical_across_roles_and_policy_changes() {
+    let app = test_app().await;
+    let employer = login(&app, EMPLOYER, "employer").await;
+    let candidate = login(&app, CANDIDATE_JUNIOR, "candidate").await;
+    let (_, profile) = get(&app, "/api/v1/me/profile", Some(&candidate)).await;
+    let (_, need) = get(&app, "/api/v1/needs/need-001", Some(&employer)).await;
+    let (status, published) = post(&app, "/api/v1/needs/need-001/publish", Some(&employer)).await;
+    assert_eq!(status, StatusCode::OK, "{published}");
+    for accept_assessments in [true, false] {
+        let mut requirements = need["requirements"].clone();
+        for requirement in requirements.as_array_mut().unwrap() {
+            requirement["evidencePolicy"]["acceptAssessments"] = json!(accept_assessments);
+            requirement["evidencePolicy"]["acceptGithub"] = json!(true);
+        }
+        let (status, updated) = send(
+            &app,
+            "PATCH",
+            "/api/v1/needs/need-001",
+            Some(&employer),
+            json!({"requirements": requirements}),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{updated}");
+        let (_, own) = get(&app, "/api/v1/vacancies/need-001", Some(&candidate)).await;
+        let path = format!(
+            "/api/v1/candidates/{}?needId=need-001",
+            profile["id"].as_str().unwrap()
+        );
+        let (status, seen) = get(&app, &path, Some(&employer)).await;
+        assert_eq!(status, StatusCode::OK, "{seen}");
+        assert_eq!(seen["match"], own["match"]);
+        let requirements = seen["match"]["requirements"].as_array().unwrap();
+        let confirmed = requirements
+            .iter()
+            .filter(|item| item["criticality"] == "required" && item["status"] == "meets")
+            .count();
+        assert_eq!(seen["match"]["requiredMet"], confirmed);
+        if !accept_assessments {
+            assert_eq!(confirmed, 0);
+        }
+        for field in [
+            "email",
+            "name",
+            "sourceLinks",
+            "accountLabel",
+            "teamName",
+            "protocolReference",
+            "rationale",
+        ] {
+            assert!(
+                !seen.to_string().contains(&format!("\"{field}\":")),
+                "private field {field}"
+            );
+        }
+    }
+}
