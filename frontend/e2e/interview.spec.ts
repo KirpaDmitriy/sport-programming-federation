@@ -63,6 +63,8 @@ test('speech failures preserve the draft and detached callbacks cannot change a 
     await expect
       .poll(() => page.locator('#app-navigation').evaluate((navigation) => navigation.getBoundingClientRect().right))
       .toBeLessThanOrEqual(0);
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await page.screenshot({
       path: 'docs/screenshots/22b-graph-interview-mobile.png',
