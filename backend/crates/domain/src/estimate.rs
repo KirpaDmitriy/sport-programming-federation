@@ -12,7 +12,7 @@ use crate::{
     Archetype, FspResult, GitHubDimensionId, GitHubReport, Grade, SignalConfidence, Specialization,
 };
 
-pub const ESTIMATE_VERSION: &str = "estimate-v4";
+pub const ESTIMATE_VERSION: &str = "estimate-v5";
 
 /// Stack items an automatic profile fills in.
 const STACK_LIMIT: usize = 12;
@@ -862,7 +862,8 @@ const TENURE_FULL_MONTHS: f64 = 72.0;
 /// совместная работа»); lead needs it unless the candidate states a leading role.
 const LEAD_COLLABORATION: u8 = 50;
 
-/// A stated team role that leads people or technical direction.
+/// A stated team role that leads people or technical direction, in Russian or English spelling
+/// («тимлид», «стафф-инженер», «principal engineer», «главный архитектор», «head of …»).
 fn leading_role(role: &str) -> bool {
     let lower = role.to_lowercase();
     [
@@ -874,7 +875,11 @@ fn leading_role(role: &str) -> bool {
         "архитект",
         "architect",
         "principal",
+        "принципал",
         "staff",
+        "стафф",
+        "стаф ",
+        "главн",
         "директор",
         "director",
     ]
@@ -1879,6 +1884,20 @@ mod tests {
         let mut developer = input(Some(&report), &[]);
         developer.stated_team_role = Some("Разработчик");
         assert_eq!(estimate_profile(&developer).grade, Some(Grade::Senior));
+        // Russian and English spellings of leading roles count alike.
+        for role in [
+            "Стафф-инженер",
+            "staff engineer",
+            "Принципал-инженер",
+            "Главный архитектор",
+            "Head of Platform",
+        ] {
+            assert!(leading_role(role), "{role}");
+        }
+        for role in ["Разработчик", "Инженер-программист", "Software engineer"]
+        {
+            assert!(!leading_role(role), "{role}");
+        }
         let mut lead = input(Some(&report), &[]);
         lead.stated_team_role = Some("Тимлид платформы");
         let lead = estimate_profile(&lead);

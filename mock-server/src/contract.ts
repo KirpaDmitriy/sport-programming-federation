@@ -183,7 +183,7 @@ export const schemas = {
   }),
   EstimateFactor: obj({ id: str(), label: str(), points: share, max: share, detail: str() }),
   ProfileEstimate: obj({
-    version: en('estimate-v1', 'estimate-v2', 'estimate-v3', 'estimate-v4'),
+    version: en('estimate-v1', 'estimate-v2', 'estimate-v3', 'estimate-v4', 'estimate-v5'),
     computedAt: dt,
     specialization: nullable(specialization),
     specializations: arr(obj({ id: specialization, percent: share })),
