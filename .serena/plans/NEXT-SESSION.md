@@ -76,9 +76,11 @@ Receipts: #54 (no-backup policy), #67 (GitHub insights delivery and live check),
 
 ## Pending service shutdown correction (#162)
 
-A separate worktree .fsp-infra/worktrees/162-graceful-shutdown holds feat/162-graceful-shutdown from upstream/dev.
+PR #163 into danil uses worktree .fsp-infra/worktrees/162-graceful-shutdown and branch feat/162-graceful-shutdown
+from upstream/dev. Independent code review passed; it is not live verification.
 Implementation 0f5070a handles SIGTERM as well as SIGINT in interview/simulator/insights; the API already did so.
-API/interview systemd and web/API/interview Compose stop grace is 60 seconds. The old binary failed the real
+Follow-up b56bcff propagates signal-registration errors from all four composition roots before axum spawns its
+shutdown task. API/interview systemd and web/API/interview Compose stop grace is 60 seconds. The old binary failed the real
 pending-answer regression; both signals now finish HTTP, save revision/evidence (1,1), then exit successfully.
 Local Rust fmt/clippy and 131 tests passed; release fault checks and four auxiliary-binary signal probes passed.
 This change is not deployed. Restore CI (#161), ship #160, reconcile this branch with the updated personal branch
