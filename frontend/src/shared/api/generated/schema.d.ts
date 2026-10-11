@@ -1614,7 +1614,7 @@ export interface components {
         };
         ProfileEstimate: {
             /** @enum {string} */
-            version: "estimate-v1" | "estimate-v2" | "estimate-v3" | "estimate-v4";
+            version: "estimate-v1" | "estimate-v2" | "estimate-v3" | "estimate-v4" | "estimate-v5";
             /** Format: date-time */
             computedAt: string;
             specialization: ("backend" | "frontend" | "fullstack" | "ios" | "android" | "mobile_crossplatform" | "devops" | "data_engineering" | "data_science" | "ml_engineering" | "qa_manual" | "qa_automation" | "security" | "embedded" | "systems" | "gamedev" | "onec" | "erp" | "system_analysis" | "business_analysis" | "data_analytics" | "dba" | "sysadmin" | "design" | "management") | null;
