@@ -2697,6 +2697,8 @@ export interface components {
         InterviewAnswerInput: {
             questionId: string;
             answer: string;
+            /** @enum {string} */
+            responseMode: "text" | "voice";
             revision: number;
         };
         InterviewDelivery: {
@@ -2709,6 +2711,8 @@ export interface components {
             nodeId: string;
             prompt: string;
             sequence: number;
+            /** @enum {string} */
+            recommendedResponseMode: "text" | "voice";
             delivery: components["schemas"]["InterviewDelivery"];
         };
         InterviewNode: {
@@ -2730,6 +2734,9 @@ export interface components {
             rationale: string;
             evaluator: string;
             rubricVersion: string;
+            /** @enum {string} */
+            responseMode: "text" | "voice";
+            signalStrength: number;
         };
         Interview: {
             id: string;

@@ -16,6 +16,7 @@ import { useScope } from '@/entities/session';
 import { describeError, isApiError } from '@/shared/api';
 import { Button, Callout, Card, cx, ErrorState, Icon, LoadingState, StatusChip, TextareaField } from '@/shared/ui';
 import styles from './graph-interview.module.css';
+import { speechErrorMessage, submittedResponseMode } from './speech';
 
 const stateLabel: Record<InterviewNode['state'], string> = {
   unknown: 'Не проверено',
@@ -165,7 +166,7 @@ type Recognition = {
   continuous: boolean;
   interimResults: boolean;
   onresult: ((event: RecognitionEvent) => void) | null;
-  onerror: (() => void) | null;
+  onerror: ((event: { error: string }) => void) | null;
   onend: (() => void) | null;
   start: () => void;
   stop: () => void;
@@ -209,7 +210,8 @@ export function InterviewWorkspace({ interview }: { interview: Interview }) {
   const recognition = useRef<Recognition | null>(null);
   const [answer, setAnswer] = useState('');
   const [interim, setInterim] = useState('');
-  const [inputMode, setInputMode] = useState<'voice' | 'text'>(() => (recognitionConstructor() ? 'voice' : 'text'));
+  const [inputMode, setInputMode] = useState<'voice' | 'text'>('text');
+  const [voiceCaptured, setVoiceCaptured] = useState(false);
   const [listening, setListening] = useState(false);
   const [speaking, setSpeaking] = useState(false);
   const [speechError, setSpeechError] = useState<string | null>(null);
@@ -230,12 +232,16 @@ export function InterviewWorkspace({ interview }: { interview: Interview }) {
   useEffect(() => {
     setAnswer('');
     setInterim('');
+    setVoiceCaptured(false);
+    setSpeechError(null);
+    setInputMode(question?.recommendedResponseMode === 'voice' && recognitionConstructor() ? 'voice' : 'text');
+    if (!question?.id) return undefined;
     const timer = window.setTimeout(sayQuestion, 250);
     return () => {
       window.clearTimeout(timer);
       window.speechSynthesis?.cancel();
     };
-  }, [sayQuestion]);
+  }, [question?.id, question?.recommendedResponseMode, sayQuestion]);
 
   useEffect(() => () => recognition.current?.abort(), []);
 
@@ -254,7 +260,7 @@ export function InterviewWorkspace({ interview }: { interview: Interview }) {
     window.speechSynthesis?.cancel();
     const instance = new Constructor();
     instance.lang = 'ru-RU';
-    instance.continuous = true;
+    instance.continuous = false;
     instance.interimResults = true;
     instance.onresult = (event) => {
       let finalText = '';
@@ -265,12 +271,16 @@ export function InterviewWorkspace({ interview }: { interview: Interview }) {
         if (result.isFinal) finalText += `${result[0].transcript} `;
         else interimText += result[0].transcript;
       }
-      if (finalText) setAnswer((current) => `${current}${current ? ' ' : ''}${finalText.trim()}`);
+      if (finalText) {
+        setAnswer((current) => `${current}${current ? ' ' : ''}${finalText.trim()}`);
+        setVoiceCaptured(true);
+      }
       setInterim(interimText);
     };
-    instance.onerror = () => {
+    instance.onerror = (event) => {
       setListening(false);
-      setSpeechError('Не удалось распознать речь. Можно повторить или перейти к тексту.');
+      if (event.error === 'aborted') return;
+      setSpeechError(speechErrorMessage(event.error));
     };
     instance.onend = () => {
       setListening(false);
@@ -289,6 +299,7 @@ export function InterviewWorkspace({ interview }: { interview: Interview }) {
       return answerInterview(interview.id, {
         questionId: question.id,
         answer: answer.trim(),
+        responseMode: submittedResponseMode(inputMode, voiceCaptured),
         revision: interview.revision,
       });
     },
@@ -342,7 +353,7 @@ export function InterviewWorkspace({ interview }: { interview: Interview }) {
                   icon="mic"
                   onClick={() => setInputMode('voice')}
                 >
-                  Ответить голосом
+                  Ответить голосом{question.recommendedResponseMode === 'voice' ? ' · рекомендуем' : ''}
                 </Button>
                 <Button
                   size="sm"
@@ -354,7 +365,7 @@ export function InterviewWorkspace({ interview }: { interview: Interview }) {
                     setInputMode('text');
                   }}
                 >
-                  Перейти к тексту
+                  Ответить текстом{question.recommendedResponseMode === 'text' ? ' · рекомендуем' : ''}
                 </Button>
               </div>
               {inputMode === 'voice' && (
@@ -367,7 +378,11 @@ export function InterviewWorkspace({ interview }: { interview: Interview }) {
                     {listening ? 'Остановить запись' : answer ? 'Продолжить ответ' : 'Начать ответ'}
                   </Button>
                   <span>
-                    {listening ? 'Говорите — текст появляется ниже' : 'Микрофон включается только по нажатию'}
+                    {listening
+                      ? 'Говорите — текст появляется ниже'
+                      : voiceCaptured
+                        ? 'Голос записан: ответ даст усиленный коммуникационный сигнал'
+                        : 'Микрофон включается только по нажатию'}
                   </span>
                 </div>
               )}
@@ -375,7 +390,13 @@ export function InterviewWorkspace({ interview }: { interview: Interview }) {
               <TextareaField
                 id="interview-answer"
                 label={inputMode === 'voice' ? 'Расшифровка ответа' : 'Ваш ответ'}
-                hint={interim ? `Распознаём: ${interim}` : 'Можно отредактировать текст перед отправкой.'}
+                hint={
+                  interim
+                    ? `Распознаём: ${interim}`
+                    : inputMode === 'voice'
+                      ? 'Проверьте расшифровку. Голосовой ответ учитывается как более сильный сигнал формата общения.'
+                      : 'Текстовый ответ оценивает ясность письменной коммуникации.'
+                }
                 rows={6}
                 maxLength={8000}
                 value={answer}
@@ -408,6 +429,9 @@ export function InterviewWorkspace({ interview }: { interview: Interview }) {
             {interview.evidence.map((entry) => (
               <li key={entry.questionId}>
                 <strong>{interview.nodes.find((node) => node.id === entry.nodeId)?.label ?? entry.nodeId}</strong>
+                <span className={styles.evidenceSignal}>
+                  {entry.responseMode === 'voice' ? 'Голос · усиленный сигнал' : 'Текст · стандартный сигнал'}
+                </span>
                 <p>{entry.rationale}</p>
                 <blockquote>{entry.answerExcerpt}</blockquote>
               </li>
@@ -445,14 +469,14 @@ export function GraphInterview({ available }: { available: boolean }) {
           <span className={styles.eyebrow}>
             <Icon name="sparkles" size={16} /> Новый формат проверки
           </span>
-          <h2>Собеседование по графу навыков</h2>
+          <h2>Интервью по карте навыков</h2>
           <p>
             Живой диалог с голосом и расшифровкой проверяет техническое мышление, коммуникацию, обратную связь и работу
             с разногласиями.
           </p>
           <div className={styles.features}>
             <span>
-              <Icon name="mic" size={16} /> Голос или текст
+              <Icon name="mic" size={16} /> Голос и текст
             </span>
             <span>
               <Icon name="branch" size={16} /> Адаптивный маршрут

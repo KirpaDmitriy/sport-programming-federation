@@ -7,7 +7,7 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
 
-use crate::domain::{BACKEND_MIDDLE, InterviewListView, InterviewView};
+use crate::domain::{BACKEND_MIDDLE, InterviewListView, InterviewView, ResponseMode};
 use crate::engine::{InterviewService, ServiceError};
 
 #[derive(Clone)]
@@ -97,6 +97,7 @@ async fn answer_interview(
                 &interview_id,
                 &request.question_id,
                 &request.answer,
+                request.response_mode,
                 request.revision,
             )
             .await?,
@@ -133,6 +134,7 @@ struct StartInterviewRequest {
 struct AnswerInterviewRequest {
     question_id: String,
     answer: String,
+    response_mode: ResponseMode,
     revision: u32,
 }
 

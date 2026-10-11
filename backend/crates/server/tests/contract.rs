@@ -1071,7 +1071,7 @@ async fn graph_interview_is_scoped_to_the_authenticated_candidate() {
         "POST",
         "/api/v1/me/interviews/interview-test/answers",
         Some(&candidate),
-        json!({"questionId":"question-1","answer":"Ответ","revision":0}),
+        json!({"questionId":"question-1","answer":"Ответ","responseMode":"text","revision":0}),
     )
     .await;
     assert_eq!(status, StatusCode::OK);
