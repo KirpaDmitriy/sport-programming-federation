@@ -29,6 +29,7 @@ const fieldLabels: Record<string, string> = {
   stack: 'Стек',
   teamRole: 'Роль в команде',
   experienceMonths: 'Стаж',
+  experienceSince: 'В IT с года',
   experience: 'Опыт',
   softSkills: 'Навыки общения',
 };
@@ -136,13 +137,29 @@ function PreviewForm({ jobId, result, onDone }: { jobId: string; result: ImportR
             />
           )}
         </form.Field>
+        <form.Field name="experienceSince">
+          {(field) => (
+            <TextField
+              id="import-since"
+              label="В IT с какого года"
+              inputMode="numeric"
+              maxLength={4}
+              hint="Из резюме: учёба, первая работа или «программирую с …». Пусто — год не указан"
+              value={field.state.value === null ? '' : String(field.state.value)}
+              onChange={(event) => {
+                const digits = event.target.value.replace(/\D/g, '').slice(0, 4);
+                field.handleChange(digits === '' ? null : Number(digits));
+              }}
+            />
+          )}
+        </form.Field>
         <form.Field name="experienceMonths">
           {(field) => (
             <TextField
               id="import-months"
               label="Стаж, месяцев"
               inputMode="numeric"
-              hint="Пусто — стаж не указан"
+              hint="Если в резюме указан общий стаж в месяцах. Год начала в IT важнее"
               value={field.state.value === null ? '' : String(field.state.value)}
               onChange={(event) => {
                 const digits = event.target.value.replace(/\D/g, '');

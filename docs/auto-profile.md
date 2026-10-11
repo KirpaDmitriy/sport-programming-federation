@@ -117,7 +117,8 @@ estimate card asks only the two answers evidence cannot give — the start year 
 (or a missing one with finished sources); «Пересчитать» also re-syncs FSP sources and re-analyzes a GitHub report from
 an earlier analysis version (the job applies the new estimate when it ends). «Заполнить анкету по источникам»
 (`POST /me/profile/estimate?answers=replace`) hands every evidence-based answer but an edited name back to the
-evidence; the stated experience stays.
+evidence; the stated experience stays. A résumé PDF fills it too: Grok extracts the start year in IT with the
+page excerpt that names it, and the candidate confirms the preview.
 
 ### LLM assistance
 
