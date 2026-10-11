@@ -39,9 +39,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let listener = tokio::net::TcpListener::bind(format!("{host}:{port}")).await?;
     tracing::info!(address = %listener.local_addr()?, "fsp-github-insights listening");
     axum::serve(listener, router(state))
-        .with_graceful_shutdown(async {
-            let _ = tokio::signal::ctrl_c().await;
-        })
+        .with_graceful_shutdown(shutdown())
         .await?;
     Ok(())
+}
+
+// systemd and Docker stop services with SIGTERM; local Ctrl-C remains supported.
+async fn shutdown() {
+    #[cfg(unix)]
+    let terminate = async {
+        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+            .expect("install SIGTERM handler")
+            .recv()
+            .await;
+    };
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+    tokio::select! {
+        result = tokio::signal::ctrl_c() => result.expect("listen for SIGINT"),
+        () = terminate => {}
+    }
 }
