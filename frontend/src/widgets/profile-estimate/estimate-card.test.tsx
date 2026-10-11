@@ -44,7 +44,7 @@ describe('profile estimate card', () => {
     expect(screen.getByText('Бэкенд · Сеньор · оценка, средняя уверенность')).toBeTruthy();
     expect(screen.getByText(`Балл уровня ${github.score} из 100`)).toBeTruthy();
     for (const factor of github.factors) expect(screen.getAllByText(factor.label).length).toBeGreaterThan(0);
-    expect(screen.getByText(/Оценивает грейд как «Мидл», поэтому уверенность снижена/)).toBeTruthy();
+    expect(screen.getByText(/Оценивает грейд как «Мидл». Грейд по правилам не меняется/)).toBeTruthy();
     expect(screen.getByRole('link', { name: /Пройти тест/ })).toBeTruthy();
     // The notes say why the grade is what it is and what the next one needs.
     for (const note of github.notes) expect(screen.getByText(note)).toBeTruthy();

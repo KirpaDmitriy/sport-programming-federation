@@ -244,7 +244,7 @@ export function ProfileEstimateCard({ profile, canEstimate, title = 'Автом�
           <Callout tone={estimate.review.agrees ? 'success' : 'warning'} title="Второе мнение ИИ">
             {estimate.review.agrees
               ? `Согласен с грейдом «${gradeLabel[estimate.review.grade]}».`
-              : `Оценивает грейд как «${gradeLabel[estimate.review.grade]}», поэтому уверенность снижена. Грейд по правилам не меняется.`}
+              : `Оценивает грейд как «${gradeLabel[estimate.review.grade]}». Грейд по правилам не меняется, уверенность оценки — не выше средней.`}
             {estimate.review.rationale && ` ${estimate.review.rationale}`}
           </Callout>
         )}
