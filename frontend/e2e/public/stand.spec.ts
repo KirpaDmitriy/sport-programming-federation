@@ -31,6 +31,8 @@ test('HTTPS stand serves the app and deep links without mock controls', async ({
   const home = await request.get('/');
   expect(home.status()).toBe(200);
   expect(home.headers()['content-security-policy']).toContain("default-src 'self'");
+  expect(home.headers()['permissions-policy']).toContain('microphone=(self)');
+  expect(home.headers()['permissions-policy']).toContain('camera=()');
   expect(
     (
       await request.post('/__mock__/session', {
@@ -48,6 +50,13 @@ test('HTTPS stand serves the app and deep links without mock controls', async ({
   await page.goto('/employer/candidates?needId=need-001');
   await page.waitForURL(/\/login\?redirect=/);
   await expect(page.getByRole('heading', { name: 'Вход и регистрация' })).toBeVisible();
+  expect(
+    await page.evaluate(() => {
+      const policy = (document as Document & { featurePolicy?: { allowsFeature: (name: string) => boolean } })
+        .featurePolicy;
+      return policy?.allowsFeature('microphone');
+    }),
+  ).toBe(true);
 });
 
 test('a new candidate and two companies complete the reverse-hiring flow', async ({ browser }) => {
