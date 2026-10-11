@@ -9,6 +9,14 @@
     "artifact": "backend/experiments/silero-persistent-cache.json"
   },
   "observed": {
-    "status": "pending"
+    "status": "passed",
+    "releaseSha": "9a390afea4716934be7ccb9a2fa2d774c42ffed5",
+    "coldSeconds": 0.355965,
+    "warmSeconds": 0.002254,
+    "postRestartSeconds": 0.002127,
+    "wavSha256": "922bfabc30e5c9043857e8acc7880a97f8d11b628415c2aa116a5ffaa4096b60",
+    "byteIdentical": true,
+    "cacheSurvivedRestart": true,
+    "offlineCpuPath": true
   }
 }
