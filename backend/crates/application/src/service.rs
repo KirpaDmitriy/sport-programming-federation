@@ -243,7 +243,9 @@ impl PlatformService {
         interview_id: &str,
         input: InterviewAnswerInput,
     ) -> Result<InterviewView, ApplicationError> {
-        self.get_interview(session, interview_id).await?;
+        let interview = self.get_interview(session, interview_id).await?;
+        self.require_processing_consent(&interview.candidate_id)
+            .await?;
         self.interviews
             .as_ref()
             .ok_or_else(interviews_unavailable)?
