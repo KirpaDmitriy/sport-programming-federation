@@ -92,6 +92,12 @@ screenshot suite skipped). Final CI/live receipts are recorded in #138.
 The mobile screenshot initially captured the drawer mid-transition; capture now waits for its hidden position and
 finishes finite animations using [Playwright's screenshot option](https://playwright.dev/docs/api/class-page#page-screenshot).
 
-Credential inspection confirmed `admin:org`, `gist`, `repo`, `workflow` on the shared classic CI token. A dedicated
-replacement has not been supplied. [Issue #139](https://github.com/KirpaDmitriy/sport-programming-federation/issues/139)
-records the precise owner handoff and installation/verification procedure; no shared credential was changed.
+Credential inspection confirmed `admin:org`, `gist`, `repo`, `workflow` on the former shared CI credential.
+Follow-up [#139](https://github.com/KirpaDmitriy/sport-programming-federation/issues/139) shipped the guarded
+stdin-only installer in `23aad65`, with nine additional regressions (19 CI tests total). After the owner's explicit
+authorization and GitHub re-authentication, a separate classic PAT with exactly `repo` scope was created through
+Playwriter with telemetry disabled, validated against the canonical repository and installed under the controller
+lock. It expires November 10, 2026 at 06:31:54 UTC; the renewal procedure is in `infra/ci/README.md`.
+The original shared credential remains unchanged in the owner's CLI. No token was printed or found in the
+Playwriter relay/CDP logs, and the one-time local handoff file was removed. Read current #139 receipts for actual
+status-write, PR-integration and accepted-release proof; an idle successful cycle alone is insufficient.

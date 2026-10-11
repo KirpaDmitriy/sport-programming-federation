@@ -45,12 +45,16 @@ Configure mode-600 files in mode-700 `/etc/fsp-ci`:
 
 ### Dedicated GitHub credential
 
-The remaining shared-token replacement is tracked in
-[#139](https://github.com/KirpaDmitriy/sport-programming-federation/issues/139). For the current repository-collaborator
-identity, issue a separate classic PAT with only `repo` scope and an expiration date. It remains limited by the
-account's actual repository permissions; it is not a repository-specific installation token. Do not reduce or revoke
-a credential shared with other projects. Reconsider a repository-scoped GitHub App when the repository owner can
-install one; the current operator has push access without repository administration.
+On October 11, 2026, [#139](https://github.com/KirpaDmitriy/sport-programming-federation/issues/139) replaced the CI
+copy of the shared credential with a separate classic PAT for `rldyourmnd`, with only `repo` scope. The current
+credential expires **November 10, 2026 at 06:31:54 UTC**; renew it before that time using the procedure below.
+The original shared credential remains unchanged in its owner-managed tooling. Installation validation and
+subsequent CI/release receipts are recorded in the issue.
+
+For the current repository-collaborator identity, issue a separate classic PAT with only `repo` scope and an
+expiration date. It remains limited by the account's actual repository permissions; it is not a repository-specific
+installation token. Do not reduce or revoke a credential shared with other projects. Reconsider a repository-scoped
+GitHub App when the repository owner can install one; the current operator has push access without administration.
 
 Save the new PAT privately in the original checkout's ignored `.fsp-infra/ci-github-token`, mode `600`. Never put it
 in command arguments, Git, issues or chat. Read-only preflight from the repository root:
@@ -59,8 +63,7 @@ in command arguments, Git, issues or chat. Read-only preflight from the reposito
 python3 infra/ci/install_token.py < .fsp-infra/ci-github-token
 ```
 
-Once this implementation has passed CI and reached accepted `main`, install from that reviewed checkout on the
-authorized CI host (the input redirection is local):
+Install from the accepted `main` checkout on the authorized CI host (the input redirection is local):
 
 ```sh
 ssh server-gha-runner-1 'python3 /var/lib/fsp-ci/deploy/infra/ci/install_token.py --install' < .fsp-infra/ci-github-token
@@ -74,9 +77,10 @@ no old-token backup. The timer and the stand continue normally. Temporary activa
 failure; a hard process/host crash can leave a private `.github-token-*` file requiring inspection.
 
 Then request a normal controller cycle and verify canonical fetch/API access; the next ordinary PR cycle must
-prove actual status writes and PR operations before #139 closes. `deployed.json` changes only for a newly accepted
-release, not merely a token change. Retain the shared token in its original owner-managed tooling. Remove the
-one-time local handoff file after successful replacement; the canonical active copy is `/etc/fsp-ci/github-token`.
+prove actual status writes and PR operations before declaring the replacement verified. `deployed.json` changes
+only for a newly accepted release, not merely a token change. Retain the shared token in its original owner-managed
+tooling. Remove the one-time local handoff file after successful replacement; the canonical active copy is
+`/etc/fsp-ci/github-token`.
 
 Tests run with `python3 -m unittest discover -s infra/ci -p 'test_*.py'` and in `fsp/release-safety`. They cover scope,
 identity, expiry, controller contention, provider errors, failed atomic replacement, private modes and secret-free
