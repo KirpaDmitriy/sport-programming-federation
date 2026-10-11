@@ -47,6 +47,9 @@ python3 infra/observability/verify.py
 python3 infra/observability/verify_intake.py
 ```
 
+Keep `contracts/openapi.json` with the checkout: it generates the allowlisted API route map. Release archives
+include this source as well. The installer rejects an incomplete checkout before changing the host.
+
 The installer verifies artifacts before activation, preserves existing administrator credentials, creates a named
 ingest-only collector token and installs sandboxed `fsp-openobserve` / `fsp-vector` services. Their IP policy
 allows only loopback. OpenObserve vendor telemetry, its own UI RUM, events, tracing export, GeoIP download and

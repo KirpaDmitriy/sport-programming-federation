@@ -9,6 +9,7 @@ import json
 import os
 from pathlib import Path
 import platform
+import pwd
 import secrets
 import shlex
 import shutil
@@ -67,6 +68,9 @@ def provision_ingestion(values: dict[str, str]) -> None:
 def main() -> None:
     if os.geteuid() != 0 or platform.machine() != "x86_64":
         raise SystemExit("Run as root on the FSP amd64 stand")
+    contract = HERE.parent.parent / "contracts/openapi.json"
+    if not contract.is_file():
+        raise SystemExit("Missing contracts/openapi.json; use a complete reviewed checkout or release")
     with tempfile.TemporaryDirectory(prefix="fsp-observability-install-") as temporary:
         staging = Path(temporary)
         for binary, url, expected in PINS:
@@ -113,6 +117,13 @@ def main() -> None:
             run("install", "-m", "644", str(HERE / service), f"/etc/systemd/system/{service}")
         run("install", "-m", "644", str(HERE / "vector.yaml"), "/etc/fsp/vector.yaml")
         run("install", "-m", "644", str(HERE / "logrotate.conf"), "/etc/logrotate.d/fsp-telemetry")
+        # Match rotation permissions from the first write without truncating an existing log.
+        log_path = Path("/var/log/nginx/fsp-telemetry.json")
+        log_path.parent.mkdir(mode=0o755, exist_ok=True)
+        descriptor = os.open(log_path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o640)
+        with os.fdopen(descriptor, "a") as output:
+            os.fchmod(output.fileno(), 0o640)
+            os.fchown(output.fileno(), pwd.getpwnam("www-data").pw_uid, grp.getgrnam("adm").gr_gid)
         run("systemd-analyze", "verify", "/etc/systemd/system/fsp-openobserve.service", "/etc/systemd/system/fsp-vector.service")
         run("systemctl", "daemon-reload")
         run("systemctl", "enable", "fsp-openobserve.service")
@@ -131,7 +142,7 @@ def main() -> None:
         with urllib.request.urlopen(request, timeout=10) as response:
             rum_token = json.load(response)["data"]["rum_token"]
         public_url = read_env(Path("/etc/fsp/rust-api.env"))["FSP_PUBLIC_WEB_URL"]
-        http, locations = render(public_url, rum_token, HERE.parent.parent / "contracts/openapi.json")
+        http, locations = render(public_url, rum_token, contract)
         nginx_directory = Path("/etc/nginx/fsp-observability")
         nginx_directory.mkdir(mode=0o700, exist_ok=True)
         for name, contents in (("http.conf", http), ("locations.conf", locations)):

@@ -23,6 +23,10 @@ Executed proofs:
   did not enter its access log. Production nginx was not reloaded by this test.
 - Rust API tests verify a real routed command emits a templated audit record without path/query/header/body
   canaries. Existing transport tests still pass; clippy passes for API and service roots.
+- Frontend verification passed 52 unit tests, strict types, lint, production build and bundle checks. The full
+  browser suite passed 41 scenarios; screenshot capture and the opt-in RUM scenario were skipped in that run.
+  The separate enabled-RUM run passed after the final replay URL restrictions. Release fault tests, 20 CI
+  controller tests, two nginx renderer tests and ShellCheck also passed locally.
 
 The first Vector integration exposed a version change: environment interpolation is disabled by default. The
 final configuration uses the supported file secret provider and a separate named ingest-only token, not a root
