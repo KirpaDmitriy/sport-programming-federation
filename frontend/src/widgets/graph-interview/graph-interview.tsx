@@ -11,7 +11,6 @@ import {
   interviewsKey,
   interviewsQuery,
   startInterview,
-  synthesizeInterviewSpeech,
 } from '@/entities/interview';
 import { useMeta } from '@/entities/meta';
 import { useScope } from '@/entities/session';
@@ -19,6 +18,7 @@ import { describeError, isApiError } from '@/shared/api';
 import { Button, Callout, Card, cx, ErrorState, Icon, LoadingState, StatusChip, TextareaField } from '@/shared/ui';
 import styles from './graph-interview.module.css';
 import { speechErrorMessage, submittedResponseMode } from './speech';
+import { useQuestionSpeech } from './use-question-speech';
 
 const stateLabel: Record<InterviewNode['state'], string> = {
   unknown: 'Не проверено',
@@ -217,15 +217,12 @@ export function InterviewWorkspace({ interview }: { interview: Interview }) {
   const meta = useMeta();
   const queryClient = useQueryClient();
   const recognition = useRef<Recognition | null>(null);
-  const speechAudio = useRef<HTMLAudioElement | null>(null);
-  const speechAudioUrl = useRef<string | null>(null);
   const draftQuestion = useRef<string | null>(null);
   const [answer, setAnswer] = useState('');
   const [interim, setInterim] = useState('');
   const [inputMode, setInputMode] = useState<'voice' | 'text'>('text');
   const [voiceCaptured, setVoiceCaptured] = useState(false);
   const [listening, setListening] = useState(false);
-  const [speaking, setSpeaking] = useState(false);
   const [speechError, setSpeechError] = useState<string | null>(null);
   const question = interview.currentQuestion;
   const speechText = question?.delivery.speechText;
@@ -241,57 +238,12 @@ export function InterviewWorkspace({ interview }: { interview: Interview }) {
     }
   }, []);
 
-  const stopSpeech = useCallback(() => {
-    window.speechSynthesis.cancel();
-    speechAudio.current?.pause();
-    speechAudio.current = null;
-    if (speechAudioUrl.current) URL.revokeObjectURL(speechAudioUrl.current);
-    speechAudioUrl.current = null;
-    setSpeaking(false);
-  }, []);
-
-  const sayWithBrowser = useCallback((text: string) => {
-    if (!('speechSynthesis' in window)) return;
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = 'ru-RU';
-    utterance.voice =
-      window.speechSynthesis
-        .getVoices()
-        .filter((voice) => voice.lang.toLowerCase().startsWith('ru'))
-        .sort((left, right) => Number(right.localService) - Number(left.localService))[0] ?? null;
-    utterance.onstart = () => setSpeaking(true);
-    utterance.onend = () => setSpeaking(false);
-    utterance.onerror = () => setSpeaking(false);
-    window.speechSynthesis.speak(utterance);
-  }, []);
-
-  const sayQuestion = useCallback(async () => {
-    if (!speechText || !question) return;
-    stopSpeech();
-    if (!meta.capabilities.neuralTts) {
-      sayWithBrowser(speechText);
-      return;
-    }
-    try {
-      const synthesized = await synthesizeInterviewSpeech(interview.id, question.id);
-      const bytes = Uint8Array.from(atob(synthesized.audioBase64), (character) => character.charCodeAt(0));
-      const url = URL.createObjectURL(new Blob([bytes], { type: synthesized.mimeType }));
-      const audio = new Audio(url);
-      speechAudio.current = audio;
-      speechAudioUrl.current = url;
-      audio.onplay = () => setSpeaking(true);
-      audio.onended = stopSpeech;
-      audio.onerror = () => {
-        stopSpeech();
-        sayWithBrowser(speechText);
-      };
-      await audio.play();
-    } catch {
-      stopSpeech();
-      sayWithBrowser(speechText);
-    }
-  }, [interview.id, meta.capabilities.neuralTts, question, sayWithBrowser, speechText, stopSpeech]);
+  const { speaking, stopSpeech, sayQuestion } = useQuestionSpeech(
+    interview.id,
+    question?.id,
+    speechText,
+    meta.capabilities.neuralTts,
+  );
 
   useEffect(() => {
     if (draftQuestion.current !== (question?.id ?? null)) {
@@ -305,15 +257,6 @@ export function InterviewWorkspace({ interview }: { interview: Interview }) {
     }
     return releaseMicrophone;
   }, [question?.id, question?.recommendedResponseMode, releaseMicrophone]);
-
-  useEffect(() => {
-    if (!question?.id) return undefined;
-    const timer = window.setTimeout(sayQuestion, 250);
-    return () => {
-      window.clearTimeout(timer);
-      stopSpeech();
-    };
-  }, [question?.id, sayQuestion, stopSpeech]);
 
   const toggleListening = () => {
     if (listening) {
@@ -377,6 +320,7 @@ export function InterviewWorkspace({ interview }: { interview: Interview }) {
   const mutation = useMutation({
     mutationFn: async () => {
       if (!question) throw new Error('Интервью уже завершено');
+      stopSpeech();
       releaseMicrophone();
       setListening(false);
       setInterim('');
