@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import base64
+import grp
 import hashlib
+import json
 import os
 from pathlib import Path
 import platform
@@ -15,6 +17,8 @@ import tarfile
 import tempfile
 import time
 import urllib.request
+
+from nginx import render
 
 HERE = Path(__file__).resolve().parent
 PINS = (
@@ -34,6 +38,30 @@ def read_env(path: Path) -> dict[str, str]:
             key, value = line.split("=", 1)
             values[key] = shlex.split(value)[0] if value else ""
     return values
+
+
+def provision_ingestion(values: dict[str, str]) -> None:
+    """Keep the collector credential ingest-only and separate from the UI administrator."""
+    secret_path = Path("/etc/fsp/vector-secrets.json")
+    existing = json.loads(secret_path.read_text()) if secret_path.exists() else {}
+    if existing.get("token_name") == "fsp-vector":
+        return
+    endpoint = "http://127.0.0.1:5080/api/default/ingestion-tokens"
+    headers = {"Authorization": values["FSP_OBSERVE_AUTH"], "Content-Type": "application/json"}
+    with urllib.request.urlopen(urllib.request.Request(endpoint, headers=headers), timeout=10) as response:
+        tokens = json.load(response)["data"]
+    if any(token["name"] == "fsp-vector" for token in tokens):
+        raise SystemExit("The named collector token exists but its local credential is missing; recover it explicitly")
+    payload = json.dumps({"name": "fsp-vector", "description": "FSP operational ingestion only"}).encode()
+    with urllib.request.urlopen(urllib.request.Request(endpoint, data=payload, headers=headers), timeout=10) as response:
+        token = json.load(response)["data"]["token"]
+    authorization = "Basic " + base64.b64encode(f"fsp-vector:{token}".encode()).decode()
+    with tempfile.NamedTemporaryFile(mode="w", dir=secret_path.parent, prefix=".vector-secret-", delete=False) as output:
+        os.fchmod(output.fileno(), 0o640)
+        os.fchown(output.fileno(), 0, grp.getgrnam("fsp-vector").gr_gid)
+        json.dump({"authorization": authorization, "token_name": "fsp-vector"}, output)
+        temporary_secret = Path(output.name)
+    temporary_secret.replace(secret_path)
 
 
 def main() -> None:
@@ -84,9 +112,11 @@ def main() -> None:
         for service in ("fsp-openobserve.service", "fsp-vector.service"):
             run("install", "-m", "644", str(HERE / service), f"/etc/systemd/system/{service}")
         run("install", "-m", "644", str(HERE / "vector.yaml"), "/etc/fsp/vector.yaml")
+        run("install", "-m", "644", str(HERE / "logrotate.conf"), "/etc/logrotate.d/fsp-telemetry")
         run("systemd-analyze", "verify", "/etc/systemd/system/fsp-openobserve.service", "/etc/systemd/system/fsp-vector.service")
         run("systemctl", "daemon-reload")
-        run("systemctl", "enable", "--now", "fsp-openobserve.service")
+        run("systemctl", "enable", "fsp-openobserve.service")
+        run("systemctl", "restart", "fsp-openobserve.service")
         for _ in range(60):
             try:
                 with urllib.request.urlopen("http://127.0.0.1:5080/healthz", timeout=2) as response:
@@ -96,8 +126,26 @@ def main() -> None:
                 time.sleep(1)
         else:
             raise SystemExit("OpenObserve health check failed; inspect its local journal")
-        run("systemctl", "enable", "--now", "fsp-vector.service")
-        run("systemctl", "is-active", "fsp-openobserve.service", "fsp-vector.service")
+        provision_ingestion(values)
+        request = urllib.request.Request("http://127.0.0.1:5080/api/default/rumtoken", headers={"Authorization": values["FSP_OBSERVE_AUTH"]})
+        with urllib.request.urlopen(request, timeout=10) as response:
+            rum_token = json.load(response)["data"]["rum_token"]
+        public_url = read_env(Path("/etc/fsp/rust-api.env"))["FSP_PUBLIC_WEB_URL"]
+        http, locations = render(public_url, rum_token, HERE.parent.parent / "contracts/openapi.json")
+        nginx_directory = Path("/etc/nginx/fsp-observability")
+        nginx_directory.mkdir(mode=0o700, exist_ok=True)
+        for name, contents in (("http.conf", http), ("locations.conf", locations)):
+            path = nginx_directory / name
+            descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(descriptor, "w") as output:
+                output.write(contents)
+        run("/opt/fsp-observability/bin/vector", "validate", "--no-environment", "/etc/fsp/vector.yaml")
+        run("systemctl", "enable", "fsp-vector.service")
+        run("systemctl", "restart", "fsp-vector.service")
+        for service in ("fsp-openobserve.service", "fsp-vector.service"):
+            state = subprocess.check_output(["systemctl", "is-active", service], text=True).strip()
+            if state != "active":
+                raise SystemExit(f"{service} is {state}")
         print("FSP observability installed; UI is loopback-only; credentials remain in /etc/fsp/observability.env")
 
 

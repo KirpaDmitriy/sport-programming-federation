@@ -8,7 +8,6 @@ StartLimitBurst=3
 User=fsp-vector
 Group=fsp-vector
 SupplementaryGroups=systemd-journal adm
-EnvironmentFile=/etc/fsp/observability.env
 ExecStartPre=/opt/fsp-observability/bin/vector validate --skip-healthchecks /etc/fsp/vector.yaml
 ExecStart=/opt/fsp-observability/bin/vector --config /etc/fsp/vector.yaml
 StateDirectory=fsp-vector
