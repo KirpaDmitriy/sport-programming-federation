@@ -52,7 +52,9 @@ policy, race-safe speech lifecycle and failure-safe acceptance teardown. Detaile
 docs/stability-review-2026-10-11.md. Documentation and project-specific Claude/Serena memories were reconciled.
 Follow-up #139 installed a separate repo-only classic CI PAT after owner-authorized browser issuance. The original
 shared CLI credential is unchanged. Renew before November 10, 2026 at 06:31:54 UTC via infra/ci/README.md.
-Installer 23aad65 passed 19 CI tests and shipped through #143/#144/#145. Read #139 for PR-cycle and accepted-release proof.
+Installer 23aad65 shipped through #143/#144/#145; #139 records token and PR-cycle proof. Follow-up #152/#153/#154/#155
+adds status reconciliation (e078301), error-response cleanup (b3f80bf), queued-review consent (c93cf00) and HTTPS headers
+(63bb5eb); local checks: 129 Rust, 20 CI tests, release faults and real nginx. Read issue receipts for live/install proof.
 
 Memory index: platform.md (auth/data/assessment), frontend.md (UI/proofs), operations.md (deployment/mail/CI/recovery).
 Release identity: compare upstream/main, /opt/fsp/current and deployed.json instead of trusting a SHA written here.
