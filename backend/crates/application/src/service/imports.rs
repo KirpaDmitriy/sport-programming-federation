@@ -244,6 +244,7 @@ mod tests {
             stack: vec!["postgresql".into()],
             team_role: "Developer".into(),
             experience_months: Some(18),
+            experience_since: None,
             experience: "Current experience".into(),
             soft_skills: vec![],
             consents: Consents {

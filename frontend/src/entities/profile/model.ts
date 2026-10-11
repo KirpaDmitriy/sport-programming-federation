@@ -47,3 +47,28 @@ export const eligibilityReasonText: Record<NonNullable<Eligibility['selectedReas
     'Для выбранной специализации и грейда тест пока недоступен. Доступные направления указаны на странице «Проверки».',
   grade_downgrade: 'Проверка ниже подтверждённого грейда не проводится: подтверждённый грейд не понижается.',
 };
+
+/** Whole years in IT from the start year, as the server counts them. */
+export const yearsInIt = (since: number, now = new Date()) => Math.max(0, now.getFullYear() - since);
+
+/** The candidate's experience in words: from the start year when given, else the stated months. */
+export function experienceLabel(profile: Pick<Profile, 'experienceSince' | 'experienceMonths'>): string | null {
+  const plural = (value: number) =>
+    value % 100 >= 11 && value % 100 <= 14
+      ? 'лет'
+      : value % 10 === 1
+        ? 'год'
+        : value % 10 >= 2 && value % 10 <= 4
+          ? 'года'
+          : 'лет';
+  if (profile.experienceSince !== null) {
+    const years = yearsInIt(profile.experienceSince);
+    return `в IT с ${profile.experienceSince} года — ${years} ${plural(years)}`;
+  }
+  if (profile.experienceMonths === null) return null;
+  const years = Math.floor(profile.experienceMonths / 12);
+  const months = profile.experienceMonths % 12;
+  return (
+    [years ? `${years} ${plural(years)}` : '', months ? `${months} мес.` : ''].filter(Boolean).join(' ') || '0 мес.'
+  );
+}
