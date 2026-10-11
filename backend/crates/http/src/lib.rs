@@ -237,6 +237,10 @@ pub fn router(config: HttpConfig, service: Arc<PlatformService>) -> Router {
             post(synthesize_interview_speech),
         )
         .route(
+            "/api/v1/me/interviews/{interview_id}/transcription",
+            post(transcribe_interview_speech),
+        )
+        .route(
             "/api/v1/me/assessments/{assessment_id}/answer",
             put(save_assessment_answer),
         )
@@ -1374,6 +1378,22 @@ async fn synthesize_interview_speech(
     state
         .service
         .synthesize_interview_question(&session, &interview_id, input)
+        .await
+        .map(Json)
+        .map_err(api_error)
+}
+
+async fn transcribe_interview_speech(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ContractPath(interview_id): ContractPath<String>,
+    ContractJson(input): ContractJson<fsp_application::InterviewTranscriptionInput>,
+) -> Result<Json<fsp_application::SpeechTranscriptView>, ApiError> {
+    let session = authenticated(&state, &headers).await?;
+    require_role(&session, "candidate")?;
+    state
+        .service
+        .transcribe_interview_answer(&session, &interview_id, input)
         .await
         .map(Json)
         .map_err(api_error)

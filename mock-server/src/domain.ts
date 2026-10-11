@@ -1179,6 +1179,7 @@ type Handlers = { [R in Route as R['operationId']]: (ctx: Context<BodyOf<R>, Act
 const handlers: Handlers = {
   getHealth: () => ({ status: 'ok', service: 'fsp-mock-api', version: '0.1.0' }),
   synthesizeInterviewSpeech: () => fail(503, 'speech_not_configured', 'В демо-режиме используется голос браузера'),
+  transcribeInterviewSpeech: () => fail(503, 'speech_not_configured', 'Распознавание речи в мок-сервере не настроено'),
   getMeta: ({ s }) => ({
     contractVersion: '0.1.0',
     mode: 'mock',

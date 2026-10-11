@@ -14,6 +14,7 @@ export function useQuestionSpeech(
   const audioUrl = useRef<string | null>(null);
   const utterance = useRef<SpeechSynthesisUtterance | null>(null);
   const [speaking, setSpeaking] = useState(false);
+  const [preparing, setPreparing] = useState(false);
 
   const stopSpeech = useCallback(() => {
     generation.current += 1;
@@ -38,6 +39,7 @@ export function useQuestionSpeech(
     if (audioUrl.current) URL.revokeObjectURL(audioUrl.current);
     audioUrl.current = null;
     setSpeaking(false);
+    setPreparing(false);
   }, []);
 
   const sayWithBrowser = useCallback(
@@ -74,6 +76,7 @@ export function useQuestionSpeech(
     const current = generation.current;
     const controller = new AbortController();
     request.current = controller;
+    setPreparing(true);
     const fallback = () => {
       if (generation.current !== current) return;
       stopSpeech();
@@ -87,7 +90,10 @@ export function useQuestionSpeech(
       const player = new Audio(audioUrl.current);
       audio.current = player;
       player.onplay = () => {
-        if (generation.current === current) setSpeaking(true);
+        if (generation.current === current) {
+          setPreparing(false);
+          setSpeaking(true);
+        }
       };
       player.onended = () => {
         if (generation.current === current) stopSpeech();
@@ -109,5 +115,5 @@ export function useQuestionSpeech(
     return stopSpeech;
   }, [questionId, stopSpeech, sayQuestion]);
 
-  return { speaking, sayQuestion, stopSpeech };
+  return { preparing, speaking, sayQuestion, stopSpeech };
 }

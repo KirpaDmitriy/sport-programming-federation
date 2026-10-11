@@ -46,6 +46,22 @@ pub struct SpeechAudioView {
     pub voice: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct InterviewTranscriptionInput {
+    pub question_id: String,
+    pub audio_base64: String,
+    pub mime_type: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SpeechTranscriptView {
+    pub text: String,
+    pub provider: String,
+    pub duration_seconds: f32,
+}
+
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum InterviewResponseMode {
