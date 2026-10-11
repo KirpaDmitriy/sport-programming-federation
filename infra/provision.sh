@@ -14,7 +14,7 @@ export DEBIAN_FRONTEND=noninteractive
 apt-get update -q
 apt-get upgrade -yq
 # git: the GitHub insights service reads public repositories through blobless clones.
-apt-get install -yq nginx ufw curl unzip build-essential postgresql bubblewrap poppler-utils git python3.12-venv
+apt-get install -yq nginx ufw curl unzip build-essential postgresql bubblewrap poppler-utils git ffmpeg python3.12-venv
 bash "$HERE/install-pdf-sandbox.sh"
 
 if [ "$(/opt/bun/bin/bun --version 2>/dev/null)" != "$BUN_VERSION" ]; then
