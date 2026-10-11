@@ -573,7 +573,8 @@ impl crate::CandidateProfile {
 }
 
 /// Applies a validated LLM review: it may pick between the two leading specializations when they
-/// are within ten points, take over the texts, and a disagreement on the grade lowers confidence.
+/// are within ten points, take over the texts, and a disagreement on the grade lowers high
+/// confidence to medium, never below.
 pub fn apply_review(estimate: &mut ProfileEstimate, reply: ProfileReviewReply) {
     if let [first, second, ..] = estimate.specializations.as_slice()
         && first.percent.saturating_sub(second.percent) <= 10
@@ -582,8 +583,10 @@ pub fn apply_review(estimate: &mut ProfileEstimate, reply: ProfileReviewReply) {
         estimate.specialization = Some(reply.specialization);
     }
     let agrees = estimate.grade == Some(reply.grade);
-    if !agrees {
-        estimate.confidence = lower(estimate.confidence);
+    // A second opinion may temper confidence but never takes the category away: the rules own
+    // the grade, so a disagreement lowers high to medium and stops there.
+    if !agrees && estimate.confidence == SignalConfidence::High {
+        estimate.confidence = SignalConfidence::Medium;
     }
     if let Some(experience) = clean_text(&reply.experience, 1200) {
         estimate.answers.experience = experience;
@@ -2018,6 +2021,19 @@ mod tests {
             estimate.review.as_ref().unwrap().recommendations,
             ["Ревьюйте чужие изменения в платформенных проектах"]
         );
+        // A further disagreement keeps the category: confidence stops at medium.
+        apply_review(
+            &mut estimate,
+            ProfileReviewReply {
+                specialization: Specialization::Devops,
+                grade: other,
+                rationale: String::new(),
+                experience: String::new(),
+                team_role: String::new(),
+                recommendations: Vec::new(),
+            },
+        );
+        assert_eq!(estimate.confidence, SignalConfidence::Medium);
         // A far specialization is not taken.
         apply_review(
             &mut estimate,
