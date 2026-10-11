@@ -129,6 +129,14 @@ test('a new candidate and two companies complete the reverse-hiring flow', async
   await companyB.goto(`/employer/candidates/${candidateId}`);
   await expect(companyB.getByRole('heading', { name: alias })).toBeVisible();
   expect(await companyB.content()).not.toContain('Ирина');
+
+  // Leave the public bank as it was: every deployment runs this journey on the live stand.
+  const unpublished = await candidate.request.patch('/api/v1/me/profile', {
+    data: { consents: { processing: true, publication: false } },
+  });
+  expect(unpublished.ok()).toBe(true);
+  expect((await unpublished.json()).onboarding.visibleToEmployers).toBe(false);
+  expect((await companyA.request.delete(`/api/v1/needs/${needId}`)).status()).toBe(204);
 });
 
 async function completeCompany(page: Page, name: string) {
