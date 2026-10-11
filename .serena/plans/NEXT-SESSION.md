@@ -50,9 +50,9 @@ current-state.md: no calibrated/leak-resistant exam, OCR, durable source queue, 
 October 11 review #138: consent parity on interview answers, one model budget per turn, same-origin microphone
 policy, race-safe speech lifecycle and failure-safe acceptance teardown. Detailed plan and evidence scope:
 docs/stability-review-2026-10-11.md. Documentation and project-specific Claude/Serena memories were reconciled.
-External follow-up #139 requires a new dedicated repo-scoped CI token from the owner. Existing shared scopes
-were verified; do not alter or revoke that credential. Read current issue receipts before claiming live completion.
-The tested `infra/ci/install_token.py` prepares guarded installation; it cannot issue the owner's PAT. See the CI runbook.
+Follow-up #139 installed a separate repo-only classic CI PAT after owner-authorized browser issuance. The original
+shared CLI credential is unchanged. Renew before November 10, 2026 at 06:31:54 UTC via infra/ci/README.md.
+Installer 23aad65 passed 19 CI tests and shipped through #143/#144/#145. Read #139 for PR-cycle and accepted-release proof.
 
 Memory index: platform.md (auth/data/assessment), frontend.md (UI/proofs), operations.md (deployment/mail/CI/recovery).
 Release identity: compare upstream/main, /opt/fsp/current and deployed.json instead of trusting a SHA written here.
