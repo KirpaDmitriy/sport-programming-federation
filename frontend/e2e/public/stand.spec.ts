@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
-import { type Browser, expect, type Page, test } from '@playwright/test';
+import { test as base, expect, type Page } from '@playwright/test';
 import { answerKnowledgeTest } from '../knowledge';
+import { acceptanceActors } from './actors';
 
 import { testEmail, verificationCode } from './mail';
 
@@ -19,13 +20,19 @@ async function signIn(page: Page, email: string, role: 'candidate' | 'employer')
   await page.waitForURL(new RegExp(`/${role}/`));
 }
 
-async function newPage(browser: Browser) {
-  const context = await browser.newContext({
-    locale: 'ru-RU',
-    viewport: { width: 1440, height: 900 },
-  });
-  return context.newPage();
-}
+const test = base.extend<{ actors: ReturnType<typeof acceptanceActors> }>({
+  actors: [
+    async ({ browser }, use) => {
+      const actors = acceptanceActors(browser);
+      try {
+        await use(actors);
+      } finally {
+        await actors.dispose();
+      }
+    },
+    { timeout: 90_000 },
+  ],
+});
 
 test('HTTPS stand serves the app and deep links without mock controls', async ({ page, request }) => {
   const home = await request.get('/');
@@ -59,10 +66,12 @@ test('HTTPS stand serves the app and deep links without mock controls', async ({
   ).toBe(true);
 });
 
-test('a new candidate and two companies complete the reverse-hiring flow', async ({ browser }) => {
+test('a new candidate and two companies complete the reverse-hiring flow', async ({ actors }) => {
   test.setTimeout(480_000);
-  const candidate = await newPage(browser);
-  await signIn(candidate, testEmail('candidate'), 'candidate');
+  const candidate = await actors.newPage();
+  const candidateEmail = testEmail('candidate');
+  await signIn(candidate, candidateEmail, 'candidate');
+  actors.authenticated(candidate, candidateEmail, 'candidate');
   await candidate.waitForURL('**/candidate/onboarding');
   await candidate.getByLabel('Согласен на обработку данных').click();
   await expect(candidate.getByLabel('Согласен на обработку данных')).toBeChecked();
@@ -110,8 +119,10 @@ test('a new candidate and two companies complete the reverse-hiring flow', async
   const download = await downloadPromise;
   expect((await readFile((await download.path()) as string)).subarray(0, 5).toString()).toBe('%PDF-');
 
-  const companyA = await newPage(browser);
-  await signIn(companyA, testEmail('employer-a'), 'employer');
+  const companyA = await actors.newPage();
+  const companyAEmail = testEmail('employer-a');
+  await signIn(companyA, companyAEmail, 'employer');
+  actors.authenticated(companyA, companyAEmail, 'employer');
   await completeCompany(companyA, 'Проверка ФСП — компания А');
   const needId = await createNeed(companyA);
   await companyA.goto(`/employer/candidates/${candidateId}?needId=${needId}`);
@@ -130,22 +141,16 @@ test('a new candidate and two companies complete the reverse-hiring flow', async
 
   await companyA.reload();
   await expect(companyA.getByText('Ирина Стендова')).toBeVisible();
-  const companyB = await newPage(browser);
-  await signIn(companyB, testEmail('employer-b'), 'employer');
+  const companyB = await actors.newPage();
+  const companyBEmail = testEmail('employer-b');
+  await signIn(companyB, companyBEmail, 'employer');
+  actors.authenticated(companyB, companyBEmail, 'employer');
   await completeCompany(companyB, 'Проверка ФСП — компания Б');
   const disclosure = await (await companyB.request.get(`/api/v1/candidates/${candidateId}/disclosure`)).json();
   expect(disclosure).toMatchObject({ granted: false, fields: {} });
   await companyB.goto(`/employer/candidates/${candidateId}`);
   await expect(companyB.getByRole('heading', { name: alias })).toBeVisible();
   expect(await companyB.content()).not.toContain('Ирина');
-
-  // Leave the public bank as it was: every deployment runs this journey on the live stand.
-  const unpublished = await candidate.request.patch('/api/v1/me/profile', {
-    data: { consents: { processing: true, publication: false } },
-  });
-  expect(unpublished.ok()).toBe(true);
-  expect((await unpublished.json()).onboarding.visibleToEmployers).toBe(false);
-  expect((await companyA.request.delete(`/api/v1/needs/${needId}`)).status()).toBe(204);
 });
 
 async function completeCompany(page: Page, name: string) {
