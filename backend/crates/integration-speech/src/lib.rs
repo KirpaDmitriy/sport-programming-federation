@@ -290,7 +290,8 @@ mod tests {
         tokio::spawn(async move {
             let (mut stream, _) = listener.accept().await.unwrap();
             let mut request = [0; 4096];
-            stream.read(&mut request).await.unwrap();
+            let received = stream.read(&mut request).await.unwrap();
+            assert!(received > 0);
             stream.write_all(wire.as_bytes()).await.unwrap();
             // Deliberately keep unfinished responses open: the limit must stop the read.
             let _ = stream.read(&mut request).await;
