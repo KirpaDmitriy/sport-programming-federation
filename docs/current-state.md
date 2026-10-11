@@ -1,9 +1,7 @@
 # Current system state
 
-Reviewed on 2026-10-12 against source, private CI and the live stand. Issue
-[#54](https://github.com/KirpaDmitriy/sport-programming-federation/issues/54) records the owner no-backup/no-mirror
-policy; PR [#67](https://github.com/KirpaDmitriy/sport-programming-federation/pull/67) records the GitHub insights
-delivery and its live check; #50 is the earlier consistency review. The [October 11 review](stability-review-2026-10-11.md) tracks the subsequent interview and acceptance fixes. This page describes behavior; verify the current
+This page describes implemented behavior and known operational limits. Feature guides link to source and tests;
+release evidence belongs to the corresponding PR, commit statuses and deployment receipt. Verify the current
 release identity as described below instead of treating a SHA in documentation as the latest release.
 
 **Delivery recovery:** an external operation deleted `gha-runner-1` on October 11 at 08:16 UTC. The
@@ -29,7 +27,7 @@ established by commit statuses and the newly generated deployment receipt, not t
 | FSP | Separate private HTTP simulator with explicit fictional provenance and preserved snapshots on outage | [FSP simulator](fsp-simulator.md), HTTP and browser evidence |
 | Matching | `deterministic-rules-v2` shares source/grade policy across both roles, ranks before pagination and distinguishes confirmed requirements from observed evidence; employers see anonymous GitHub/FSP and bounded AI summaries, with contacts only under existing disclosure rights | [Business rules](product/BUSINESS_RULES.md), HTTP access regressions and browser tests |
 | AI latency | Grok interactive/interview calls default to low effort, background profile reviews to medium; shared turn deadlines remain bounded, no retry amplification | [Measured evidence and limits](ai-latency.md) |
-| Observability | Pinned private OpenObserve/Vector, structured API audit and correlation, scoped metrics, sanitized RUM and masked replay, nine-panel operational dashboard | [Runbook](../infra/observability/README.md), actual ingestion/query and replay-canary checks |
+| Observability | Self-hosted OpenObserve/Vector, structured API audit and correlation, scoped metrics, sanitized RUM and masked replay, nine-panel operational dashboard; authenticated HTTPS access at https://observe.nddev.link | [Runbook](../infra/observability/README.md), actual ingestion/query and replay-canary checks |
 | Delivery | Four private-server CI gates, checked personal → dev → main PRs, exact-main deployment and actual Resend browser acceptance; operator-assisted recovery on the existing private Amsterdam host (#161) | [CI runbook](../infra/ci/README.md); no GitHub Actions dependency |
 | Recovery | Locked immutable releases, schema/runtime compatibility guards and tested activation rollback; backups disabled by owner policy | [Operations policy](../infra/README.md#backups-and-recovery), activation fault tests |
 
@@ -52,7 +50,7 @@ uses actual Rust/PostgreSQL and real received email, creates fresh actors and ne
   GitHub search budget. Background estimate reviews are process-local and coalesce repeated updates per candidate; an interrupted or failed review can be requested again by recalculating. Candidate ranking still reads collections in memory. There is no durable worker,
   measured large-bank/load capacity, high availability or comprehensive production security certification.
 - Backups, snapshots and redundant repository mirrors are disabled by explicit owner policy. Existing backup
-  archives were deleted; do not reintroduce them. Self-hosted OpenObserve collects scoped logs, host metrics, operational audit and masked RUM/replay; its UI stays on loopback. There is no external alert delivery, OTLP span exporter or tamper-proof audit ledger.
+  archives were deleted; do not reintroduce them. Self-hosted OpenObserve collects scoped logs, host metrics, operational audit and masked RUM/replay. Its backend listeners stay on loopback; nginx publishes the authenticated UI over HTTPS at `https://observe.nddev.link`. There is no external alert delivery, OTLP span exporter or tamper-proof audit ledger.
 - CI admits only trusted maintainers of the private repository. Docker access is root-equivalent. Repository
   branch protection is unavailable to this account, so maintainers must follow the documented PR gates.
 
