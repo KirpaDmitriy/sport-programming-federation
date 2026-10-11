@@ -437,6 +437,15 @@ pub trait LlmGateway: Send + Sync {
         &self,
         request: &fsp_domain::RepositoryMatchRequest,
     ) -> Result<fsp_domain::RepositoryCompetitionMatch, IntegrationError>;
+    async fn analyze_hiring_flow(
+        &self,
+        _facts: &crate::HiringFlowFacts,
+    ) -> Result<crate::HiringFlowNarrative, IntegrationError> {
+        Err(IntegrationError {
+            code: "bifrost_unavailable",
+            message: "Сервис анализа не настроен".into(),
+        })
+    }
     /// A second opinion on an automatic profile estimate from anonymized evidence.
     async fn review_profile(
         &self,
@@ -491,4 +500,9 @@ pub trait InterviewGateway: Send + Sync {
         interview_id: &str,
         input: &crate::InterviewAnswerInput,
     ) -> Result<crate::InterviewView, IntegrationError>;
+}
+
+#[async_trait]
+pub trait SpeechSynthesisGateway: Send + Sync {
+    async fn synthesize(&self, text: &str) -> Result<crate::SpeechAudioView, IntegrationError>;
 }

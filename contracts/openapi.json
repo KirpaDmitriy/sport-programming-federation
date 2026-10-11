@@ -4691,6 +4691,176 @@
         }
       }
     },
+    "/api/v1/me/interviews/{interviewId}/speech": {
+      "post": {
+        "operationId": "synthesizeInterviewSpeech",
+        "summary": "synthesizeInterviewSpeech",
+        "tags": [
+          "Candidate"
+        ],
+        "description": "Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).",
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpeechAudio"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request or schema validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or expired mock session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role, consent, or origin restriction",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown resource or resource outside this actor/company",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "State, idempotency, or cooldown conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request body exceeds limit",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Unsupported media type",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Valid shape but invalid domain values",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Verification, email delivery, or proxy request limit",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Response conformance or unexpected server failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Verification provider failed to accept delivery",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Deterministic upstream error scenario",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "interviewId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100,
+              "pattern": "^[A-Za-z0-9_.:-]+$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InterviewSpeechInput"
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/jobs/{jobId}": {
       "get": {
         "operationId": "getJob",
@@ -12731,6 +12901,153 @@
         ]
       }
     },
+    "/api/v1/analytics/hiring-flow": {
+      "get": {
+        "operationId": "getHiringFlowAnalytics",
+        "summary": "getHiringFlowAnalytics",
+        "tags": [
+          "Employer"
+        ],
+        "description": "Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).",
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HiringFlowAnalytics"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request or schema validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or expired mock session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role, consent, or origin restriction",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown resource or resource outside this actor/company",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "State, idempotency, or cooldown conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request body exceeds limit",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Unsupported media type",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Valid shape but invalid domain values",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Verification, email delivery, or proxy request limit",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Response conformance or unexpected server failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Verification provider failed to accept delivery",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Deterministic upstream error scenario",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/applications/{applicationId}": {
       "get": {
         "operationId": "getApplication",
@@ -14108,6 +14425,12 @@
               "graphInterviews": {
                 "type": "boolean"
               },
+              "neuralTts": {
+                "type": "boolean"
+              },
+              "hiringAnalytics": {
+                "type": "boolean"
+              },
               "fspFixture": {
                 "type": "boolean"
               },
@@ -14145,6 +14468,8 @@
               "githubOAuth",
               "githubInsights",
               "graphInterviews",
+              "neuralTts",
+              "hiringAnalytics",
               "fspFixture",
               "matching",
               "directInvitations",
@@ -24523,6 +24848,228 @@
         ],
         "additionalProperties": false
       },
+      "HiringFlowStage": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "enum": [
+              "received",
+              "reviewed",
+              "decided",
+              "accepted"
+            ]
+          },
+          "label": {
+            "type": "string"
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "sharePercent": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "count",
+          "sharePercent"
+        ],
+        "additionalProperties": false
+      },
+      "VacancyFlow": {
+        "type": "object",
+        "properties": {
+          "vacancyId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "pattern": "^[A-Za-z0-9_.:-]+$"
+          },
+          "title": {
+            "type": "string"
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "awaitingReview": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "awaitingDecision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "accepted": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "closed": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "requiredCoveragePercent": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "gradeMatchPercent": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100
+          }
+        },
+        "required": [
+          "vacancyId",
+          "title",
+          "total",
+          "awaitingReview",
+          "awaitingDecision",
+          "accepted",
+          "closed",
+          "requiredCoveragePercent",
+          "gradeMatchPercent"
+        ],
+        "additionalProperties": false
+      },
+      "HiringBottleneck": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string"
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "info",
+              "medium",
+              "high"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "evidence": {
+            "type": "string"
+          },
+          "recommendation": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "severity",
+          "title",
+          "evidence",
+          "recommendation"
+        ],
+        "additionalProperties": false
+      },
+      "HiringAssistant": {
+        "type": "object",
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "metrics",
+              "bifrost"
+            ]
+          },
+          "summary": {
+            "type": "string"
+          },
+          "actions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "mode",
+          "summary",
+          "actions"
+        ],
+        "additionalProperties": false
+      },
+      "HiringFlowAnalytics": {
+        "type": "object",
+        "properties": {
+          "generatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "stages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HiringFlowStage"
+            }
+          },
+          "medianTimeToViewHours": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "medianTimeToDecisionHours": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "acceptanceRatePercent": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "vacancies": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VacancyFlow"
+            }
+          },
+          "bottlenecks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HiringBottleneck"
+            }
+          },
+          "assistant": {
+            "$ref": "#/components/schemas/HiringAssistant"
+          }
+        },
+        "required": [
+          "generatedAt",
+          "total",
+          "stages",
+          "medianTimeToViewHours",
+          "medianTimeToDecisionHours",
+          "acceptanceRatePercent",
+          "vacancies",
+          "bottlenecks",
+          "assistant"
+        ],
+        "additionalProperties": false
+      },
       "TaskInput": {
         "type": "object",
         "properties": {
@@ -26576,6 +27123,45 @@
           "answer",
           "responseMode",
           "revision"
+        ],
+        "additionalProperties": false
+      },
+      "InterviewSpeechInput": {
+        "type": "object",
+        "properties": {
+          "questionId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "pattern": "^[A-Za-z0-9_.:-]+$"
+          }
+        },
+        "required": [
+          "questionId"
+        ],
+        "additionalProperties": false
+      },
+      "SpeechAudio": {
+        "type": "object",
+        "properties": {
+          "audioBase64": {
+            "type": "string"
+          },
+          "mimeType": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "voice": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "audioBase64",
+          "mimeType",
+          "provider",
+          "voice"
         ],
         "additionalProperties": false
       },

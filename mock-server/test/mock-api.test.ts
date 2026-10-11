@@ -510,6 +510,11 @@ test('graph interview follows prerequisites and rejects a stale answer', async (
   ).body;
   assert.equal(started.currentQuestion.nodeId, 'backend.idempotency');
   await request('GET', `/api/v1/me/interviews/${started.id}`, { actor: candidate });
+  await request('POST', `/api/v1/me/interviews/${started.id}/speech`, {
+    actor: candidate,
+    body: { questionId: started.currentQuestion.id },
+    status: 503,
+  });
 
   const answered = (
     await request('POST', `/api/v1/me/interviews/${started.id}/answers`, {
@@ -1349,6 +1354,12 @@ test('applications disclose the chosen fields, keep vacancy terms and follow emp
   assert.equal((await request('GET', '/api/v1/applications?needId=need-002', { actor: a })).body.items.length, 1);
   assert.equal((await request('GET', '/api/v1/applications?needId=need-001', { actor: a })).body.items.length, 0);
   assert.equal((await request('GET', '/api/v1/applications', { actor: b })).body.items.length, 0);
+  const analyticsA = (await request('GET', '/api/v1/analytics/hiring-flow', { actor: a })).body;
+  const analyticsB = (await request('GET', '/api/v1/analytics/hiring-flow', { actor: b })).body;
+  assert.equal(analyticsA.total, 1);
+  assert.equal(analyticsA.stages[0].count, 1);
+  assert.equal(analyticsB.total, 0);
+  assert.deepEqual(analyticsB.vacancies, []);
   let disclosure = (await request('GET', '/api/v1/candidates/candidate024/disclosure', { actor: a })).body;
   assert.deepEqual(disclosure.fields, { email: 'alexey@example.com' });
   assert.equal(disclosure.applicationId, application.id);

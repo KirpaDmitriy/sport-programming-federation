@@ -125,6 +125,8 @@ export const meta: S['Meta'] = {
     githubOAuth: false,
     githubInsights: false,
     graphInterviews: true,
+    neuralTts: false,
+    hiringAnalytics: true,
     fspFixture: true,
     matching: true,
     directInvitations: true,
