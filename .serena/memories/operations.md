@@ -69,7 +69,14 @@ infra/install-pdf-sandbox.sh reuses the packaged bwrap profile when present and 
 Compose CI allocates loopback ports dynamically and checks its explicitly configured logical origin. Neither
 fix relaxes global namespace policy or stops another workload. Full gates are repeated after these repairs.
 
-Observability: private UI on 127.0.0.1:5080, ingest-only Vector credential, fixed same-origin browser intake,
+Observability: the owner explicitly authorized public HTTPS account access on 2026-10-12 (#191):
+https://observe.nddev.link through its own nginx site and Let's Encrypt certificate. Native authentication remains
+mandatory, `/metrics` is blocked and login is rate-limited. `infra/observability/publish.py` reproduces publication;
+the installer preserves the public URL/CORS and existing credentials. Actual service listeners remain on
+127.0.0.1:5080/5081, with an optional persistent workspace tunnel on port 50800. Account delivery is the owner's
+mode-600 Desktop/FSP-OpenObserve-access.txt, never a committed password. There is an ingest-only Vector credential and fixed same-origin browser intake,
 14-day retention, bounded CPU/memory/queues and vendor telemetry disabled. Nine-panel dashboard queries and
 stored RUM/replay privacy canaries were checked on the actual stand. No external alert delivery or OTLP exporter.
 Application activation is through verified main; support-service installation does not prove browser rollout.
+Playwriter verified populated API/audit/host dashboards and persisted masked playback. #189 tracks the upstream
+1.0.4 cold player initialization race (refresh succeeds) and its query for the intentionally absent `_rumlog` stream.

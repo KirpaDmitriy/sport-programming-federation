@@ -136,9 +136,11 @@ fi
 install -m 644 "$HERE/fsp-github-insights.service" /etc/systemd/system/fsp-github-insights.service
 install -m 644 "$HERE/fsp-interview.service" /etc/systemd/system/fsp-interview.service
 install -m 644 "$HERE/fsp-silero-tts.service" /etc/systemd/system/fsp-silero-tts.service
+install -m 644 "$HERE/fsp-gigaam-stt.service" /etc/systemd/system/fsp-gigaam-stt.service
 chown root:fsp /etc/fsp/{mock-api,rust-api,frontend-build,interview,speech}.env
 chmod 640 /etc/fsp/{mock-api,rust-api,frontend-build,interview,speech}.env
 bash "$HERE/install-silero-runtime.sh" "$(dirname "$HERE")/voice-runtime"
+bash "$HERE/install-gigaam-runtime.sh"
 [ -f /etc/fsp/api-backend ] || echo mock > /etc/fsp/api-backend
 install -m 644 "$HERE/fsp-api.service" /etc/systemd/system/fsp-api.service
 install -m 644 "$HERE/fsp-mock-api.service" /etc/systemd/system/fsp-mock-api.service
@@ -158,6 +160,11 @@ if grep -Fxq 'FSP_TTS_PROVIDER=silero' /etc/fsp/speech.env; then
   systemctl enable fsp-silero-tts.service
 else
   systemctl disable fsp-silero-tts.service 2>/dev/null || true
+fi
+if grep -Fxq 'FSP_STT_PROVIDER=gigaam' /etc/fsp/speech.env; then
+  systemctl enable fsp-gigaam-stt.service
+else
+  systemctl disable fsp-gigaam-stt.service 2>/dev/null || true
 fi
 if [ -f /etc/fsp/llm.env ]; then
   systemctl enable fsp-cliproxy.service fsp-bifrost.service >/dev/null

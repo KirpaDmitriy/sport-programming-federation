@@ -11,7 +11,7 @@ use fsp_integration_email::{DemoDelivery, HybridDelivery, ResendDelivery};
 use fsp_integration_fsp_synthetic::HttpFsp;
 use fsp_integration_github::{GitHubApi, HttpInsights};
 use fsp_integration_interview::HttpInterviewGateway;
-use fsp_integration_speech::{SileroSpeech, XaiSpeech, YandexSpeech};
+use fsp_integration_speech::{GigaAmSpeechRecognition, SileroSpeech, XaiSpeech, YandexSpeech};
 use fsp_storage_postgres::PostgresRepository;
 use tokio::net::TcpListener;
 
@@ -173,6 +173,18 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 return Err("FSP_TTS_PROVIDER must be browser, silero, xai or yandex".into());
             }
         };
+    let transcription_adapter: Option<Arc<dyn fsp_application::SpeechRecognitionGateway>> =
+        match nonempty_env("FSP_STT_PROVIDER").as_deref() {
+            None => None,
+            Some("gigaam") => Some(Arc::new(
+                GigaAmSpeechRecognition::new(
+                    &env::var("GIGAAM_STT_URL")
+                        .unwrap_or_else(|_| "http://127.0.0.1:4060/transcribe".into()),
+                )
+                .map_err(|error| format!("GigaAM speech adapter: {}", error.message))?,
+            )),
+            Some(_) => return Err("FSP_STT_PROVIDER must be gigaam".into()),
+        };
     let listener = TcpListener::bind((host.as_str(), port)).await?;
     let repository = Arc::new(
         PostgresRepository::connect(&database_url)
@@ -199,6 +211,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
     }
     if let Some(speech) = speech_adapter {
         platform = platform.with_speech(speech);
+    }
+    if let Some(transcription) = transcription_adapter {
+        platform = platform.with_transcription(transcription);
     }
     match (
         nonempty_env("FSP_INTERVIEW_URL"),
