@@ -844,6 +844,10 @@ impl PlatformService {
         else {
             return Ok(());
         };
+        // Coalesced work may start after consent was withdrawn while a prior review ran.
+        if !profile.consents.processing {
+            return Ok(());
+        }
         let stated_experience_months = profile.stated_experience_months(current_year());
         let stated_team_role = profile.stated_team_role().map(str::to_owned);
         let Some(estimate) = profile

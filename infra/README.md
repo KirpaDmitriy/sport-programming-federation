@@ -219,7 +219,11 @@ validates those values without sourcing secrets. Provisioning preserves the
 existing runtime hostname. Certificate renewal uses `/var/www/acme` over both
 HTTP and HTTPS; verify `certbot renew --cert-name nddev.link --dry-run` after
 DNS/proxy changes. Cloudflare uses Full (strict), minimum TLS 1.2, and respects
-origin cache headers. `/api/v1/` always returns `Cache-Control: no-store`.
+origin cache headers. HTTPS responses advertise host-only HSTS for one week (`max-age=604800`), including
+error responses; subdomains and preload are not opted in. Plain HTTP Docker responses omit HSTS.
+`/api/v1/` always returns one `Cache-Control: no-store`, including proxy-generated 429 responses. nginx
+suppresses upstream duplicates before setting `X-Content-Type-Options: nosniff`; direct API protection remains.
+The real renewal unit on the Snap installation is `snap.certbot.renew.timer`, not `certbot.timer`.
 Visitor IP headers are trusted only from the published Cloudflare networks in
 `nginx/fsp-cloudflare-real-ip.conf`; review this list during infrastructure upkeep.
 

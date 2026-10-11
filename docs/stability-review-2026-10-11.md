@@ -101,3 +101,37 @@ lock. It expires November 10, 2026 at 06:31:54 UTC; the renewal procedure is in 
 The original shared credential remains unchanged in the owner's CLI. No token was printed or found in the
 Playwriter relay/CDP logs, and the one-time local handoff file was removed. Read current #139 receipts for actual
 status-write, PR-integration and accepted-release proof; an idle successful cycle alone is insufficient.
+
+
+## Follow-up recheck from accepted c9906e9
+
+The next owner-requested pass checked current failure paths, not only the existing green release. No unchecked
+implementation-plan items or open issues existed at its start. Four concrete follow-ups were filed and checked
+against source before implementation; feature work stays in the same personal/dev/main PR lane.
+
+| Issue | Reproduced finding and change | Verification |
+| --- | --- | --- |
+| [#152](https://github.com/KirpaDmitriy/sport-programming-federation/issues/152) | Accepted deployment receipt prevented retrying a failed final GitHub status publication. Reconcile the success status from the matching accepted receipt without repeating deployment. | Injected GitHub failure leaves pending before the fix; the next cycle now repairs status, preserves the receipt and runs no deployment command. Later cycles make no duplicate API writes. |
+| [#153](https://github.com/KirpaDmitriy/sport-programming-federation/issues/153) | A coalesced profile review could start after processing consent withdrawal. Check consent before preparing a model request; retain the transactional stale-response guard. | Real PostgreSQL test holds the first model request, queues a replacement, revokes consent and releases the first. No second model call or stored review; the old code demonstrably failed. |
+| [#154](https://github.com/KirpaDmitriy/sport-programming-federation/issues/154) | Historical smoke API remained outside systemd on loopback 4011, with an already deleted executable/SQLite file. HTTPS lacked HSTS and duplicated nosniff on API responses. | Revalidated process identity and terminated it through a pidfd; all eight managed services remained active. Real nginx probes cover success/error headers, HTTPS-only host HSTS, one API cache header and structured rate limits. |
+| [#155](https://github.com/KirpaDmitriy/sport-programming-federation/issues/155) | Python 3.14 test execution exposed unclosed HTTPError responses: finalizer warnings can include provider error reasons. Close before reporting sanitized status. | Redirect/401/403/500 tests assert closed responses and no fake test credential in diagnostics; no actual credential was involved in the failure. |
+
+Primary guidance was rechecked against [GitHub status semantics](https://docs.github.com/en/rest/commits/statuses),
+[Python HTTPError response ownership](https://docs.python.org/3/library/urllib.error.html),
+[nginx header inheritance](https://nginx.org/en/docs/http/ngx_http_headers_module.html#add_header),
+[upstream header suppression](https://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_hide_header) and
+[HSTS host scope](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Strict-Transport-Security).
+The changes preserve pinned versions, one serial CI controller and the existing model/repository boundaries.
+A consent withdrawal cannot recall an already sent provider request. HSTS is deliberately host-only and does not
+commit unrelated subdomains or preload the domain.
+
+Fresh baseline operations: eight managed services healthy without autorestarts, no failed units, all five commit
+statuses successful, eight successful SQL migrations, no published synthetic acceptance actors/needs, no new nginx
+errors or 5xx responses. TLS origin/edge valid until January 6, 2027; the actual Snap renewal timer was active and
+its last run succeeded. Stand/runner free space exceeded the CI guard; backup units stayed masked. Only the known
+xAI model-alias warnings appeared. The orphan was the sole unmanaged historical FSP process identified.
+
+Local regressions and release fault checks must pass before merging; all four private CI gates, current-main public
+acceptance, reviewed installation of changed controller/helper files and independent read-only verification are
+required before closing these issues. Final SHA, test counts, installed hashes and acceptance receipts belong in
+the issue completion comments so this audit does not advertise an obsolete release as current.

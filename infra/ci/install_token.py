@@ -40,6 +40,7 @@ def request(token, path):
                 raise CredentialError("GitHub response exceeded the validation limit")
             return json.loads(payload), response.headers
     except urllib.error.HTTPError as error:
+        error.close()
         raise CredentialError(f"GitHub credential validation failed: HTTP {error.code}") from None
     except (OSError, ValueError):
         raise CredentialError("GitHub credential validation failed: network or response error") from None
