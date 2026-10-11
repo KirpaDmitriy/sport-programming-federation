@@ -3193,13 +3193,7 @@ impl PlatformService {
                 .map_err(ApplicationError::storage)?,
             None => None,
         };
-        let candidate = self
-            .repository
-            .candidate_index(candidate_id)
-            .await
-            .map_err(ApplicationError::storage)?
-            .filter(|item| item.profile.visible_to_employers(item.email_verified))
-            .ok_or_else(|| ApplicationError::new(404, "not_found", "Кандидат не найден"))?;
+        let candidate = self.candidate_for_company(company_id, candidate_id).await?;
         let signals = self
             .freshness_signals(
                 &candidate.profile.id,

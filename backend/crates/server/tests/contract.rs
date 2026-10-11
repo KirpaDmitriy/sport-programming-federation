@@ -928,6 +928,62 @@ async fn applications_flow_both_sides() {
 }
 
 #[tokio::test]
+async fn a_private_applicant_is_visible_only_to_the_recipient_until_withdrawal() {
+    let app = test_app().await;
+    let employer = login(&app, EMPLOYER, "employer").await;
+    let candidate = login(&app, CANDIDATE_JUNIOR, "candidate").await;
+    let (status, _) = send(
+        &app,
+        "PATCH",
+        "/api/v1/me/profile",
+        Some(&candidate),
+        json!({"consents":{"processing":true,"publication":false}}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let path = "/api/v1/candidates/candidate024?needId=need-002";
+    assert_eq!(
+        get(&app, path, Some(&employer)).await.0,
+        StatusCode::NOT_FOUND
+    );
+    let (status, application) = send_keyed(
+        &app,
+        "POST",
+        "/api/v1/me/applications",
+        Some(&candidate),
+        "private-apply-key",
+        json!({"vacancyId":"need-002","message":"Interested","disclose":["email"]}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{application}");
+    let (status, view) = get(&app, path, Some(&employer)).await;
+    assert_eq!(status, StatusCode::OK, "{view}");
+    assert!(view["match"].is_object());
+    assert!(!view.to_string().contains(CANDIDATE_JUNIOR));
+    let outsider = login(&app, "other-hr@example.com", "employer").await;
+    assert_eq!(
+        get(&app, "/api/v1/candidates/candidate024", Some(&outsider))
+            .await
+            .0,
+        StatusCode::NOT_FOUND
+    );
+    let (status, _) = post(
+        &app,
+        &format!(
+            "/api/v1/me/applications/{}/withdraw",
+            application["id"].as_str().unwrap()
+        ),
+        Some(&candidate),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        get(&app, path, Some(&employer)).await.0,
+        StatusCode::NOT_FOUND
+    );
+}
+
+#[tokio::test]
 async fn assessments_full_flow_and_grade_change() {
     let app = test_app().await;
     let candidate = login(&app, CANDIDATE_JUNIOR, "candidate").await;
