@@ -122,7 +122,7 @@ Without skills: an empty state with «Подключить GitHub» and «Про
 
 ### `/candidate/assessments` — «Проверки»
 
-When `graphInterviews` is enabled, «Собеседование по графу навыков» starts or resumes an authenticated interview.
+When `graphInterviews` is enabled, «Интервью по карте навыков» starts or resumes an authenticated interview.
 The dependency tree marks the current competency and confirmed gaps; its nested-list structure remains available to
 assistive technology. The adjacent dialogue keeps the text question and answer as the required path, with optional
 local Russian speech playback. A weak composite answer moves to an unresolved prerequisite, evidence remains visible,

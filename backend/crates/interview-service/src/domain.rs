@@ -107,7 +107,17 @@ pub struct InterviewQuestion {
     pub node_id: String,
     pub prompt: String,
     pub sequence: u8,
+    #[serde(default)]
+    pub recommended_response_mode: ResponseMode,
     pub delivery: QuestionDelivery,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ResponseMode {
+    #[default]
+    Text,
+    Voice,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -133,6 +143,14 @@ pub struct InterviewEvidence {
     pub rationale: String,
     pub evaluator: String,
     pub rubric_version: String,
+    #[serde(default)]
+    pub response_mode: ResponseMode,
+    #[serde(default = "default_signal_strength")]
+    pub signal_strength: u8,
+}
+
+fn default_signal_strength() -> u8 {
+    1
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
