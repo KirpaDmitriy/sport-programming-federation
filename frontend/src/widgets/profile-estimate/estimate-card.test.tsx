@@ -63,15 +63,14 @@ describe('profile estimate card', () => {
         return HttpResponse.json(estimated());
       }),
     );
-    await renderWithProviders(<ProfileEstimateCard profile={estimated({ experienceMonths: 21 })} canEstimate />, {
+    await renderWithProviders(<ProfileEstimateCard profile={estimated({ experienceMonths: null })} canEstimate />, {
       session: candidateSession,
       prefill,
     });
-    fireEvent.change(screen.getByLabelText('Общий стаж, лет'), { target: { value: '6' } });
-    fireEvent.change(screen.getByLabelText('Ещё месяцев'), { target: { value: '0' } });
+    fireEvent.change(screen.getByLabelText('В IT с какого года'), { target: { value: '2016' } });
     fireEvent.change(screen.getByLabelText('Роль в команде'), { target: { value: 'Тимлид' } });
     fireEvent.click(screen.getByRole('button', { name: 'Пересчитать с уточнениями' }));
-    await waitFor(() => expect(patch).toEqual({ experienceMonths: 72, teamRole: 'Тимлид' }));
+    await waitFor(() => expect(patch).toEqual({ experienceSince: 2016, teamRole: 'Тимлид' }));
   });
 
   it('rebuilds every answer from the sources in one click', async () => {

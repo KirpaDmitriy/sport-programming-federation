@@ -1,10 +1,11 @@
 import { useForm } from '@tanstack/react-form';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { SkillId } from '@/entities/meta';
 import {
   AUTO_FIELD_HINT,
   type AutoField,
+  experienceLabel,
   type Profile,
   type ProfilePatch,
   profileKey,
@@ -24,9 +25,8 @@ import {
   UnsavedChangesGuard,
   useToast,
 } from '@/shared/ui';
-import styles from './profile-form.module.css';
 
-type Values = Required<Omit<ProfilePatch, 'consents'>>;
+type Values = Required<Omit<ProfilePatch, 'consents' | 'experienceMonths'>>;
 
 const valuesFrom = (profile: Profile): Values => ({
   name: profile.name,
@@ -35,7 +35,7 @@ const valuesFrom = (profile: Profile): Values => ({
   selectedGrade: profile.selectedGrade,
   stack: profile.stack,
   teamRole: profile.teamRole,
-  experienceMonths: profile.experienceMonths,
+  experienceSince: profile.experienceSince,
   experience: profile.experience,
   softSkills: profile.softSkills,
 });
@@ -53,7 +53,13 @@ export function ProfileForm({ profile, submitLabel, onSaved }: Props) {
   const [serverErrors, setServerErrors] = useState<Record<string, string>>({});
 
   const save = useMutation({
-    mutationFn: (values: Values) => updateProfile({ ...values, name: values.name.trim() }),
+    // The start year is sent only when changed, so a stated or imported experience is never cleared by accident.
+    mutationFn: ({ experienceSince, ...values }: Values) =>
+      updateProfile({
+        ...values,
+        name: values.name.trim(),
+        ...(experienceSince !== profile.experienceSince ? { experienceSince } : {}),
+      }),
     onSuccess: (updated) => {
       queryClient.setQueryData(profileKey(scope), updated);
       form.reset(valuesFrom(updated));
@@ -71,6 +77,13 @@ export function ProfileForm({ profile, submitLabel, onSaved }: Props) {
       requestAnimationFrame(() => document.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus());
     },
   });
+
+  // Answers saved elsewhere (the estimate card, a recalculation) replace an untouched form, so a
+  // later save never sends stale values back.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the revision identifies a newer profile.
+  useEffect(() => {
+    if (!form.state.isDirty) form.reset(valuesFrom(profile));
+  }, [profile.revision]);
 
   /** The field's own hint, preceded by a note when an estimate answered it. */
   const hintFor = (field: AutoField, hint?: string) =>
@@ -191,45 +204,36 @@ export function ProfileForm({ profile, submitLabel, onSaved }: Props) {
               />
             )}
           </form.Field>
-          <form.Field name="experienceMonths">
+          <form.Field
+            name="experienceSince"
+            validators={{
+              onSubmit: ({ value }) =>
+                value === null || (value >= 1950 && value <= new Date().getFullYear())
+                  ? undefined
+                  : `Укажите год от 1950 до ${new Date().getFullYear()}`,
+            }}
+          >
             {(field) => {
-              // Stored in months, typed as years and months: «5» in a months box read as five years.
-              const total = field.state.value;
-              const set = (years: number | null, months: number | null) => {
-                field.handleChange(
-                  years === null && months === null ? null : Math.min(1200, (years ?? 0) * 12 + (months ?? 0)),
-                );
-                clearServer('experienceMonths');
-              };
-              const digits = (value: string) => {
-                const text = value.replace(/\D/g, '');
-                return text === '' ? null : Number(text);
-              };
+              const since = field.state.value;
+              const current = experienceLabel({ experienceSince: since, experienceMonths: profile.experienceMonths });
               return (
-                <div className={styles.duration}>
-                  <TextField
-                    id="profile-years"
-                    label="Общий стаж, лет"
-                    inputMode="numeric"
-                    hint={hintFor('experienceMonths', 'Весь опыт работы, включая закрытые проекты. Пусто — не указан')}
-                    value={total === null ? '' : String(Math.floor(total / 12))}
-                    onChange={(event) => set(digits(event.target.value), total === null ? null : total % 12)}
-                    error={serverErrors.experienceMonths}
-                  />
-                  <TextField
-                    id="profile-months"
-                    label="Ещё месяцев"
-                    inputMode="numeric"
-                    value={total === null ? '' : String(total % 12)}
-                    onChange={(event) => {
-                      const months = digits(event.target.value);
-                      set(
-                        total === null ? null : Math.floor(total / 12),
-                        months === null ? null : Math.min(11, months),
-                      );
-                    }}
-                  />
-                </div>
+                <TextField
+                  id="profile-since"
+                  label="В IT с какого года"
+                  inputMode="numeric"
+                  maxLength={4}
+                  placeholder="Например: 2016"
+                  hint={`Учёба, свои проекты и работа, в том числе в закрытых репозиториях.${
+                    current ? ` Сейчас: ${current}.` : ''
+                  }`}
+                  value={since === null ? '' : String(since)}
+                  onChange={(event) => {
+                    const digits = event.target.value.replace(/\D/g, '').slice(0, 4);
+                    field.handleChange(digits === '' ? null : Number(digits));
+                    clearServer('experienceSince');
+                  }}
+                  error={errorFor('experienceSince', field.state.meta.errors)}
+                />
               );
             }}
           </form.Field>

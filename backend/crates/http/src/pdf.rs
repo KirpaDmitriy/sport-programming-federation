@@ -150,6 +150,33 @@ pub fn profile_pdf(profile: &ProfileView) -> Result<Vec<u8>, String> {
             profile.team_role.clone(),
         );
     }
+    let years = |value: u32| match (value % 10, value % 100) {
+        (_, 11..=14) => "лет",
+        (1, _) => "год",
+        (2..=4, _) => "года",
+        _ => "лет",
+    };
+    let tenure = match (profile.experience_since, profile.experience_months) {
+        (Some(since), months) => {
+            let count = months.map_or(0, |months| months / 12);
+            Some(format!("с {since} года — {count} {}", years(count)))
+        }
+        (None, Some(months)) if months >= 12 => Some(format!(
+            "{} {}{}",
+            months / 12,
+            years(months / 12),
+            if months % 12 > 0 {
+                format!(" {} мес.", months % 12)
+            } else {
+                String::new()
+            }
+        )),
+        (None, Some(months)) => Some(format!("{months} мес.")),
+        (None, None) => None,
+    };
+    if let Some(tenure) = tenure {
+        push(FONT_SIZE_TEXT, TEXT, "В IT", tenure);
+    }
     if !profile.experience.is_empty() {
         push(FONT_SIZE_TEXT, TEXT, "Опыт", profile.experience.clone());
     }

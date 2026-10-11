@@ -933,8 +933,10 @@ test('connecting GitHub builds the profile and an estimated category; edited ans
   assert.equal(profile.specialization, 'backend');
   assert.equal(profile.selectedGrade, 'middle');
   assert.equal(profile.stack.length, 12);
-  assert.equal(profile.experienceMonths, 45);
-  assert.equal(profile.estimate.version, 'estimate-v5');
+  // Public tenure is evidence for the estimate, never written in as the candidate's experience.
+  assert.equal(profile.experienceMonths, null);
+  assert.equal(profile.experienceSince, null);
+  assert.equal(profile.estimate.version, 'estimate-v6');
   assert.ok(profile.softSkills.length > 0);
   assert.ok(profile.estimate.notes.length > 0);
   // The growth plan names concrete steps; focus skills are catalog skills the evidence lacks.
@@ -943,7 +945,6 @@ test('connecting GitHub builds the profile and an estimated category; edited ans
   assert.ok(profile.estimate.focusSkills.length > 0);
   assert.deepEqual([...profile.autoFields].sort(), [
     'experience',
-    'experienceMonths',
     'name',
     'selectedGrade',
     'softSkills',
@@ -968,6 +969,11 @@ test('connecting GitHub builds the profile and an estimated category; edited ans
   ).body;
   assert.ok(!profile.autoFields.includes('teamRole'));
   assert.ok(profile.autoFields.includes('name'));
+  // A start year in IT counts whole years up to now; typed months replace it.
+  profile = (await request('PATCH', '/api/v1/me/profile', { actor: candidate, body: { experienceSince: 2016 } })).body;
+  assert.equal(profile.experienceSince, 2016);
+  assert.equal(profile.experienceMonths, (Number(profile.updatedAt.slice(0, 4)) - 2016) * 12);
+  await request('PATCH', '/api/v1/me/profile', { actor: candidate, body: { experienceSince: 1900 }, status: 400 });
   profile = (await request('POST', '/api/v1/me/profile/estimate', { actor: candidate })).body;
   assert.equal(profile.teamRole, 'Тимлид');
   assert.equal(profile.selectedGrade, 'middle');
