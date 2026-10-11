@@ -48,6 +48,9 @@ permission in this account, so collaborators must use this documented merge gate
 Run reviewed `install-host.sh` as root on the authorized Ubuntu server. It installs dependencies and a separate
 FSP user's Rust 1.99.0, Node 26.11.1 and checksum-verified Compose 5.6.0; Bun 1.4.2 must already exist. It installs the
 executable-specific AppArmor profile, never changes global namespace restrictions, and does not modify other slots.
+If Ubuntu already provides `/etc/apparmor.d/bwrap`, reuse it and remove only the redundant FSP attachment;
+otherwise install the FSP profile. Two profiles for `/usr/bin/bwrap` prevent attachment and break extraction.
+Installation probes namespace creation as an unprivileged user; backend CI additionally extracts an actual PDF.
 Configure mode-600 files in mode-700 `/etc/fsp-ci`:
 
 - `github-token`: GitHub token able to read this private repository, write commit statuses and merge PRs.
