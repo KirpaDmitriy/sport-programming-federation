@@ -27,7 +27,7 @@ No /proc mount or global namespace relaxation. Failed activation restores config
 
 Cloudflare Full (strict), origin Let's Encrypt cert, canonical IP redirect, trusted CF IP ranges, API no-store.
 Host-only HSTS is one week on HTTPS (including errors), absent on plain HTTP; nosniff/cache headers are unique.
-Pending PR #160 makes assets immutable only on 200/206/304 and errors no-store (#159); it is not live yet.
+Asset-cache policy (#159/#160) makes assets immutable only on 200/206/304 and errors no-store.
 Probe a fresh URL and purge the confirmed cached /assets/missing-header-probe.js response after deployment.
 The renewal unit is snap.certbot.renew.timer. Historical smoke API on 4011 was terminated after identity checks (#154).
 Resend auth.nddev.link sends as login@auth.nddev.link with DKIM/SPF/DMARC, tracking off and enforced TLS.
@@ -59,15 +59,15 @@ Read issue receipts and compare live refs for current accepted release and insta
 
 Last asset-cache change: f6d2f70; real nginx probes include 200, 206, 304 and missing-file responses.
 
-Pending shutdown fix #162 / PR #163 in a separate feature worktree: SIGINT/SIGTERM HTTP draining for interview/simulator/
-GitHub-insights, with 60-second API/interview supervisor grace (including nginx Compose stop). Implementation
-0f5070a; 131 local Rust tests passed, including real process signals with a controlled model and PostgreSQL.
-Original deployment interrupted an active interview because only SIGINT was handled; the later 45-second model
-timeout preserved state and retry succeeded. This fix awaits restored CI and release; do not claim it is live.
+Shutdown implementation (#162/#163) drains HTTP on SIGINT/SIGTERM in all four Rust roots, registers signals
+synchronously and propagates registration errors. API/interview supervisor grace is 60 seconds. A controlled
+model and real PostgreSQL regression prove in-flight answers finish and persist before exit; process-local
+background jobs are still not durable. Check live source identity and issue receipts instead of historical counts.
 
-Shutdown follow-up b56bcff registers signals synchronously and propagates setup errors through all four main
-functions, preventing a detached shutdown-task failure from looking like a successful service exit. Independent
-code review passed. Issues #153/#154 are independently live-verified and closed; #152/#155 await CI restoration.
+Recovery found two host assumptions in CI: duplicate packaged/FSP AppArmor attachments and fixed Compose ports.
+infra/install-pdf-sandbox.sh reuses the packaged bwrap profile when present and probes as an unprivileged user.
+Compose CI allocates loopback ports dynamically and checks its explicitly configured logical origin. Neither
+fix relaxes global namespace policy or stops another workload. Full gates are repeated after these repairs.
 
 Observability: private UI on 127.0.0.1:5080, ingest-only Vector credential, fixed same-origin browser intake,
 14-day retention, bounded CPU/memory/queues and vendor telemetry disabled. Nine-panel dashboard queries and

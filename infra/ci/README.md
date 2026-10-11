@@ -14,7 +14,10 @@ The existing Amsterdam workspace host now has a separately installed FSP CI user
 An operator-assisted one-off bridge uses the owner's existing GitHub CLI session for API operations and canonical
 fetches, then calls the installed controller's gate, lane-merge and deployment functions. It preserves four gate
 statuses, exact-tree evidence, the controller lock, independent security checks and actual public/mail acceptance.
-The bridge does not copy the GitHub token or inject credentials into test jobs. The timer remains disabled until
+The bridge does not copy the GitHub token or inject credentials into test jobs. The cold recovery run used the normal
+15 GiB admission guard. After host failures, a bounded operator retry reuses its completed caches only when
+application/dependency trees are unchanged and at least 5 GiB remains; it repeats every gate. This is private
+recovery tooling, not a change to the unattended controller's 15 GiB policy. The timer remains disabled until
 unattended authentication is configured. Ubuntu SSH troubleshooting was stopped at the owner's request; do not
 claim that runner or a new dedicated PAT has been restored. Private logs/evidence and accepted-release receipts
 use `/var/lib/fsp-ci` on Amsterdam. A release is accepted only when its actual receipt and commit status agree.

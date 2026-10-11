@@ -36,8 +36,9 @@ The first Vector integration exposed a version change: environment interpolation
 final configuration uses the supported file secret provider and a separate named ingest-only token, not a root
 credential in the collector environment. Actual ingestion was repeated after this correction.
 
-Application audit, the production intake routes and browser instrumentation still require the ordinary CI-gated
-main release. At this stage the stand's active application remains `405fecc7a93a524db9913781993e2d28c84c8429`.
+These are pre-rollout proofs. Application audit, the production intake routes and browser instrumentation require
+the ordinary CI-gated main release in #172. The application observed before that rollout was
+`0badbdaac33b738262d5415dd0a040f96b8119cc`; subsequent acceptance belongs in the issue/CI receipts.
 Ubuntu CI recovery is tracked in [#161](https://github.com/KirpaDmitriy/sport-programming-federation/issues/161).
 Do not close the rollout or describe the application as synchronized until main, the active release, the accepted
 deployment receipt and public acceptance agree.

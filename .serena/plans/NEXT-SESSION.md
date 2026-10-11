@@ -34,7 +34,7 @@ again or claim unattended Ubuntu CI restored. #161 records the distinction and p
   for synthetic timing and quality differences; no p95 or accuracy-equivalence claim. LLM output never certifies grades.
 - OpenObserve 1.0.4/Vector 0.59.0 are private native support services. The dashboard has nine verified queries.
   Browser replay masks all text/inputs and excludes sensitive or unsafe URLs. Logs exclude bodies/prompts/secrets.
-  Run infra/observability/verify.py and verify_intake.py; public RUM still needs release acceptance.
+  Run infra/observability/verify.py and verify_intake.py; public acceptance must prove RUM on the shipped release, separately from support-service health.
 - GitHub OAuth is intentionally deferred; ownership uses a bio code. FSP is a labelled fictional provider.
   Knowledge tests are not calibrated practical qualifications. No OCR, durable job queue, measured load capacity,
   high availability, external alert delivery or OTLP span export is claimed.
