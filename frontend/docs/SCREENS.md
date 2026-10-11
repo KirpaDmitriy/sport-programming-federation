@@ -43,8 +43,8 @@ Five steps with done markers: e-mail confirmed; consents (processing and publica
 after processing consent, plus «Подробный отчёт и подтверждение владения»; «Профиль собран автоматически» — the
 estimate card (category with its source and confidence, score, «Почему такой уровень» with the notes on caps,
 tenure from the questionnaire and what the next grade needs, «Как повысить грейд» — the steps with their points,
-«С чем поработать» skills and «Советы ИИ» — «Уточните два ответа» (total experience in years and months, role in the
-team, «Пересчитать с уточнениями»), directions, factors, the LLM's second opinion — «ИИ готовит второе мнение об
+«С чем поработать» skills and «Советы ИИ» — «Уточните два ответа» («В IT с какого года» with the resulting years, role
+in the team, «Пересчитать с уточнениями»), directions, factors, the LLM's second opinion — «ИИ готовит второе мнение об
 оценке…» while the background review runs, «Обновляем анализ GitHub…» while an outdated report is re-analyzed —
 one-click «Заполнить анкету по источникам», «Пересчитать» and «По желанию: … Пройти тест») and the questionnaire under «Проверить и поправить анкету» («Заполнить анкету
 вручную» while it is incomplete, open until the candidate closes it), where automatic answers are marked «Заполнено
@@ -76,7 +76,8 @@ Without a source the estimate step says the questionnaire can be filled by hand 
 ![Profile and goals](screenshots/02-profile-goals.png)
 
 The profile form (name, read-only e-mail, industry, specialization grouped by direction, grade for the check,
-total experience as «Общий стаж, лет» and «Ещё месяцев», a searchable stack of up to 12 catalog technologies,
+«В IT с какого года» (study, own projects and work; the hint shows the resulting years or the months stated earlier),
+a searchable stack of up to 12 catalog technologies,
 experience, team role, soft skills) with «Сохранить профиль» and «Отменить изменения»; «Импортировать
 PDF»; «Для работодателей» — the anonymous preview with the category badge; privacy settings; «Текущий статус» with the
 verified grade, or the estimated category, or «Категории пока нет», and the target of the next test shown separately.

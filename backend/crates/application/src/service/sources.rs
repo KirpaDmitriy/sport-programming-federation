@@ -844,7 +844,7 @@ impl PlatformService {
         else {
             return Ok(());
         };
-        let stated_experience_months = profile.stated_experience_months();
+        let stated_experience_months = profile.stated_experience_months(current_year());
         let stated_team_role = profile.stated_team_role().map(str::to_owned);
         let Some(estimate) = profile
             .estimate
@@ -1134,7 +1134,7 @@ fn source_estimate(
     Some(fsp_domain::estimate_profile(&fsp_domain::EstimateInput {
         github,
         fsp: &fsp,
-        stated_experience_months: profile.stated_experience_months(),
+        stated_experience_months: profile.stated_experience_months(current_year()),
         stated_team_role: profile.stated_team_role(),
         now: &now,
     }))

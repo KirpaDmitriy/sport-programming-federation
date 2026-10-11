@@ -15401,7 +15401,8 @@
               "estimate-v2",
               "estimate-v3",
               "estimate-v4",
-              "estimate-v5"
+              "estimate-v5",
+              "estimate-v6"
             ]
           },
           "computedAt": {
@@ -16699,6 +16700,18 @@
               }
             ]
           },
+          "experienceSince": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1950,
+                "maximum": 2100
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "experience": {
             "type": "string",
             "maxLength": 4000
@@ -16853,6 +16866,7 @@
           "stack",
           "teamRole",
           "experienceMonths",
+          "experienceSince",
           "experience",
           "softSkills",
           "consents",
@@ -17199,6 +17213,18 @@
                 "type": "integer",
                 "minimum": 0,
                 "maximum": 1200
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "experienceSince": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1950,
+                "maximum": 2100
               },
               {
                 "type": "null"

@@ -46,7 +46,7 @@ catalog skill. GitHub evidence maps languages and technologies onto catalog skil
 ### Automatic profile
 
 A candidate does not have to type anything: connecting GitHub and/or FSP builds the profile. The rules are
-`estimate-v5` in [`backend/crates/domain/src/estimate.rs`](../../backend/crates/domain/src/estimate.rs); the plan of
+`estimate-v6` in [`backend/crates/domain/src/estimate.rs`](../../backend/crates/domain/src/estimate.rs); the plan of
 record is [`docs/auto-profile.md`](../auto-profile.md).
 
 - Every finished source write (connecting FSP, a finished GitHub analysis, a sync) recomputes `estimate` from all
@@ -67,7 +67,9 @@ record is [`docs/auto-profile.md`](../auto-profile.md).
   Лид also needs work with people: a collaboration dimension of at least 50 or a leading team role the candidate
   typed (тимлид, руководитель, архитектор, стафф, принципал, главный, lead, head, principal, staff, CTO, director); otherwise the band gives
   сеньор, and a lead that only the stated role unlocks keeps the confidence at medium.
-  `notes` explain an applied cap, tenure taken from the questionnaire, an outdated GitHub report and what the next
+  Stated experience is `experienceSince` (the year the candidate started in IT; whole years up to the current year)
+  or typed/imported `experienceMonths`; it is never filled from public tenure, and earlier auto-filled values are
+  cleared (`estimate-v6`). `notes` explain an applied cap, tenure taken from the questionnaire, an outdated GitHub report and what the next
   band needs. (`estimate-v2` blended stated experience into the score; `estimate-v1` counted calendar years.)
 - The category uses the candidate's specialization when it is among the estimate's leading specializations,
   otherwise the estimate's leader.

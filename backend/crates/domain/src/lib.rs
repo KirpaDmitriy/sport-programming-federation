@@ -229,6 +229,8 @@ pub struct CandidateProfile {
     pub stack: Vec<String>,
     pub team_role: String,
     pub experience_months: Option<u32>,
+    /// The year the candidate started in IT (study, own projects, work); experience counts from it.
+    pub experience_since: Option<u16>,
     pub experience: String,
     pub soft_skills: Vec<String>,
     pub consents: Consents,
@@ -843,6 +845,7 @@ mod tests {
             stack: vec!["rust".into()],
             team_role: "Разработчик".into(),
             experience_months: Some(12),
+            experience_since: None,
             experience: "Два года в продуктовой разработке".into(),
             soft_skills: Vec::new(),
             consents: Consents {
@@ -886,6 +889,7 @@ mod tests {
             stack: vec!["rust".into()],
             team_role: "Разработчик".into(),
             experience_months: None,
+            experience_since: None,
             experience: "Публичные проекты".into(),
             soft_skills: Vec::new(),
             consents: Consents {

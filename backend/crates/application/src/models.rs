@@ -187,6 +187,7 @@ pub struct ProfileView {
     pub stack: Vec<String>,
     pub team_role: String,
     pub experience_months: Option<u32>,
+    pub experience_since: Option<u16>,
     pub experience: String,
     pub soft_skills: Vec<String>,
     pub consents: fsp_domain::Consents,
@@ -285,6 +286,8 @@ pub struct ProfilePatch {
     pub team_role: Option<String>,
     #[serde(default, deserialize_with = "present_patch_value")]
     pub experience_months: Option<Option<u32>>,
+    #[serde(default, deserialize_with = "present_patch_value")]
+    pub experience_since: Option<Option<u16>>,
     #[serde(default, deserialize_with = "present_patch_value")]
     pub experience: Option<String>,
     #[serde(default, deserialize_with = "present_patch_value")]

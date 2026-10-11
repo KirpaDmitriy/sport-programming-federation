@@ -578,6 +578,7 @@ async fn connecting_github_builds_the_profile_and_an_estimated_category() {
             &session,
             ProfilePatch {
                 experience_months: Some(Some(5)),
+                experience_since: None,
                 ..ProfilePatch::default()
             },
         )
@@ -588,17 +589,49 @@ async fn connecting_github_builds_the_profile_and_an_estimated_category() {
     assert_eq!(estimate.review, None, "a new estimate waits for its review");
     assert_eq!(typed.experience_months, Some(5));
 
-    // Rebuilding hands every answer back to the evidence, the typed experience included.
+    // A start year in IT is the candidate's statement: experience counts from it, up to now.
+    let year = chrono::Datelike::year(&chrono::Utc::now());
+    let started = service
+        .update_profile(
+            &session,
+            ProfilePatch {
+                experience_since: Some(Some(2016)),
+                ..ProfilePatch::default()
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(started.experience_since, Some(2016));
+    let since_months = u32::try_from(year - 2016).unwrap() * 12;
+    assert_eq!(started.experience_months, Some(since_months));
+    let tenure = started
+        .estimate
+        .as_ref()
+        .unwrap()
+        .factors
+        .iter()
+        .find(|factor| factor.id == "github_longevity")
+        .unwrap();
+    assert_eq!(tenure.points, tenure.max);
+
+    // Rebuilding hands the evidence-based answers back; the stated experience stays the candidate's.
     let rebuilt = service.refresh_estimate(&session, true).await.unwrap();
     assert_ne!(rebuilt.team_role, "Тимлид");
     assert_eq!(rebuilt.name, "Иван Петров");
-    for field in ["teamRole", "experienceMonths", "softSkills", "stack"] {
+    for field in ["teamRole", "softSkills", "stack"] {
         assert!(
             rebuilt.auto_fields.iter().any(|item| item == field),
             "{field}"
         );
     }
-    assert_ne!(rebuilt.experience_months, Some(5));
+    assert!(
+        !rebuilt
+            .auto_fields
+            .iter()
+            .any(|item| item == "experienceMonths")
+    );
+    assert_eq!(rebuilt.experience_since, Some(2016));
+    assert_eq!(rebuilt.experience_months, Some(since_months));
 
     // An estimate of earlier rules updates itself the next time the candidate opens the profile.
     let id = session.candidate_id.as_deref().unwrap();

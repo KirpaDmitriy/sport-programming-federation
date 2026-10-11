@@ -445,6 +445,7 @@ fn demo_candidates(now: &str) -> Vec<CandidateProfile> {
             stack: stack.into_iter().map(String::from).collect(),
             team_role: "Разработчик".into(),
             experience_months: Some(36),
+            experience_since: None,
             experience: "Коммерческая разработка и командные проекты.".into(),
             soft_skills: vec!["Командная работа".into()],
             consents: Consents {

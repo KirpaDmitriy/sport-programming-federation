@@ -91,6 +91,7 @@ const profileEditable = {
   stack: arr(skillId, { uniqueItems: true, maxItems: 12 }),
   teamRole: str({ maxLength: 120 }),
   experienceMonths: nullable(num({ minimum: 0, maximum: 1200 })),
+  experienceSince: nullable(num({ minimum: 1950, maximum: 2100 })),
   experience: str({ maxLength: 4000 }),
   softSkills: arr(str({ maxLength: 100 }), { maxItems: 12, uniqueItems: true }),
   consents: consent,
@@ -183,7 +184,7 @@ export const schemas = {
   }),
   EstimateFactor: obj({ id: str(), label: str(), points: share, max: share, detail: str() }),
   ProfileEstimate: obj({
-    version: en('estimate-v1', 'estimate-v2', 'estimate-v3', 'estimate-v4', 'estimate-v5'),
+    version: en('estimate-v1', 'estimate-v2', 'estimate-v3', 'estimate-v4', 'estimate-v5', 'estimate-v6'),
     computedAt: dt,
     specialization: nullable(specialization),
     specializations: arr(obj({ id: specialization, percent: share })),

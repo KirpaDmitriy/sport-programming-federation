@@ -318,6 +318,7 @@ const profileKeys = [
   'stack',
   'teamRole',
   'experienceMonths',
+  'experienceSince',
   'experience',
   'softSkills',
   'consents',
@@ -376,6 +377,11 @@ function patchProfile(s: State, candidate: Candidate, patch: Schemas['ProfilePat
   );
   candidate.autoFields = candidate.autoFields.filter((field) => !changed.includes(field));
   Object.assign(candidate, structuredClone(patch), { revision: candidate.revision + 1, updatedAt: s.clock });
+  // As the Rust backend: a start year is a statement the months follow from; typed months replace it.
+  if (patch.experienceSince !== undefined)
+    candidate.experienceMonths =
+      patch.experienceSince === null ? null : (Number(s.clock.slice(0, 4)) - patch.experienceSince) * 12;
+  else if (patch.experienceMonths !== undefined) candidate.experienceSince = null;
   return profileDto(s, candidate);
 }
 const publicSkillKeys = [
