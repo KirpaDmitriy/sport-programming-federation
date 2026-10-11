@@ -10,7 +10,11 @@ use sqlx::postgres::PgConnectOptions;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    tracing_subscriber::fmt().init();
+    tracing_subscriber::fmt()
+        .json()
+        .with_current_span(true)
+        .with_span_list(false)
+        .init();
     let host = env::var("INTERVIEW_HOST").unwrap_or_else(|_| "127.0.0.1".into());
     let port: u16 = env::var("INTERVIEW_PORT")
         .unwrap_or_else(|_| "4040".into())

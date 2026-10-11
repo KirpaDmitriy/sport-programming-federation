@@ -56,6 +56,10 @@ if [[ ! -d "$DIR" ]]; then
   set -a
   # shellcheck disable=SC1091
   [[ ! -f "$CONFIG/frontend-build.env" ]] || . "$CONFIG/frontend-build.env"
+  export VITE_RELEASE_SHA="$SHA"
+  if [[ -f "$SYSTEM_ROOT/etc/nginx/fsp-observability/locations.conf" ]]; then
+    export VITE_OBSERVABILITY=1
+  fi
   set +a
   (cd "$STAGE/mock-server" && bun install --frozen-lockfile --production)
   (cd "$STAGE/frontend" && bun install --frozen-lockfile && bun run build && bun scripts/check-bundle.ts)

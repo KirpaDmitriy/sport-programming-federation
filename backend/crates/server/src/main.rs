@@ -19,7 +19,11 @@ const DEV_ORIGINS: &str = "http://127.0.0.1:5173,http://localhost:5173";
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    tracing_subscriber::fmt().init();
+    tracing_subscriber::fmt()
+        .json()
+        .with_current_span(true)
+        .with_span_list(false)
+        .init();
 
     match env::args().skip(1).collect::<Vec<_>>().as_slice() {
         [] => {}

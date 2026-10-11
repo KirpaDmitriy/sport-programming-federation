@@ -10,7 +10,11 @@ use fsp_github_insights::{InsightsState, router};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    tracing_subscriber::fmt().init();
+    tracing_subscriber::fmt()
+        .json()
+        .with_current_span(true)
+        .with_span_list(false)
+        .init();
     let host = env::var("FSP_GITHUB_INSIGHTS_HOST").unwrap_or_else(|_| "127.0.0.1".into());
     let port = env::var("FSP_GITHUB_INSIGHTS_PORT").unwrap_or_else(|_| "4030".into());
     // No token is required. An optional one only raises GitHub's per-IP anonymous limits.
