@@ -38,7 +38,7 @@ Do not restart completed audits or revive the old IP/fixed-code/Actions instruct
 
 ## Delivery and recovery
 
-CI: server-gha-runner-2, /opt/fsp-ci, root-private /etc/fsp-ci, fsp-ci.timer. Four fsp/* gates plus independent
+CI: server-gha-runner-1 (moved 2026-10-11 after runner-2 was retired), /opt/fsp-ci, root-private /etc/fsp-ci, fsp-ci.timer. Four fsp/* gates plus independent
 security checks protect personal -> dev -> main PRs. Installed controller updates are reviewed separately and
 invalidate cached proof. Trusted private maintainers only; Docker is root-equivalent. No GitHub Actions dependency.
 Current main must match /opt/fsp/current and accepted /var/lib/fsp-ci/deployed.json; fsp/deployment succeeds only
