@@ -18,6 +18,7 @@ key, host key, droplet metadata) lives in the git-ignored `.fsp-infra/` at the r
 | `fsp-interview.service` | Graph-guided interview engine on private loopback 4040; PostgreSQL sessions, Bifrost/offline evaluation and an internal token shared with the API; released with the API, no public nginx route |
 | `fsp-api.service` | Hardened systemd unit for the Rust API (same user and port; `StateDirectory=fsp` gives it `/var/lib/fsp`) |
 | `nginx/` | Site config (SPA fallback, `/api/v1/` proxy, `/__mock__` → 404), ACME bootstrap config, security headers |
+| [`observability/`](observability/README.md) | Private OpenObserve, scoped Vector logs/metrics, API command audit and masked same-origin browser RUM/replay |
 
 nginx serves the built SPA from `/opt/fsp/current/frontend/dist` with an `index.html` fallback, forwards only
 `/api/v1/` to `127.0.0.1:4010` with a loopback `Host`, marks the session cookie `Secure` and answers `/__mock__`
