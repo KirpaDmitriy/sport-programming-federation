@@ -2318,6 +2318,11 @@ export interface components {
             status: "meets" | "needs_verification" | "not_evidenced";
             /** @enum {string} */
             evidenceStatus: "confirmed" | "evidence" | "observed" | "insufficient";
+            /** @enum {string} */
+            minimumGrade: "intern" | "junior" | "middle" | "senior" | "lead";
+            evidenceGrade: ("intern" | "junior" | "middle" | "senior" | "lead") | null;
+            evidenceSources: ("github" | "fsp" | "assessment")[];
+            acceptedSources: ("github" | "fsp" | "assessment")[];
             reason: string;
         };
         Match: {
@@ -2329,9 +2334,28 @@ export interface components {
             requiredTotal: number;
             desiredMet: number;
             desiredTotal: number;
+            requiredEvidenced: number;
+            desiredEvidenced: number;
             requirements: components["schemas"]["MatchRequirement"][];
             explanation: string;
             algorithmVersion: string;
+        };
+        EmployerFsp: {
+            verifiedParticipation: boolean;
+            publishedResults: number;
+            podiumResults: number;
+            relevantResults: number;
+            lastSyncedAt: string | null;
+            synthetic: boolean;
+        };
+        EmployerReview: {
+            /** @enum {string} */
+            specialization: "backend" | "frontend" | "fullstack" | "ios" | "android" | "mobile_crossplatform" | "devops" | "data_engineering" | "data_science" | "ml_engineering" | "qa_manual" | "qa_automation" | "security" | "embedded" | "systems" | "gamedev" | "onec" | "erp" | "system_analysis" | "business_analysis" | "data_analytics" | "dba" | "sysadmin" | "design" | "management";
+            /** @enum {string} */
+            grade: "intern" | "junior" | "middle" | "senior" | "lead";
+            agrees: boolean;
+            /** Format: date-time */
+            computedAt: string;
         };
         AnonymousCandidate: {
             id: string;
@@ -2354,6 +2378,8 @@ export interface components {
             freshness: components["schemas"]["Freshness"];
             match: components["schemas"]["Match"] | null;
             github: components["schemas"]["GitHubSignal"] | null;
+            fsp: components["schemas"]["EmployerFsp"] | null;
+            review: components["schemas"]["EmployerReview"] | null;
             simulation: boolean;
         };
         CandidatePage: {
