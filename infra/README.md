@@ -81,6 +81,15 @@ reload or health check restores the prior files, symlink and selected API. The c
 are protected from retention even when rolling back to an older SHA. A process killed with SIGKILL or a host
 power failure cannot run a shell rollback handler; inspect the current symlink and service health after recovery.
 
+The Rust API, interview, simulator and GitHub-insights services handle both SIGINT and supervisor SIGTERM with
+HTTP request draining. API/interview systemd units allow 60 seconds before forced termination. Compose gives
+nginx, API and interview the same grace, so a normal stop can finish an already accepted request within the
+existing 45-second model / 55-second API deadlines. Sequential service restarts still briefly reject new requests;
+this is not a high-availability rollout. Background reviews and GitHub analyses retain their documented
+process-local restart behavior. See [Tokio signals](https://docs.rs/tokio/1.53.2/tokio/signal/),
+[axum shutdown](https://docs.rs/axum/0.8.9/axum/serve/struct.Serve.html#method.with_graceful_shutdown) and
+[Compose stop grace](https://docs.docker.com/reference/compose-file/services/#stop_grace_period).
+
 Database migrations run when Rust starts and are forward-only. A binary rollback does not undo a migration;
 all new migrations must preserve reads/writes by every retained rollback binary. Do not create a backup; the owner has disabled backups.
 `backend/ROLLBACK_COMPATIBLE` declares the `sqlx-forward-additive-v1` startup policy: only unknown versions
