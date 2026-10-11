@@ -64,6 +64,13 @@ class SileroRuntime:
             "tts_models", "model"
         )
         self._lock = threading.Lock()
+        self._model.apply_tts(
+            text="Проверка готовности интервьюера.",
+            speaker="eugene",
+            sample_rate=24_000,
+            put_accent=True,
+            put_yo=True,
+        )
 
     def synthesize(self, text: str, voice: str, sample_rate: int) -> bytes:
         with self._lock:
