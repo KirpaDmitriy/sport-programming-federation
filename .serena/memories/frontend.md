@@ -32,3 +32,17 @@ Live/demo instructions and CI matrix were reconciled in #50; capture screenshots
 Live verification receipts: #50 (consistency), #67 (GitHub insights); earlier full product/browser evidence: closed issue #31.
 
 Latest review: #138 / docs/stability-review-2026-10-11.md; verify live identity rather than trusting old receipts.
+
+Employer candidate detail combines anonymous GitHub/FSP evidence, safe AI summary and explicit requirement
+coverage. Candidate vacancies show company information and strengths/gaps from the same API score. Active
+views refresh after profile/source/test/need changes and poll foreground data. Profile links/contact disclosure
+remain governed by server permissions.
+The bundled OpenObserve SDK is opt-in at build time. RUM sanitizes URLs/errors/actions; replay masks all text and
+inputs and excludes authentication/settings/onboarding/assessment/interview routes and unsafe URLs. Do not set
+personal user identities or put ingest credentials in VITE variables. The separate enabled-RUM browser test
+inspects actual events and decompressed replay, including stored records on the private collector.
+
+Interview playback is owned by the widget's useQuestionSpeech hook. Cancellation invalidates delayed autoplay,
+fetches, audio/browser handlers and play promises on question change, microphone activation, answer submission and
+unmount. Keep the text flow usable when browser speech APIs are absent. Provider responses are bounded during
+streaming; Silero runs on the stand's CPU, while recognition can still use a browser vendor service.

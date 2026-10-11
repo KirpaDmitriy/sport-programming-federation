@@ -14,13 +14,16 @@ use fsp_integration_interview::HttpInterviewGateway;
 use fsp_integration_speech::{SileroSpeech, XaiSpeech, YandexSpeech};
 use fsp_storage_postgres::PostgresRepository;
 use tokio::net::TcpListener;
-use tokio::signal;
 
 const DEV_ORIGINS: &str = "http://127.0.0.1:5173,http://localhost:5173";
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    tracing_subscriber::fmt().init();
+    tracing_subscriber::fmt()
+        .json()
+        .with_current_span(true)
+        .with_span_list(false)
+        .init();
 
     match env::args().skip(1).collect::<Vec<_>>().as_slice() {
         [] => {}
@@ -115,10 +118,15 @@ async fn main() -> Result<(), Box<dyn Error>> {
             chat_url,
             nonempty_env("BIFROST_API_KEY"),
             nonempty_env("BIFROST_MODEL").unwrap_or_else(|| "openai/gpt-5-mini".into()),
-            // Background reviews reason deeply unless the operator sets `none`.
-            Some(nonempty_env("BIFROST_REASONING_EFFORT").unwrap_or_else(|| "high".into()))
+            // Advisory profile reviews use medium effort; `none` keeps the provider default.
+            Some(nonempty_env("BIFROST_REASONING_EFFORT").unwrap_or_else(|| "medium".into()))
                 .filter(|effort| effort != "none"),
         )
+        .and_then(|gateway| {
+            gateway.with_interactive_reasoning_effort(nonempty_env(
+                "BIFROST_INTERACTIVE_REASONING_EFFORT",
+            ))
+        })
         .map_err(|error| format!("Bifrost adapter: {}", error.message))?;
         llm_adapter = Some(Arc::new(bifrost));
     }
@@ -231,7 +239,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     );
     tracing::info!(address = %listener.local_addr()?, "fsp-career-api listening");
     axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown())
+        .with_graceful_shutdown(shutdown()?)
         .await?;
     Ok(())
 }
@@ -251,20 +259,23 @@ async fn sweep_expired(repository: Arc<PostgresRepository>) {
     }
 }
 
-async fn shutdown() {
-    let interrupt = async {
-        signal::ctrl_c().await.ok();
-    };
+// Register before axum spawns its shutdown task, so setup failures exit main with an error.
+fn shutdown() -> std::io::Result<impl std::future::Future<Output = ()>> {
     #[cfg(unix)]
-    let terminate = async {
-        if let Ok(mut stream) = signal::unix::signal(signal::unix::SignalKind::terminate()) {
-            stream.recv().await;
+    let mut interrupt = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt())?;
+    #[cfg(windows)]
+    let mut interrupt = tokio::signal::windows::ctrl_c()?;
+    #[cfg(unix)]
+    let mut terminate = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
+    Ok(async move {
+        #[cfg(unix)]
+        tokio::select! {
+            _ = interrupt.recv() => {}
+            _ = terminate.recv() => {}
         }
-    };
-    #[cfg(not(unix))]
-    let terminate = std::future::pending::<()>();
-    tokio::select! {
-        () = interrupt => {}
-        () = terminate => {}
-    }
+        #[cfg(windows)]
+        {
+            interrupt.recv().await;
+        }
+    })
 }
