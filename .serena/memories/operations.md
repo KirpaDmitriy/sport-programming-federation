@@ -33,7 +33,11 @@ archives were deleted. Sync local branches with canonical upstream only. No Open
 GitHub OAuth remains deferred. No production DB reset, unrelated-host changes or unrequested credential rotation.
 
 Latest review #138; compare upstream/main, /opt/fsp/current and deployed.json for the accepted release.
-Credential follow-up #139: current classic CI token has admin:org,gist,repo,workflow. A dedicated repo-only
-replacement needs owner issuance; never reduce/revoke the shared token. Install privately while CI is idle.
+Credential follow-up #139: CI now uses a separate classic PAT for rldyourmnd with exactly repo scope, installed
+October 11; expires November 10, 2026 at 06:31:54 UTC. Renew before expiry using infra/ci/README.md.
+The original broad credential stays unchanged in the owner's CLI; never reduce/revoke it for this project.
 The reviewed `infra/ci/install_token.py` reads stdin, validates exact repo scope, expiration, identity and access,
 then replaces root-only credentials under the controller lock. Run from accepted main; see infra/ci/README.md.
+Only /etc/fsp-ci/github-token holds the active CI copy; the one-time local handoff was removed. Issue #139 holds
+the operational verification receipts. A classic repo-scoped PAT is not restricted to a single repository.
+Last commit: 23aad65 (guarded credential installer; compare live refs for the current accepted release).
