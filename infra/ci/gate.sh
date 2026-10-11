@@ -41,18 +41,20 @@ case "${1:?gate required}" in
     ;;
   compose)
     # Compose resources are project-scoped; never prune the shared Docker host.
-    export COMPOSE_PROJECT_NAME=fsp-ci FSP_PORT=18080 FSP_BIND_IP=127.0.0.1 FSP_DB_PORT=15434
+    export COMPOSE_PROJECT_NAME=fsp-ci FSP_PORT=0 FSP_BIND_IP=127.0.0.1 FSP_DB_PORT=0 INTERVIEW_PORT=0
+    # Docker assigns free transport ports; origin checks use the configured logical site.
+    export FSP_ALLOWED_ORIGINS=http://fsp-ci.test FSP_PUBLIC_WEB_URL=http://fsp-ci.test
     trap 'docker compose logs --tail=100; docker compose down --volumes --remove-orphans' EXIT
     docker compose up --build --detach --wait
-    base=http://127.0.0.1:18080
+    base="http://$(docker compose port api 8080)"
     status() { curl -sS -o /dev/null -w '%{http_code}' "$@"; }
     test "$(status "$base/candidate/vacancies")" = 200
     test "$(status "$base/api/v1/meta")" = 200
     test "$(status "$base/__mock__/reset")" = 404
     body='{"email":"ci@example.com","role":"candidate"}'
-    test "$(status -X POST -H "Origin: $base" -H 'Content-Type: application/json' -d "$body" "$base/api/v1/auth/email/challenges")" = 201
+    test "$(status -X POST -H "Origin: $FSP_PUBLIC_WEB_URL" -H 'Content-Type: application/json' -d "$body" "$base/api/v1/auth/email/challenges")" = 201
     test "$(status -X POST -H 'Origin: https://evil.example' -H 'Content-Type: application/json' -d "$body" "$base/api/v1/auth/email/challenges")" = 403
-    interview=http://127.0.0.1:4040
+    interview="http://$(docker compose port interview 4040)"
     started="$(curl -fsS -H 'Authorization: Bearer demo-interview-token' -H 'Content-Type: application/json' \
       -d '{"candidateId":"ci-candidate","blueprintId":"backend-middle-v1","maxTurns":10}' \
       "$interview/v1/interviews")"

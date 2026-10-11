@@ -34,6 +34,8 @@ this is a trusted-maintainer runner, not an isolation boundary for hostile code.
 or put another repository's credentials in the project directory. Project containers/volumes use the `fsp-ci` prefix;
 cleanup never prunes the shared host. The controller is installed separately and is not automatically updated by a PR.
 Host CPU/memory limits, serial jobs and two Cargo build jobs leave capacity for existing runner slots.
+Compose checks let Docker allocate loopback ports for the web/API, interview and PostgreSQL services, avoiding
+collisions with other workloads. Origin checks use a fixed configured test origin independently of those ports.
 New cycles refuse to build below 15 GiB free. Logs are retained for 14 days; compact evidence is retained for reuse.
 
 Feature PRs require the maintainer to merge. The controller opens and merges personal -> dev -> main integration
