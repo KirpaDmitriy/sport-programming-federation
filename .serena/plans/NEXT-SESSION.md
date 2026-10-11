@@ -4,6 +4,18 @@ Read AGENTS.md, docs/current-state.md and domain memories. Source and live evide
 Backend coordination with Dima, real domain/mail and existing private CI hosts are already authorized.
 English engineering text, Russian UI. Never expose secrets, reset production data or rewrite shared history.
 
+## Immediate continuation: CI host was deleted
+
+An external DigitalOcean action deleted gha-runner-1 on 2026-10-11 at 08:16 UTC; runner-2 was retired earlier.
+Issue #161 records the interruption. A user question about the replacement destination is pending. Do not install
+on unrelated hosts or create a paid droplet without that decision. Main checkout branch feat/159-asset-cache-policy,
+PR #160 into danil, contains the locally verified asset-cache fix and incident documentation; it awaits server CI.
+Accepted main 405fecc remains live, independently checked healthy. Original gates and public acceptance passed;
+the controller upgrade's later recheck was interrupted after platform success. Other build statuses are errors.
+The runner's private receipts and PAT copy are unavailable. Rebuild reviewed CI on the selected host, establish
+scoped credentials, run all gates and actual public acceptance to regenerate receipts, then ship #160 normally.
+After shipping, purge the known cached /assets/missing-header-probe.js response and verify fresh/existing URLs.
+
 ## Current behavior
 
 nddev.link serves Rust/PostgreSQL behind Cloudflare Full (strict), with real Resend OTPs and secure sessions.
@@ -35,10 +47,10 @@ accounts intentionally keep fixed codes in Resend mode; all other addresses requ
 
 ## Delivery and recovery
 
-CI: server-gha-runner-1 (moved 2026-10-11 after runner-2 was retired), /opt/fsp-ci, root-private /etc/fsp-ci, fsp-ci.timer. Four fsp/* gates plus independent
+CI recovery layout: /opt/fsp-ci, root-private /etc/fsp-ci, fsp-ci.timer. No current host after #161. Four fsp/* gates plus independent
 security checks protect personal -> dev -> main PRs. Installed controller updates are reviewed separately and
 invalidate cached proof. Trusted private maintainers only; Docker is root-equivalent. No GitHub Actions dependency.
-Current main must match /opt/fsp/current and accepted /var/lib/fsp-ci/deployed.json; fsp/deployment succeeds only
+After recovery, current main must match /opt/fsp/current and newly accepted /var/lib/fsp-ci/deployed.json; fsp/deployment succeeds only
 after real public browser acceptance. Compare local/canonical permanent branches individually; never reset them to a common SHA.
 The additional GitHub mirror is retired and must not be synchronized. Preserve compatible Rust rollback targets; never revert public auth to mock/demo.
 
@@ -51,12 +63,24 @@ October 11 review #138: consent parity on interview answers, one model budget pe
 policy, race-safe speech lifecycle and failure-safe acceptance teardown. Detailed plan and evidence scope:
 docs/stability-review-2026-10-11.md. Documentation and project-specific Claude/Serena memories were reconciled.
 Follow-up #139 installed a separate repo-only classic CI PAT after owner-authorized browser issuance. The original
-shared CLI credential is unchanged. Renew before November 10, 2026 at 06:31:54 UTC via infra/ci/README.md.
+shared CLI credential is unchanged. Its dedicated replacement expires November 10, 2026 at 06:31:54 UTC, but the
+only known active copy was lost with runner-1. Recover or replace it through infra/ci/README.md; never print it.
 Installer 23aad65 shipped through #143/#144/#145; #139 records token and PR-cycle proof. Follow-up #152/#153/#154/#155
 adds status reconciliation (e078301), error-response cleanup (b3f80bf), queued-review consent (c93cf00) and HTTPS headers
-(63bb5eb); local checks: 129 Rust, 20 CI tests, release faults and real nginx. Read issue receipts for live/install proof.
+(63bb5eb). Public probes found #159 asset-404 caching; f6d2f70 limits immutable caching to 200/206/304. Local checks: 129 Rust, 20 CI tests, release faults and real nginx. Read issue receipts for live/install proof.
 
 Memory index: platform.md (auth/data/assessment), frontend.md (UI/proofs), operations.md (deployment/mail/CI/recovery).
 Release identity: compare upstream/main, /opt/fsp/current and deployed.json instead of trusting a SHA written here.
 Receipts: #54 (no-backup policy), #67 (GitHub insights delivery and live check), #73 (catalog v2),
 #76/#79 (automatic profile, background review), #82 (question banks, estimate-v2), estimate-v3 #89, estimate-v4 #95, estimate-v5 #125 (Russian leading-role spellings), estimate-v6 (experience from the start year in IT).
+
+## Pending service shutdown correction (#162)
+
+A separate worktree .fsp-infra/worktrees/162-graceful-shutdown holds feat/162-graceful-shutdown from upstream/dev.
+Implementation 0f5070a handles SIGTERM as well as SIGINT in interview/simulator/insights; the API already did so.
+API/interview systemd and web/API/interview Compose stop grace is 60 seconds. The old binary failed the real
+pending-answer regression; both signals now finish HTTP, save revision/evidence (1,1), then exit successfully.
+Local Rust fmt/clippy and 131 tests passed; release fault checks and four auxiliary-binary signal probes passed.
+This change is not deployed. Restore CI (#161), ship #160, reconcile this branch with the updated personal branch
+without rewriting history, then run its gates and public acceptance before merging/releasing it. Sequential
+restarts can still reject new requests; process-local background jobs are not made durable by HTTP draining.
