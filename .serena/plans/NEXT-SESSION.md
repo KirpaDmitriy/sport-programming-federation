@@ -55,4 +55,4 @@ No pending user permission is needed for the completed scope. Read current open 
 Memory index: platform.md (auth/data/assessment), frontend.md (UI/proofs), operations.md (deployment/mail/CI/recovery).
 Release identity: compare upstream/main, /opt/fsp/current and deployed.json instead of trusting a SHA written here.
 Receipts: #54 (no-backup policy), #67 (GitHub insights delivery and live check), #73 (catalog v2),
-#76/#79 (automatic profile, background review), #82 (question banks, estimate-v2), estimate-v3 #89, estimate-v4 PR (see GitHub).
+#76/#79 (automatic profile, background review), #82 (question banks, estimate-v2), estimate-v3 #89, estimate-v4 #95, estimate-v5 (Russian leading-role spellings).

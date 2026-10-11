@@ -15,7 +15,7 @@ Historical cutover commands for another contributor's server are not operating i
 - GitHub connection by login through the tokenless public-only insights service as a polled background job,
   ownership by bio code or OAuth identity, and evidence updates from substantively developed repositories that
   preserve verified grades.
-- Automatic profile (`estimate-v4`, with a growth plan, focus skills and the review's advice; an outdated
+- Automatic profile (`estimate-v5`, with a growth plan, focus skills and the review's advice; an outdated
   estimate refreshes itself when the profile opens): every source write recomputes the estimate in its transaction, answers the
   questionnaire fields still automatic (soft skills included) and gives an estimated category; editing stated
   experience or team role recomputes it; a bounded Bifrost second opinion with a level rubric; manual recalculation

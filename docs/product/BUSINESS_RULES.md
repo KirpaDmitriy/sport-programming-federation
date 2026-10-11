@@ -46,7 +46,7 @@ catalog skill. GitHub evidence maps languages and technologies onto catalog skil
 ### Automatic profile
 
 A candidate does not have to type anything: connecting GitHub and/or FSP builds the profile. The rules are
-`estimate-v4` in [`backend/crates/domain/src/estimate.rs`](../../backend/crates/domain/src/estimate.rs); the plan of
+`estimate-v5` in [`backend/crates/domain/src/estimate.rs`](../../backend/crates/domain/src/estimate.rs); the plan of
 record is [`docs/auto-profile.md`](../auto-profile.md).
 
 - Every finished source write (connecting FSP, a finished GitHub analysis, a sync) recomputes `estimate` from all
@@ -65,7 +65,7 @@ record is [`docs/auto-profile.md`](../auto-profile.md).
   days) and stated experience. Stated experience never lowers the score: it replaces the tenure dimension only when
   longer than the public record (full at 72 months), and a grade only it unlocks keeps the confidence at medium.
   Лид also needs work with people: a collaboration dimension of at least 50 or a leading team role the candidate
-  typed (тимлид, руководитель, архитектор, lead, head, principal, staff, CTO, director); otherwise the band gives
+  typed (тимлид, руководитель, архитектор, стафф, принципал, главный, lead, head, principal, staff, CTO, director); otherwise the band gives
   сеньор, and a lead that only the stated role unlocks keeps the confidence at medium.
   `notes` explain an applied cap, tenure taken from the questionnaire, an outdated GitHub report and what the next
   band needs. (`estimate-v2` blended stated experience into the score; `estimate-v1` counted calendar years.)
