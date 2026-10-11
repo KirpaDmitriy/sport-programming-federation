@@ -15,8 +15,7 @@ apt-get update -q
 apt-get upgrade -yq
 # git: the GitHub insights service reads public repositories through blobless clones.
 apt-get install -yq nginx ufw curl unzip build-essential postgresql bubblewrap poppler-utils git python3.12-venv
-install -D -m 644 "$HERE/apparmor/fsp-pdf-bwrap" /etc/apparmor.d/fsp-pdf-bwrap
-apparmor_parser -r /etc/apparmor.d/fsp-pdf-bwrap
+bash "$HERE/install-pdf-sandbox.sh"
 
 if [ "$(/opt/bun/bin/bun --version 2>/dev/null)" != "$BUN_VERSION" ]; then
   tmp="$(mktemp -d)"

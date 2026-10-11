@@ -10,6 +10,13 @@ Sessions are stored in PostgreSQL as versioned JSON documents. A conditional rev
 and a partial unique index permits only one active interview per candidate. The service can restart or be replaced by
 a release without losing the current question or evidence.
 
+SIGINT and SIGTERM stop accepting new connections and let active HTTP requests finish before process exit.
+The systemd and Compose stop grace is 60 seconds, above the 45-second model turn and 55-second platform request
+budgets. A process-level PostgreSQL regression holds a controlled model response, sends each signal, then checks
+the completed HTTP response, exactly one saved revision/evidence item and a successful process exit.
+Sequential restarts still have a window where new requests can fail; this is not a zero-downtime deployment.
+Forced termination or host loss cannot drain requests. Uncommitted turns remain retryable.
+
 ## Product boundary
 
 The competency graph is the interview program, not a visualization added after the conversation. The first
@@ -35,6 +42,8 @@ It evaluates described actions and trade-offs; it does not infer personality, em
 When `BIFROST_CHAT_URL` is configured, Bifrost generates surface variants and evaluates answers against the supplied
 rubric. Output is schema-checked, evidence must quote the answer exactly, and the model cannot choose the next node
 or assign a platform grade. `INTERVIEW_BIFROST_MODEL` selects the model independently from the main API.
+Grok uses low reasoning by default, configurable with `INTERVIEW_REASONING_EFFORT`; other models retain their
+provider default unless explicitly configured. See [latency measurements and limits](ai-latency.md).
 Evaluation and generation of the next question share one 45-second model budget; persistence happens only after
 both succeed. A timeout leaves the revision, question and evidence unchanged, so the same answer can be retried.
 The internal gateway allows 50 seconds, the platform 55 and nginx 60. A provider failure is never an offline fallback.

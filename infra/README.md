@@ -19,6 +19,7 @@ key, host key, droplet metadata) lives in the git-ignored `.fsp-infra/` at the r
 | `fsp-api.service` | Hardened systemd unit for the Rust API (same user and port; `StateDirectory=fsp` gives it `/var/lib/fsp`) |
 | `fsp-silero-tts.service` | Loopback-only Silero v5.5 Russian TTS worker on CPU (`127.0.0.1:4050`) |
 | `nginx/` | Site config (SPA fallback, `/api/v1/` proxy, `/__mock__` → 404), ACME bootstrap config, security headers |
+| [`observability/`](observability/README.md) | Private OpenObserve, scoped Vector logs/metrics, API command audit and masked same-origin browser RUM/replay |
 
 nginx serves the built SPA from `/opt/fsp/current/frontend/dist` with an `index.html` fallback, forwards only
 `/api/v1/` to `127.0.0.1:4010` with a loopback `Host`, marks the session cookie `Secure` and answers `/__mock__`
@@ -83,6 +84,15 @@ Activation installs the release's API units, nginx site and security headers. A 
 reload or health check restores the prior files, symlink and selected API. The current and previous releases
 are protected from retention even when rolling back to an older SHA. A process killed with SIGKILL or a host
 power failure cannot run a shell rollback handler; inspect the current symlink and service health after recovery.
+
+The Rust API, interview, simulator and GitHub-insights services handle both SIGINT and supervisor SIGTERM with
+HTTP request draining. API/interview systemd units allow 60 seconds before forced termination. Compose gives
+nginx, API and interview the same grace, so a normal stop can finish an already accepted request within the
+existing 45-second model / 55-second API deadlines. Sequential service restarts still briefly reject new requests;
+this is not a high-availability rollout. Background reviews and GitHub analyses retain their documented
+process-local restart behavior. See [Tokio signals](https://docs.rs/tokio/1.53.2/tokio/signal/),
+[axum shutdown](https://docs.rs/axum/0.8.9/axum/serve/struct.Serve.html#method.with_graceful_shutdown) and
+[Compose stop grace](https://docs.docker.com/reference/compose-file/services/#stop_grace_period).
 
 Database migrations run when Rust starts and are forward-only. A binary rollback does not undo a migration;
 all new migrations must preserve reads/writes by every retained rollback binary. Do not create a backup; the owner has disabled backups.
@@ -172,7 +182,7 @@ Host-side secrets (never committed):
 | `/etc/fsp/cliproxy.yaml` | CLIProxyAPI config; template: [`llm/cliproxy.yaml.example`](llm/cliproxy.yaml.example) |
 | `/var/lib/fsp/cliproxy-auth/xai-*.json` | xAI OAuth token file (writable — CLIProxyAPI refreshes it) |
 | `/var/lib/fsp/bifrost/config.json` | Bifrost config; reference: [`llm/bifrost-config.json`](llm/bifrost-config.json). The provider timeout is 360 s: a deep-reasoning estimate review takes one to four minutes; restart `fsp-bifrost` after changing it |
-| `/etc/fsp/llm.env` | `NDDEV_CLIPROXY_KEY` (CLIProxyAPI api-key), `NDDEV_BIFROST_KEY` (Bifrost virtual key) and the backend-side `BIFROST_CHAT_URL`, `BIFROST_API_KEY` (= the virtual key), `BIFROST_MODEL=grok-build/grok-4.7`, optional `BIFROST_REASONING_EFFORT` (default `high`, `none` disables it for the background estimate review) — `fsp-api.service` loads the same file, so provisioning never rewrites it |
+| `/etc/fsp/llm.env` | `NDDEV_CLIPROXY_KEY` (CLIProxyAPI api-key), `NDDEV_BIFROST_KEY` (Bifrost virtual key) and the backend-side `BIFROST_CHAT_URL`, `BIFROST_API_KEY` (= the virtual key), `BIFROST_MODEL=grok-build/grok-4.7`, optional `BIFROST_REASONING_EFFORT` (background review: default `medium`, `none` omits the setting), `BIFROST_INTERACTIVE_REASONING_EFFORT` and `INTERVIEW_REASONING_EFFORT` (interactive Grok: default `low`) — `fsp-api.service` loads the same file, so provisioning never rewrites it |
 
 Without configured Bifrost the backend reports `meta.capabilities.realLlm: false` and builds a deterministic
 graph from stored skills. An error from a configured provider remains an error; it never silently falls back. The xAI OAuth token is shared with the local `nddev-runtime` setup; refresh-token rotation
@@ -236,6 +246,8 @@ origin cache headers. HTTPS responses advertise host-only HSTS for one week (`ma
 error responses; subdomains and preload are not opted in. Plain HTTP Docker responses omit HSTS.
 `/api/v1/` always returns one `Cache-Control: no-store`, including proxy-generated 429 responses. nginx
 suppresses upstream duplicates before setting `X-Content-Type-Options: nosniff`; direct API protection remains.
+Content-addressed assets use a one-year immutable cache only for 200/206/304 responses; asset errors return
+`Cache-Control: no-store` so browsers and the CDN cannot retain a missing file as a long-lived result.
 The real renewal unit on the Snap installation is `snap.certbot.renew.timer`, not `certbot.timer`.
 Visitor IP headers are trusted only from the published Cloudflare networks in
 `nginx/fsp-cloudflare-real-ip.conf`; review this list during infrastructure upkeep.
