@@ -2,13 +2,78 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use base64::Engine;
-use fsp_application::{IntegrationError, SpeechAudioView, SpeechSynthesisGateway};
+use fsp_application::{
+    IntegrationError, SpeechAudioView, SpeechRecognitionGateway, SpeechSynthesisGateway,
+    SpeechTranscriptView,
+};
 use reqwest::{Client, Url};
 use serde::Deserialize;
 use serde_json::json;
 
 const MAX_AUDIO_BYTES: usize = 4 * 1024 * 1024;
+const ACCEPTED_RECORDING_TYPES: [&str; 3] = ["audio/webm", "audio/mp4", "audio/ogg"];
 const MAX_JSON_BYTES: usize = MAX_AUDIO_BYTES.div_ceil(3) * 4 + 64 * 1024;
+
+pub struct GigaAmSpeechRecognition {
+    client: Client,
+    endpoint: Url,
+}
+
+impl GigaAmSpeechRecognition {
+    pub fn new(endpoint: &str) -> Result<Self, IntegrationError> {
+        Ok(Self {
+            client: client_with_timeout(Duration::from_secs(45))?,
+            endpoint: endpoint.parse().map_err(invalid_configuration)?,
+        })
+    }
+}
+
+#[derive(Deserialize)]
+struct GigaAmTranscript {
+    text: String,
+    provider: String,
+    duration_seconds: f32,
+}
+
+#[async_trait]
+impl SpeechRecognitionGateway for GigaAmSpeechRecognition {
+    async fn transcribe(
+        &self,
+        audio_base64: &str,
+        mime_type: &str,
+    ) -> Result<SpeechTranscriptView, IntegrationError> {
+        if !ACCEPTED_RECORDING_TYPES.contains(&mime_type) {
+            return Err(recognition_input_invalid());
+        }
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(audio_base64)
+            .map_err(|_| recognition_input_invalid())?;
+        if bytes.is_empty() || bytes.len() > MAX_AUDIO_BYTES {
+            return Err(recognition_input_invalid());
+        }
+        let transcript = self
+            .client
+            .post(self.endpoint.clone())
+            .header(reqwest::header::CONTENT_TYPE, mime_type)
+            .body(bytes)
+            .send()
+            .await
+            .map_err(unavailable)?
+            .error_for_status()
+            .map_err(unavailable)?
+            .json::<GigaAmTranscript>()
+            .await
+            .map_err(|_| invalid_response())?;
+        if transcript.text.trim().is_empty() || transcript.duration_seconds <= 0.0 {
+            return Err(invalid_response());
+        }
+        Ok(SpeechTranscriptView {
+            text: transcript.text,
+            provider: transcript.provider,
+            duration_seconds: transcript.duration_seconds,
+        })
+    }
+}
 
 pub struct XaiSpeech {
     client: Client,
@@ -231,12 +296,23 @@ async fn bounded_body(
 }
 
 fn client() -> Result<Client, IntegrationError> {
+    client_with_timeout(Duration::from_secs(20))
+}
+
+fn client_with_timeout(timeout: Duration) -> Result<Client, IntegrationError> {
     Client::builder()
-        .timeout(Duration::from_secs(20))
+        .timeout(timeout)
         .connect_timeout(Duration::from_secs(5))
         .redirect(reqwest::redirect::Policy::none())
         .build()
         .map_err(invalid_configuration)
+}
+
+fn recognition_input_invalid() -> IntegrationError {
+    IntegrationError {
+        code: "speech_input_invalid",
+        message: "Запись имеет неподдерживаемый формат или размер".into(),
+    }
 }
 
 fn validate_text(text: &str) -> Result<(), IntegrationError> {
