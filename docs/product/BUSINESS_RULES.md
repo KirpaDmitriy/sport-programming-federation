@@ -421,7 +421,10 @@ directly, and the company's contact was visible from the start.
   job; its preview is edited by the candidate and applied once with a confirmation (`409 import_not_ready`,
   `409 import_already_confirmed`). Import cannot change verified fields and needs processing consent. The mock returns a disclosed `fixture_preview`. Rust uses `poppler_bifrost` with `simulation: false`:
   digital text from up to 20 pages, 64 KiB maximum, is parsed in an isolated process and then supplied to Bifrost.
-  Each extracted field carries a matching page excerpt; unknown fields preserve current profile values.
+  Each extracted field carries a matching page excerpt; unknown fields preserve current profile values. Catalog
+  values (specialization, target grade, stack) are accepted for the whole catalog when the excerpt names their id,
+  label or a common alias as a whole word; `experienceSince` (the year the person started in IT: IT study, a first
+  programming job, «программирую с …») only when the excerpt contains that year, and it replaces stated months.
   The candidate reviews and edits the preview. A profile revision change invalidates confirmation with
   `409 import_profile_changed`. Scans, encrypted files and parse/analysis failures never update the profile.
   `profilePdfImport` gates import independently of export.
