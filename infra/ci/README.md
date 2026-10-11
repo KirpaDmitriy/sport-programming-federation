@@ -16,7 +16,7 @@ fetches, then calls the installed controller's gate, lane-merge and deployment f
 statuses, exact-tree evidence, the controller lock, independent security checks and actual public/mail acceptance.
 The bridge does not copy the GitHub token or inject credentials into test jobs. The cold recovery run used the normal
 15 GiB admission guard. After host failures, a bounded operator retry reuses its completed caches only when
-application/dependency trees are unchanged and at least 5 GiB remains; it repeats every gate. This is private
+the build dependency graphs and container build definitions are unchanged and at least 5 GiB remains; it repeats every gate. The subsequent integration includes the canonical Silero source change, using those same Rust/TypeScript caches; its Python parser/encoder checks also run in release safety. This is private
 recovery tooling, not a change to the unattended controller's 15 GiB policy. The timer remains disabled until
 unattended authentication is configured. Ubuntu SSH troubleshooting was stopped at the owner's request; do not
 claim that runner or a new dedicated PAT has been restored. Private logs/evidence and accepted-release receipts

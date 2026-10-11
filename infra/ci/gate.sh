@@ -71,6 +71,7 @@ case "${1:?gate required}" in
     bash infra/tests/nginx-config.sh
     python3 -m unittest discover -s infra/ci -p 'test_*.py'
     python3 -m unittest discover -s infra/observability -p 'test_*.py'
+    python3 -m unittest discover -s voice-runtime -p 'test_*.py'
     shellcheck infra/*.sh infra/tests/*.sh infra/ci/*.sh
     ;;
   *) echo 'Unknown gate' >&2; exit 1 ;;
