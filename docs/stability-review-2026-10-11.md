@@ -178,3 +178,21 @@ dedicated acceptance-mail configuration remain available with mode 600; the one-
 [DigitalOcean's deletion documentation](https://docs.digitalocean.com/products/droplets/how-to/destroy/) confirms
 that destroying a droplet is irreversible. The owner's no-backup policy remains in force. This research was
 checked on October 11; it is not represented as an archived September 26 documentation snapshot.
+
+### Active interview interruption during deployment
+
+Independent review correlated the 08:07:42 interview 503 with the service restart. The interview, simulator and
+GitHub-insights binaries handled SIGINT only, whereas their supervisors send SIGTERM. The second 503 at 08:08:43
+was different: model evaluation plus generation exhausted the intended 45-second budget, and the next retry
+succeeded. Aggregate revision/evidence counts matched successful answers; failed requests added no evidence.
+Historical nginx logs lack request durations, so the timing reconstruction uses service lifecycle and upstream
+metadata rather than preserved response bodies or user text.
+
+[#162](https://github.com/KirpaDmitriy/sport-programming-federation/issues/162) and
+[PR #163](https://github.com/KirpaDmitriy/sport-programming-federation/pull/163) contain the separate correction:
+SIGINT/SIGTERM draining, synchronous registration with errors propagated from all four composition roots, and
+60-second supervisor grace for the interview/API/proxy path. A real process regression failed on the old binary;
+with the correction both signals finish a controlled answer, persist one revision/evidence item and exit cleanly.
+Local fmt/clippy, 131 Rust tests, release fault checks and auxiliary service signal probes passed. Independent code
+review found no remaining blocker. This is not live evidence: the change awaits #161 and normal release gates.
+Sequential restarts can still reject new requests, and background work remains process-local.
