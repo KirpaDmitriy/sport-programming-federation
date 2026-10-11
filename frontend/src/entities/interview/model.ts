@@ -4,6 +4,7 @@ import { api, type components, requireData, type Scope } from '@/shared/api';
 export type Interview = components['schemas']['Interview'];
 export type InterviewNode = components['schemas']['InterviewNode'];
 export type InterviewAnswerInput = components['schemas']['InterviewAnswerInput'];
+export type SpeechAudio = components['schemas']['SpeechAudio'];
 
 export const interviewsKey = (scope: Scope) => [...scope, 'interviews'] as const;
 export const interviewKey = (scope: Scope, id: string) => [...scope, 'interviews', id] as const;
@@ -39,6 +40,15 @@ export async function answerInterview(id: string, input: InterviewAnswerInput) {
     await api.POST('/api/v1/me/interviews/{interviewId}/answers', {
       params: { path: { interviewId: id } },
       body: input,
+    }),
+  );
+}
+
+export async function synthesizeInterviewSpeech(id: string, questionId: string) {
+  return requireData(
+    await api.POST('/api/v1/me/interviews/{interviewId}/speech', {
+      params: { path: { interviewId: id } },
+      body: { questionId },
     }),
   );
 }

@@ -69,6 +69,10 @@ next run without forcibly disconnecting an active test.
 | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` | unset | Enable GitHub OAuth when both are non-empty; `GITHUB_CALLBACK_URL` defaults to `http://127.0.0.1:8080/api/v1/integrations/github/callback` |
 | `BIFROST_CHAT_URL` | unset | Enables Bifrost analysis when non-empty; `BIFROST_API_KEY` is optional and `BIFROST_MODEL` defaults to `openai/gpt-5-mini` |
 | `FSP_INTERVIEW_URL`, `INTERVIEW_API_TOKEN` | unset | Enable the authenticated internal interview adapter; see [interview configuration](../docs/interview-service.md) |
+| `FSP_TTS_PROVIDER` | `browser` | `silero`, `xai` or `yandex` enables server-side neural speech for the current interview question; unset/`browser` preserves browser speech synthesis |
+| `SILERO_TTS_URL`, `SILERO_TTS_VOICE` | `http://127.0.0.1:4050/synthesize`, `eugene` | Loopback Silero v5.5 CPU worker and one of its Russian voices (`aidar`, `baya`, `kseniya`, `xenia`, `eugene`) |
+| `XAI_API_KEY`, `XAI_TTS_VOICE` | unset, `eve` | Required key and optional voice when `FSP_TTS_PROVIDER=xai` |
+| `YANDEX_SPEECHKIT_API_KEY` | unset | Required service-account API key with the SpeechKit TTS scope when `FSP_TTS_PROVIDER=yandex`; voice defaults to `marina` |
 | `FSP_PDF_IMPORT` | unset | `1` enables and probes the isolated PDF adapter; usable import also requires Bifrost |
 | `FSP_GRADE_CHANGE_COOLDOWN_DAYS` | `90` | Successful grade-change cooldown, 0–365; invalid values use the default |
 

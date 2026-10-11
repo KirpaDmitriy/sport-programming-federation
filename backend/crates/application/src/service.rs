@@ -23,18 +23,20 @@ use crate::{
     ConsumeChallenge, DisclosureFieldsView, DisclosureView, EmailChallengeInput,
     EmailChallengeView, EmailVerifyInput, EmployerEstimateFactorView, EmployerEstimateView,
     EvidencePolicyView, EvidenceView, FreshnessView, FspGateway, GapItemView, GapPlanView,
-    GitHubGateway, GradeEligibilityView, GraphEdgeView, GraphNodeView, GraphView, IdempotencyClaim,
-    ImportConfirmInput, IntegrationError, InterviewAnswerInput, InterviewGateway,
+    GitHubGateway, GradeEligibilityView, GraphEdgeView, GraphNodeView, GraphView,
+    HiringAssistantView, HiringFlowAnalyticsView, IdempotencyClaim, ImportConfirmInput,
+    IntegrationError, InterviewAnswerInput, InterviewGateway, InterviewSpeechInput,
     InterviewStartInput, InterviewView, InterviewsView, InvitationInput, InvitationNeedView,
     InvitationView, InvitationsView, JobResultView, JobView, LlmGateway, MatchRequirementView,
     MyTasksView, NeedInput, NeedPatch, NeedView, NeedsView, OfferedCompanyView, OfferedTaskView,
     OnboardingView, PendingChallenge, PlatformRepository, ProfilePatch, ProfileView,
     RepositoryError, RequirementInput, RequirementView, SalaryView, SelfSkillView, SessionView,
     ShortlistInput, ShortlistMemberView, ShortlistSummaryView, ShortlistView, ShortlistsView,
-    SkillView, SkillsView, SourceConnectInput, SourceView, SourcesView, TaskInput, TaskPeriodView,
-    TaskResponseInput, TaskResponseView, TaskResponsesView, TaskReviewInput, TaskReviewOutcome,
-    TaskView, TasksView, VacancyPageView, VacancyRequirementView, VacancySearch, VacancyView,
-    VerificationDelivery, job_view, match_status, source_view,
+    SkillView, SkillsView, SourceConnectInput, SourceView, SourcesView, SpeechAudioView,
+    SpeechSynthesisGateway, TaskInput, TaskPeriodView, TaskResponseInput, TaskResponseView,
+    TaskResponsesView, TaskReviewInput, TaskReviewOutcome, TaskView, TasksView, VacancyPageView,
+    VacancyRequirementView, VacancySearch, VacancyView, VerificationDelivery, job_view,
+    match_status, source_view,
 };
 
 #[derive(Debug)]
@@ -87,6 +89,7 @@ pub struct PlatformService {
     llm: Option<Arc<dyn LlmGateway>>,
     fsp: Option<Arc<dyn FspGateway>>,
     interviews: Option<Arc<dyn InterviewGateway>>,
+    speech: Option<Arc<dyn SpeechSynthesisGateway>>,
     grade_cooldown_days: u16,
     auth_key: Option<Vec<u8>>,
     /// Candidates with a profile review running, and whether a newer estimate awaits one.
@@ -107,6 +110,7 @@ impl PlatformService {
             pdf: None,
             fsp: None,
             interviews: None,
+            speech: None,
             grade_cooldown_days: 90,
             auth_key: None,
             reviews: Arc::default(),
@@ -182,6 +186,17 @@ impl PlatformService {
     }
 
     #[must_use]
+    pub fn with_speech(mut self, speech: Arc<dyn SpeechSynthesisGateway>) -> Self {
+        self.speech = Some(speech);
+        self
+    }
+
+    #[must_use]
+    pub fn speech_configured(&self) -> bool {
+        self.speech.is_some()
+    }
+
+    #[must_use]
     pub fn interviews_configured(&self) -> bool {
         self.interviews.is_some()
     }
@@ -250,6 +265,33 @@ impl PlatformService {
             .as_ref()
             .ok_or_else(interviews_unavailable)?
             .answer(interview_id, &input)
+            .await
+            .map_err(integration_error)
+    }
+
+    pub async fn synthesize_interview_question(
+        &self,
+        session: &SessionView,
+        interview_id: &str,
+        input: InterviewSpeechInput,
+    ) -> Result<SpeechAudioView, ApplicationError> {
+        let interview = self.get_interview(session, interview_id).await?;
+        let question = interview.current_question.ok_or_else(|| {
+            ApplicationError::new(409, "interview_completed", "Собеседование уже завершено")
+        })?;
+        if question.id != input.question_id {
+            return Err(ApplicationError::new(
+                409,
+                "interview_question_changed",
+                "Вопрос собеседования уже изменился",
+            ));
+        }
+        self.speech
+            .as_ref()
+            .ok_or_else(|| {
+                ApplicationError::new(503, "speech_unavailable", "Озвучивание временно недоступно")
+            })?
+            .synthesize(&question.delivery.speech_text)
             .await
             .map_err(integration_error)
     }
@@ -2011,6 +2053,52 @@ impl PlatformService {
         Ok(ApplicationsView { items })
     }
 
+    pub async fn hiring_flow_analytics(
+        &self,
+        session: &SessionView,
+    ) -> Result<HiringFlowAnalyticsView, ApplicationError> {
+        let applications = self.company_applications(session, None).await?;
+        let facts = crate::analytics::hiring_flow(&applications.items);
+        let primary = &facts.bottlenecks[0];
+        let mut assistant = HiringAssistantView {
+            mode: "metrics",
+            summary: format!("{}: {}", primary.title, primary.evidence),
+            actions: vec![primary.recommendation.clone()],
+        };
+        if let Some(llm) = &self.llm {
+            match llm.analyze_hiring_flow(&facts).await {
+                Ok(narrative)
+                    if !narrative.summary.trim().is_empty()
+                        && narrative.summary.chars().count() <= 600
+                        && !narrative.actions.is_empty()
+                        && narrative.actions.len() <= 3
+                        && narrative.actions.iter().all(|action| {
+                            !action.trim().is_empty() && action.chars().count() <= 180
+                        }) =>
+                {
+                    assistant = HiringAssistantView {
+                        mode: "bifrost",
+                        summary: narrative.summary,
+                        actions: narrative.actions,
+                    };
+                }
+                Ok(_) => tracing::warn!("hiring-flow analyst returned an invalid empty narrative"),
+                Err(error) => tracing::warn!(code = error.code, "hiring-flow analyst unavailable"),
+            }
+        }
+        Ok(HiringFlowAnalyticsView {
+            generated_at: now(),
+            total: facts.total,
+            stages: facts.stages,
+            median_time_to_view_hours: facts.median_time_to_view_hours,
+            median_time_to_decision_hours: facts.median_time_to_decision_hours,
+            acceptance_rate_percent: facts.acceptance_rate_percent,
+            vacancies: facts.vacancies,
+            bottlenecks: facts.bottlenecks,
+            assistant,
+        })
+    }
+
     pub async fn get_application(
         &self,
         session: &SessionView,
@@ -3524,8 +3612,9 @@ fn integration_error(error: IntegrationError) -> ApplicationError {
         "github_rate_limited" | "github_not_configured" => 503,
         "interview_not_found" => 404,
         "interview_conflict" => 409,
-        "interview_input_invalid" => 422,
+        "interview_input_invalid" | "speech_input_invalid" => 422,
         "interview_model_unavailable" | "interview_service_unavailable" => 503,
+        "speech_unavailable" | "speech_not_configured" => 503,
         _ => 502,
     };
     ApplicationError::new(status, error.code, error.message)
