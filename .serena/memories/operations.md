@@ -35,3 +35,5 @@ GitHub OAuth remains deferred. No production DB reset, unrelated-host changes or
 Latest review #138; compare upstream/main, /opt/fsp/current and deployed.json for the accepted release.
 Credential follow-up #139: current classic CI token has admin:org,gist,repo,workflow. A dedicated repo-only
 replacement needs owner issuance; never reduce/revoke the shared token. Install privately while CI is idle.
+The reviewed `infra/ci/install_token.py` reads stdin, validates exact repo scope, expiration, identity and access,
+then replaces root-only credentials under the controller lock. Run from accepted main; see infra/ci/README.md.
