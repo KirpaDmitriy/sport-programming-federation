@@ -4,7 +4,7 @@ Public site https://nddev.link; existing origin 188.166.88.183. Domain/email cut
 external CI migration in #40. Both deliveries are complete; #50 checked consistency; #54 disables backups and redundant copies. See docs/current-state.md for current limits.
 Private stand/Resend state is in the original checkout's ignored .fsp-infra/; never print credentials.
 User explicitly authorized existing CI servers after canonical Actions billing failed and runner registration
-was denied. Project CI lives on server-gha-runner-2; other projects/runner slots are not part of this task.
+was denied. Project CI lives on server-gha-runner-1 (moved 2026-10-11; server-gha-runner-2 was retired); other projects/runner slots are not part of this task.
 
 Canonical upstream KirpaDmitriy/sport-programming-federation; the additional GitHub mirror is retired. Feature -> danil/dima
 -> dev -> main uses PRs. infra/ci controller reports four fsp/* statuses, preserves independent security checks,

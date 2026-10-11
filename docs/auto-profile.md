@@ -125,8 +125,8 @@ runs in the background with `reasoning_effort` set by `BIFROST_REASONING_EFFORT`
 grok-4.7 spent about 7,000 reasoning tokens and 1.5–3 minutes on a full review), a 16k-token budget and up to 330
 seconds under Bifrost's 360-second provider timeout. One review runs per candidate at a time; a newer estimate is
 reviewed once after it. Calls inside an HTTP request keep the model's default reasoning and the 45-second ceiling. The category stays deterministic:
-the LLM may only choose between close specializations, and a disagreement on the grade lowers the confidence one
-level and is shown. Without Bifrost the rule-based estimate and template texts work alone.
+the LLM may only choose between close specializations, and a disagreement on the grade lowers high confidence to
+medium (never below, so a review never removes the category) and is shown. Without Bifrost the rule-based estimate and template texts work alone.
 
 ## Category and search
 

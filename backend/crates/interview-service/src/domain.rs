@@ -112,17 +112,12 @@ pub struct InterviewQuestion {
     pub delivery: QuestionDelivery,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ResponseMode {
+    #[default]
     Text,
     Voice,
-}
-
-impl Default for ResponseMode {
-    fn default() -> Self {
-        Self::Text
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

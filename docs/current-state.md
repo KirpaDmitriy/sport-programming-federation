@@ -54,7 +54,7 @@ product requirements need their own concrete acceptance criteria before changing
    The old GitHub mirror is retired and must not be updated.
    Preserve their distinct merge history; never reset all branches to a common SHA.
 2. Compare `upstream/main`, `/opt/fsp/current` on the stand and
-   `/var/lib/fsp-ci/deployed.json` on server-gha-runner-2. The accepted-release marker is written only after
+   `/var/lib/fsp-ci/deployed.json` on server-gha-runner-1 (the CI host since 2026-10-11; server-gha-runner-2 was retired). The accepted-release marker is written only after
    deployment and the real public browser journey pass; check `fsp/deployment` as well as the four build gates.
 3. Inspect active API/simulator/GitHub insights/LLM/nginx/PostgreSQL units (`curl 127.0.0.1:4030/health` on the stand), recent service/nginx errors, disk space, certificate
    renewal and confirm both `fsp-backup` units are masked/inactive. No public capability flag substitutes for a real integration check.
