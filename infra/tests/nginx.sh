@@ -6,6 +6,7 @@ directory="$(mktemp -d)"
 trap 'rm -rf "$directory"' EXIT
 curl --max-time 3 -fsS -D "$directory/headers" -o "$directory/index.html" "$base/"
 grep -Eqi '^Permissions-Policy:.*camera=\(\), microphone=\(self\), geolocation=\(\)' "$directory/headers"
+grep -Eqi "^Content-Security-Policy:.*media-src 'self' blob:;" "$directory/headers"
 for path in / /api/v1/meta /api/v1/missing-header-probe /assets/missing-header-probe.js /__mock__/reset; do
   curl --max-time 3 -sS -D "$directory/headers" -o /dev/null "$base$path"
   [[ "$(grep -ci '^X-Content-Type-Options:' "$directory/headers")" == 1 ]]
