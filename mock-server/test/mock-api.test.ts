@@ -934,7 +934,7 @@ test('connecting GitHub builds the profile and an estimated category; edited ans
   assert.equal(profile.selectedGrade, 'middle');
   assert.equal(profile.stack.length, 12);
   assert.equal(profile.experienceMonths, 45);
-  assert.equal(profile.estimate.version, 'estimate-v4');
+  assert.equal(profile.estimate.version, 'estimate-v5');
   assert.ok(profile.softSkills.length > 0);
   assert.ok(profile.estimate.notes.length > 0);
   // The growth plan names concrete steps; focus skills are catalog skills the evidence lacks.

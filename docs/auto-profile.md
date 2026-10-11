@@ -38,7 +38,7 @@ the mock; the frontend receives labels through the generated types and `/meta`.
 - GitHub detection maps its technologies and languages (including `.bsl`/`.os` 1C sources and 1C configuration
   dumps) to catalog skills, so evidence covers the whole catalog.
 
-## Estimate (`estimate-v4`)
+## Estimate (`estimate-v5`)
 
 A pure domain function turns the GitHub report, FSP results and the stated experience into an estimate:
 
@@ -67,7 +67,8 @@ A pure domain function turns the GitHub report, FSP results and the stated exper
 - **Lead means leading people.** The catalog defines лид as «ведёт направление и людей, определяет технические
   решения». Scope shows the direction; working with people needs confirmed public collaboration (the collaboration
   dimension at 50 or more, where the report calls it confirmed) or a leading team role the candidate states
-  (тимлид, руководитель, архитектор, head, principal, staff…). Otherwise a lead-band score gives сеньор. A lead
+  (тимлид, руководитель, архитектор, стафф-инженер, принципал, главный…, head, principal, staff…; `estimate-v5` added
+  the Russian spellings «стафф», «принципал» and «главный» after «стафф-инженер» was not recognized). Otherwise a lead-band score gives сеньор. A lead
   grade that only the stated role unlocks keeps the confidence at medium.
 - **Notes** say in plain words why the grade is what it is: which cap applied and what removes it, that tenure came
   from the questionnaire, that lead needs work with people, that the GitHub report is from an earlier analysis
