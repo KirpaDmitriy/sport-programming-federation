@@ -25,6 +25,7 @@ No /proc mount or global namespace relaxation. Failed activation restores config
 
 Cloudflare Full (strict), origin Let's Encrypt cert, canonical IP redirect, trusted CF IP ranges, API no-store.
 Host-only HSTS is one week on HTTPS (including errors), absent on plain HTTP; nosniff/cache headers are unique.
+Assets cache immutably only on 200/206/304; errors are no-store (#159). Probe a fresh URL to avoid historical CDN cache.
 The renewal unit is snap.certbot.renew.timer. Historical smoke API on 4011 was terminated after identity checks (#154).
 Resend auth.nddev.link sends as login@auth.nddev.link with DKIM/SPF/DMARC, tracking off and enforced TLS.
 Runtime key is sending-only/domain-restricted; private acceptance key reads real CI inboxes. HMAC key changes
@@ -46,3 +47,5 @@ the operational verification receipts. A classic repo-scoped PAT is not restrict
 Follow-ups #152/#154/#155 cover status recovery, edge/process cleanup and explicit HTTPError response closure.
 Last commits: e078301 (status recovery), b3f80bf (credential response cleanup), 63bb5eb (headers); 20 CI tests.
 Read issue receipts and compare live refs for current accepted release and installed controller/helper hashes.
+
+Last asset-cache change: f6d2f70; real nginx probes include 200, 206, 304 and missing-file responses.

@@ -54,7 +54,7 @@ Follow-up #139 installed a separate repo-only classic CI PAT after owner-authori
 shared CLI credential is unchanged. Renew before November 10, 2026 at 06:31:54 UTC via infra/ci/README.md.
 Installer 23aad65 shipped through #143/#144/#145; #139 records token and PR-cycle proof. Follow-up #152/#153/#154/#155
 adds status reconciliation (e078301), error-response cleanup (b3f80bf), queued-review consent (c93cf00) and HTTPS headers
-(63bb5eb); local checks: 129 Rust, 20 CI tests, release faults and real nginx. Read issue receipts for live/install proof.
+(63bb5eb). Public probes found #159 asset-404 caching; f6d2f70 limits immutable caching to 200/206/304. Local checks: 129 Rust, 20 CI tests, release faults and real nginx. Read issue receipts for live/install proof.
 
 Memory index: platform.md (auth/data/assessment), frontend.md (UI/proofs), operations.md (deployment/mail/CI/recovery).
 Release identity: compare upstream/main, /opt/fsp/current and deployed.json instead of trusting a SHA written here.
