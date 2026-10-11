@@ -23,7 +23,7 @@ Secrets, raw session exports, candidate data and credentials do not belong in th
 | No backups or mirrors | Closed #54 and owner instructions. Both backup units are masked; upstream is the only Git remote. Old restore receipts are history, not tasks. |
 | Public GitHub analysis, catalog and automatic profile | Current tokenless service, catalog-v2, estimate-v6 and tests. Public activity is not working hours or proof of private experience. OAuth is explicitly deferred. |
 | Graph interview delivery | Public acceptance and active interview service prove delivery despite an unchecked production-plan item. Remaining defects are enumerated below. |
-| Keep live acceptance out of the public candidate bank | PR #135 added successful-path cleanup. Failure and timeout paths still need teardown. |
+| Keep live acceptance out of the public candidate bank | PR #135 added successful-path cleanup. Failure paths were not covered at baseline; wave 2 adds teardown. |
 | Reduce CI credential privileges | Prior Claude final report identifies a broad token. Verify actual scopes; prepare a replacement procedure without mutating shared credentials. |
 
 ## Verified plan
@@ -76,5 +76,22 @@ has been archived at the requested cutoff. Keep installed toolchain pins rather 
 5. Record final receipts in #138 and current project memories. External-access limitations and intentional product
    boundaries remain explicit; passing tests does not prove unlimited scale or calibrated hiring accuracy.
 
-Baseline local `just verify` passed. Rust/PostgreSQL and browser suites were running when the plan was committed;
-release fault tests and all 10 controller tests passed. Final results belong in the issue receipt.
+### Implemented waves
+
+- `c6049aa`: consent parity with PostgreSQL ownership/revocation regression.
+- `217e8e3`: whole-turn timeout with paused-clock proof of unchanged state and successful retry.
+- `f3cb1e7`: microphone policy and speech lifecycle, header/browser regressions and honest privacy copy.
+- `d0b8bef`: failure-safe acceptance fixtures, injected-failure and unrelated-data preservation checks.
+- Documentation and project-specific Serena/Claude memories now describe the source behavior, including 79
+  application operations, deterministic graphs, three public demo identities, interview limits and current CI.
+
+Final local checks: `just verify` (32 mock and 50 component/unit tests, generated-contract/type/lint/build checks),
+`just backend-check` (128 Rust tests with real PostgreSQL), all 10 controller tests, four experiment records,
+release fault tests and nginx configuration/header tests. `just e2e` passed 41 browser cases (one opt-in
+screenshot suite skipped). Final CI/live receipts are recorded in #138.
+The mobile screenshot initially captured the drawer mid-transition; capture now waits for its hidden position and
+finishes finite animations using [Playwright's screenshot option](https://playwright.dev/docs/api/class-page#page-screenshot).
+
+Credential inspection confirmed `admin:org`, `gist`, `repo`, `workflow` on the shared classic CI token. A dedicated
+replacement has not been supplied. [Issue #139](https://github.com/KirpaDmitriy/sport-programming-federation/issues/139)
+records the precise owner handoff and installation/verification procedure; no shared credential was changed.
