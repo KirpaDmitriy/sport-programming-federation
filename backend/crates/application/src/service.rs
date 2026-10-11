@@ -6,7 +6,7 @@ pub use commands::Commands;
 
 use std::sync::Arc;
 
-use chrono::{Duration, Utc};
+use chrono::{Datelike, Duration, Utc};
 use fsp_domain::{
     Account, CandidateIndexRecord, CandidateProfile, Company, Consents, EvidenceStatus, Grade,
     HiringNeedRecord, InteractionStatus, Requirement, Role, Specialization, rank_candidates, score,
@@ -23,18 +23,20 @@ use crate::{
     ConsumeChallenge, DisclosureFieldsView, DisclosureView, EmailChallengeInput,
     EmailChallengeView, EmailVerifyInput, EmployerEstimateFactorView, EmployerEstimateView,
     EvidencePolicyView, EvidenceView, FreshnessView, FspGateway, GapItemView, GapPlanView,
-    GitHubGateway, GradeEligibilityView, GraphEdgeView, GraphNodeView, GraphView, IdempotencyClaim,
-    ImportConfirmInput, IntegrationError, InterviewAnswerInput, InterviewGateway,
+    GitHubGateway, GradeEligibilityView, GraphEdgeView, GraphNodeView, GraphView,
+    HiringAssistantView, HiringFlowAnalyticsView, IdempotencyClaim, ImportConfirmInput,
+    IntegrationError, InterviewAnswerInput, InterviewGateway, InterviewSpeechInput,
     InterviewStartInput, InterviewView, InterviewsView, InvitationInput, InvitationNeedView,
     InvitationView, InvitationsView, JobResultView, JobView, LlmGateway, MatchRequirementView,
     MyTasksView, NeedInput, NeedPatch, NeedView, NeedsView, OfferedCompanyView, OfferedTaskView,
     OnboardingView, PendingChallenge, PlatformRepository, ProfilePatch, ProfileView,
     RepositoryError, RequirementInput, RequirementView, SalaryView, SelfSkillView, SessionView,
     ShortlistInput, ShortlistMemberView, ShortlistSummaryView, ShortlistView, ShortlistsView,
-    SkillView, SkillsView, SourceConnectInput, SourceView, SourcesView, TaskInput, TaskPeriodView,
-    TaskResponseInput, TaskResponseView, TaskResponsesView, TaskReviewInput, TaskReviewOutcome,
-    TaskView, TasksView, VacancyPageView, VacancyRequirementView, VacancySearch, VacancyView,
-    VerificationDelivery, job_view, match_status, source_view,
+    SkillView, SkillsView, SourceConnectInput, SourceView, SourcesView, SpeechAudioView,
+    SpeechSynthesisGateway, TaskInput, TaskPeriodView, TaskResponseInput, TaskResponseView,
+    TaskResponsesView, TaskReviewInput, TaskReviewOutcome, TaskView, TasksView, VacancyPageView,
+    VacancyRequirementView, VacancySearch, VacancyView, VerificationDelivery, job_view,
+    match_status, source_view,
 };
 
 #[derive(Debug)]
@@ -87,8 +89,11 @@ pub struct PlatformService {
     llm: Option<Arc<dyn LlmGateway>>,
     fsp: Option<Arc<dyn FspGateway>>,
     interviews: Option<Arc<dyn InterviewGateway>>,
+    speech: Option<Arc<dyn SpeechSynthesisGateway>>,
     grade_cooldown_days: u16,
     auth_key: Option<Vec<u8>>,
+    /// Candidates with a profile review running, and whether a newer estimate awaits one.
+    reviews: Arc<std::sync::Mutex<std::collections::HashMap<String, bool>>>,
 }
 
 impl PlatformService {
@@ -105,8 +110,10 @@ impl PlatformService {
             pdf: None,
             fsp: None,
             interviews: None,
+            speech: None,
             grade_cooldown_days: 90,
             auth_key: None,
+            reviews: Arc::default(),
         }
     }
 
@@ -179,6 +186,17 @@ impl PlatformService {
     }
 
     #[must_use]
+    pub fn with_speech(mut self, speech: Arc<dyn SpeechSynthesisGateway>) -> Self {
+        self.speech = Some(speech);
+        self
+    }
+
+    #[must_use]
+    pub fn speech_configured(&self) -> bool {
+        self.speech.is_some()
+    }
+
+    #[must_use]
     pub fn interviews_configured(&self) -> bool {
         self.interviews.is_some()
     }
@@ -240,11 +258,40 @@ impl PlatformService {
         interview_id: &str,
         input: InterviewAnswerInput,
     ) -> Result<InterviewView, ApplicationError> {
-        self.get_interview(session, interview_id).await?;
+        let interview = self.get_interview(session, interview_id).await?;
+        self.require_processing_consent(&interview.candidate_id)
+            .await?;
         self.interviews
             .as_ref()
             .ok_or_else(interviews_unavailable)?
             .answer(interview_id, &input)
+            .await
+            .map_err(integration_error)
+    }
+
+    pub async fn synthesize_interview_question(
+        &self,
+        session: &SessionView,
+        interview_id: &str,
+        input: InterviewSpeechInput,
+    ) -> Result<SpeechAudioView, ApplicationError> {
+        let interview = self.get_interview(session, interview_id).await?;
+        let question = interview.current_question.ok_or_else(|| {
+            ApplicationError::new(409, "interview_completed", "Собеседование уже завершено")
+        })?;
+        if question.id != input.question_id {
+            return Err(ApplicationError::new(
+                409,
+                "interview_question_changed",
+                "Вопрос собеседования уже изменился",
+            ));
+        }
+        self.speech
+            .as_ref()
+            .ok_or_else(|| {
+                ApplicationError::new(503, "speech_unavailable", "Озвучивание временно недоступно")
+            })?
+            .synthesize(&question.delivery.speech_text)
             .await
             .map_err(integration_error)
     }
@@ -536,7 +583,7 @@ impl PlatformService {
                 .map_err(ApplicationError::storage)?
                 .ok_or_else(|| ApplicationError::new(404, "not_found", "Профиль не найден"))?;
             let stated = (
-                profile.stated_experience_months(),
+                profile.stated_experience_months(current_year()),
                 profile.stated_team_role().map(str::to_owned),
             );
             apply_profile_patch(&mut profile, patch.clone())?;
@@ -545,7 +592,7 @@ impl PlatformService {
             if profile.estimate.is_some()
                 && profile.consents.processing
                 && (
-                    profile.stated_experience_months(),
+                    profile.stated_experience_months(current_year()),
                     profile.stated_team_role().map(str::to_owned),
                 ) != stated
                 && let Some(estimate) = self.answer_estimate(&profile).await?
@@ -2006,6 +2053,52 @@ impl PlatformService {
         Ok(ApplicationsView { items })
     }
 
+    pub async fn hiring_flow_analytics(
+        &self,
+        session: &SessionView,
+    ) -> Result<HiringFlowAnalyticsView, ApplicationError> {
+        let applications = self.company_applications(session, None).await?;
+        let facts = crate::analytics::hiring_flow(&applications.items);
+        let primary = &facts.bottlenecks[0];
+        let mut assistant = HiringAssistantView {
+            mode: "metrics",
+            summary: format!("{}: {}", primary.title, primary.evidence),
+            actions: vec![primary.recommendation.clone()],
+        };
+        if let Some(llm) = &self.llm {
+            match llm.analyze_hiring_flow(&facts).await {
+                Ok(narrative)
+                    if !narrative.summary.trim().is_empty()
+                        && narrative.summary.chars().count() <= 600
+                        && !narrative.actions.is_empty()
+                        && narrative.actions.len() <= 3
+                        && narrative.actions.iter().all(|action| {
+                            !action.trim().is_empty() && action.chars().count() <= 180
+                        }) =>
+                {
+                    assistant = HiringAssistantView {
+                        mode: "bifrost",
+                        summary: narrative.summary,
+                        actions: narrative.actions,
+                    };
+                }
+                Ok(_) => tracing::warn!("hiring-flow analyst returned an invalid empty narrative"),
+                Err(error) => tracing::warn!(code = error.code, "hiring-flow analyst unavailable"),
+            }
+        }
+        Ok(HiringFlowAnalyticsView {
+            generated_at: now(),
+            total: facts.total,
+            stages: facts.stages,
+            median_time_to_view_hours: facts.median_time_to_view_hours,
+            median_time_to_decision_hours: facts.median_time_to_decision_hours,
+            acceptance_rate_percent: facts.acceptance_rate_percent,
+            vacancies: facts.vacancies,
+            bottlenecks: facts.bottlenecks,
+            assistant,
+        })
+    }
+
     pub async fn get_application(
         &self,
         session: &SessionView,
@@ -3435,6 +3528,7 @@ impl PlatformService {
                 stack: Vec::new(),
                 team_role: String::new(),
                 experience_months: None,
+                experience_since: None,
                 experience: String::new(),
                 soft_skills: Vec::new(),
                 consents: Consents {
@@ -3518,8 +3612,9 @@ fn integration_error(error: IntegrationError) -> ApplicationError {
         "github_rate_limited" | "github_not_configured" => 503,
         "interview_not_found" => 404,
         "interview_conflict" => 409,
-        "interview_input_invalid" => 422,
+        "interview_input_invalid" | "speech_input_invalid" => 422,
         "interview_model_unavailable" | "interview_service_unavailable" => 503,
+        "speech_unavailable" | "speech_not_configured" => 503,
         _ => 502,
     };
     ApplicationError::new(status, error.code, error.message)
@@ -4071,7 +4166,12 @@ fn profile_view(
         selected_grade: profile.selected_grade,
         stack: profile.stack,
         team_role: profile.team_role,
-        experience_months: profile.experience_months,
+        // A start year counts up to the current year whenever the profile is read.
+        experience_months: profile
+            .experience_since
+            .map(|since| fsp_domain::experience_since_months(since, current_year()))
+            .or(profile.experience_months),
+        experience_since: profile.experience_since,
         experience: profile.experience,
         soft_skills: profile.soft_skills,
         consents: profile.consents,
@@ -4122,6 +4222,11 @@ fn now() -> String {
     Utc::now().to_rfc3339()
 }
 
+/// The current calendar year: experience stated as a start year counts up to it.
+fn current_year() -> i32 {
+    Utc::now().year()
+}
+
 fn unique(values: Vec<String>) -> Vec<String> {
     let mut result = Vec::new();
     for value in values {
@@ -4162,13 +4267,30 @@ fn apply_profile_patch(
         claim_field(profile, "teamRole", profile.team_role != value);
         profile.team_role = value;
     }
-    if let Some(value) = patch.experience_months {
-        claim_field(
-            profile,
-            "experienceMonths",
-            profile.experience_months != value,
-        );
-        profile.experience_months = value;
+    // A start year is the candidate's statement and the months follow from it; without a year,
+    // explicit months (typed or from a résumé) count; clearing the year clears the experience.
+    match (patch.experience_since, patch.experience_months) {
+        (Some(Some(year)), _) => {
+            claim_field(profile, "experienceMonths", true);
+            profile.experience_since = Some(year);
+            profile.experience_months =
+                Some(fsp_domain::experience_since_months(year, current_year()));
+        }
+        (_, Some(value)) => {
+            claim_field(
+                profile,
+                "experienceMonths",
+                profile.experience_months != value || profile.experience_since.is_some(),
+            );
+            profile.experience_since = None;
+            profile.experience_months = value;
+        }
+        (Some(None), None) => {
+            claim_field(profile, "experienceMonths", true);
+            profile.experience_since = None;
+            profile.experience_months = None;
+        }
+        (None, None) => {}
     }
     if let Some(value) = patch.experience {
         claim_field(profile, "experience", profile.experience != value);
@@ -4206,6 +4328,7 @@ fn validate_profile_patch(patch: &ProfilePatch) -> Result<(), ApplicationError> 
         || patch.stack.is_some()
         || patch.team_role.is_some()
         || patch.experience_months.is_some()
+        || patch.experience_since.is_some()
         || patch.experience.is_some()
         || patch.soft_skills.is_some()
         || patch.consents.is_some();
@@ -4227,6 +4350,11 @@ fn validate_profile_patch(patch: &ProfilePatch) -> Result<(), ApplicationError> 
         .is_some_and(|value| value.is_some_and(|months| months > 1200))
     {
         return Err(validation("Опыт не может превышать 1200 месяцев"));
+    }
+    if patch.experience_since.is_some_and(|value| {
+        value.is_some_and(|year| !(1950..=current_year()).contains(&i32::from(year)))
+    }) {
+        return Err(validation("Год начала в IT — от 1950 до текущего года"));
     }
     if patch
         .team_role

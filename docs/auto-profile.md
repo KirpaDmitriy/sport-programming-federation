@@ -31,14 +31,14 @@ the mock; the frontend receives labels through the generated types and `/meta`.
   embedded and IoT, systems programming, game development, 1C development, ERP/SAP, system analysis, business
   analysis, data analytics/BI, database administration, system and network administration, UI/UX design, product
   and project management. Each names two test topics and the skills that indicate it.
-- **Skills (~300):** languages (including the 1C language, ABAP, Delphi, COBOL, Verilog/VHDL), frameworks,
+- **Skills (255):** languages (including the 1C language, ABAP, Delphi, COBOL, Verilog/VHDL), frameworks,
   databases, infrastructure, data/ML, mobile, QA, security, embedded, game engines, the 1C ecosystem (1С:Предприятие,
   БСП, СКД, query language, ERP/УТ/ЗУП/Бухгалтерия, обмены, EDT, 1С-Битрикс), ERP/SAP, analytics/BI, analysis
   notations, design tools and management practices. Each has a category and the specializations it indicates.
 - GitHub detection maps its technologies and languages (including `.bsl`/`.os` 1C sources and 1C configuration
   dumps) to catalog skills, so evidence covers the whole catalog.
 
-## Estimate (`estimate-v4`)
+## Estimate (`estimate-v6`)
 
 A pure domain function turns the GitHub report, FSP results and the stated experience into an estimate:
 
@@ -67,7 +67,8 @@ A pure domain function turns the GitHub report, FSP results and the stated exper
 - **Lead means leading people.** The catalog defines лид as «ведёт направление и людей, определяет технические
   решения». Scope shows the direction; working with people needs confirmed public collaboration (the collaboration
   dimension at 50 or more, where the report calls it confirmed) or a leading team role the candidate states
-  (тимлид, руководитель, архитектор, head, principal, staff…). Otherwise a lead-band score gives сеньор. A lead
+  (тимлид, руководитель, архитектор, стафф-инженер, принципал, главный…, head, principal, staff…; `estimate-v5` added
+  the Russian spellings «стафф», «принципал» and «главный» after «стафф-инженер» was not recognized). Otherwise a lead-band score gives сеньор. A lead
   grade that only the stated role unlocks keeps the confidence at medium.
 - **Notes** say in plain words why the grade is what it is: which cap applied and what removes it, that tenure came
   from the questionnaire, that lead needs work with people, that the GitHub report is from an earlier analysis
@@ -75,7 +76,7 @@ A pure domain function turns the GitHub report, FSP results and the stated exper
 - **Confidence** follows the amount and coverage of evidence; with too little public data the estimate says so and
   gives no category until a test or more evidence. An outdated GitHub report lowers it one level.
 - **Profile answers:** industry IT, specialization, target grade = estimated grade, stack (top evidenced catalog
-  skills), experience text and duration (the longer of public and stated), team role from ownership and
+  skills), experience text, team role from ownership and
   collaboration, soft skills with public evidence behind them (documentation, descriptive commits, led projects,
   several related projects, reviews, accepted outside contributions, issues, team competitions), and the name from
   the public GitHub profile when the candidate has none.
@@ -105,12 +106,19 @@ category, and confirmed candidates rank first.
 
 ### Answers the candidate owns
 
-The questionnaire takes experience as years and months, and the estimate card asks only the two answers evidence
-cannot give — total experience and role — in «Уточните два ответа». Editing the stated experience or team role
-recomputes the estimate at once. Opening the profile refreshes an estimate of earlier rules (or a missing one with
-finished sources); «Пересчитать» also re-syncs FSP sources. «Заполнить анкету по источникам» (`POST /me/profile/estimate?answers=replace`) hands every answer but an
-edited name back to the evidence; stated experience then no longer counts until it is typed again. «Пересчитать»
-also re-analyzes a GitHub report from an earlier analysis version; the job applies the new estimate when it ends.
+Experience is the candidate's own answer, never filled from evidence (`estimate-v6`): public GitHub activity shows a
+lower bound of tenure, not how long someone has studied and worked, so it stays evidence for the caps and the notes
+(«публично видно 1 год 9 мес.»). The questionnaire asks «В IT с какого года» (`experienceSince`): study, own projects
+and work, private repositories included. Experience counts whole years from that year up to the current one, so it
+stays correct as time passes; months typed or imported from a résumé (`experienceMonths`) still work and are replaced
+by a start year. Earlier estimates that wrote public tenure into the answer are cleared on the next estimate. The
+estimate card asks only the two answers evidence cannot give — the start year and the role — in «Уточните два
+ответа». Editing either recomputes the estimate at once. Opening the profile refreshes an estimate of earlier rules
+(or a missing one with finished sources); «Пересчитать» also re-syncs FSP sources and re-analyzes a GitHub report from
+an earlier analysis version (the job applies the new estimate when it ends). «Заполнить анкету по источникам»
+(`POST /me/profile/estimate?answers=replace`) hands every evidence-based answer but an edited name back to the
+evidence; the stated experience stays. A résumé PDF fills it too: Grok extracts the start year in IT with the
+page excerpt that names it, and the candidate confirms the preview.
 
 ### LLM assistance
 
@@ -121,11 +129,14 @@ quality, influence, tenure) anchored per grade, as recommended for LLM judges
 ([calibrating LLM evaluators](https://kinde.com/learn/ai-for-software-engineering/best-practice/llm-as-a-judge-done-right-calibrating-guarding-debiasing-your-evaluators/)).
 It returns, validated against the catalog, a second opinion on specialization and grade with a rationale naming the
 deciding axes and the missing evidence, growth recommendations, and the experience and team-role texts. The review
-runs in the background with `reasoning_effort` set by `BIFROST_REASONING_EFFORT` (default `high`; grok-4.7 on the
-stand accepts it and reasons longer), a 16k-token budget and up to four minutes; calls inside an HTTP request keep the
-model's default reasoning and the 45-second ceiling. The category stays deterministic:
-the LLM may only choose between close specializations, and a disagreement on the grade lowers the confidence one
-level and is shown. Without Bifrost the rule-based estimate and template texts work alone.
+runs in the background with `reasoning_effort` set by `BIFROST_REASONING_EFFORT` (default `high`; on the stand
+grok-4.7 spent about 7,000 reasoning tokens and 1.5–3 minutes on a full review), a 16k-token budget and up to 330
+seconds under Bifrost's 360-second provider timeout. One review runs per candidate at a time; a newer estimate is
+reviewed once after it. Each queued review rechecks processing consent before requesting the model; the
+transaction also discards a response if consent was revoked or the estimate changed while it ran. Already sent
+provider requests cannot be recalled. Calls inside an HTTP request keep the model's default reasoning and the 45-second ceiling. The category stays deterministic:
+the LLM may only choose between close specializations, and a disagreement on the grade lowers high confidence to
+medium (never below, so a review never removes the category) and is shown. Without Bifrost the rule-based estimate and template texts work alone.
 
 ## Category and search
 
@@ -159,5 +170,8 @@ existing junior–senior structure for Rust, PostgreSQL, TypeScript and React.
 5. Estimate v4 (`feat/growth-plan`): the growth plan, focus skills and review advice with deep reasoning, automatic
    refresh of outdated estimates, FSP re-sync on recalculation, the short refine form, one-click rebuild and the
    deterministic competence graph.
+6. Estimates v5–v6 (#125, #128, #131, #132): Russian spellings of leading roles, experience from the year the
+   candidate started in IT (never from public tenure), the start year from a résumé through Grok with whole-catalog
+   grounding of résumé values, refine answers kept during background updates, and wrapped graph columns.
 
 Each phase goes through the usual gates and deployment; business rules, traceability and screenshots change with it.

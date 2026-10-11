@@ -2,19 +2,22 @@
 
 One DigitalOcean droplet (`fsp-career-demo`, Ubuntu 24.04, 8 vCPU / 16 GiB) serves the platform at
 <https://nddev.link> through Cloudflare Full (strict), with a Let's Encrypt origin certificate.
+
+Before releasing or recovering deployment access, read the [production deployment runbook](../docs/DEPLOYMENT_RUNBOOK.md). It records the actually used private-controller path and the current CI-host recovery state.
 The original IP `188.166.88.183` retains its short-lived certificate for a canonical HTTPS redirect. Access material (SSH
 key, host key, droplet metadata) lives in the git-ignored `.fsp-infra/` at the repository root.
 
 | File | Role |
 | --- | --- |
 | `provision.sh` | One-time, idempotent host setup: packages, pinned Bun with checksum, rustup toolchain for the backend build, certbot, ufw, nginx, units, certificate |
-| `deploy.sh` | Archives a git ref (`frontend`, `mock-server`, `backend`, `infra`), copies it to the host and runs `release.sh` there |
+| `deploy.sh` | Archives a git ref (`frontend`, `mock-server`, `backend`, `infra`, `voice-runtime`), copies it to the host and runs `release.sh` there |
 | `release.sh` | On the host: builds the release (frontend, mock, Rust backend), switches `/opt/fsp/current` atomically, runs the API implementation chosen by `/etc/fsp/api-backend`, health-checks and rolls back on failure |
 | `fsp-mock-api.service` | Hardened systemd unit for the mock API (user `fsp`, `127.0.0.1:4010`) |
 | `fsp-simulator.service` | Fictional participant-results HTTP service on private loopback 4020; released with the API, no public nginx route |
 | `fsp-github-insights.service` | Tokenless public GitHub analysis on private loopback 4030 with `git` clones in its `CacheDirectory`; an optional `GITHUB_TOKEN` in root-private `/etc/fsp/github-insights.env` only raises limits; released with the API, no public nginx route |
 | `fsp-interview.service` | Graph-guided interview engine on private loopback 4040; PostgreSQL sessions, Bifrost/offline evaluation and an internal token shared with the API; released with the API, no public nginx route |
 | `fsp-api.service` | Hardened systemd unit for the Rust API (same user and port; `StateDirectory=fsp` gives it `/var/lib/fsp`) |
+| `fsp-silero-tts.service` | Loopback-only Silero v5.5 Russian TTS worker on CPU (`127.0.0.1:4050`) |
 | `nginx/` | Site config (SPA fallback, `/api/v1/` proxy, `/__mock__` → 404), ACME bootstrap config, security headers |
 
 nginx serves the built SPA from `/opt/fsp/current/frontend/dist` with an `index.html` fallback, forwards only
@@ -22,7 +25,7 @@ nginx serves the built SPA from `/opt/fsp/current/frontend/dist` with an `index.
 with 404. The mock runs with `FSP_MOCK_DEV_ROUTES=0` and the stand's origin in `FSP_MOCK_ALLOWED_ORIGINS`
 (`/etc/fsp/mock-api.env`); the Rust service reads `/etc/fsp/rust-api.env` (`FSP_AUTH_MODE=resend`,
 `FSP_SECURE_COOKIE=1`, origins and the GitHub callback URL) plus `/etc/fsp/db.env` (`DATABASE_URL`) and
-`/etc/fsp/llm.env` (`BIFROST_*`). Build-time flags for the stand are in
+`/etc/fsp/llm.env` (`BIFROST_*`) and `/etc/fsp/speech.env` (`FSP_TTS_PROVIDER`). Build-time flags for the stand are in
 `/etc/fsp/frontend-build.env` (`VITE_DEMO_STAND=1`; omit the obsolete demo code in real-mail builds). The host builds with Bun and Rust
 (`/opt/rustup`, `/opt/cargo`); there is no Node.
 
@@ -124,7 +127,7 @@ The additional GitHub mirror is retired; synchronize permanent local branches on
 
 | Task on the host | Command |
 | --- | --- |
-| API status / logs | `systemctl status fsp-api fsp-simulator fsp-github-insights fsp-interview`, `journalctl -u fsp-api -n 100` |
+| API status / logs | `systemctl status fsp-api fsp-simulator fsp-github-insights fsp-interview fsp-silero-tts`, `journalctl -u fsp-api -n 100` |
 | Which API serves | `cat /etc/fsp/api-backend` |
 | Certificate | `certbot certificates`; renewal by `snap.certbot.renew.timer` using each certificate's policy (the short-lived IP certificate uses three days), then the nginx reload hook |
 | Renewal dry run | `certbot renew --cert-name nddev.link --dry-run --no-random-sleep-on-renew` |
@@ -154,7 +157,8 @@ Backup creation is disabled by owner policy; both historical backup units remain
 
 ## LLM chain
 
-The Rust backend can call a real model for competence-graph extraction. The chain on the stand is
+The Rust backend calls a real model for the background estimate review (deep reasoning, growth advice), résumé
+fields with page excerpts and the assessment assistant; the competence graph is deterministic. The chain on the stand is
 `fsp-api` → Bifrost (`127.0.0.1:4000`) → CLIProxyAPI (`127.0.0.1:18317`) → xAI OAuth → Grok.
 
 Services `fsp-cliproxy.service` and `fsp-bifrost.service` run as `fsp`, bound to loopback. Binaries live in
@@ -167,12 +171,22 @@ Host-side secrets (never committed):
 | --- | --- |
 | `/etc/fsp/cliproxy.yaml` | CLIProxyAPI config; template: [`llm/cliproxy.yaml.example`](llm/cliproxy.yaml.example) |
 | `/var/lib/fsp/cliproxy-auth/xai-*.json` | xAI OAuth token file (writable — CLIProxyAPI refreshes it) |
-| `/var/lib/fsp/bifrost/config.json` | Bifrost config; reference: [`llm/bifrost-config.json`](llm/bifrost-config.json) |
-| `/etc/fsp/llm.env` | `NDDEV_CLIPROXY_KEY` (CLIProxyAPI api-key), `NDDEV_BIFROST_KEY` (Bifrost virtual key) and the backend-side `BIFROST_CHAT_URL`, `BIFROST_API_KEY` (= the virtual key), `BIFROST_MODEL=grok-build/grok-4.7` — `fsp-api.service` loads the same file, so provisioning never rewrites it |
+| `/var/lib/fsp/bifrost/config.json` | Bifrost config; reference: [`llm/bifrost-config.json`](llm/bifrost-config.json). The provider timeout is 360 s: a deep-reasoning estimate review takes one to four minutes; restart `fsp-bifrost` after changing it |
+| `/etc/fsp/llm.env` | `NDDEV_CLIPROXY_KEY` (CLIProxyAPI api-key), `NDDEV_BIFROST_KEY` (Bifrost virtual key) and the backend-side `BIFROST_CHAT_URL`, `BIFROST_API_KEY` (= the virtual key), `BIFROST_MODEL=grok-build/grok-4.7`, optional `BIFROST_REASONING_EFFORT` (default `high`, `none` disables it for the background estimate review) — `fsp-api.service` loads the same file, so provisioning never rewrites it |
 
 Without configured Bifrost the backend reports `meta.capabilities.realLlm: false` and builds a deterministic
 graph from stored skills. An error from a configured provider remains an error; it never silently falls back. The xAI OAuth token is shared with the local `nddev-runtime` setup; refresh-token rotation
 on one side can invalidate the other, in which case re-copy the auth file.
+
+## Local speech synthesis
+
+`FSP_TTS_PROVIDER=silero` in `/etc/fsp/speech.env` makes the API use the local
+`v5_5_ru` worker instead of browser or cloud synthesis. `infra/install-silero-runtime.sh` installs checksum-pinned
+CPU PyTorch dependencies under `/opt/fsp/voice-venv` and the checksum-pinned model under `/opt/fsp/models`.
+The worker binds only to `127.0.0.1:4050`; the browser receives WAV through the authenticated interview API.
+`SILERO_TTS_VOICE` may be `aidar`, `baya`, `kseniya`, `xenia` or `eugene` and defaults to `eugene`.
+Run `infra/tests/silero-runtime.sh` for an offline Russian synthesis smoke test. Silero v5.5 does not provide
+Russian speech recognition; STT remains a separate runtime concern.
 
 ## Backend cutover checklist
 
@@ -218,7 +232,11 @@ validates those values without sourcing secrets. Provisioning preserves the
 existing runtime hostname. Certificate renewal uses `/var/www/acme` over both
 HTTP and HTTPS; verify `certbot renew --cert-name nddev.link --dry-run` after
 DNS/proxy changes. Cloudflare uses Full (strict), minimum TLS 1.2, and respects
-origin cache headers. `/api/v1/` always returns `Cache-Control: no-store`.
+origin cache headers. HTTPS responses advertise host-only HSTS for one week (`max-age=604800`), including
+error responses; subdomains and preload are not opted in. Plain HTTP Docker responses omit HSTS.
+`/api/v1/` always returns one `Cache-Control: no-store`, including proxy-generated 429 responses. nginx
+suppresses upstream duplicates before setting `X-Content-Type-Options: nosniff`; direct API protection remains.
+The real renewal unit on the Snap installation is `snap.certbot.renew.timer`, not `certbot.timer`.
 Visitor IP headers are trusted only from the published Cloudflare networks in
 `nginx/fsp-cloudflare-real-ip.conf`; review this list during infrastructure upkeep.
 

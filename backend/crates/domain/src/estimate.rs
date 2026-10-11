@@ -12,7 +12,7 @@ use crate::{
     Archetype, FspResult, GitHubDimensionId, GitHubReport, Grade, SignalConfidence, Specialization,
 };
 
-pub const ESTIMATE_VERSION: &str = "estimate-v4";
+pub const ESTIMATE_VERSION: &str = "estimate-v6";
 
 /// Stack items an automatic profile fills in.
 const STACK_LIMIT: usize = 12;
@@ -331,7 +331,7 @@ pub fn estimate_profile(input: &EstimateInput<'_>) -> ProfileEstimate {
             notes.push(format!(
                 // Two and four years both read «от 2 лет», «от 4 лет».
                 "Баллы соответствуют уровню «{}», но он требует от {} лет опыта{}; учтено {} {}, \
-                 поэтому уровень — «{}». Укажите общий стаж в анкете или подтвердите уровень тестом",
+                 поэтому уровень — «{}». Укажите, с какого года вы в IT, или подтвердите уровень тестом",
                 grade.label(),
                 required_months(grade) / 12,
                 if grade == Grade::Lead && capped == Grade::Middle {
@@ -374,7 +374,8 @@ pub fn estimate_profile(input: &EstimateInput<'_>) -> ProfileEstimate {
     if from_answers && confidence == SignalConfidence::High {
         confidence = SignalConfidence::Medium;
     }
-    let answers = answers(input.github, &published, specialization, experience_months);
+    // Only a stated experience answers the questionnaire; public tenure stays evidence.
+    let answers = answers(input.github, &published, specialization, stated_months);
     let growth = growth_plan(&GrowthInput {
         github: input.github,
         factors: &factors,
@@ -440,13 +441,13 @@ fn next_band_note(score: u8, factors: &[EstimateFactor]) -> Option<String> {
     ))
 }
 
-/// Questionnaire fields an estimate may answer, by their contract names.
-pub const AUTO_FIELDS: [&str; 8] = [
+/// Questionnaire fields an estimate may answer, by their contract names. Experience is never
+/// among them: public activity shows a lower bound of tenure, not how long someone has worked.
+pub const AUTO_FIELDS: [&str; 7] = [
     "name",
     "specialization",
     "selectedGrade",
     "stack",
-    "experienceMonths",
     "experience",
     "teamRole",
     "softSkills",
@@ -464,9 +465,14 @@ impl crate::CandidateProfile {
             .then_some(role)
     }
 
-    /// The experience the candidate stated (typed or imported), not the one an estimate filled in.
+    /// The experience the candidate stated in `year`: counted from the year they started in IT
+    /// when given (it stays current as years pass), otherwise the typed or imported months. A
+    /// value an earlier estimate filled in is not a statement.
     #[must_use]
-    pub fn stated_experience_months(&self) -> Option<u32> {
+    pub fn stated_experience_months(&self, year: i32) -> Option<u32> {
+        if let Some(since) = self.experience_since {
+            return Some(experience_since_months(since, year));
+        }
         self.experience_months.filter(|_| {
             !self
                 .auto_fields
@@ -475,9 +481,9 @@ impl crate::CandidateProfile {
         })
     }
 
-    /// Hands every answer except the name back to the evidence, at the candidate's request: the
-    /// next estimate rewrites them, and the stated experience no longer counts. A test-confirmed
-    /// category still keeps its specialization and target grade.
+    /// Hands every answer except the name and the experience back to the evidence, at the
+    /// candidate's request: the next estimate rewrites them. A test-confirmed category still keeps
+    /// its specialization and target grade.
     pub fn release_answers(&mut self) {
         let name = self.auto_fields.iter().any(|field| field == "name");
         self.auto_fields = AUTO_FIELDS
@@ -533,11 +539,10 @@ impl crate::CandidateProfile {
             self.stack = answers.stack.clone();
             filled.push("stack");
         }
-        if answers.experience_months.is_some()
-            && (auto(self, "experienceMonths") || self.experience_months.is_none())
-        {
-            self.experience_months = answers.experience_months.map(|months| months.min(1200));
-            filled.push("experienceMonths");
+        // Earlier estimates wrote public tenure into the answer; it was never the candidate's.
+        if auto(self, "experienceMonths") {
+            self.experience_months = None;
+            self.auto_fields.retain(|field| field != "experienceMonths");
         }
         if !answers.experience.trim().is_empty()
             && (auto(self, "experience") || self.experience.trim().is_empty())
@@ -573,7 +578,8 @@ impl crate::CandidateProfile {
 }
 
 /// Applies a validated LLM review: it may pick between the two leading specializations when they
-/// are within ten points, take over the texts, and a disagreement on the grade lowers confidence.
+/// are within ten points, take over the texts, and a disagreement on the grade lowers high
+/// confidence to medium, never below.
 pub fn apply_review(estimate: &mut ProfileEstimate, reply: ProfileReviewReply) {
     if let [first, second, ..] = estimate.specializations.as_slice()
         && first.percent.saturating_sub(second.percent) <= 10
@@ -582,8 +588,10 @@ pub fn apply_review(estimate: &mut ProfileEstimate, reply: ProfileReviewReply) {
         estimate.specialization = Some(reply.specialization);
     }
     let agrees = estimate.grade == Some(reply.grade);
-    if !agrees {
-        estimate.confidence = lower(estimate.confidence);
+    // A second opinion may temper confidence but never takes the category away: the rules own
+    // the grade, so a disagreement lowers high to medium and stops there.
+    if !agrees && estimate.confidence == SignalConfidence::High {
+        estimate.confidence = SignalConfidence::Medium;
     }
     if let Some(experience) = clean_text(&reply.experience, 1200) {
         estimate.answers.experience = experience;
@@ -852,6 +860,12 @@ const DIMENSION_WEIGHTS: [(GitHubDimensionId, &str, f64); 8] = [
     (GitHubDimensionId::Consistency, "Регулярность", 0.05),
 ];
 
+/// Whole years in IT from the year someone started, in months.
+#[must_use]
+pub fn experience_since_months(since: u16, year: i32) -> u32 {
+    u32::try_from(year - i32::from(since)).unwrap_or(0) * 12
+}
+
 /// Stated experience that counts as full tenure, in months.
 const TENURE_FULL_MONTHS: f64 = 72.0;
 
@@ -859,7 +873,8 @@ const TENURE_FULL_MONTHS: f64 = 72.0;
 /// совместная работа»); lead needs it unless the candidate states a leading role.
 const LEAD_COLLABORATION: u8 = 50;
 
-/// A stated team role that leads people or technical direction.
+/// A stated team role that leads people or technical direction, in Russian or English spelling
+/// («тимлид», «стафф-инженер», «principal engineer», «главный архитектор», «head of …»).
 fn leading_role(role: &str) -> bool {
     let lower = role.to_lowercase();
     [
@@ -871,7 +886,11 @@ fn leading_role(role: &str) -> bool {
         "архитект",
         "architect",
         "principal",
+        "принципал",
         "staff",
+        "стафф",
+        "стаф ",
+        "главн",
         "директор",
         "director",
     ]
@@ -1241,8 +1260,8 @@ fn growth_plan(input: &GrowthInput<'_>) -> Vec<GrowthStep> {
             "tenure",
             "Общий стаж",
             format!(
-                "Укажите в анкете общий стаж с закрытыми проектами: «{}» требует от {} лет, а \
-                 публично видно {}",
+                "Укажите, с какого года вы в IT: учёба, свои проекты и работа в закрытых \
+                 репозиториях. «{}» требует от {} лет, а публично видно {}",
                 banded.label(),
                 required_months(*banded) / 12,
                 input
@@ -1348,8 +1367,8 @@ fn factor_action(id: &str, report: &GitHubReport) -> Option<String> {
                 }
             )
         }
-        "github_longevity" => "Стаж на GitHub растёт со временем; опыт в закрытых проектах учтёт \
-             общий стаж в анкете"
+        "github_longevity" => "Стаж на GitHub растёт со временем; учёбу, свои и закрытые проекты \
+             учтёт год начала в IT из анкеты"
             .into(),
         "github_ownership" => "Ведите собственные проекты до стабильного состояния: регулярные \
              коммиты в течение года, связанные репозитории — в своей организации"
@@ -1772,7 +1791,8 @@ mod tests {
             pull_requests: None,
         });
         let estimate = estimate_profile(&input(Some(&report), &[]));
-        assert_eq!(estimate.answers.experience_months, Some(69));
+        // Public tenure is evidence for the caps, never the candidate's answer.
+        assert_eq!(estimate.answers.experience_months, None);
         assert_eq!(estimate.grade, Some(Grade::Lead));
     }
 
@@ -1786,10 +1806,7 @@ mod tests {
         let typo = estimate_profile(&typo);
         assert_eq!(typo.score, public.score);
         assert_eq!(typo.grade, public.grade);
-        assert_eq!(
-            typo.answers.experience_months,
-            public.answers.experience_months
-        );
+        assert_eq!(typo.answers.experience_months, Some(5));
 
         // Longer stated experience stands in for tenure only, never for the other evidence.
         let mut long = input(Some(&report), &[]);
@@ -1876,6 +1893,20 @@ mod tests {
         let mut developer = input(Some(&report), &[]);
         developer.stated_team_role = Some("Разработчик");
         assert_eq!(estimate_profile(&developer).grade, Some(Grade::Senior));
+        // Russian and English spellings of leading roles count alike.
+        for role in [
+            "Стафф-инженер",
+            "staff engineer",
+            "Принципал-инженер",
+            "Главный архитектор",
+            "Head of Platform",
+        ] {
+            assert!(leading_role(role), "{role}");
+        }
+        for role in ["Разработчик", "Инженер-программист", "Software engineer"]
+        {
+            assert!(!leading_role(role), "{role}");
+        }
         let mut lead = input(Some(&report), &[]);
         lead.stated_team_role = Some("Тимлид платформы");
         let lead = estimate_profile(&lead);
@@ -2018,6 +2049,19 @@ mod tests {
             estimate.review.as_ref().unwrap().recommendations,
             ["Ревьюйте чужие изменения в платформенных проектах"]
         );
+        // A further disagreement keeps the category: confidence stops at medium.
+        apply_review(
+            &mut estimate,
+            ProfileReviewReply {
+                specialization: Specialization::Devops,
+                grade: other,
+                rationale: String::new(),
+                experience: String::new(),
+                team_role: String::new(),
+                recommendations: Vec::new(),
+            },
+        );
+        assert_eq!(estimate.confidence, SignalConfidence::Medium);
         // A far specialization is not taken.
         apply_review(
             &mut estimate,
@@ -2062,6 +2106,7 @@ mod tests {
             stack: Vec::new(),
             team_role: String::new(),
             experience_months: None,
+            experience_since: None,
             experience: String::new(),
             soft_skills: Vec::new(),
             consents: crate::Consents {
@@ -2091,7 +2136,29 @@ mod tests {
         assert_eq!(profile.selected_grade, Grade::Middle);
         assert_eq!(profile.stack, estimate.answers.stack);
         assert_eq!(profile.auto_fields.len(), AUTO_FIELDS.len());
-        assert_eq!(profile.stated_experience_months(), None);
+        assert_eq!(profile.stated_experience_months(2026), None);
+        assert_eq!(
+            profile.experience_months, None,
+            "public tenure is not filled in"
+        );
+
+        // A start year is a statement that stays current; an old auto-filled value is dropped.
+        let mut started = new_profile();
+        started.experience_since = Some(2016);
+        assert_eq!(started.stated_experience_months(2026), Some(120));
+        assert_eq!(started.stated_experience_months(2027), Some(132));
+        let mut legacy = new_profile();
+        legacy.experience_months = Some(21);
+        legacy.auto_fields.push("experienceMonths".into());
+        assert_eq!(legacy.stated_experience_months(2026), None);
+        legacy.apply_estimate(estimate.clone());
+        assert_eq!(legacy.experience_months, None);
+        assert!(
+            !legacy
+                .auto_fields
+                .iter()
+                .any(|field| field == "experienceMonths")
+        );
 
         // The candidate's own answer stays; auto answers follow the next estimate.
         profile.team_role = "Тимлид".into();
@@ -2107,7 +2174,7 @@ mod tests {
         profile.soft_skills = vec!["Своё".into()];
         profile.auto_fields.retain(|field| field != "softSkills");
         profile.release_answers();
-        assert_eq!(profile.stated_experience_months(), None);
+        assert_eq!(profile.stated_experience_months(2026), None);
         profile.rebuild_from_estimate(estimate.clone());
         assert_eq!(profile.team_role, estimate.answers.team_role);
         assert_eq!(profile.soft_skills, estimate.answers.soft_skills);

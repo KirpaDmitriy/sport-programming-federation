@@ -19,7 +19,7 @@ name a state.
   attempts shared across unused live challenges for that email (`429 challenge_locked`); a wrong or expired code is `400 invalid_code` / `400 challenge_expired`.
 - Real email mode sends through Resend and allows one issuance per minute, at most five in fifteen minutes
   per normalized address, including provider failures. Verification codes use random digits and keyed,
-  challenge-specific hashes; session hashes have a separate namespace. Local mock/demo codes remain disclosed fixtures.
+  challenge-specific hashes; session hashes have a separate namespace. Mock/demo codes and the three exact seeded public addresses remain disclosed fixtures; they do not prove mailbox ownership.
 - The session is an opaque `HttpOnly`, `SameSite=Lax` cookie. Without it every protected call is `401`.
 - A candidate reaches only their own profile, sources, skills, assessments, jobs and invitations; an employer only
   their own company, needs, shortlists and invitations. Someone else's record answers `404`, so its existence is not
@@ -46,7 +46,7 @@ catalog skill. GitHub evidence maps languages and technologies onto catalog skil
 ### Automatic profile
 
 A candidate does not have to type anything: connecting GitHub and/or FSP builds the profile. The rules are
-`estimate-v4` in [`backend/crates/domain/src/estimate.rs`](../../backend/crates/domain/src/estimate.rs); the plan of
+`estimate-v6` in [`backend/crates/domain/src/estimate.rs`](../../backend/crates/domain/src/estimate.rs); the plan of
 record is [`docs/auto-profile.md`](../auto-profile.md).
 
 - Every finished source write (connecting FSP, a finished GitHub analysis, a sync) recomputes `estimate` from all
@@ -65,9 +65,11 @@ record is [`docs/auto-profile.md`](../auto-profile.md).
   days) and stated experience. Stated experience never lowers the score: it replaces the tenure dimension only when
   longer than the public record (full at 72 months), and a grade only it unlocks keeps the confidence at medium.
   Лид also needs work with people: a collaboration dimension of at least 50 or a leading team role the candidate
-  typed (тимлид, руководитель, архитектор, lead, head, principal, staff, CTO, director); otherwise the band gives
+  typed (тимлид, руководитель, архитектор, стафф, принципал, главный, lead, head, principal, staff, CTO, director); otherwise the band gives
   сеньор, and a lead that only the stated role unlocks keeps the confidence at medium.
-  `notes` explain an applied cap, tenure taken from the questionnaire, an outdated GitHub report and what the next
+  Stated experience is `experienceSince` (the year the candidate started in IT; whole years up to the current year)
+  or typed/imported `experienceMonths`; it is never filled from public tenure, and earlier auto-filled values are
+  cleared (`estimate-v6`). `notes` explain an applied cap, tenure taken from the questionnaire, an outdated GitHub report and what the next
   band needs. (`estimate-v2` blended stated experience into the score; `estimate-v1` counted calendar years.)
 - The category uses the candidate's specialization when it is among the estimate's leading specializations,
   otherwise the estimate's leader.
@@ -87,7 +89,7 @@ record is [`docs/auto-profile.md`](../auto-profile.md).
   never delays connecting a source. The review applies only while the reviewed estimate is still the stored one and
   processing consent holds. It may choose between the two leading specializations when their shares differ by at
   most ten points and may rewrite the experience and team-role texts (texts with links or addresses are dropped). It
-  never sets the grade: a disagreement lowers the confidence one level and is shown. A restart loses a pending
+  never sets the grade: a disagreement lowers high confidence to medium (never below, so a review never removes the category) and is shown. A restart loses a pending
   review; «Пересчитать» asks again.
 - The mock applies the golden estimates the Rust rules write to
   [`contracts/fixtures/profile-estimates.json`](../../contracts/fixtures/profile-estimates.json) for its fixed GitHub
@@ -419,7 +421,10 @@ directly, and the company's contact was visible from the start.
   job; its preview is edited by the candidate and applied once with a confirmation (`409 import_not_ready`,
   `409 import_already_confirmed`). Import cannot change verified fields and needs processing consent. The mock returns a disclosed `fixture_preview`. Rust uses `poppler_bifrost` with `simulation: false`:
   digital text from up to 20 pages, 64 KiB maximum, is parsed in an isolated process and then supplied to Bifrost.
-  Each extracted field carries a matching page excerpt; unknown fields preserve current profile values.
+  Each extracted field carries a matching page excerpt; unknown fields preserve current profile values. Catalog
+  values (specialization, target grade, stack) are accepted for the whole catalog when the excerpt names their id,
+  label or a common alias as a whole word; `experienceSince` (the year the person started in IT: IT study, a first
+  programming job, «программирую с …») only when the excerpt contains that year, and it replaces stated months.
   The candidate reviews and edits the preview. A profile revision change invalidates confirmation with
   `409 import_profile_changed`. Scans, encrypted files and parse/analysis failures never update the profile.
   `profilePdfImport` gates import independently of export.
@@ -444,6 +449,22 @@ The development mock uses demo email identity; Rust uses actual Resend delivery 
 scoring; their public bank has no measured psychometric validity. Only the development mock simulates PDF extraction
 and assistant replies. Rust uses isolated Poppler extraction and Bifrost with validated evidence and no canned fallback.
 Rust persists application records and sessions; its initial candidate bank is synthetic. GitHub analysis is real
-when the insights service is configured; the mock returns the labelled fictional report of a synthetic account. Graph output is validated against input skills and references; employer projections remove evidence
-nodes. An LLM relation is a suggestion, not a qualification verdict. Real email delivery for non-demo addresses is implemented through Resend; GitHub OAuth setup remains
+when the insights service is configured; the mock returns the labelled fictional report of a synthetic account. Competence graphs are deterministic projections of catalog concepts and stored evidence; employer projections remove
+private evidence. Graph structure is not a qualification verdict. Real email delivery for non-demo addresses is implemented through Resend; GitHub OAuth setup remains
 deferred (ownership is proven by the bio code instead); official FSP integration and arbitrary code execution are outside the chosen product scope.
+
+## 16. Graph interviews
+
+The authenticated candidate can start or resume one active `backend-middle-v1` interview. PostgreSQL stores
+its question, prerequisite progress, evidence and revision; competing stale answers return `409 interview_conflict`.
+Starting or answering requires processing consent. After revocation, reading existing history remains allowed
+but new answers are rejected. Other candidates receive 404 and employers cannot use these private endpoints.
+
+The engine selects the next competency; Bifrost evaluates cited answer evidence and phrases the next question
+when configured. The complete model turn has one 45-second budget before persistence. Failure leaves the current
+question and revision unchanged. Offline mode is explicit and never substitutes for an unavailable configured model.
+
+The browser supports text and optional speech recognition with editable transcripts. Its vendor may process audio
+remotely; only submitted text and declared response mode reach the application. Voice/text signal strength is
+a format indicator, not verified speech, identity or professional competence, and does not change matching or grades.
+There is no camera or audio archive. See [interview service](../interview-service.md) for configuration and tests.

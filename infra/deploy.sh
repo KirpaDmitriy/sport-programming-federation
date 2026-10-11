@@ -14,7 +14,7 @@ ARCHIVE="$TEMP_DIR/release.tar.gz"
 REMOTE_ARCHIVE="/tmp/fsp-$SHA-${ARCHIVE##*/}"
 trap 'rm -f "$ARCHIVE"; rmdir "$TEMP_DIR"' EXIT
 
-git archive --format=tar.gz -o "$ARCHIVE" "$SHA" frontend mock-server backend infra
+git archive --format=tar.gz -o "$ARCHIVE" "$SHA" frontend mock-server backend infra voice-runtime
 scp -q -F "$SSH_CONFIG" "$ARCHIVE" "$DEPLOY_HOST:$REMOTE_ARCHIVE"
 ssh -F "$SSH_CONFIG" "$DEPLOY_HOST" bash -s -- "$SHA" "$REMOTE_ARCHIVE" <<'REMOTE'
 set -euo pipefail

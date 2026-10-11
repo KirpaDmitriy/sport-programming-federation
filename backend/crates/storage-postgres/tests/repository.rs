@@ -385,7 +385,13 @@ async fn signed_in_candidate(
 }
 
 /// An LLM that keeps the specialization, rates one grade lower and rewrites the team role.
-struct Reviewer;
+#[derive(Default)]
+struct Reviewer {
+    control: Option<(
+        tokio::sync::mpsc::UnboundedSender<()>,
+        Arc<tokio::sync::Semaphore>,
+    )>,
+}
 
 #[async_trait::async_trait]
 impl fsp_application::LlmGateway for Reviewer {
@@ -414,6 +420,10 @@ impl fsp_application::LlmGateway for Reviewer {
         // The review sees anonymized evidence only.
         let serialized = serde_json::to_string(request).unwrap();
         assert!(!serialized.contains("Иван") && !serialized.contains("auto-dev"));
+        if let Some((started, proceed)) = &self.control {
+            started.send(()).unwrap();
+            proceed.acquire().await.unwrap().forget();
+        }
         Ok(fsp_domain::ProfileReviewReply {
             specialization: Specialization::Backend,
             grade: Grade::Junior,
@@ -426,12 +436,79 @@ impl fsp_application::LlmGateway for Reviewer {
 }
 
 #[tokio::test(flavor = "current_thread")]
+async fn withdrawing_consent_skips_a_queued_profile_review() {
+    let (repository, _database) = repository().await;
+    let repository = Arc::new(repository);
+    let (started, mut calls) = tokio::sync::mpsc::unbounded_channel();
+    let proceed = Arc::new(tokio::sync::Semaphore::new(0));
+    let service = PlatformService::new(repository.clone(), Arc::new(FixedDelivery))
+        .with_github_insights(Arc::new(Insights::finished(&[])))
+        .with_llm(Arc::new(Reviewer {
+            control: Some((started, proceed.clone())),
+        }));
+    service.initialize().await.unwrap();
+    let session = signed_in_candidate(&service, &repository, "review-consent@example.com").await;
+    service
+        .connect_source(
+            &session,
+            "github",
+            fsp_application::SourceConnectInput {
+                account: "auto-dev".into(),
+            },
+        )
+        .await
+        .unwrap();
+    tokio::time::timeout(std::time::Duration::from_secs(5), calls.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    // The first request is in flight; changing an estimate queues one replacement.
+    service
+        .update_profile(
+            &session,
+            ProfilePatch {
+                team_role: Some("Тимлид".into()),
+                ..ProfilePatch::default()
+            },
+        )
+        .await
+        .unwrap();
+    service
+        .update_profile(
+            &session,
+            ProfilePatch {
+                consents: Some(fsp_domain::Consents {
+                    processing: false,
+                    publication: false,
+                }),
+                ..ProfilePatch::default()
+            },
+        )
+        .await
+        .unwrap();
+    proceed.add_permits(1);
+    assert!(
+        tokio::time::timeout(std::time::Duration::from_secs(1), calls.recv())
+            .await
+            .is_err(),
+        "a queued review must not start after processing consent was withdrawn"
+    );
+    let profile = repository
+        .candidate(session.candidate_id.as_deref().unwrap())
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(!profile.consents.processing);
+    assert!(profile.estimate.unwrap().review.is_none());
+}
+
+#[tokio::test(flavor = "current_thread")]
 async fn connecting_github_builds_the_profile_and_an_estimated_category() {
     let (repository, _database) = repository().await;
     let repository = Arc::new(repository);
     let service = PlatformService::new(repository.clone(), Arc::new(FixedDelivery))
         .with_github_insights(Arc::new(Insights::finished(&[])))
-        .with_llm(Arc::new(Reviewer));
+        .with_llm(Arc::new(Reviewer::default()));
     service.initialize().await.unwrap();
     let session = signed_in_candidate(&service, &repository, "auto-profile@example.com").await;
     let profile = service.profile(&session).await.unwrap();
@@ -578,6 +655,7 @@ async fn connecting_github_builds_the_profile_and_an_estimated_category() {
             &session,
             ProfilePatch {
                 experience_months: Some(Some(5)),
+                experience_since: None,
                 ..ProfilePatch::default()
             },
         )
@@ -588,17 +666,49 @@ async fn connecting_github_builds_the_profile_and_an_estimated_category() {
     assert_eq!(estimate.review, None, "a new estimate waits for its review");
     assert_eq!(typed.experience_months, Some(5));
 
-    // Rebuilding hands every answer back to the evidence, the typed experience included.
+    // A start year in IT is the candidate's statement: experience counts from it, up to now.
+    let year = chrono::Datelike::year(&chrono::Utc::now());
+    let started = service
+        .update_profile(
+            &session,
+            ProfilePatch {
+                experience_since: Some(Some(2016)),
+                ..ProfilePatch::default()
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(started.experience_since, Some(2016));
+    let since_months = u32::try_from(year - 2016).unwrap() * 12;
+    assert_eq!(started.experience_months, Some(since_months));
+    let tenure = started
+        .estimate
+        .as_ref()
+        .unwrap()
+        .factors
+        .iter()
+        .find(|factor| factor.id == "github_longevity")
+        .unwrap();
+    assert_eq!(tenure.points, tenure.max);
+
+    // Rebuilding hands the evidence-based answers back; the stated experience stays the candidate's.
     let rebuilt = service.refresh_estimate(&session, true).await.unwrap();
     assert_ne!(rebuilt.team_role, "Тимлид");
     assert_eq!(rebuilt.name, "Иван Петров");
-    for field in ["teamRole", "experienceMonths", "softSkills", "stack"] {
+    for field in ["teamRole", "softSkills", "stack"] {
         assert!(
             rebuilt.auto_fields.iter().any(|item| item == field),
             "{field}"
         );
     }
-    assert_ne!(rebuilt.experience_months, Some(5));
+    assert!(
+        !rebuilt
+            .auto_fields
+            .iter()
+            .any(|item| item == "experienceMonths")
+    );
+    assert_eq!(rebuilt.experience_since, Some(2016));
+    assert_eq!(rebuilt.experience_months, Some(since_months));
 
     // An estimate of earlier rules updates itself the next time the candidate opens the profile.
     let id = session.candidate_id.as_deref().unwrap();

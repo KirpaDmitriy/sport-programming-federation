@@ -8,9 +8,9 @@ use crate::{GitHubAnalysisView, GitHubInsights, InsightsStatus};
 /// A GitHub analysis that has not finished by then is reported as failed.
 const GITHUB_JOB_TIMEOUT_MINUTES: i64 = 90;
 
-/// How long the background LLM review of an estimate may take with deep reasoning; without it
-/// the rules decide alone.
-const REVIEW_TIMEOUT_SECONDS: u64 = 300;
+/// How long the background LLM review of an estimate may take with deep reasoning (Bifrost allows
+/// 360 seconds upstream); without it the rules decide alone.
+const REVIEW_TIMEOUT_SECONDS: u64 = 345;
 
 impl PlatformService {
     pub async fn connect_source(
@@ -796,11 +796,37 @@ impl PlatformService {
         if self.llm.is_none() {
             return;
         }
+        // One deep review per candidate at a time: a newer estimate waits for the running one and
+        // is reviewed once after it, so quick edits never pile up model calls.
+        {
+            let mut reviews = self
+                .reviews
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if let Some(again) = reviews.get_mut(candidate_id) {
+                *again = true;
+                return;
+            }
+            reviews.insert(candidate_id.to_owned(), false);
+        }
         let service = self.clone();
         let candidate_id = candidate_id.to_owned();
         tokio::spawn(async move {
-            if let Err(error) = service.review_estimate(&candidate_id).await {
-                tracing::warn!(code = error.code, "profile review was not stored");
+            loop {
+                if let Err(error) = service.review_estimate(&candidate_id).await {
+                    tracing::warn!(code = error.code, "profile review was not stored");
+                }
+                let mut reviews = service
+                    .reviews
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                match reviews.get_mut(&candidate_id) {
+                    Some(again) if *again => *again = false,
+                    _ => {
+                        reviews.remove(&candidate_id);
+                        break;
+                    }
+                }
             }
         });
     }
@@ -818,7 +844,11 @@ impl PlatformService {
         else {
             return Ok(());
         };
-        let stated_experience_months = profile.stated_experience_months();
+        // Coalesced work may start after consent was withdrawn while a prior review ran.
+        if !profile.consents.processing {
+            return Ok(());
+        }
+        let stated_experience_months = profile.stated_experience_months(current_year());
         let stated_team_role = profile.stated_team_role().map(str::to_owned);
         let Some(estimate) = profile
             .estimate
@@ -1108,7 +1138,7 @@ fn source_estimate(
     Some(fsp_domain::estimate_profile(&fsp_domain::EstimateInput {
         github,
         fsp: &fsp,
-        stated_experience_months: profile.stated_experience_months(),
+        stated_experience_months: profile.stated_experience_months(current_year()),
         stated_team_role: profile.stated_team_role(),
         now: &now,
     }))

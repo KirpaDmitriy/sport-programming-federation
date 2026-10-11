@@ -142,6 +142,7 @@ pub fn router(config: HttpConfig, service: Arc<PlatformService>) -> Router {
             get(get_candidate_disclosure),
         )
         .route("/api/v1/applications", get(list_applications))
+        .route("/api/v1/analytics/hiring-flow", get(hiring_flow_analytics))
         .route(
             "/api/v1/applications/{application_id}",
             get(get_application),
@@ -230,6 +231,10 @@ pub fn router(config: HttpConfig, service: Arc<PlatformService>) -> Router {
         .route(
             "/api/v1/me/interviews/{interview_id}/answers",
             post(answer_interview),
+        )
+        .route(
+            "/api/v1/me/interviews/{interview_id}/speech",
+            post(synthesize_interview_speech),
         )
         .route(
             "/api/v1/me/assessments/{assessment_id}/answer",
@@ -382,7 +387,9 @@ async fn meta(State(state): State<AppState>) -> Json<Value> {
             "recurringTasks": true, "realCodeExecution": false, "realLlm": state.service.llm_configured(),
             "githubOAuth": state.service.github_configured(),
             "githubInsights": state.service.github_insights_configured(),
-            "graphInterviews": state.service.interviews_configured()
+            "graphInterviews": state.service.interviews_configured(),
+            "neuralTts": state.service.speech_configured(),
+            "hiringAnalytics": true
         },
         "assessmentPolicy": {
             "successfulGradeChangeCooldownDays": state.service.grade_cooldown_days(), "failedAttemptCooldownDays": 0,
@@ -1076,6 +1083,20 @@ async fn list_applications(
         .map_err(api_error)
 }
 
+async fn hiring_flow_analytics(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<fsp_application::HiringFlowAnalyticsView>, ApiError> {
+    let session = authenticated(&state, &headers).await?;
+    require_role(&session, "employer")?;
+    state
+        .service
+        .hiring_flow_analytics(&session)
+        .await
+        .map(Json)
+        .map_err(api_error)
+}
+
 async fn get_application(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -1337,6 +1358,22 @@ async fn answer_interview(
     state
         .service
         .answer_interview(&session, &interview_id, input)
+        .await
+        .map(Json)
+        .map_err(api_error)
+}
+
+async fn synthesize_interview_speech(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    ContractPath(interview_id): ContractPath<String>,
+    ContractJson(input): ContractJson<fsp_application::InterviewSpeechInput>,
+) -> Result<Json<fsp_application::SpeechAudioView>, ApiError> {
+    let session = authenticated(&state, &headers).await?;
+    require_role(&session, "candidate")?;
+    state
+        .service
+        .synthesize_interview_question(&session, &interview_id, input)
         .await
         .map(Json)
         .map_err(api_error)

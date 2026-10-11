@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
-import { type Browser, expect, type Page, test } from '@playwright/test';
+import { test as base, expect, type Page } from '@playwright/test';
 import { answerKnowledgeTest } from '../knowledge';
+import { acceptanceActors } from './actors';
 
 import { testEmail, verificationCode } from './mail';
 
@@ -19,18 +20,26 @@ async function signIn(page: Page, email: string, role: 'candidate' | 'employer')
   await page.waitForURL(new RegExp(`/${role}/`));
 }
 
-async function newPage(browser: Browser) {
-  const context = await browser.newContext({
-    locale: 'ru-RU',
-    viewport: { width: 1440, height: 900 },
-  });
-  return context.newPage();
-}
+const test = base.extend<{ actors: ReturnType<typeof acceptanceActors> }>({
+  actors: [
+    async ({ browser }, use) => {
+      const actors = acceptanceActors(browser);
+      try {
+        await use(actors);
+      } finally {
+        await actors.dispose();
+      }
+    },
+    { timeout: 90_000 },
+  ],
+});
 
 test('HTTPS stand serves the app and deep links without mock controls', async ({ page, request }) => {
   const home = await request.get('/');
   expect(home.status()).toBe(200);
   expect(home.headers()['content-security-policy']).toContain("default-src 'self'");
+  expect(home.headers()['permissions-policy']).toContain('microphone=(self)');
+  expect(home.headers()['permissions-policy']).toContain('camera=()');
   expect(
     (
       await request.post('/__mock__/session', {
@@ -48,12 +57,21 @@ test('HTTPS stand serves the app and deep links without mock controls', async ({
   await page.goto('/employer/candidates?needId=need-001');
   await page.waitForURL(/\/login\?redirect=/);
   await expect(page.getByRole('heading', { name: 'Вход и регистрация' })).toBeVisible();
+  expect(
+    await page.evaluate(() => {
+      const policy = (document as Document & { featurePolicy?: { allowsFeature: (name: string) => boolean } })
+        .featurePolicy;
+      return policy?.allowsFeature('microphone');
+    }),
+  ).toBe(true);
 });
 
-test('a new candidate and two companies complete the reverse-hiring flow', async ({ browser }) => {
+test('a new candidate and two companies complete the reverse-hiring flow', async ({ actors }) => {
   test.setTimeout(480_000);
-  const candidate = await newPage(browser);
-  await signIn(candidate, testEmail('candidate'), 'candidate');
+  const candidate = await actors.newPage();
+  const candidateEmail = testEmail('candidate');
+  await signIn(candidate, candidateEmail, 'candidate');
+  actors.authenticated(candidate, candidateEmail, 'candidate');
   await candidate.waitForURL('**/candidate/onboarding');
   await candidate.getByLabel('Согласен на обработку данных').click();
   await expect(candidate.getByLabel('Согласен на обработку данных')).toBeChecked();
@@ -101,8 +119,10 @@ test('a new candidate and two companies complete the reverse-hiring flow', async
   const download = await downloadPromise;
   expect((await readFile((await download.path()) as string)).subarray(0, 5).toString()).toBe('%PDF-');
 
-  const companyA = await newPage(browser);
-  await signIn(companyA, testEmail('employer-a'), 'employer');
+  const companyA = await actors.newPage();
+  const companyAEmail = testEmail('employer-a');
+  await signIn(companyA, companyAEmail, 'employer');
+  actors.authenticated(companyA, companyAEmail, 'employer');
   await completeCompany(companyA, 'Проверка ФСП — компания А');
   const needId = await createNeed(companyA);
   await companyA.goto(`/employer/candidates/${candidateId}?needId=${needId}`);
@@ -121,8 +141,10 @@ test('a new candidate and two companies complete the reverse-hiring flow', async
 
   await companyA.reload();
   await expect(companyA.getByText('Ирина Стендова')).toBeVisible();
-  const companyB = await newPage(browser);
-  await signIn(companyB, testEmail('employer-b'), 'employer');
+  const companyB = await actors.newPage();
+  const companyBEmail = testEmail('employer-b');
+  await signIn(companyB, companyBEmail, 'employer');
+  actors.authenticated(companyB, companyBEmail, 'employer');
   await completeCompany(companyB, 'Проверка ФСП — компания Б');
   const disclosure = await (await companyB.request.get(`/api/v1/candidates/${candidateId}/disclosure`)).json();
   expect(disclosure).toMatchObject({ granted: false, fields: {} });

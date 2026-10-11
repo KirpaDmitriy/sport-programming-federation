@@ -330,6 +330,7 @@ mod tests {
             stack: vec!["rust".into()],
             team_role: "Разработчик".into(),
             experience_months: None,
+            experience_since: None,
             experience: "Проекты".into(),
             soft_skills: Vec::new(),
             consents: fsp_domain::Consents {

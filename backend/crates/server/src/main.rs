@@ -11,6 +11,7 @@ use fsp_integration_email::{DemoDelivery, HybridDelivery, ResendDelivery};
 use fsp_integration_fsp_synthetic::HttpFsp;
 use fsp_integration_github::{GitHubApi, HttpInsights};
 use fsp_integration_interview::HttpInterviewGateway;
+use fsp_integration_speech::{SileroSpeech, XaiSpeech, YandexSpeech};
 use fsp_storage_postgres::PostgresRepository;
 use tokio::net::TcpListener;
 use tokio::signal;
@@ -128,6 +129,42 @@ async fn main() -> Result<(), Box<dyn Error>> {
             .map_err(|error| format!("PDF adapter: {}", error.message))?;
         pdf_adapter = Some(Arc::new(pdf));
     }
+    let speech_adapter: Option<Arc<dyn fsp_application::SpeechSynthesisGateway>> =
+        match nonempty_env("FSP_TTS_PROVIDER").as_deref() {
+            None | Some("browser") => None,
+            Some("xai") => Some(Arc::new(
+                XaiSpeech::new(
+                    &env::var("XAI_TTS_URL").unwrap_or_else(|_| "https://api.x.ai/v1/tts".into()),
+                    nonempty_env("XAI_API_KEY").ok_or("XAI_API_KEY is required for xai TTS")?,
+                    env::var("XAI_TTS_VOICE").unwrap_or_else(|_| "eve".into()),
+                )
+                .map_err(|error| format!("xAI speech adapter: {}", error.message))?,
+            )),
+            Some("yandex") => Some(Arc::new(
+                YandexSpeech::new(
+                    &env::var("YANDEX_TTS_URL").unwrap_or_else(|_| {
+                        "https://tts.api.cloud.yandex.net/tts/v3/utteranceSynthesis".into()
+                    }),
+                    nonempty_env("YANDEX_SPEECHKIT_API_KEY")
+                        .ok_or("YANDEX_SPEECHKIT_API_KEY is required for yandex TTS")?,
+                    env::var("YANDEX_TTS_VOICE").unwrap_or_else(|_| "marina".into()),
+                    nonempty_env("YANDEX_TTS_ROLE"),
+                    nonempty_env("YANDEX_TTS_MODEL"),
+                )
+                .map_err(|error| format!("Yandex speech adapter: {}", error.message))?,
+            )),
+            Some("silero") => Some(Arc::new(
+                SileroSpeech::new(
+                    &env::var("SILERO_TTS_URL")
+                        .unwrap_or_else(|_| "http://127.0.0.1:4050/synthesize".into()),
+                    env::var("SILERO_TTS_VOICE").unwrap_or_else(|_| "eugene".into()),
+                )
+                .map_err(|error| format!("Silero speech adapter: {}", error.message))?,
+            )),
+            Some(_) => {
+                return Err("FSP_TTS_PROVIDER must be browser, silero, xai or yandex".into());
+            }
+        };
     let listener = TcpListener::bind((host.as_str(), port)).await?;
     let repository = Arc::new(
         PostgresRepository::connect(&database_url)
@@ -151,6 +188,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
     }
     if let Some(pdf) = pdf_adapter {
         platform = platform.with_pdf(pdf);
+    }
+    if let Some(speech) = speech_adapter {
+        platform = platform.with_speech(speech);
     }
     match (
         nonempty_env("FSP_INTERVIEW_URL"),

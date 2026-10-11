@@ -553,6 +553,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/me/interviews/{interviewId}/speech": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * synthesizeInterviewSpeech
+         * @description Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).
+         */
+        post: operations["synthesizeInterviewSpeech"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/jobs/{jobId}": {
         parameters: {
             query?: never;
@@ -1297,6 +1317,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/analytics/hiring-flow": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * getHiringFlowAnalytics
+         * @description Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).
+         */
+        get: operations["getHiringFlowAnalytics"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/applications/{applicationId}": {
         parameters: {
             query?: never;
@@ -1495,6 +1535,8 @@ export interface components {
                 githubOAuth: boolean;
                 githubInsights: boolean;
                 graphInterviews: boolean;
+                neuralTts: boolean;
+                hiringAnalytics: boolean;
                 fspFixture: boolean;
                 matching: boolean;
                 directInvitations: boolean;
@@ -1614,7 +1656,7 @@ export interface components {
         };
         ProfileEstimate: {
             /** @enum {string} */
-            version: "estimate-v1" | "estimate-v2" | "estimate-v3" | "estimate-v4";
+            version: "estimate-v1" | "estimate-v2" | "estimate-v3" | "estimate-v4" | "estimate-v5" | "estimate-v6";
             /** Format: date-time */
             computedAt: string;
             specialization: ("backend" | "frontend" | "fullstack" | "ios" | "android" | "mobile_crossplatform" | "devops" | "data_engineering" | "data_science" | "ml_engineering" | "qa_manual" | "qa_automation" | "security" | "embedded" | "systems" | "gamedev" | "onec" | "erp" | "system_analysis" | "business_analysis" | "data_analytics" | "dba" | "sysadmin" | "design" | "management") | null;
@@ -1689,6 +1731,7 @@ export interface components {
             stack: ("python" | "java" | "javascript" | "typescript" | "csharp" | "cpp" | "c" | "go" | "rust" | "kotlin" | "swift" | "objective_c" | "php" | "ruby" | "scala" | "elixir" | "erlang" | "haskell" | "clojure" | "fsharp" | "ocaml" | "dart" | "lua" | "perl" | "r" | "julia" | "matlab" | "sql" | "plsql" | "tsql" | "onec_language" | "abap" | "delphi" | "cobol" | "fortran" | "assembly" | "verilog" | "vhdl" | "solidity" | "zig" | "groovy" | "bash" | "powershell" | "visual_basic" | "http_api" | "grpc" | "graphql" | "websocket" | "spring" | "quarkus" | "django" | "fastapi" | "flask" | "nodejs" | "express" | "nestjs" | "aspnet" | "entity_framework" | "laravel" | "symfony" | "rails" | "gin" | "actix" | "tokio" | "ktor" | "phoenix" | "hibernate" | "sqlalchemy" | "kafka" | "rabbitmq" | "nats" | "celery" | "microservices" | "html_css" | "react" | "vue" | "angular" | "svelte" | "nextjs" | "nuxt" | "redux" | "tanstack" | "tailwind" | "sass" | "webpack" | "vite" | "storybook" | "threejs" | "web_accessibility" | "web_performance" | "electron" | "ios_platform" | "swiftui" | "uikit" | "android_platform" | "jetpack_compose" | "flutter" | "react_native" | "kotlin_multiplatform" | "mobile_development" | "postgresql" | "mysql" | "oracle_db" | "mssql" | "sqlite" | "mongodb" | "redis" | "cassandra" | "clickhouse" | "elasticsearch" | "neo4j" | "greenplum" | "tarantool" | "database_administration" | "data_modeling" | "etl" | "spark" | "airflow" | "dbt" | "hadoop" | "flink" | "pandas" | "numpy" | "statistics" | "machine_learning" | "scikit_learn" | "pytorch" | "tensorflow" | "gradient_boosting" | "computer_vision" | "nlp" | "llm" | "langchain" | "mlops" | "mlflow" | "jupyter" | "linux" | "docker" | "kubernetes" | "helm" | "terraform" | "ansible" | "ci_cd" | "github_actions" | "gitlab_ci" | "jenkins" | "argocd" | "nginx" | "prometheus" | "logging" | "observability" | "aws" | "gcp" | "azure" | "yandex_cloud" | "openstack" | "virtualization" | "service_mesh" | "computer_networks" | "windows_server" | "network_equipment" | "test_design" | "web_testing" | "api_testing" | "mobile_testing" | "test_automation" | "selenium" | "playwright" | "cypress" | "pytest" | "junit" | "jest" | "appium" | "postman" | "load_testing" | "allure" | "bug_tracking" | "web_security" | "network_security" | "pentest" | "appsec" | "siem" | "cryptography" | "iam" | "reverse_engineering" | "malware_analysis" | "forensics" | "compliance" | "microcontrollers" | "arduino" | "rtos" | "embedded_linux" | "fpga" | "plc" | "iot" | "hardware_interfaces" | "operating_systems" | "compilers" | "unity" | "unreal" | "godot" | "game_development" | "opengl" | "vulkan" | "shaders" | "onec_enterprise" | "onec_queries" | "onec_bsp" | "onec_skd" | "onec_forms" | "onec_erp" | "onec_ut" | "onec_zup" | "onec_accounting" | "onec_document_flow" | "onec_integration" | "onec_edt" | "onec_administration" | "bitrix" | "erp_systems" | "sap_s4hana" | "sap_fiori" | "sap_bw" | "dynamics" | "crm_systems" | "requirements" | "uml_bpmn" | "business_processes" | "api_design" | "excel" | "power_bi" | "tableau" | "superset" | "ab_testing" | "product_analytics" | "web_analytics" | "ui_design" | "ux_design" | "figma" | "design_systems" | "prototyping" | "graphic_design" | "motion_design" | "agile" | "project_management" | "product_management" | "team_leadership" | "jira" | "git" | "algorithms" | "system_design" | "oop" | "functional_programming" | "code_review" | "technical_writing")[];
             teamRole: string;
             experienceMonths: number | null;
+            experienceSince: number | null;
             experience: string;
             softSkills: string[];
             consents: {
@@ -1719,6 +1762,7 @@ export interface components {
             stack?: ("python" | "java" | "javascript" | "typescript" | "csharp" | "cpp" | "c" | "go" | "rust" | "kotlin" | "swift" | "objective_c" | "php" | "ruby" | "scala" | "elixir" | "erlang" | "haskell" | "clojure" | "fsharp" | "ocaml" | "dart" | "lua" | "perl" | "r" | "julia" | "matlab" | "sql" | "plsql" | "tsql" | "onec_language" | "abap" | "delphi" | "cobol" | "fortran" | "assembly" | "verilog" | "vhdl" | "solidity" | "zig" | "groovy" | "bash" | "powershell" | "visual_basic" | "http_api" | "grpc" | "graphql" | "websocket" | "spring" | "quarkus" | "django" | "fastapi" | "flask" | "nodejs" | "express" | "nestjs" | "aspnet" | "entity_framework" | "laravel" | "symfony" | "rails" | "gin" | "actix" | "tokio" | "ktor" | "phoenix" | "hibernate" | "sqlalchemy" | "kafka" | "rabbitmq" | "nats" | "celery" | "microservices" | "html_css" | "react" | "vue" | "angular" | "svelte" | "nextjs" | "nuxt" | "redux" | "tanstack" | "tailwind" | "sass" | "webpack" | "vite" | "storybook" | "threejs" | "web_accessibility" | "web_performance" | "electron" | "ios_platform" | "swiftui" | "uikit" | "android_platform" | "jetpack_compose" | "flutter" | "react_native" | "kotlin_multiplatform" | "mobile_development" | "postgresql" | "mysql" | "oracle_db" | "mssql" | "sqlite" | "mongodb" | "redis" | "cassandra" | "clickhouse" | "elasticsearch" | "neo4j" | "greenplum" | "tarantool" | "database_administration" | "data_modeling" | "etl" | "spark" | "airflow" | "dbt" | "hadoop" | "flink" | "pandas" | "numpy" | "statistics" | "machine_learning" | "scikit_learn" | "pytorch" | "tensorflow" | "gradient_boosting" | "computer_vision" | "nlp" | "llm" | "langchain" | "mlops" | "mlflow" | "jupyter" | "linux" | "docker" | "kubernetes" | "helm" | "terraform" | "ansible" | "ci_cd" | "github_actions" | "gitlab_ci" | "jenkins" | "argocd" | "nginx" | "prometheus" | "logging" | "observability" | "aws" | "gcp" | "azure" | "yandex_cloud" | "openstack" | "virtualization" | "service_mesh" | "computer_networks" | "windows_server" | "network_equipment" | "test_design" | "web_testing" | "api_testing" | "mobile_testing" | "test_automation" | "selenium" | "playwright" | "cypress" | "pytest" | "junit" | "jest" | "appium" | "postman" | "load_testing" | "allure" | "bug_tracking" | "web_security" | "network_security" | "pentest" | "appsec" | "siem" | "cryptography" | "iam" | "reverse_engineering" | "malware_analysis" | "forensics" | "compliance" | "microcontrollers" | "arduino" | "rtos" | "embedded_linux" | "fpga" | "plc" | "iot" | "hardware_interfaces" | "operating_systems" | "compilers" | "unity" | "unreal" | "godot" | "game_development" | "opengl" | "vulkan" | "shaders" | "onec_enterprise" | "onec_queries" | "onec_bsp" | "onec_skd" | "onec_forms" | "onec_erp" | "onec_ut" | "onec_zup" | "onec_accounting" | "onec_document_flow" | "onec_integration" | "onec_edt" | "onec_administration" | "bitrix" | "erp_systems" | "sap_s4hana" | "sap_fiori" | "sap_bw" | "dynamics" | "crm_systems" | "requirements" | "uml_bpmn" | "business_processes" | "api_design" | "excel" | "power_bi" | "tableau" | "superset" | "ab_testing" | "product_analytics" | "web_analytics" | "ui_design" | "ux_design" | "figma" | "design_systems" | "prototyping" | "graphic_design" | "motion_design" | "agile" | "project_management" | "product_management" | "team_leadership" | "jira" | "git" | "algorithms" | "system_design" | "oop" | "functional_programming" | "code_review" | "technical_writing")[];
             teamRole?: string;
             experienceMonths?: number | null;
+            experienceSince?: number | null;
             experience?: string;
             softSkills?: string[];
             consents?: {
@@ -1735,6 +1779,7 @@ export interface components {
             stack: ("python" | "java" | "javascript" | "typescript" | "csharp" | "cpp" | "c" | "go" | "rust" | "kotlin" | "swift" | "objective_c" | "php" | "ruby" | "scala" | "elixir" | "erlang" | "haskell" | "clojure" | "fsharp" | "ocaml" | "dart" | "lua" | "perl" | "r" | "julia" | "matlab" | "sql" | "plsql" | "tsql" | "onec_language" | "abap" | "delphi" | "cobol" | "fortran" | "assembly" | "verilog" | "vhdl" | "solidity" | "zig" | "groovy" | "bash" | "powershell" | "visual_basic" | "http_api" | "grpc" | "graphql" | "websocket" | "spring" | "quarkus" | "django" | "fastapi" | "flask" | "nodejs" | "express" | "nestjs" | "aspnet" | "entity_framework" | "laravel" | "symfony" | "rails" | "gin" | "actix" | "tokio" | "ktor" | "phoenix" | "hibernate" | "sqlalchemy" | "kafka" | "rabbitmq" | "nats" | "celery" | "microservices" | "html_css" | "react" | "vue" | "angular" | "svelte" | "nextjs" | "nuxt" | "redux" | "tanstack" | "tailwind" | "sass" | "webpack" | "vite" | "storybook" | "threejs" | "web_accessibility" | "web_performance" | "electron" | "ios_platform" | "swiftui" | "uikit" | "android_platform" | "jetpack_compose" | "flutter" | "react_native" | "kotlin_multiplatform" | "mobile_development" | "postgresql" | "mysql" | "oracle_db" | "mssql" | "sqlite" | "mongodb" | "redis" | "cassandra" | "clickhouse" | "elasticsearch" | "neo4j" | "greenplum" | "tarantool" | "database_administration" | "data_modeling" | "etl" | "spark" | "airflow" | "dbt" | "hadoop" | "flink" | "pandas" | "numpy" | "statistics" | "machine_learning" | "scikit_learn" | "pytorch" | "tensorflow" | "gradient_boosting" | "computer_vision" | "nlp" | "llm" | "langchain" | "mlops" | "mlflow" | "jupyter" | "linux" | "docker" | "kubernetes" | "helm" | "terraform" | "ansible" | "ci_cd" | "github_actions" | "gitlab_ci" | "jenkins" | "argocd" | "nginx" | "prometheus" | "logging" | "observability" | "aws" | "gcp" | "azure" | "yandex_cloud" | "openstack" | "virtualization" | "service_mesh" | "computer_networks" | "windows_server" | "network_equipment" | "test_design" | "web_testing" | "api_testing" | "mobile_testing" | "test_automation" | "selenium" | "playwright" | "cypress" | "pytest" | "junit" | "jest" | "appium" | "postman" | "load_testing" | "allure" | "bug_tracking" | "web_security" | "network_security" | "pentest" | "appsec" | "siem" | "cryptography" | "iam" | "reverse_engineering" | "malware_analysis" | "forensics" | "compliance" | "microcontrollers" | "arduino" | "rtos" | "embedded_linux" | "fpga" | "plc" | "iot" | "hardware_interfaces" | "operating_systems" | "compilers" | "unity" | "unreal" | "godot" | "game_development" | "opengl" | "vulkan" | "shaders" | "onec_enterprise" | "onec_queries" | "onec_bsp" | "onec_skd" | "onec_forms" | "onec_erp" | "onec_ut" | "onec_zup" | "onec_accounting" | "onec_document_flow" | "onec_integration" | "onec_edt" | "onec_administration" | "bitrix" | "erp_systems" | "sap_s4hana" | "sap_fiori" | "sap_bw" | "dynamics" | "crm_systems" | "requirements" | "uml_bpmn" | "business_processes" | "api_design" | "excel" | "power_bi" | "tableau" | "superset" | "ab_testing" | "product_analytics" | "web_analytics" | "ui_design" | "ux_design" | "figma" | "design_systems" | "prototyping" | "graphic_design" | "motion_design" | "agile" | "project_management" | "product_management" | "team_leadership" | "jira" | "git" | "algorithms" | "system_design" | "oop" | "functional_programming" | "code_review" | "technical_writing")[];
             teamRole: string;
             experienceMonths: number | null;
+            experienceSince: number | null;
             experience: string;
             softSkills: string[];
         };
@@ -2507,6 +2552,50 @@ export interface components {
         Applications: {
             items: components["schemas"]["Application"][];
         };
+        HiringFlowStage: {
+            /** @enum {string} */
+            id: "received" | "reviewed" | "decided" | "accepted";
+            label: string;
+            count: number;
+            sharePercent: number;
+        };
+        VacancyFlow: {
+            vacancyId: string;
+            title: string;
+            total: number;
+            awaitingReview: number;
+            awaitingDecision: number;
+            accepted: number;
+            closed: number;
+            requiredCoveragePercent: number;
+            gradeMatchPercent: number;
+        };
+        HiringBottleneck: {
+            kind: string;
+            /** @enum {string} */
+            severity: "info" | "medium" | "high";
+            title: string;
+            evidence: string;
+            recommendation: string;
+        };
+        HiringAssistant: {
+            /** @enum {string} */
+            mode: "metrics" | "bifrost";
+            summary: string;
+            actions: string[];
+        };
+        HiringFlowAnalytics: {
+            /** Format: date-time */
+            generatedAt: string;
+            total: number;
+            stages: components["schemas"]["HiringFlowStage"][];
+            medianTimeToViewHours: number | null;
+            medianTimeToDecisionHours: number | null;
+            acceptanceRatePercent: number;
+            vacancies: components["schemas"]["VacancyFlow"][];
+            bottlenecks: components["schemas"]["HiringBottleneck"][];
+            assistant: components["schemas"]["HiringAssistant"];
+        };
         TaskInput: {
             title: string;
             prompt: string;
@@ -2701,6 +2790,15 @@ export interface components {
             responseMode: "text" | "voice";
             revision: number;
         };
+        InterviewSpeechInput: {
+            questionId: string;
+        };
+        SpeechAudio: {
+            audioBase64: string;
+            mimeType: string;
+            provider: string;
+            voice: string;
+        };
         InterviewDelivery: {
             speechText: string;
             /** @enum {string} */
@@ -2783,7 +2881,7 @@ export interface components {
                 simulation: boolean;
                 evidence?: {
                     /** @enum {string} */
-                    field: "name" | "specialization" | "selectedGrade" | "stack" | "teamRole" | "experienceMonths" | "experience" | "softSkills";
+                    field: "name" | "specialization" | "selectedGrade" | "stack" | "teamRole" | "experienceMonths" | "experienceSince" | "experience" | "softSkills";
                     page: number;
                     quote: string;
                 }[];
@@ -6654,6 +6752,140 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Interview"];
+                };
+            };
+            /** @description Malformed request or schema validation error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Missing or expired mock session */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Role, consent, or origin restriction */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unknown resource or resource outside this actor/company */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description State, idempotency, or cooldown conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Request body exceeds limit */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unsupported media type */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Valid shape but invalid domain values */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Verification, email delivery, or proxy request limit */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Response conformance or unexpected server failure */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Verification provider failed to accept delivery */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Deterministic upstream error scenario */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    synthesizeInterviewSpeech: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                interviewId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InterviewSpeechInput"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SpeechAudio"];
                 };
             };
             /** @description Malformed request or schema validation error */
@@ -12671,6 +12903,134 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Applications"];
+                };
+            };
+            /** @description Malformed request or schema validation error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Missing or expired mock session */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Role, consent, or origin restriction */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unknown resource or resource outside this actor/company */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description State, idempotency, or cooldown conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Request body exceeds limit */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unsupported media type */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Valid shape but invalid domain values */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Verification, email delivery, or proxy request limit */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Response conformance or unexpected server failure */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Verification provider failed to accept delivery */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Deterministic upstream error scenario */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getHiringFlowAnalytics: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HiringFlowAnalytics"];
                 };
             };
             /** @description Malformed request or schema validation error */

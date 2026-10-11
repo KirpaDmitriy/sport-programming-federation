@@ -31,6 +31,21 @@ pub struct InterviewAnswerInput {
     pub revision: u32,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct InterviewSpeechInput {
+    pub question_id: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SpeechAudioView {
+    pub audio_base64: String,
+    pub mime_type: String,
+    pub provider: String,
+    pub voice: String,
+}
+
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum InterviewResponseMode {
@@ -187,6 +202,7 @@ pub struct ProfileView {
     pub stack: Vec<String>,
     pub team_role: String,
     pub experience_months: Option<u32>,
+    pub experience_since: Option<u16>,
     pub experience: String,
     pub soft_skills: Vec<String>,
     pub consents: fsp_domain::Consents,
@@ -285,6 +301,8 @@ pub struct ProfilePatch {
     pub team_role: Option<String>,
     #[serde(default, deserialize_with = "present_patch_value")]
     pub experience_months: Option<Option<u32>>,
+    #[serde(default, deserialize_with = "present_patch_value")]
+    pub experience_since: Option<Option<u16>>,
     #[serde(default, deserialize_with = "present_patch_value")]
     pub experience: Option<String>,
     #[serde(default, deserialize_with = "present_patch_value")]
@@ -513,6 +531,80 @@ pub struct ApplicationView {
 #[serde(rename_all = "camelCase")]
 pub struct ApplicationsView {
     pub items: Vec<ApplicationView>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HiringFlowStageView {
+    pub id: &'static str,
+    pub label: &'static str,
+    pub count: usize,
+    pub share_percent: u8,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VacancyFlowView {
+    pub vacancy_id: String,
+    pub title: String,
+    pub total: usize,
+    pub awaiting_review: usize,
+    pub awaiting_decision: usize,
+    pub accepted: usize,
+    pub closed: usize,
+    pub required_coverage_percent: u8,
+    pub grade_match_percent: u8,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HiringBottleneckView {
+    pub kind: &'static str,
+    pub severity: &'static str,
+    pub title: String,
+    pub evidence: String,
+    pub recommendation: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HiringAssistantView {
+    pub mode: &'static str,
+    pub summary: String,
+    pub actions: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HiringFlowAnalyticsView {
+    pub generated_at: String,
+    pub total: usize,
+    pub stages: Vec<HiringFlowStageView>,
+    pub median_time_to_view_hours: Option<u32>,
+    pub median_time_to_decision_hours: Option<u32>,
+    pub acceptance_rate_percent: u8,
+    pub vacancies: Vec<VacancyFlowView>,
+    pub bottlenecks: Vec<HiringBottleneckView>,
+    pub assistant: HiringAssistantView,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HiringFlowFacts {
+    pub total: usize,
+    pub stages: Vec<HiringFlowStageView>,
+    pub median_time_to_view_hours: Option<u32>,
+    pub median_time_to_decision_hours: Option<u32>,
+    pub acceptance_rate_percent: u8,
+    pub vacancies: Vec<VacancyFlowView>,
+    pub bottlenecks: Vec<HiringBottleneckView>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HiringFlowNarrative {
+    pub summary: String,
+    pub actions: Vec<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

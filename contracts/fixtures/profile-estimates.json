@@ -68,12 +68,12 @@
         "percent": 50
       }
     ],
-    "version": "estimate-v4"
+    "version": "estimate-v6"
   },
   "github": {
     "answers": {
       "experience": "Основные направления — бэкенд (83%) и фронтенд (17%); пишет в основном на Rust (71%) и TypeScript (17%). Ведёт 2 проекта в 1 организации (acme-labs). За год — 770 публичных коммитов. Ключевые технологии: GitHub Actions, Axum, FastAPI, HTTP-клиенты Python. Темы проектов: platform, rust, web. Главные проекты: project, platform.",
-      "experienceMonths": 45,
+      "experienceMonths": null,
       "name": "Иван Петров",
       "softSkills": [
         "Понятно описывает изменения в коммитах"
@@ -224,12 +224,12 @@
         "percent": 7
       }
     ],
-    "version": "estimate-v4"
+    "version": "estimate-v6"
   },
   "githubFsp": {
     "answers": {
       "experience": "Основные направления — бэкенд (83%) и фронтенд (17%); пишет в основном на Rust (71%) и TypeScript (17%). Ведёт 2 проекта в 1 организации (acme-labs). За год — 770 публичных коммитов. Ключевые технологии: GitHub Actions, Axum, FastAPI, HTTP-клиенты Python. Темы проектов: platform, rust, web. Главные проекты: project, platform.",
-      "experienceMonths": 45,
+      "experienceMonths": null,
       "name": "Иван Петров",
       "softSkills": [
         "Понятно описывает изменения в коммитах",
@@ -390,7 +390,7 @@
         "percent": 14
       }
     ],
-    "version": "estimate-v4"
+    "version": "estimate-v6"
   },
   "none": {
     "answers": {
@@ -421,6 +421,6 @@
     "sources": [],
     "specialization": null,
     "specializations": [],
-    "version": "estimate-v4"
+    "version": "estimate-v6"
   }
 }

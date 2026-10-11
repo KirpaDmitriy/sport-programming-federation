@@ -19,7 +19,7 @@ const share = (value: number) => ({ '--value': String(value) }) as CSSProperties
 /** How long after an estimate its background LLM review (deep reasoning) is awaited. */
 const REVIEW_WAIT_MS = 6 * 60_000;
 
-/** Grade bands of the seniority score, as `estimate-v4` defines them. */
+/** Grade bands of the seniority score, as `estimate-v6` defines them. */
 const BANDS = 'до 20 — стажёр, 20–39 — джуниор, 40–59 — мидл, 60–79 — сеньор, от 80 — лид';
 
 function Bars({ items }: { items: { id: string; label: string; value: number; max: number; detail?: string }[] }) {
@@ -211,7 +211,7 @@ export function ProfileEstimateCard({ profile, canEstimate, title = 'Автом�
           </Callout>
         )}
         <GrowthPlan estimate={estimate} />
-        {profile.category.source !== 'assessment' && <RefineEstimateForm key={profile.revision} profile={profile} />}
+        {profile.category.source !== 'assessment' && <RefineEstimateForm profile={profile} />}
         {estimate.specializations.length > 0 && (
           <section className="stack" aria-label="Направления">
             <h3 className={styles.heading}>Направления</h3>
@@ -244,7 +244,7 @@ export function ProfileEstimateCard({ profile, canEstimate, title = 'Автом�
           <Callout tone={estimate.review.agrees ? 'success' : 'warning'} title="Второе мнение ИИ">
             {estimate.review.agrees
               ? `Согласен с грейдом «${gradeLabel[estimate.review.grade]}».`
-              : `Оценивает грейд как «${gradeLabel[estimate.review.grade]}», поэтому уверенность снижена. Грейд по правилам не меняется.`}
+              : `Оценивает грейд как «${gradeLabel[estimate.review.grade]}». Грейд по правилам не меняется, уверенность оценки — не выше средней.`}
             {estimate.review.rationale && ` ${estimate.review.rationale}`}
           </Callout>
         )}

@@ -5,6 +5,7 @@ export {
   type Eligibility,
   type EstimateAnswers,
   eligibilityReasonText,
+  experienceLabel,
   type Onboarding,
   type Profile,
   type ProfileEstimate,
@@ -13,4 +14,5 @@ export {
   profileQuery,
   refreshEstimate,
   updateProfile,
+  yearsInIt,
 } from './model';

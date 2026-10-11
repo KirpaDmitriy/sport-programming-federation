@@ -1,4 +1,5 @@
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { useQuery } from '@tanstack/react-query';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import { HttpResponse, http } from 'msw';
 import { describe, expect, it } from 'vitest';
 import { metaQueryOptions } from '@/entities/meta';
@@ -35,6 +36,17 @@ const estimated = (overrides: Partial<Profile> = {}): Profile =>
     ...overrides,
   });
 
+/** Renders the card from the cached profile, as the pages do, so cache updates reach it. */
+function FromCache({ initial }: { initial: Profile }) {
+  const { data } = useQuery({
+    queryKey: profileKey(scopeOf(candidateSession)),
+    queryFn: () => initial,
+    initialData: initial,
+    staleTime: Number.POSITIVE_INFINITY,
+  });
+  return <ProfileEstimateCard profile={data} canEstimate />;
+}
+
 describe('profile estimate card', () => {
   it('explains the estimated category with every factor and the second opinion', async () => {
     await renderWithProviders(<ProfileEstimateCard profile={estimated()} canEstimate />, {
@@ -44,7 +56,7 @@ describe('profile estimate card', () => {
     expect(screen.getByText('Бэкенд · Сеньор · оценка, средняя уверенность')).toBeTruthy();
     expect(screen.getByText(`Балл уровня ${github.score} из 100`)).toBeTruthy();
     for (const factor of github.factors) expect(screen.getAllByText(factor.label).length).toBeGreaterThan(0);
-    expect(screen.getByText(/Оценивает грейд как «Мидл», поэтому уверенность снижена/)).toBeTruthy();
+    expect(screen.getByText(/Оценивает грейд как «Мидл». Грейд по правилам не меняется/)).toBeTruthy();
     expect(screen.getByRole('link', { name: /Пройти тест/ })).toBeTruthy();
     // The notes say why the grade is what it is and what the next one needs.
     for (const note of github.notes) expect(screen.getByText(note)).toBeTruthy();
@@ -63,15 +75,22 @@ describe('profile estimate card', () => {
         return HttpResponse.json(estimated());
       }),
     );
-    await renderWithProviders(<ProfileEstimateCard profile={estimated({ experienceMonths: 21 })} canEstimate />, {
+    const { queryClient } = await renderWithProviders(<FromCache initial={estimated({ experienceMonths: null })} />, {
       session: candidateSession,
       prefill,
     });
-    fireEvent.change(screen.getByLabelText('Общий стаж, лет'), { target: { value: '6' } });
-    fireEvent.change(screen.getByLabelText('Ещё месяцев'), { target: { value: '0' } });
+    fireEvent.change(screen.getByLabelText('В IT с какого года'), { target: { value: '2016' } });
+    // A background update of the profile (for example the AI review) keeps what was typed.
+    act(() => {
+      queryClient.setQueryData(
+        profileKey(scopeOf(candidateSession)),
+        estimated({ experienceMonths: null, revision: 99 }),
+      );
+    });
+    expect(screen.getByLabelText('В IT с какого года')).toHaveProperty('value', '2016');
     fireEvent.change(screen.getByLabelText('Роль в команде'), { target: { value: 'Тимлид' } });
     fireEvent.click(screen.getByRole('button', { name: 'Пересчитать с уточнениями' }));
-    await waitFor(() => expect(patch).toEqual({ experienceMonths: 72, teamRole: 'Тимлид' }));
+    await waitFor(() => expect(patch).toEqual({ experienceSince: 2016, teamRole: 'Тимлид' }));
   });
 
   it('rebuilds every answer from the sources in one click', async () => {
