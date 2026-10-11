@@ -420,6 +420,12 @@
   font-size: var(--fsp-font-size-small);
 }
 
+.voiceNotice {
+  color: var(--fsp-color-text-muted);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
 .evidencePanel {
   padding: var(--fsp-space-4);
   border: 1px solid var(--fsp-color-border);

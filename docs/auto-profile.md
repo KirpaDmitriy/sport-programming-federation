@@ -31,7 +31,7 @@ the mock; the frontend receives labels through the generated types and `/meta`.
   embedded and IoT, systems programming, game development, 1C development, ERP/SAP, system analysis, business
   analysis, data analytics/BI, database administration, system and network administration, UI/UX design, product
   and project management. Each names two test topics and the skills that indicate it.
-- **Skills (~300):** languages (including the 1C language, ABAP, Delphi, COBOL, Verilog/VHDL), frameworks,
+- **Skills (255):** languages (including the 1C language, ABAP, Delphi, COBOL, Verilog/VHDL), frameworks,
   databases, infrastructure, data/ML, mobile, QA, security, embedded, game engines, the 1C ecosystem (1С:Предприятие,
   БСП, СКД, query language, ERP/УТ/ЗУП/Бухгалтерия, обмены, EDT, 1С-Битрикс), ERP/SAP, analytics/BI, analysis
   notations, design tools and management practices. Each has a category and the specializations it indicates.

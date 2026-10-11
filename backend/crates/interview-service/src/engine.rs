@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
+use std::time::Duration;
 
 use uuid::Uuid;
 
@@ -10,6 +11,9 @@ use crate::domain::{
 };
 use crate::model::{AnswerContext, InterviewModel, ModelError, QuestionContext};
 use crate::storage::{InterviewRepository, MemoryInterviewRepository, RepositoryError};
+
+// Evaluation and next-question generation share one budget below the 50s gateway and 55s API deadlines.
+const MODEL_TURN_BUDGET: Duration = Duration::from_secs(45);
 
 const RUBRIC_VERSION: &str = "graph-interview-rubric-v1";
 
@@ -99,7 +103,14 @@ impl InterviewService {
             evidence: Vec::new(),
             model_mode: self.model.mode().into(),
         };
-        session.current_question = Some(self.question_for(&session, graph.start_node_id).await?);
+        session.current_question = Some(
+            tokio::time::timeout(
+                MODEL_TURN_BUDGET,
+                self.question_for(&session, graph.start_node_id),
+            )
+            .await
+            .map_err(|_| ServiceError::ModelUnavailable)??,
+        );
         let view = session.public_view(graph);
         match self.repository.insert(&session).await {
             Ok(()) => {}
@@ -178,44 +189,50 @@ impl InterviewService {
         let node = blueprint
             .node(&question.node_id)
             .ok_or(ServiceError::InvalidInput)?;
-        let evaluation = self
-            .model
-            .evaluate_answer(AnswerContext {
-                node,
-                question: &question.prompt,
-                answer,
-                response_mode,
-            })
-            .await?;
+        // Do not persist a turn until both model operations finish within the shared budget.
+        let updated = tokio::time::timeout(MODEL_TURN_BUDGET, async {
+            let evaluation = self
+                .model
+                .evaluate_answer(AnswerContext {
+                    node,
+                    question: &question.prompt,
+                    answer,
+                    response_mode,
+                })
+                .await?;
 
-        let mut updated = snapshot.clone();
-        updated.revision += 1;
-        updated
-            .node_states
-            .insert(node.id.to_owned(), evaluation.state);
-        *updated.attempts.entry(node.id.to_owned()).or_default() += 1;
-        updated.evidence.push(InterviewEvidence {
-            node_id: node.id.to_owned(),
-            state: evaluation.state,
-            question_id: question.id.clone(),
-            answer_excerpt: evaluation.evidence_quote,
-            rationale: evaluation.rationale,
-            evaluator: evaluation.evaluator,
-            rubric_version: RUBRIC_VERSION.into(),
-            response_mode,
-            signal_strength: if response_mode == ResponseMode::Voice {
-                2
-            } else {
-                1
-            },
-        });
-        let next = select_next_node(blueprint, &updated, node.id);
-        if updated.evidence.len() >= usize::from(updated.max_turns) || next.is_none() {
-            updated.status = InterviewStatus::Completed;
-            updated.current_question = None;
-        } else if let Some(next) = next {
-            updated.current_question = Some(self.question_for(&updated, next).await?);
-        }
+            let mut updated = snapshot.clone();
+            updated.revision += 1;
+            updated
+                .node_states
+                .insert(node.id.to_owned(), evaluation.state);
+            *updated.attempts.entry(node.id.to_owned()).or_default() += 1;
+            updated.evidence.push(InterviewEvidence {
+                node_id: node.id.to_owned(),
+                state: evaluation.state,
+                question_id: question.id.clone(),
+                answer_excerpt: evaluation.evidence_quote,
+                rationale: evaluation.rationale,
+                evaluator: evaluation.evaluator,
+                rubric_version: RUBRIC_VERSION.into(),
+                response_mode,
+                signal_strength: if response_mode == ResponseMode::Voice {
+                    2
+                } else {
+                    1
+                },
+            });
+            let next = select_next_node(blueprint, &updated, node.id);
+            if updated.evidence.len() >= usize::from(updated.max_turns) || next.is_none() {
+                updated.status = InterviewStatus::Completed;
+                updated.current_question = None;
+            } else if let Some(next) = next {
+                updated.current_question = Some(self.question_for(&updated, next).await?);
+            }
+            Ok::<_, ServiceError>(updated)
+        })
+        .await
+        .map_err(|_| ServiceError::ModelUnavailable)??;
 
         let view = updated.public_view(blueprint);
         self.repository.replace(&updated, revision).await?;
@@ -359,6 +376,80 @@ mod tests {
     use super::*;
     use crate::domain::BACKEND_MIDDLE;
     use crate::model::OfflineModel;
+
+    #[tokio::test(start_paused = true)]
+    async fn model_budget_covers_the_whole_turn_without_persisting_partial_evidence() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        struct SlowModel(AtomicBool);
+
+        #[async_trait::async_trait]
+        impl InterviewModel for SlowModel {
+            fn mode(&self) -> &'static str {
+                "test"
+            }
+
+            async fn generate_question(
+                &self,
+                context: QuestionContext<'_>,
+            ) -> Result<String, ModelError> {
+                if context.sequence > 1 && self.0.load(Ordering::SeqCst) {
+                    tokio::time::sleep(Duration::from_secs(25)).await;
+                }
+                OfflineModel.generate_question(context).await
+            }
+
+            async fn evaluate_answer(
+                &self,
+                context: AnswerContext<'_>,
+            ) -> Result<crate::model::AnswerEvaluation, ModelError> {
+                if self.0.load(Ordering::SeqCst) {
+                    tokio::time::sleep(Duration::from_secs(25)).await;
+                }
+                OfflineModel.evaluate_answer(context).await
+            }
+        }
+
+        let model = Arc::new(SlowModel(AtomicBool::new(true)));
+        let service = InterviewService::new(model.clone());
+        let started = service
+            .start("candidate-budget", BACKEND_MIDDLE.id, 12)
+            .await
+            .unwrap();
+        let question = started.current_question.as_ref().unwrap();
+        let before = tokio::time::Instant::now();
+        assert!(matches!(
+            service
+                .answer(
+                    &started.id,
+                    &question.id,
+                    "Посмотрю логи",
+                    ResponseMode::Text,
+                    0
+                )
+                .await,
+            Err(ServiceError::ModelUnavailable)
+        ));
+        assert_eq!(before.elapsed(), MODEL_TURN_BUDGET);
+        let unchanged = service.get(&started.id).await.unwrap();
+        assert_eq!(unchanged.revision, 0);
+        assert!(unchanged.evidence.is_empty());
+        assert_eq!(unchanged.current_question.unwrap().id, question.id);
+
+        model.0.store(false, Ordering::SeqCst);
+        let retried = service
+            .answer(
+                &started.id,
+                &question.id,
+                "Посмотрю логи",
+                ResponseMode::Text,
+                0,
+            )
+            .await
+            .unwrap();
+        assert_eq!(retried.revision, 1);
+        assert_eq!(retried.evidence.len(), 1);
+    }
 
     #[tokio::test]
     async fn weak_composite_answer_descends_to_unknown_prerequisite() {

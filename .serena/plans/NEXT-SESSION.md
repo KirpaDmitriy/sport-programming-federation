@@ -22,20 +22,16 @@ focus skills; outdated estimates refresh on profile open; «Заполнить �
 answers; a résumé lets Grok fill the start year with a quote). Edited answers leave autoFields and are never
 overwritten. Categories state their source; tests rank first. The Grok review runs in the background with high
 reasoning (Bifrost timeout 360 s on the stand), one per candidate, gives growth advice, may pick between close
-specializations and lowers high confidence to medium at most. Public acceptance unpublishes its candidate at the end. Catalog v2: 25 specializations, 5 grades, 255 skills incl. 1C; every specialization
+specializations and lowers high confidence to medium at most. Public acceptance uses failure-safe actor teardown (unpublish candidates, delete fresh-company needs, close contexts). Catalog v2: 25 specializations, 5 grades, 255 skills incl. 1C; every specialization
 and grade has a knowledge test (topic banks knowledge-v3-*.json, 1,230 questions, length-balanced distractors).
 Live evidence: .fsp-infra/real-features/auto-profile/.
 
 ## Completed work and current evidence
 
-#16, #23/#27 and #31 are completed earlier audit/product deliveries. #38/#40 completed domain/mail/private CI
-on cd44951: all four gates, both real-email browser scenarios, independent live verification, ref synchronization
-and actual off-host archive restore passed. Historical failure 488fa91 and superseded PR39 are retained as history.
-
-#50 is the subsequent consistency review: live/frontend/backend docs, demo instructions, build helper and screenshot
-capture were reconciled against source. Read its final issue receipt and git log for the integrated SHA.
-The screenshot suite uses fictional mock data; it is not live-auth evidence. Public acceptance reads actual mail.
-Do not restart completed audits or revive the old IP/fixed-code/Actions instructions.
+Earlier completed deliveries: #16 (stability), #23/#27 (browser), #31 (knowledge/PDF/FSP), #38/#40 (domain/mail/CI),
+#50 (consistency). Their backup/restore receipts are historical and do not authorize new archives.
+Documentation screenshots use fictional data; public acceptance reads actual mail. Three disclosed synthetic
+accounts intentionally keep fixed codes in Resend mode; all other addresses require real mail.
 
 ## Delivery and recovery
 
@@ -51,7 +47,11 @@ FSP backup units are stopped/masked; provisioning and CI must not recreate archi
 backup archives were deleted. Older backup/restore receipts above are historical, not a standing task.
 No OpenObserve or external alerting exists: inspect systemd/nginx and CI logs. Other explicit limits are in
 current-state.md: no calibrated/leak-resistant exam, OCR, durable source queue, high availability or load claim.
-No pending user permission is needed for the completed scope. Read current open issues for new work.
+October 11 review #138: consent parity on interview answers, one model budget per turn, same-origin microphone
+policy, race-safe speech lifecycle and failure-safe acceptance teardown. Detailed plan and evidence scope:
+docs/stability-review-2026-10-11.md. Documentation and project-specific Claude/Serena memories were reconciled.
+External follow-up #139 requires a new dedicated repo-scoped CI token from the owner. Existing shared scopes
+were verified; do not alter or revoke that credential. Read current issue receipts before claiming live completion.
 
 Memory index: platform.md (auth/data/assessment), frontend.md (UI/proofs), operations.md (deployment/mail/CI/recovery).
 Release identity: compare upstream/main, /opt/fsp/current and deployed.json instead of trusting a SHA written here.

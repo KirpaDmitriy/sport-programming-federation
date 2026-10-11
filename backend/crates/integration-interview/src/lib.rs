@@ -29,7 +29,7 @@ impl HttpInterviewGateway {
         }
         let client = Client::builder()
             .connect_timeout(Duration::from_secs(2))
-            .timeout(Duration::from_secs(55))
+            .timeout(Duration::from_secs(50))
             .redirect(reqwest::redirect::Policy::none())
             .build()
             .map_err(|_| unavailable())?;

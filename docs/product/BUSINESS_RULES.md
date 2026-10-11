@@ -19,7 +19,7 @@ name a state.
   attempts shared across unused live challenges for that email (`429 challenge_locked`); a wrong or expired code is `400 invalid_code` / `400 challenge_expired`.
 - Real email mode sends through Resend and allows one issuance per minute, at most five in fifteen minutes
   per normalized address, including provider failures. Verification codes use random digits and keyed,
-  challenge-specific hashes; session hashes have a separate namespace. Local mock/demo codes remain disclosed fixtures.
+  challenge-specific hashes; session hashes have a separate namespace. Mock/demo codes and the three exact seeded public addresses remain disclosed fixtures; they do not prove mailbox ownership.
 - The session is an opaque `HttpOnly`, `SameSite=Lax` cookie. Without it every protected call is `401`.
 - A candidate reaches only their own profile, sources, skills, assessments, jobs and invitations; an employer only
   their own company, needs, shortlists and invitations. Someone else's record answers `404`, so its existence is not
@@ -449,6 +449,22 @@ The development mock uses demo email identity; Rust uses actual Resend delivery 
 scoring; their public bank has no measured psychometric validity. Only the development mock simulates PDF extraction
 and assistant replies. Rust uses isolated Poppler extraction and Bifrost with validated evidence and no canned fallback.
 Rust persists application records and sessions; its initial candidate bank is synthetic. GitHub analysis is real
-when the insights service is configured; the mock returns the labelled fictional report of a synthetic account. Graph output is validated against input skills and references; employer projections remove evidence
-nodes. An LLM relation is a suggestion, not a qualification verdict. Real email delivery for non-demo addresses is implemented through Resend; GitHub OAuth setup remains
+when the insights service is configured; the mock returns the labelled fictional report of a synthetic account. Competence graphs are deterministic projections of catalog concepts and stored evidence; employer projections remove
+private evidence. Graph structure is not a qualification verdict. Real email delivery for non-demo addresses is implemented through Resend; GitHub OAuth setup remains
 deferred (ownership is proven by the bio code instead); official FSP integration and arbitrary code execution are outside the chosen product scope.
+
+## 16. Graph interviews
+
+The authenticated candidate can start or resume one active `backend-middle-v1` interview. PostgreSQL stores
+its question, prerequisite progress, evidence and revision; competing stale answers return `409 interview_conflict`.
+Starting or answering requires processing consent. After revocation, reading existing history remains allowed
+but new answers are rejected. Other candidates receive 404 and employers cannot use these private endpoints.
+
+The engine selects the next competency; Bifrost evaluates cited answer evidence and phrases the next question
+when configured. The complete model turn has one 45-second budget before persistence. Failure leaves the current
+question and revision unchanged. Offline mode is explicit and never substitutes for an unavailable configured model.
+
+The browser supports text and optional speech recognition with editable transcripts. Its vendor may process audio
+remotely; only submitted text and declared response mode reach the application. Voice/text signal strength is
+a format indicator, not verified speech, identity or professional competence, and does not change matching or grades.
+There is no camera or audio archive. See [interview service](../interview-service.md) for configuration and tests.

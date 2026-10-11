@@ -38,4 +38,4 @@ Behavioral cadence is a separate experiment:
 - [x] Cover the service in backend, Compose and release-safety CI gates.
 - [x] Pass service, mock, frontend unit and targeted browser tests plus an offline HTTP smoke test.
 - [x] Validate experiment records with `python3 tools/experiments.py check`.
-- [ ] Deploy verified `main` and confirm the public authenticated journey.
+- [x] Deploy verified `main` and confirm the public authenticated journey (baseline `c3ddffc`, successful `fsp/deployment`; subsequent hardening is tracked in [#138](stability-review-2026-10-11.md)).

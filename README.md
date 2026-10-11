@@ -12,6 +12,8 @@ are explicitly fictional. A separate Rust service analyzes a candidate's public 
 token, into a developer portrait and an explainable signal; GitHub OAuth setup is deferred. Capability flags describe configuration, not provider health.
 Knowledge results do not certify professional experience. See [knowledge tests](docs/knowledge-tests.md),
 [GitHub insights](docs/github-insights.md) and [FSP simulator](docs/fsp-simulator.md).
+Candidates can also take a [graph-guided interview](docs/interview-service.md) with durable sessions, optional
+browser speech and Bifrost evaluation. Interview evidence does not assign a platform grade.
 
 ## Repository
 
@@ -25,6 +27,7 @@ Knowledge results do not certify professional experience. See [knowledge tests](
 | [docs/product/](docs/product/BUSINESS_RULES.md) | Implemented rules, requirements and organizer specification |
 | [Current state](docs/current-state.md) | Verified behavior, remaining limits and release verification commands |
 | [Stability audit](docs/stability-audit.md) | Historical session reconciliation and delivery evidence |
+| [October 11 review](docs/stability-review-2026-10-11.md) | Recent session reconciliation, confirmed fixes and release verification |
 
 Ownership and contribution rules: [AGENTS.md](AGENTS.md). Feature PRs target `danil` or `dima`;
 [Private-server CI](infra/ci/README.md) checks and merges integration PRs into `dev`, then `main`.
