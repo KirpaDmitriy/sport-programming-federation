@@ -183,8 +183,14 @@ function recognitionConstructor() {
 }
 
 function Avatar({ state }: { state: 'idle' | 'speaking' | 'listening' | 'thinking' }) {
+  const label = {
+    idle: 'готов слушать',
+    speaking: 'задаёт вопрос',
+    listening: 'слушает вас',
+    thinking: 'разбирает ответ',
+  };
   return (
-    <div className={cx(styles.avatarStage, styles[state])} role="img" aria-label={`Интервьюер: ${state}`}>
+    <div className={cx(styles.avatarStage, styles[state])} role="img" aria-label={`Интервьюер: ${label[state]}`}>
       <div className={styles.avatarHalo} />
       <div className={styles.avatarBody}>
         <div className={styles.avatarHead}>
@@ -208,6 +214,7 @@ export function InterviewWorkspace({ interview }: { interview: Interview }) {
   const scope = useScope();
   const queryClient = useQueryClient();
   const recognition = useRef<Recognition | null>(null);
+  const draftQuestion = useRef<string | null>(null);
   const [answer, setAnswer] = useState('');
   const [interim, setInterim] = useState('');
   const [inputMode, setInputMode] = useState<'voice' | 'text'>('text');
@@ -217,6 +224,17 @@ export function InterviewWorkspace({ interview }: { interview: Interview }) {
   const [speechError, setSpeechError] = useState<string | null>(null);
   const question = interview.currentQuestion;
   const speechText = question?.delivery.speechText;
+
+  const releaseMicrophone = useCallback(() => {
+    const instance = recognition.current;
+    recognition.current = null;
+    if (instance) {
+      instance.onresult = null;
+      instance.onerror = null;
+      instance.onend = null;
+      instance.abort();
+    }
+  }, []);
 
   const sayQuestion = useCallback(() => {
     if (!speechText || !('speechSynthesis' in window)) return;
@@ -230,25 +248,30 @@ export function InterviewWorkspace({ interview }: { interview: Interview }) {
   }, [speechText]);
 
   useEffect(() => {
-    setAnswer('');
-    setInterim('');
-    setVoiceCaptured(false);
-    setSpeechError(null);
-    setInputMode(question?.recommendedResponseMode === 'voice' && recognitionConstructor() ? 'voice' : 'text');
+    if (draftQuestion.current !== (question?.id ?? null)) {
+      draftQuestion.current = question?.id ?? null;
+      setAnswer('');
+      setInterim('');
+      setVoiceCaptured(false);
+      setListening(false);
+      setSpeechError(null);
+      setInputMode(question?.recommendedResponseMode === 'voice' && recognitionConstructor() ? 'voice' : 'text');
+    }
+    return releaseMicrophone;
+  }, [question?.id, question?.recommendedResponseMode, releaseMicrophone]);
+
+  useEffect(() => {
     if (!question?.id) return undefined;
     const timer = window.setTimeout(sayQuestion, 250);
     return () => {
       window.clearTimeout(timer);
       window.speechSynthesis?.cancel();
     };
-  }, [question?.id, question?.recommendedResponseMode, sayQuestion]);
-
-  useEffect(() => () => recognition.current?.abort(), []);
+  }, [question?.id, sayQuestion]);
 
   const toggleListening = () => {
     if (listening) {
       recognition.current?.stop();
-      setListening(false);
       return;
     }
     const Constructor = recognitionConstructor();
@@ -257,12 +280,14 @@ export function InterviewWorkspace({ interview }: { interview: Interview }) {
       setSpeechError('В этом браузере нет распознавания речи. Продолжите текстом.');
       return;
     }
+    releaseMicrophone();
     window.speechSynthesis?.cancel();
     const instance = new Constructor();
     instance.lang = 'ru-RU';
     instance.continuous = false;
     instance.interimResults = true;
     instance.onresult = (event) => {
+      if (recognition.current !== instance) return;
       let finalText = '';
       let interimText = '';
       for (let index = event.resultIndex; index < event.results.length; index += 1) {
@@ -278,24 +303,37 @@ export function InterviewWorkspace({ interview }: { interview: Interview }) {
       setInterim(interimText);
     };
     instance.onerror = (event) => {
+      if (recognition.current !== instance) return;
+      releaseMicrophone();
       setListening(false);
+      setInterim('');
       if (event.error === 'aborted') return;
       setSpeechError(speechErrorMessage(event.error));
     };
     instance.onend = () => {
+      if (recognition.current !== instance) return;
+      releaseMicrophone();
       setListening(false);
       setInterim('');
     };
     recognition.current = instance;
     setSpeechError(null);
     setListening(true);
-    instance.start();
+    try {
+      instance.start();
+    } catch {
+      releaseMicrophone();
+      setListening(false);
+      setSpeechError('Не удалось включить распознавание. Попробуйте снова или ответьте текстом.');
+    }
   };
 
   const mutation = useMutation({
     mutationFn: async () => {
       if (!question) throw new Error('Интервью уже завершено');
-      recognition.current?.stop();
+      releaseMicrophone();
+      setListening(false);
+      setInterim('');
       return answerInterview(interview.id, {
         questionId: question.id,
         answer: answer.trim(),
@@ -324,10 +362,12 @@ export function InterviewWorkspace({ interview }: { interview: Interview }) {
     <div className={styles.interviewPage}>
       <div className={styles.liveHeader}>
         <div>
-          <span className={styles.liveBadge}>Интервью идёт</span>
+          <span className={styles.liveBadge}>{question ? 'Интервью идёт' : 'Интервью завершено'}</span>
           <h1>Техническое и поведенческое интервью</h1>
         </div>
-        <div className={styles.progress}>Вопрос {question?.sequence ?? interview.evidence.length} из 12</div>
+        <div className={styles.progress}>
+          {question ? `Вопрос ${question.sequence}` : `Ответов: ${interview.evidence.length}`}
+        </div>
       </div>
       <div className={styles.liveGrid}>
         <InterviewGraph interview={interview} />
@@ -342,7 +382,7 @@ export function InterviewWorkspace({ interview }: { interview: Interview }) {
                     : 'Техническая ситуация'}
                 </span>
                 <p>{question.prompt}</p>
-                <Button size="sm" icon="play" onClick={sayQuestion}>
+                <Button size="sm" icon="play" disabled={mutation.isPending || listening} onClick={sayQuestion}>
                   Повторить вслух
                 </Button>
               </div>
@@ -351,6 +391,7 @@ export function InterviewWorkspace({ interview }: { interview: Interview }) {
                   size="sm"
                   variant={inputMode === 'voice' ? 'primary' : 'secondary'}
                   icon="mic"
+                  disabled={mutation.isPending}
                   onClick={() => setInputMode('voice')}
                 >
                   Ответить голосом{question.recommendedResponseMode === 'voice' ? ' · рекомендуем' : ''}
@@ -359,9 +400,11 @@ export function InterviewWorkspace({ interview }: { interview: Interview }) {
                   size="sm"
                   variant={inputMode === 'text' ? 'primary' : 'secondary'}
                   icon="edit"
+                  disabled={mutation.isPending}
                   onClick={() => {
-                    recognition.current?.stop();
+                    releaseMicrophone();
                     setListening(false);
+                    setInterim('');
                     setInputMode('text');
                   }}
                 >
@@ -373,6 +416,7 @@ export function InterviewWorkspace({ interview }: { interview: Interview }) {
                   <Button
                     variant={listening ? 'secondary' : 'primary'}
                     icon={listening ? 'stop' : 'mic'}
+                    disabled={mutation.isPending}
                     onClick={toggleListening}
                   >
                     {listening ? 'Остановить запись' : answer ? 'Продолжить ответ' : 'Начать ответ'}
@@ -381,10 +425,16 @@ export function InterviewWorkspace({ interview }: { interview: Interview }) {
                     {listening
                       ? 'Говорите — текст появляется ниже'
                       : voiceCaptured
-                        ? 'Голос записан: ответ даст усиленный коммуникационный сигнал'
+                        ? 'Речь распознана. Проверьте текст перед отправкой.'
                         : 'Микрофон включается только по нажатию'}
                   </span>
                 </div>
+              )}
+              {inputMode === 'voice' && (
+                <p className={styles.voiceNotice}>
+                  Браузер может передать звук своему сервису распознавания. Платформа получает только текст ответа.
+                  Можно ответить текстом без микрофона.
+                </p>
               )}
               {speechError && <Callout tone="warning">{speechError}</Callout>}
               <TextareaField
@@ -409,7 +459,7 @@ export function InterviewWorkspace({ interview }: { interview: Interview }) {
                 icon="send"
                 pending={mutation.isPending}
                 pendingLabel="Разбираем ответ…"
-                disabled={!answer.trim()}
+                disabled={!answer.trim() || listening}
                 onClick={() => mutation.mutate()}
               >
                 Отправить ответ

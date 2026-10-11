@@ -6,12 +6,16 @@ systemd PDF sandbox; `fsp/compose` covers containers; `fsp/release-safety` cover
 Backup creation and dump/restore checks are disabled by owner policy.
 `fsp/deployment` passes only after actual HTTPS/Resend browser acceptance. GitHub Actions is retired.
 
-| Suite | Runner | Where | Count | Command |
-| --- | --- | --- | --- | --- |
-| Mock API | `bun test` | `mock-server/test/mock-api.test.ts` | 32 | `bun run --cwd ../mock-server test` |
-| Unit and component | Vitest 5 + Testing Library + MSW 3 (jsdom, on Node) | `src/**/*.test.ts(x)` | 45 in 11 files | `bun run test` |
-| Browser acceptance | Playwright 1.63 + axe, Chromium 1440×900 | `e2e/*.spec.ts` | 37 + 1 opt-in | `bun run e2e` |
-| Deployed stand | Playwright | `e2e/public/stand.spec.ts` | 2 | `FSP_PUBLIC_URL=https://nddev.link FSP_AUTH_MODE=resend bun run e2e:public` |
+| Suite | Runner | Where | Command |
+| --- | --- | --- | --- |
+| Mock API | Bun | `mock-server/test/mock-api.test.ts` | `bun run --cwd ../mock-server test` |
+| Unit and component | Vitest + Testing Library + MSW (jsdom, on Node) | `src/**/*.test.ts(x)` | `bun run test` |
+| Browser acceptance | Playwright + axe, Chromium | `e2e/*.spec.ts` | `bun run e2e` |
+| Deployed stand | Playwright, real Rust/Resend/Bifrost | `e2e/public/stand.spec.ts` | `FSP_PUBLIC_URL=https://nddev.link FSP_AUTH_MODE=resend bun run e2e:public` |
+
+Use the current test report for counts; `bun run e2e --list` lists collected browser scenarios. Documentation
+screenshots are opt-in. `SCREENSHOTS=1 bun run e2e e2e/interview.spec.ts` refreshes the interview desktop/mobile
+examples with fictional data.
 
 `bun run verify` runs the codegen check, typecheck, Biome, the FSD layer check, the unit tests, the production build
 and the bundle check; `just verify` adds the mock tests. JSON reports go to `test-results/`.
@@ -109,3 +113,17 @@ The live browser pass also exposed an outer API timeout shorter than the gateway
 graph failures. [Issue #27](https://github.com/KirpaDmitriy/sport-programming-federation/issues/27) tracks the
 55-second API deadline, on-demand graph queries and manual retry. Its forced-error browser regression runs
 locally against an intercepted response; this is separate from the unmodified HTTPS stand evidence in #23.
+
+## Failure-safe public acceptance
+
+`e2e/public/actors.ts` owns only the fresh `fsp-ci-*` actors registered by the public suite. Its fixture has a
+separate 90-second teardown budget: unpublish the candidate, remove all needs owned by the newly created
+companies, then close every owned browser context. Teardown runs after test failure too; cleanup failures fail
+the release check. Accounts, private interview history and invitations persist; no database reset or unrelated
+actor cleanup occurs. Process termination or infrastructure failure can still prevent cleanup and requires
+inspection of the failed run. `e2e/acceptance-cleanup.spec.ts` injects failure after writes and verifies cleanup,
+identity guarding, context closure and preservation of another company's need against the local mock.
+
+`e2e/interview.spec.ts` uses a controlled browser speech adapter to exercise startup errors and late callbacks.
+It proves application behavior, not physical microphone or vendor speech availability. Public acceptance checks
+the actual delivered Permissions-Policy and completes a text answer against the real model.

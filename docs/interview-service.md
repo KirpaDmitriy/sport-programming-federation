@@ -3,6 +3,8 @@
 `fsp-interview-service` is an internal Rust HTTP service for adaptive interviews. The browser uses the authenticated
 platform routes under `/api/v1/me/interviews`; the platform resolves the candidate identity and calls this service
 with a private bearer token. The token never reaches the browser.
+Start and answer require processing consent. Revocation prevents subsequent answers while preserving access to
+the candidate's existing history. Another candidate receives 404 for an interview they do not own.
 
 Sessions are stored in PostgreSQL as versioned JSON documents. A conditional revision update rejects stale answers,
 and a partial unique index permits only one active interview per candidate. The service can restart or be replaced by
@@ -33,6 +35,9 @@ It evaluates described actions and trade-offs; it does not infer personality, em
 When `BIFROST_CHAT_URL` is configured, Bifrost generates surface variants and evaluates answers against the supplied
 rubric. Output is schema-checked, evidence must quote the answer exactly, and the model cannot choose the next node
 or assign a platform grade. `INTERVIEW_BIFROST_MODEL` selects the model independently from the main API.
+Evaluation and generation of the next question share one 45-second model budget; persistence happens only after
+both succeed. A timeout leaves the revision, question and evidence unchanged, so the same answer can be retried.
+The internal gateway allows 50 seconds, the platform 55 and nginx 60. A provider failure is never an offline fallback.
 
 Without Bifrost, an explicit `offline_rubric` mode selects versioned local scenarios and checks rubric concepts on
 CPU. It exists for development and deterministic demonstrations; it is not evidence of assessment validity.
@@ -42,7 +47,7 @@ Required configuration:
 | Variable | Meaning |
 | --- | --- |
 | `INTERVIEW_API_TOKEN` | Internal bearer token; there is no insecure default in the binary |
-| `DATABASE_URL` | PostgreSQL connection used for durable sessions |
+| `DATABASE_URL` | PostgreSQL connection; alternatively `PGHOST`, `PGUSER`, `PGDATABASE`, optional `PGPORT`/`PGPASSWORD` as on the stand |
 | `INTERVIEW_HOST` | Bind host, default `127.0.0.1` |
 | `INTERVIEW_PORT` | Bind port, default `4040`; `4030` belongs to GitHub insights |
 | `BIFROST_CHAT_URL` | Optional OpenAI-compatible Bifrost chat endpoint |
@@ -67,7 +72,7 @@ Start payload:
 
 ```json
 {
-  "candidateId": "candidate-024",
+  "candidateId": "candidate024",
   "blueprintId": "backend-middle-v1",
   "maxTurns": 12
 }
@@ -79,6 +84,7 @@ Answer payload uses optimistic concurrency:
 {
   "questionId": "q-1-...",
   "answer": "Использую ключ идемпотентности...",
+  "responseMode": "text",
   "revision": 0
 }
 ```
@@ -91,23 +97,33 @@ before sending it. Only the confirmed transcript reaches the interview service; 
 
 ## Voice and avatar decision
 
-The implemented experience uses a code-rendered interactive avatar and optional local voice, not generated
+The implemented experience uses a code-rendered interactive avatar and optional browser voice, not generated
 talking-head video. Real-time generated video adds latency, cost and an external biometric processor without improving
 the evidence used by the rubric. The current delivery is:
 
 1. The candidate answers by microphone or switches to text; microphone permission is requested only after a click.
 2. Bifrost creates scenario variants and evaluates evidence when configured.
-3. The browser voices `delivery.speechText` with a locally available Russian voice and turns speech into an editable
-   transcript when recognition is supported.
-4. A code-rendered avatar indicates speaking, listening and analysis states without sending biometric data to a
-   provider.
+3. The browser voices `delivery.speechText` in Russian and turns speech into an editable transcript when recognition
+   is supported. Browser speech services may process audio remotely; the interface explains this before recording.
+4. A code-rendered avatar indicates speaking, listening and analysis states. The application receives only the
+   confirmed text and declared response mode; it does not capture a camera stream or store audio.
+
+`Permissions-Policy` allows microphone input from the same origin and denies camera and geolocation. Recording
+starts only on a click. Stop finishes recognition before submission is enabled; switching to text, submitting,
+changing questions and leaving the page detach old callbacks. Failed recognition or evaluation preserves the draft.
+Only moving to another question clears it. Browser/vendor availability is not established by a configured capability.
+
+`responseMode` is `voice` or `text`; the browser declares voice only after it receives a final transcript. The service
+records signal strength 2 for voice and 1 for text. This is a format indicator, not authenticated proof of speech,
+communication quality or candidate identity: transcripts remain editable and API clients can declare either mode.
+It does not change the platform's category or hiring rank.
 
 Candidate camera recording should remain optional, stored only with explicit consent, and never be used to infer
 emotion, honesty, accent, gaze or personality. It can be added later as a replay artifact for a human employer; it
 is not part of automated scoring.
 
-Camera recording, STT and media storage are not part of automated scoring. They are deliberately absent until there
-is a reviewed consent, retention and human-replay workflow.
+Camera recording and server-side audio/media storage are absent. Browser speech recognition is optional and is not
+an automated audio assessment.
 
 ## Verification
 
@@ -118,3 +134,8 @@ test set for the single graph-frontier algorithmic change. Run:
 cd backend
 cargo test -p fsp-interview-service
 ```
+
+The platform PostgreSQL HTTP test covers ownership and consent revocation. `frontend/e2e/interview.spec.ts`
+exercises speech startup failure, late callbacks, preserved drafts and retry in Chromium with a controlled speech
+adapter; it does not claim to test a physical microphone or a vendor recognizer. Public acceptance uses the real
+Rust/Bifrost interview and verifies the browser's microphone policy. See [stability review](stability-review-2026-10-11.md).

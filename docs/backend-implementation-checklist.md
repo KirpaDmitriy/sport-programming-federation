@@ -1,12 +1,12 @@
 # Backend implementation status
 
-Current implementation, verified during the [October 8 stability audit](stability-audit.md).
+Current implementation; the [October 11 stability review](stability-review-2026-10-11.md) records current verification.
 Historical cutover commands for another contributor's server are not operating instructions for this stand.
 
 ## Implemented
 
 - Rust hexagonal architecture: domain/application ports, axum transport, PostgreSQL and outbound adapters.
-- All 75 application operations plus `/health`; no production `/__mock__` controls.
+- All 79 application operations plus `/health`; no production `/__mock__` controls.
 - Persisted accounts, sessions, profiles, consents, needs, vacancies, invitations, applications, shortlists,
   tasks, assessments, graph interviews, sources and jobs. Roles and tenant boundaries are enforced by the API.
 - Atomic idempotent commands and response replay; shared email attempt budgets; guarded terminal decisions;
@@ -24,8 +24,8 @@ Historical cutover commands for another contributor's server are not operating i
 - Deterministic competence graph: category → concepts → technologies with levels, GitHub/FSP/test sources, safe
   employer projection.
 - Graph-guided candidate interviews through an internal Rust service: authenticated platform routes, PostgreSQL
-  sessions with optimistic revisions, an offline CPU rubric, optional Bifrost generation/evaluation and local-only
-  browser speech playback.
+  sessions with optimistic revisions, an offline CPU rubric, optional Bifrost generation/evaluation with one model budget, consent checks on start/answer and
+  browser speech with text fallback. Browser speech can use a vendor service.
 - Real PDF export/import, revision-checked preview confirmation, contextual Bifrost assistance, source/job privacy and capability flags.
 - Bounded Resend delivery, per-email issuance limits, cumulative wrong-code budgets and challenge/session HMAC separation.
 - Rustfmt, clippy, unit tests and PostgreSQL HTTP/storage regressions; private-server CI gates cover admitted canonical PRs.
@@ -43,9 +43,10 @@ Historical cutover commands for another contributor's server are not operating i
 - Interview evidence is an adaptive rubric signal, not a calibrated hiring score. The shipped graph covers one
   backend-middle blueprint; video, camera analysis and biometric or inferred-personality scoring are intentionally absent.
 - PDF import extracts digital text in a bounded Poppler sandbox; scans/OCR are unsupported. Bifrost fields require actual page excerpts and user confirmation.
-- Jobs complete inline in Rust; there is no durable background worker.
-- Repository/competition matching has an adapter port but no product workflow. Graph relations are model
-  suggestions, not independently verified qualification evidence.
+- FSP/PDF jobs complete inline; GitHub jobs advance by polling a process-local analysis queue. Estimate reviews
+  run in coalesced background tasks. There is no durable background worker queue.
+- Repository/competition matching has an adapter port but no product workflow. Competence graphs are deterministic projections
+  of stored evidence, not independently verified qualifications.
 - Search still ranks complete lists in memory. No distributed scaling or measured capacity claim is made.
 
 ## Delivery evidence
