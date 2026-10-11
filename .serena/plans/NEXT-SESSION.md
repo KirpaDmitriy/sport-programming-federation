@@ -7,7 +7,7 @@ English engineering text, Russian UI. Never expose secrets, reset production dat
 ## Current behavior
 
 nddev.link serves Rust/PostgreSQL behind Cloudflare Full (strict), with real Resend OTPs and secure sessions.
-The original IP redirects to the domain. Six additive migrations are applied (0006: estimate and auto fields). Runtime secrets stay on hosts
+The original IP redirects to the domain. Applied SQLx migrations must match the source history. Runtime secrets stay on hosts
 and in the original ignored .fsp-infra/. FSP is a deliberately fictional private HTTP provider; knowledge tests
 replace arbitrary code execution. Digital-PDF extraction and Bifrost assistance are real. GitHub OAuth is deferred.
 GitHub connection is real: fsp-github-insights (loopback 4030) analyzes public work without a token in the background

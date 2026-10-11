@@ -21,7 +21,8 @@ Responses/snapshots are immutable at completion; legacy code attempts are archiv
 Assessment start races serialize on the candidate row. Grades, consent and response submission are transactional.
 PDF import uses bounded bwrap/prlimit/Poppler extraction, page-cited Bifrost fields and revision-safe confirmation.
 The contextual assistant uses saved responses and never grades. Real extraction is a startup/pre-release probe.
-Bifrost deadlines are 45 seconds inside the 55-second HTTP and 60-second nginx deadlines; insights calls take 10 seconds.
+Foreground Bifrost calls have a 45-second deadline inside the 55-second API and 60-second nginx deadlines.
+Background automatic-profile reviews run asynchronously with a 330-second client deadline; insights HTTP calls have 10 seconds.
 FSP uses a private fictional HTTP provider. Published participation counts; team results never certify skills.
 Failed provider sync preserves snapshots. GitHub connects by login/link through the loopback insights service
 (github-insights-v3 with the scope dimension, docs/github-insights.md): tokenless background analysis of public work (search, REST, blobless
