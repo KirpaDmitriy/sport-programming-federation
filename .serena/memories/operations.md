@@ -57,3 +57,13 @@ Last commits: e078301 (status recovery), b3f80bf (credential response cleanup), 
 Read issue receipts and compare live refs for current accepted release and installed controller/helper hashes.
 
 Last asset-cache change: f6d2f70; real nginx probes include 200, 206, 304 and missing-file responses.
+
+Pending shutdown fix #162 / PR #163 in a separate feature worktree: SIGINT/SIGTERM HTTP draining for interview/simulator/
+GitHub-insights, with 60-second API/interview supervisor grace (including nginx Compose stop). Implementation
+0f5070a; 131 local Rust tests passed, including real process signals with a controlled model and PostgreSQL.
+Original deployment interrupted an active interview because only SIGINT was handled; the later 45-second model
+timeout preserved state and retry succeeded. This fix awaits restored CI and release; do not claim it is live.
+
+Shutdown follow-up b56bcff registers signals synchronously and propagates setup errors through all four main
+functions, preventing a detached shutdown-task failure from looking like a successful service exit. Independent
+code review passed. Issues #153/#154 are independently live-verified and closed; #152/#155 await CI restoration.

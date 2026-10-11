@@ -8,7 +8,7 @@ English engineering text, Russian UI. Never expose secrets, reset production dat
 
 An external DigitalOcean action deleted gha-runner-1 on 2026-10-11 at 08:16 UTC; runner-2 was retired earlier.
 Issue #161 records the interruption. A user question about the replacement destination is pending. Do not install
-on unrelated hosts or create a paid droplet without that decision. Current branch feat/159-asset-cache-policy,
+on unrelated hosts or create a paid droplet without that decision. Main checkout branch feat/159-asset-cache-policy,
 PR #160 into danil, contains the locally verified asset-cache fix and incident documentation; it awaits server CI.
 Accepted main 405fecc remains live, independently checked healthy. Original gates and public acceptance passed;
 the controller upgrade's later recheck was interrupted after platform success. Other build statuses are errors.
@@ -73,3 +73,16 @@ Memory index: platform.md (auth/data/assessment), frontend.md (UI/proofs), opera
 Release identity: compare upstream/main, /opt/fsp/current and deployed.json instead of trusting a SHA written here.
 Receipts: #54 (no-backup policy), #67 (GitHub insights delivery and live check), #73 (catalog v2),
 #76/#79 (automatic profile, background review), #82 (question banks, estimate-v2), estimate-v3 #89, estimate-v4 #95, estimate-v5 #125 (Russian leading-role spellings), estimate-v6 (experience from the start year in IT).
+
+## Pending service shutdown correction (#162)
+
+PR #163 into danil uses worktree .fsp-infra/worktrees/162-graceful-shutdown and branch feat/162-graceful-shutdown
+from upstream/dev. Independent code review passed; it is not live verification.
+Implementation 0f5070a handles SIGTERM as well as SIGINT in interview/simulator/insights; the API already did so.
+Follow-up b56bcff propagates signal-registration errors from all four composition roots before axum spawns its
+shutdown task. API/interview systemd and web/API/interview Compose stop grace is 60 seconds. The old binary failed the real
+pending-answer regression; both signals now finish HTTP, save revision/evidence (1,1), then exit successfully.
+Local Rust fmt/clippy and 131 tests passed; release fault checks and four auxiliary-binary signal probes passed.
+This change is not deployed. Restore CI (#161), ship #160, reconcile this branch with the updated personal branch
+without rewriting history, then run its gates and public acceptance before merging/releasing it. Sequential
+restarts can still reject new requests; process-local background jobs are not made durable by HTTP draining.
