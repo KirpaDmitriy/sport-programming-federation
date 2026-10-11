@@ -11,7 +11,8 @@ Canonical upstream KirpaDmitriy/sport-programming-federation; the additional Git
 checks unchanged heads/bases and merged tree identity, and deploys verified current main. Actions is retired.
 Controller installation is reviewed separately; no PR auto-updates it. Root-only /etc/fsp-ci stores credentials;
 builds run as fsp-ci with no injected secrets. Docker is root-equivalent; trusted private maintainers only.
-CI timer/OS lock serialize jobs, retain logs 14 days, refuse builds below 15 GiB free. See infra/ci/README.md.
+CI timer/OS lock serialize jobs, retain logs 14 days, refuse builds below 15 GiB free. A matching accepted
+receipt repairs a failed final GitHub status write without redeployment; status receipts prevent duplicate writes.
 
 Stand units: fsp-api:4010, fsp-simulator:4020, fsp-github-insights:4030 (tokenless; needs git, clones in its
 CacheDirectory; API needs FSP_GITHUB_INSIGHTS_URL), fsp-interview:4040, fsp-bifrost, fsp-cliproxy, nginx, postgresql@16-main.
@@ -23,6 +24,8 @@ PDF requires Bifrost, Poppler/bwrap and executable-specific AppArmor; exact syst
 No /proc mount or global namespace relaxation. Failed activation restores configs/units; SIGKILL cannot run traps.
 
 Cloudflare Full (strict), origin Let's Encrypt cert, canonical IP redirect, trusted CF IP ranges, API no-store.
+Host-only HSTS is one week on HTTPS (including errors), absent on plain HTTP; nosniff/cache headers are unique.
+The renewal unit is snap.certbot.renew.timer. Historical smoke API on 4011 was terminated after identity checks (#154).
 Resend auth.nddev.link sends as login@auth.nddev.link with DKIM/SPF/DMARC, tracking off and enforced TLS.
 Runtime key is sending-only/domain-restricted; private acceptance key reads real CI inboxes. HMAC key changes
 invalidate old sessions/codes without deleting accounts. SMTP delivery and actual inbox placement are distinct.
@@ -40,4 +43,6 @@ The reviewed `infra/ci/install_token.py` reads stdin, validates exact repo scope
 then replaces root-only credentials under the controller lock. Run from accepted main; see infra/ci/README.md.
 Only /etc/fsp-ci/github-token holds the active CI copy; the one-time local handoff was removed. Issue #139 holds
 the operational verification receipts. A classic repo-scoped PAT is not restricted to a single repository.
-Last commit: 23aad65 (guarded credential installer; compare live refs for the current accepted release).
+Follow-ups #152/#154/#155 cover status recovery, edge/process cleanup and explicit HTTPError response closure.
+Last commits: e078301 (status recovery), b3f80bf (credential response cleanup), 63bb5eb (headers); 20 CI tests.
+Read issue receipts and compare live refs for current accepted release and installed controller/helper hashes.

@@ -23,6 +23,8 @@ PDF import uses bounded bwrap/prlimit/Poppler extraction, page-cited Bifrost fie
 The contextual assistant uses saved responses and never grades. Real extraction is a startup/pre-release probe.
 Foreground Bifrost calls have a 45-second deadline inside the 55-second API and 60-second nginx deadlines.
 Background automatic-profile reviews run asynchronously with a 330-second client deadline; insights HTTP calls have 10 seconds.
+Queued reviews check processing consent before model dispatch and again before saving a still-current estimate;
+already sent requests cannot be recalled. #153 has the real PostgreSQL queued-review/revocation regression.
 FSP uses a private fictional HTTP provider. Published participation counts; team results never certify skills.
 Failed provider sync preserves snapshots. GitHub connects by login/link through the loopback insights service
 (github-insights-v3 with the scope dimension, docs/github-insights.md): tokenless background analysis of public work (search, REST, blobless
@@ -41,3 +43,5 @@ prove qualifications. Jobs finish inline except polled GitHub analyses and proce
 large-bank capacity or production load claim. Current behavior/limits: docs/current-state.md; latest consistency review: #138; prior product completion #31.
 
 Verify release identity against upstream/main, /opt/fsp/current and deployed.json; #138 records final proof.
+
+Last commit: c93cf00 (queued review consent); local backend checks passed 129 tests. Live proof is in #153.
