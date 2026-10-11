@@ -1,6 +1,6 @@
 [Unit]
 Description=FSP career API (Rust backend)
-After=network.target postgresql.service fsp-interview.service fsp-silero-tts.service
+After=network.target postgresql.service fsp-interview.service fsp-silero-tts.service fsp-gigaam-stt.service
 
 [Service]
 Type=simple

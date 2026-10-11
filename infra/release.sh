@@ -45,6 +45,9 @@ healthy() {
     && [[ -f "$ROOT/current/voice-runtime/server.py" ]]; then
     curl --max-time 5 -fsS http://127.0.0.1:4050/health >/dev/null 2>&1 || return 1
   fi
+  if grep -Fxq 'FSP_STT_PROVIDER=gigaam' "$CONFIG/speech.env" 2>/dev/null; then
+    curl --max-time 5 -fsS http://127.0.0.1:4060/health >/dev/null 2>&1 || return 1
+  fi
 }
 
 PREV="$(readlink -f "$ROOT/current" 2>/dev/null || true)"
@@ -104,6 +107,7 @@ config_files=(
   etc/systemd/system/fsp-simulator.service etc/systemd/system/fsp-github-insights.service
   etc/systemd/system/fsp-interview.service
   etc/systemd/system/fsp-silero-tts.service
+  etc/systemd/system/fsp-gigaam-stt.service
   etc/systemd/system/fsp-cliproxy.service etc/systemd/system/fsp-bifrost.service
   etc/nginx/sites-available/fsp-demo.conf etc/nginx/snippets/fsp-security-headers.conf
 )
@@ -158,6 +162,13 @@ rollback() {
     else
       systemctl disable --now fsp-silero-tts 2>/dev/null || true
     fi
+    if grep -Fxq 'FSP_STT_PROVIDER=gigaam' "$CONFIG/speech.env" 2>/dev/null \
+      && [[ -f "$PREV/voice-runtime/stt_server.py" ]]; then
+      systemctl enable fsp-gigaam-stt
+      systemctl restart fsp-gigaam-stt
+    else
+      systemctl disable --now fsp-gigaam-stt 2>/dev/null || true
+    fi
     if [[ "$PREV_ACTIVE" == fsp-api ]]; then
       echo rust > "$CONFIG/api-backend"
       systemctl disable --now fsp-mock-api
@@ -175,6 +186,7 @@ rollback() {
     systemctl disable --now fsp-github-insights 2>/dev/null || true
     systemctl disable --now fsp-interview 2>/dev/null || true
     systemctl disable --now fsp-silero-tts 2>/dev/null || true
+    systemctl disable --now fsp-gigaam-stt 2>/dev/null || true
     rm -f "$ROOT/current"
     echo 'No previous release available' >&2
   fi
@@ -197,6 +209,7 @@ if [[ -f "$DIR/infra/fsp-interview.service" ]]; then
   install -m 644 "$DIR/infra/fsp-interview.service" "$SYSTEM_ROOT/etc/systemd/system/fsp-interview.service"
 fi
 install -m 644 "$DIR/infra/fsp-silero-tts.service" "$SYSTEM_ROOT/etc/systemd/system/fsp-silero-tts.service"
+install -m 644 "$DIR/infra/fsp-gigaam-stt.service" "$SYSTEM_ROOT/etc/systemd/system/fsp-gigaam-stt.service"
 bash "$DIR/infra/render-nginx.sh" "$CONFIG/rust-api.env" > "$SYSTEM_ROOT/etc/nginx/sites-available/fsp-demo.conf"
 install -m 644 "$DIR/infra/nginx/fsp-security-headers.conf" "$SYSTEM_ROOT/etc/nginx/snippets/fsp-security-headers.conf"
 nginx -t
@@ -228,6 +241,14 @@ if [[ "$IMPL" == rust ]] && grep -Fxq 'FSP_TTS_PROVIDER=silero' "$CONFIG/speech.
   systemctl restart fsp-silero-tts
 else
   systemctl disable --now fsp-silero-tts 2>/dev/null || true
+fi
+if [[ "$IMPL" == rust ]] && grep -Fxq 'FSP_STT_PROVIDER=gigaam' "$CONFIG/speech.env" 2>/dev/null; then
+  [[ -x "$ROOT/voice-venv/bin/python" && -r "$ROOT/models/gigaam/v3_ctc.ckpt" ]] \
+    || { echo 'GigaAM runtime is missing; run infra/install-gigaam-runtime.sh' >&2; exit 1; }
+  systemctl enable fsp-gigaam-stt
+  systemctl restart fsp-gigaam-stt
+else
+  systemctl disable --now fsp-gigaam-stt 2>/dev/null || true
 fi
 systemctl disable --now "$inactive"
 systemctl enable "$active"

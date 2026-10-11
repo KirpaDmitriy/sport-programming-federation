@@ -51,6 +51,25 @@ afterEach(() => {
 });
 
 describe('question speech lifecycle', () => {
+  it('reports preparation until server audio starts', async () => {
+    const pending = deferred<typeof synthesized>();
+    synthesis.mockReturnValueOnce(pending.promise);
+    const hook = renderHook(() => useQuestionSpeech('interview', 'question', 'Текст', true));
+    let request!: Promise<void>;
+    act(() => {
+      request = hook.result.current.sayQuestion();
+    });
+    expect(hook.result.current.preparing).toBe(true);
+    await act(async () => {
+      pending.resolve(synthesized);
+      await request;
+    });
+    expect(hook.result.current.preparing).toBe(true);
+    act(() => players[0]?.onplay?.());
+    expect(hook.result.current.preparing).toBe(false);
+    expect(hook.result.current.speaking).toBe(true);
+  });
+
   it('cancels delayed autoplay when the microphone or stop control takes over', async () => {
     vi.useFakeTimers();
     const hook = renderHook(() => useQuestionSpeech('interview', 'question', 'Текст', true));

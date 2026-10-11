@@ -4861,6 +4861,176 @@
         }
       }
     },
+    "/api/v1/me/interviews/{interviewId}/transcription": {
+      "post": {
+        "operationId": "transcribeInterviewSpeech",
+        "summary": "transcribeInterviewSpeech",
+        "tags": [
+          "Candidate"
+        ],
+        "description": "Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).",
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpeechTranscript"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request or schema validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or expired mock session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role, consent, or origin restriction",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown resource or resource outside this actor/company",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "State, idempotency, or cooldown conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request body exceeds limit",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Unsupported media type",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Valid shape but invalid domain values",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Verification, email delivery, or proxy request limit",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Response conformance or unexpected server failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Verification provider failed to accept delivery",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Deterministic upstream error scenario",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "interviewId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100,
+              "pattern": "^[A-Za-z0-9_.:-]+$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InterviewTranscriptionInput"
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/jobs/{jobId}": {
       "get": {
         "operationId": "getJob",
@@ -27351,6 +27521,58 @@
           "mimeType",
           "provider",
           "voice"
+        ],
+        "additionalProperties": false
+      },
+      "InterviewTranscriptionInput": {
+        "type": "object",
+        "properties": {
+          "questionId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "pattern": "^[A-Za-z0-9_.:-]+$"
+          },
+          "audioBase64": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4000000
+          },
+          "mimeType": {
+            "type": "string",
+            "enum": [
+              "audio/webm",
+              "audio/mp4",
+              "audio/ogg"
+            ]
+          }
+        },
+        "required": [
+          "questionId",
+          "audioBase64",
+          "mimeType"
+        ],
+        "additionalProperties": false
+      },
+      "SpeechTranscript": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "minLength": 1
+          },
+          "provider": {
+            "type": "string"
+          },
+          "durationSeconds": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "text",
+          "provider",
+          "durationSeconds"
         ],
         "additionalProperties": false
       },

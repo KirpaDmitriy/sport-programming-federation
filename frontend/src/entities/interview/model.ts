@@ -53,3 +53,17 @@ export async function synthesizeInterviewSpeech(id: string, questionId: string, 
     }),
   );
 }
+
+export async function transcribeInterviewSpeech(
+  id: string,
+  questionId: string,
+  audioBase64: string,
+  mimeType: 'audio/webm' | 'audio/mp4' | 'audio/ogg',
+) {
+  return requireData(
+    await api.POST('/api/v1/me/interviews/{interviewId}/transcription', {
+      params: { path: { interviewId: id } },
+      body: { questionId, audioBase64, mimeType },
+    }),
+  );
+}

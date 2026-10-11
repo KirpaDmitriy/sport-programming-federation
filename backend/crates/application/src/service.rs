@@ -26,14 +26,15 @@ use crate::{
     GitHubGateway, GradeEligibilityView, GraphEdgeView, GraphNodeView, GraphView,
     HiringAssistantView, HiringFlowAnalyticsView, IdempotencyClaim, ImportConfirmInput,
     IntegrationError, InterviewAnswerInput, InterviewGateway, InterviewSpeechInput,
-    InterviewStartInput, InterviewView, InterviewsView, InvitationInput, InvitationNeedView,
-    InvitationView, InvitationsView, JobResultView, JobView, LlmGateway, MatchRequirementView,
-    MyTasksView, NeedInput, NeedPatch, NeedView, NeedsView, OfferedCompanyView, OfferedTaskView,
-    OnboardingView, PendingChallenge, PlatformRepository, ProfilePatch, ProfileView,
-    RepositoryError, RequirementInput, RequirementView, SalaryView, SelfSkillView, SessionView,
-    ShortlistInput, ShortlistMemberView, ShortlistSummaryView, ShortlistView, ShortlistsView,
-    SkillView, SkillsView, SourceConnectInput, SourceView, SourcesView, SpeechAudioView,
-    SpeechSynthesisGateway, TaskInput, TaskPeriodView, TaskResponseInput, TaskResponseView,
+    InterviewStartInput, InterviewTranscriptionInput, InterviewView, InterviewsView,
+    InvitationInput, InvitationNeedView, InvitationView, InvitationsView, JobResultView, JobView,
+    LlmGateway, MatchRequirementView, MyTasksView, NeedInput, NeedPatch, NeedView, NeedsView,
+    OfferedCompanyView, OfferedTaskView, OnboardingView, PendingChallenge, PlatformRepository,
+    ProfilePatch, ProfileView, RepositoryError, RequirementInput, RequirementView, SalaryView,
+    SelfSkillView, SessionView, ShortlistInput, ShortlistMemberView, ShortlistSummaryView,
+    ShortlistView, ShortlistsView, SkillView, SkillsView, SourceConnectInput, SourceView,
+    SourcesView, SpeechAudioView, SpeechRecognitionGateway, SpeechSynthesisGateway,
+    SpeechTranscriptView, TaskInput, TaskPeriodView, TaskResponseInput, TaskResponseView,
     TaskResponsesView, TaskReviewInput, TaskReviewOutcome, TaskView, TasksView, VacancyPageView,
     VacancyRequirementView, VacancySearch, VacancyView, VerificationDelivery, job_view,
     match_status, source_view,
@@ -90,6 +91,7 @@ pub struct PlatformService {
     fsp: Option<Arc<dyn FspGateway>>,
     interviews: Option<Arc<dyn InterviewGateway>>,
     speech: Option<Arc<dyn SpeechSynthesisGateway>>,
+    transcription: Option<Arc<dyn SpeechRecognitionGateway>>,
     grade_cooldown_days: u16,
     auth_key: Option<Vec<u8>>,
     /// Candidates with a profile review running, and whether a newer estimate awaits one.
@@ -111,6 +113,7 @@ impl PlatformService {
             fsp: None,
             interviews: None,
             speech: None,
+            transcription: None,
             grade_cooldown_days: 90,
             auth_key: None,
             reviews: Arc::default(),
@@ -188,6 +191,12 @@ impl PlatformService {
     #[must_use]
     pub fn with_speech(mut self, speech: Arc<dyn SpeechSynthesisGateway>) -> Self {
         self.speech = Some(speech);
+        self
+    }
+
+    #[must_use]
+    pub fn with_transcription(mut self, transcription: Arc<dyn SpeechRecognitionGateway>) -> Self {
+        self.transcription = Some(transcription);
         self
     }
 
@@ -292,6 +301,37 @@ impl PlatformService {
                 ApplicationError::new(503, "speech_unavailable", "Озвучивание временно недоступно")
             })?
             .synthesize(&question.delivery.speech_text)
+            .await
+            .map_err(integration_error)
+    }
+
+    pub async fn transcribe_interview_answer(
+        &self,
+        session: &SessionView,
+        interview_id: &str,
+        input: InterviewTranscriptionInput,
+    ) -> Result<SpeechTranscriptView, ApplicationError> {
+        let interview = self.get_interview(session, interview_id).await?;
+        let question = interview.current_question.ok_or_else(|| {
+            ApplicationError::new(409, "interview_completed", "Собеседование уже завершено")
+        })?;
+        if question.id != input.question_id {
+            return Err(ApplicationError::new(
+                409,
+                "interview_question_changed",
+                "Вопрос собеседования уже изменился",
+            ));
+        }
+        self.transcription
+            .as_ref()
+            .ok_or_else(|| {
+                ApplicationError::new(
+                    503,
+                    "speech_unavailable",
+                    "Распознавание речи временно недоступно",
+                )
+            })?
+            .transcribe(&input.audio_base64, &input.mime_type)
             .await
             .map_err(integration_error)
     }
