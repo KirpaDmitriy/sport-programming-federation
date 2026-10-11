@@ -55,6 +55,22 @@ test('speech failures preserve the draft and detached callbacks cannot change a 
   await page.waitForURL(/\/candidate\/interviews\//);
   await page.getByRole('button', { name: /Ответить голосом/ }).click();
   await expect(page.getByText(/Браузер может передать звук/)).toBeVisible();
+  if (process.env.SCREENSHOTS) {
+    await page.screenshot({ path: 'docs/screenshots/22-graph-interview.png', fullPage: true, animations: 'disabled' });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.reload();
+    await page.getByRole('button', { name: /Ответить голосом/ }).click();
+    await expect
+      .poll(() => page.locator('#app-navigation').evaluate((navigation) => navigation.getBoundingClientRect().right))
+      .toBeLessThanOrEqual(0);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await page.screenshot({
+      path: 'docs/screenshots/22b-graph-interview-mobile.png',
+      fullPage: true,
+      animations: 'disabled',
+    });
+    await page.setViewportSize({ width: 1440, height: 900 });
+  }
   await page.getByRole('button', { name: 'Начать ответ', exact: true }).click();
   await expect(page.getByText(/Не удалось включить распознавание/)).toBeVisible();
   const answer = page.getByLabel('Расшифровка ответа');
