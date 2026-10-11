@@ -27,6 +27,10 @@ Executed proofs:
   browser suite passed 41 scenarios; screenshot capture and the opt-in RUM scenario were skipped in that run.
   The separate enabled-RUM run passed after the final replay URL restrictions. Release fault tests, 20 CI
   controller tests, two nginx renderer tests and ShellCheck also passed locally.
+- The private operations dashboard `7515113281963425792` was created with nine panels. All nine queries passed
+  against the real server; metric panels returned recent measurements. Probe
+  `ad0207c2-10e7-48f3-a319-e57cedc813d0` also repeated ingest/read-denial/privacy checks. Application panels remain
+  empty until the instrumented release produces real events; synthetic probes do not count as API traffic.
 
 The first Vector integration exposed a version change: environment interpolation is disabled by default. The
 final configuration uses the supported file secret provider and a separate named ingest-only token, not a root

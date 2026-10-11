@@ -20,6 +20,7 @@ import time
 import urllib.request
 
 from nginx import render
+from dashboard import provision_dashboard
 
 HERE = Path(__file__).resolve().parent
 PINS = (
@@ -138,6 +139,7 @@ def main() -> None:
         else:
             raise SystemExit("OpenObserve health check failed; inspect its local journal")
         provision_ingestion(values)
+        provision_dashboard(values["FSP_OBSERVE_AUTH"])
         request = urllib.request.Request("http://127.0.0.1:5080/api/default/rumtoken", headers={"Authorization": values["FSP_OBSERVE_AUTH"]})
         with urllib.request.urlopen(request, timeout=10) as response:
             rum_token = json.load(response)["data"]["rum_token"]

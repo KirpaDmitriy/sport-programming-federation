@@ -8,6 +8,9 @@ import time
 import urllib.error
 import urllib.request
 import uuid
+import urllib.parse
+
+from dashboard import definition, request as observe_request
 
 
 def main() -> None:
@@ -33,6 +36,9 @@ def main() -> None:
         "level": "INFO",
         "fields": {
             "event": "telemetry_probe", "request_id": probe, "duration_ms": 1,
+            "route": "/telemetry-probe", "method": "POST", "status": 200,
+            "code": "probe", "trace_id": "", "actor_id": "synthetic-probe", "role": "probe",
+            "task": "probe", "model": "synthetic", "reasoning_effort": "none", "outcome": "ok",
             "message": "private-canary-must-be-dropped",
             "email": "private-canary@example.invalid",
             "authorization": "private-canary-token",
@@ -68,7 +74,22 @@ def main() -> None:
                 metrics = json.load(response).get("hits", [])
             if not metrics:
                 raise SystemExit("No recent host metric reached OpenObserve")
-            print(json.dumps({"probe_id": probe, "records": len(hits), "canaries_removed": True, "collector_read_denied": True, "host_metrics": True}))
+            panel_count = 0
+            for tab in definition()["tabs"]:
+                for panel in tab["panels"]:
+                    query = panel["queries"][0]["query"]
+                    if panel["queryType"] == "promql":
+                        params = urllib.parse.urlencode({"query": query, "start": int(time.time()) - 300, "end": int(time.time()), "step": 30})
+                        result = observe_request(values["FSP_OBSERVE_AUTH"], "/prometheus/api/v1/query_range?" + params)
+                        if result.get("status") != "success" or not result.get("data", {}).get("result"):
+                            raise SystemExit(f"Dashboard metric has no recent samples: {panel['id']}")
+                    else:
+                        stream_type = panel["queries"][0]["fields"]["stream_type"]
+                        result = observe_request(values["FSP_OBSERVE_AUTH"], "/_search?type=" + stream_type, {"query": {"sql": query, "start_time": start - 3_600_000_000, "end_time": int(time.time() * 1_000_000), "from": 0, "size": 100}})
+                        if stream_type == "metrics" and not result.get("hits"):
+                            raise SystemExit(f"Dashboard metric has no recent samples: {panel['id']}")
+                    panel_count += 1
+            print(json.dumps({"probe_id": probe, "records": len(hits), "canaries_removed": True, "collector_read_denied": True, "host_metrics": True, "dashboard_queries": panel_count}))
             return
     raise SystemExit("The journal probe did not reach OpenObserve")
 

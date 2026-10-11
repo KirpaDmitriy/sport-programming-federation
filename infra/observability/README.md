@@ -112,6 +112,12 @@ durations together; a successful health probe does not prove a successful candid
 `fsp_collector_*` drops and root-filesystem headroom before increasing sampling or retention. No external alert
 destination is configured. This deployment currently has no on-call notification delivery.
 
+The installer also creates **ФСП: состояние и диагностика**, a version-8 dashboard with nine panels for API
+status/latency/errors, AI timing, command audit, CPU, available memory, free disk and the log queue. API panels
+select only API service events, avoiding double-counting nginx requests. Re-running the installer preserves
+operator dashboard edits. `verify.py` executes all nine queries, including real recent metric samples.
+Before the instrumented application release, the application panels correctly have no matching events.
+
 Sources: [OpenObserve RUM](https://openobserve.ai/docs/user-guide/data-exploration/rum/setup/),
 [replay privacy](https://openobserve.ai/docs/user-guide/data-exploration/rum/session-replay/),
 [environment settings](https://openobserve.ai/docs/administration/configuration/environment-variables/),
