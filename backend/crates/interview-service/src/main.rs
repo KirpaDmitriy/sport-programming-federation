@@ -40,7 +40,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let listener = tokio::net::TcpListener::bind((host.as_str(), port)).await?;
     tracing::info!(address = %listener.local_addr()?, "fsp-interview-service listening");
     axum::serve(listener, http::router(service, api_token))
-        .with_graceful_shutdown(shutdown())
+        .with_graceful_shutdown(shutdown()?)
         .await?;
     Ok(())
 }
@@ -72,19 +72,23 @@ fn required_env(name: &str) -> Result<String, Box<dyn Error>> {
     optional_env(name).ok_or_else(|| format!("{name} is required").into())
 }
 
-// systemd and Docker stop services with SIGTERM; local Ctrl-C remains supported.
-async fn shutdown() {
+// Register before axum spawns its shutdown task, so setup failures exit main with an error.
+fn shutdown() -> std::io::Result<impl std::future::Future<Output = ()>> {
     #[cfg(unix)]
-    let terminate = async {
-        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-            .expect("install SIGTERM handler")
-            .recv()
-            .await;
-    };
-    #[cfg(not(unix))]
-    let terminate = std::future::pending::<()>();
-    tokio::select! {
-        result = tokio::signal::ctrl_c() => result.expect("listen for SIGINT"),
-        () = terminate => {}
-    }
+    let mut interrupt = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt())?;
+    #[cfg(windows)]
+    let mut interrupt = tokio::signal::windows::ctrl_c()?;
+    #[cfg(unix)]
+    let mut terminate = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
+    Ok(async move {
+        #[cfg(unix)]
+        tokio::select! {
+            _ = interrupt.recv() => {}
+            _ = terminate.recv() => {}
+        }
+        #[cfg(windows)]
+        {
+            interrupt.recv().await;
+        }
+    })
 }
