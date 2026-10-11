@@ -164,4 +164,4 @@ cargo test -p fsp-interview-service
 The platform PostgreSQL HTTP test covers ownership and consent revocation. `frontend/e2e/interview.spec.ts`
 exercises speech startup failure, late callbacks, preserved drafts and retry in Chromium with a controlled speech
 adapter; it does not claim to test a physical microphone or a vendor recognizer. Public acceptance uses the real
-Rust/Bifrost interview and verifies the browser's microphone policy. See [stability review](stability-review-2026-10-11.md).
+Rust/Bifrost interview and verifies the browser's microphone policy. See the [browser testing guide](../frontend/docs/TESTING.md).
