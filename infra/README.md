@@ -223,6 +223,8 @@ origin cache headers. HTTPS responses advertise host-only HSTS for one week (`ma
 error responses; subdomains and preload are not opted in. Plain HTTP Docker responses omit HSTS.
 `/api/v1/` always returns one `Cache-Control: no-store`, including proxy-generated 429 responses. nginx
 suppresses upstream duplicates before setting `X-Content-Type-Options: nosniff`; direct API protection remains.
+Content-addressed assets use a one-year immutable cache only for 200/206/304 responses; asset errors return
+`Cache-Control: no-store` so browsers and the CDN cannot retain a missing file as a long-lived result.
 The real renewal unit on the Snap installation is `snap.certbot.renew.timer`, not `certbot.timer`.
 Visitor IP headers are trusted only from the published Cloudflare networks in
 `nginx/fsp-cloudflare-real-ip.conf`; review this list during infrastructure upkeep.

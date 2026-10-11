@@ -135,3 +135,19 @@ Local regressions and release fault checks must pass before merging; all four pr
 acceptance, reviewed installation of changed controller/helper files and independent read-only verification are
 required before closing these issues. Final SHA, test counts, installed hashes and acceptance receipts belong in
 the issue completion comments so this audit does not advertise an obsolete release as current.
+
+
+### Asset cache follow-up
+
+The post-release public header probe found one more concrete defect, tracked in
+[#159](https://github.com/KirpaDmitriy/sport-programming-federation/issues/159): missing `/assets/` files received
+404 plus the one-year immutable success policy. Both nginx configurations now choose the cache header from the
+final response status: 200/206/304 retain immutable caching; every other asset response is `no-store`.
+The actual nginx probe checks a real asset's complete, byte-range and conditional responses as well as a missing
+asset. This preserves normal caching while preventing durable negative responses. Final acceptance probes use a
+fresh missing URL to distinguish new origin policy from any previously cached response.
+
+Research: [Cloudflare default cache behavior](https://developers.cloudflare.com/cache/concepts/default-cache-behavior/)
+explicitly respects positive origin max-age and also caches 404 by default without restrictive headers;
+[nginx map](https://nginx.org/en/docs/http/ngx_http_map_module.html) provides a response-status map without new
+services or runtime dependencies. The feature must pass the same four gates and independent live verification.
