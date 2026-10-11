@@ -11,15 +11,19 @@ use fsp_integration_email::{DemoDelivery, HybridDelivery, ResendDelivery};
 use fsp_integration_fsp_synthetic::HttpFsp;
 use fsp_integration_github::{GitHubApi, HttpInsights};
 use fsp_integration_interview::HttpInterviewGateway;
+use fsp_integration_speech::{SileroSpeech, XaiSpeech, YandexSpeech};
 use fsp_storage_postgres::PostgresRepository;
 use tokio::net::TcpListener;
-use tokio::signal;
 
 const DEV_ORIGINS: &str = "http://127.0.0.1:5173,http://localhost:5173";
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    tracing_subscriber::fmt().init();
+    tracing_subscriber::fmt()
+        .json()
+        .with_current_span(true)
+        .with_span_list(false)
+        .init();
 
     match env::args().skip(1).collect::<Vec<_>>().as_slice() {
         [] => {}
@@ -114,10 +118,15 @@ async fn main() -> Result<(), Box<dyn Error>> {
             chat_url,
             nonempty_env("BIFROST_API_KEY"),
             nonempty_env("BIFROST_MODEL").unwrap_or_else(|| "openai/gpt-5-mini".into()),
-            // Background reviews reason deeply unless the operator sets `none`.
-            Some(nonempty_env("BIFROST_REASONING_EFFORT").unwrap_or_else(|| "high".into()))
+            // Advisory profile reviews use medium effort; `none` keeps the provider default.
+            Some(nonempty_env("BIFROST_REASONING_EFFORT").unwrap_or_else(|| "medium".into()))
                 .filter(|effort| effort != "none"),
         )
+        .and_then(|gateway| {
+            gateway.with_interactive_reasoning_effort(nonempty_env(
+                "BIFROST_INTERACTIVE_REASONING_EFFORT",
+            ))
+        })
         .map_err(|error| format!("Bifrost adapter: {}", error.message))?;
         llm_adapter = Some(Arc::new(bifrost));
     }
@@ -128,6 +137,42 @@ async fn main() -> Result<(), Box<dyn Error>> {
             .map_err(|error| format!("PDF adapter: {}", error.message))?;
         pdf_adapter = Some(Arc::new(pdf));
     }
+    let speech_adapter: Option<Arc<dyn fsp_application::SpeechSynthesisGateway>> =
+        match nonempty_env("FSP_TTS_PROVIDER").as_deref() {
+            None | Some("browser") => None,
+            Some("xai") => Some(Arc::new(
+                XaiSpeech::new(
+                    &env::var("XAI_TTS_URL").unwrap_or_else(|_| "https://api.x.ai/v1/tts".into()),
+                    nonempty_env("XAI_API_KEY").ok_or("XAI_API_KEY is required for xai TTS")?,
+                    env::var("XAI_TTS_VOICE").unwrap_or_else(|_| "eve".into()),
+                )
+                .map_err(|error| format!("xAI speech adapter: {}", error.message))?,
+            )),
+            Some("yandex") => Some(Arc::new(
+                YandexSpeech::new(
+                    &env::var("YANDEX_TTS_URL").unwrap_or_else(|_| {
+                        "https://tts.api.cloud.yandex.net/tts/v3/utteranceSynthesis".into()
+                    }),
+                    nonempty_env("YANDEX_SPEECHKIT_API_KEY")
+                        .ok_or("YANDEX_SPEECHKIT_API_KEY is required for yandex TTS")?,
+                    env::var("YANDEX_TTS_VOICE").unwrap_or_else(|_| "marina".into()),
+                    nonempty_env("YANDEX_TTS_ROLE"),
+                    nonempty_env("YANDEX_TTS_MODEL"),
+                )
+                .map_err(|error| format!("Yandex speech adapter: {}", error.message))?,
+            )),
+            Some("silero") => Some(Arc::new(
+                SileroSpeech::new(
+                    &env::var("SILERO_TTS_URL")
+                        .unwrap_or_else(|_| "http://127.0.0.1:4050/synthesize".into()),
+                    env::var("SILERO_TTS_VOICE").unwrap_or_else(|_| "eugene".into()),
+                )
+                .map_err(|error| format!("Silero speech adapter: {}", error.message))?,
+            )),
+            Some(_) => {
+                return Err("FSP_TTS_PROVIDER must be browser, silero, xai or yandex".into());
+            }
+        };
     let listener = TcpListener::bind((host.as_str(), port)).await?;
     let repository = Arc::new(
         PostgresRepository::connect(&database_url)
@@ -151,6 +196,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
     }
     if let Some(pdf) = pdf_adapter {
         platform = platform.with_pdf(pdf);
+    }
+    if let Some(speech) = speech_adapter {
+        platform = platform.with_speech(speech);
     }
     match (
         nonempty_env("FSP_INTERVIEW_URL"),
@@ -191,7 +239,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     );
     tracing::info!(address = %listener.local_addr()?, "fsp-career-api listening");
     axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown())
+        .with_graceful_shutdown(shutdown()?)
         .await?;
     Ok(())
 }
@@ -211,20 +259,23 @@ async fn sweep_expired(repository: Arc<PostgresRepository>) {
     }
 }
 
-async fn shutdown() {
-    let interrupt = async {
-        signal::ctrl_c().await.ok();
-    };
+// Register before axum spawns its shutdown task, so setup failures exit main with an error.
+fn shutdown() -> std::io::Result<impl std::future::Future<Output = ()>> {
     #[cfg(unix)]
-    let terminate = async {
-        if let Ok(mut stream) = signal::unix::signal(signal::unix::SignalKind::terminate()) {
-            stream.recv().await;
+    let mut interrupt = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt())?;
+    #[cfg(windows)]
+    let mut interrupt = tokio::signal::windows::ctrl_c()?;
+    #[cfg(unix)]
+    let mut terminate = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
+    Ok(async move {
+        #[cfg(unix)]
+        tokio::select! {
+            _ = interrupt.recv() => {}
+            _ = terminate.recv() => {}
         }
-    };
-    #[cfg(not(unix))]
-    let terminate = std::future::pending::<()>();
-    tokio::select! {
-        () = interrupt => {}
-        () = terminate => {}
-    }
+        #[cfg(windows)]
+        {
+            interrupt.recv().await;
+        }
+    })
 }

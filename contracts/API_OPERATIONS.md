@@ -34,6 +34,7 @@ Generated from [`openapi.json`](openapi.json) by `codegen/generate.ts`. Do not e
 | `startInterview` | POST | `/api/v1/me/interviews` | 201 | Application |
 | `getInterview` | GET | `/api/v1/me/interviews/{interviewId}` | 200 | Application |
 | `answerInterview` | POST | `/api/v1/me/interviews/{interviewId}/answers` | 200 | Application |
+| `synthesizeInterviewSpeech` | POST | `/api/v1/me/interviews/{interviewId}/speech` | 200 | Application |
 | `getJob` | GET | `/api/v1/jobs/{jobId}` | 200 | Application |
 | `getMyTasks` | GET | `/api/v1/me/tasks` | 200 | Application |
 | `respondToTask` | POST | `/api/v1/me/tasks/{taskId}/responses` | 201 | Application |
@@ -80,6 +81,7 @@ Generated from [`openapi.json`](openapi.json) by `codegen/generate.ts`. Do not e
 | `listTaskResponses` | GET | `/api/v1/task-responses` | 200 | Application |
 | `reviewTaskResponse` | POST | `/api/v1/task-responses/{responseId}/review` | 200 | Application |
 | `listApplications` | GET | `/api/v1/applications` | 200 | Application |
+| `getHiringFlowAnalytics` | GET | `/api/v1/analytics/hiring-flow` | 200 | Application |
 | `getApplication` | GET | `/api/v1/applications/{applicationId}` | 200 | Application |
 | `viewApplication` | POST | `/api/v1/applications/{applicationId}/view` | 200 | Application |
 | `acceptApplication` | POST | `/api/v1/applications/{applicationId}/accept` | 200 | Application |
@@ -89,4 +91,4 @@ Generated from [`openapi.json`](openapi.json) by `codegen/generate.ts`. Do not e
 | `mockEmailCodes` | GET | `/__mock__/email-codes` | 200 | Development only |
 | `mockAdvanceClock` | POST | `/__mock__/clock` | 200 | Development only |
 
-Total documented operations: 84. Development controls are not production application endpoints.
+Total documented operations: 86. Development controls are not production application endpoints.

@@ -415,7 +415,14 @@ function match(candidate: Candidate, need: Need): Schemas['Match'] {
   const requirements = need.requirements.map((requirement): Schemas['MatchRequirement'] => {
     const skill = candidate.skills.find((item) => item.skillId === requirement.skillId);
     const policy = requirement.evidencePolicy;
-    const acceptedAssessment = policy.acceptAssessments && skill?.evidenceSources.includes('assessment');
+    const acceptedSources = (skill?.evidenceSources ?? []).filter((source) =>
+      source === 'assessment'
+        ? policy.acceptAssessments
+        : source === 'github'
+          ? policy.acceptGithub
+          : policy.acceptFsp && policy.competitionSelection === 'system',
+    );
+    const acceptedAssessment = acceptedSources.includes('assessment');
     const supported =
       skill &&
       skill.status === 'confirmed' &&
@@ -430,14 +437,18 @@ function match(candidate: Candidate, need: Need): Schemas['Match'] {
       ? 'Навык подтверждён проверкой нужного уровня, которую принимает работодатель.'
       : status === 'not_evidenced'
         ? 'Пока нет достаточных свидетельств по этому навыку.'
-        : !acceptedAssessment && skill?.status === 'confirmed'
-          ? 'Имеющееся подтверждение не соответствует политике этой потребности.'
+        : acceptedSources.length === 0
+          ? 'Имеющиеся источники не соответствуют политике этой потребности.'
           : 'Есть основания, но уровень по этому требованию ещё следует подтвердить.';
     return {
       skillId: requirement.skillId,
       criticality: requirement.criticality,
       status,
       evidenceStatus: skill?.status ?? 'insufficient',
+      minimumGrade: requirement.minimumGrade,
+      evidenceGrade: skill?.evidenceGrade ?? null,
+      evidenceSources: skill?.evidenceSources ?? [],
+      acceptedSources,
       reason,
     };
   });
@@ -460,12 +471,28 @@ function match(candidate: Candidate, need: Need): Schemas['Match'] {
     requiredTotal: required.length,
     desiredMet,
     desiredTotal: desired.length,
+    requiredEvidenced: required.filter(
+      (item) => item.evidenceStatus !== 'insufficient' && item.acceptedSources.length > 0,
+    ).length,
+    desiredEvidenced: desired.filter(
+      (item) => item.evidenceStatus !== 'insufficient' && item.acceptedSources.length > 0,
+    ).length,
     requirements,
     explanation: gradeMatches
       ? `Подтверждено обязательных требований: ${requiredMet} из ${required.length}.`
       : 'Специализация или грейд категории пока не соответствуют потребности.',
-    algorithmVersion: 'fixture-rules-v1',
+    algorithmVersion: 'deterministic-rules-v2',
   };
+}
+function compareVacancyFit(a: Schemas['Match'], b: Schemas['Match']): number {
+  const coverage = (n: number, total: number) => (total === 0 ? 1 : n / total);
+  return (
+    Number(b.gradeMatches) - Number(a.gradeMatches) ||
+    coverage(b.requiredMet, b.requiredTotal) - coverage(a.requiredMet, a.requiredTotal) ||
+    coverage(b.desiredMet, b.desiredTotal) - coverage(a.desiredMet, a.desiredTotal) ||
+    coverage(b.requiredEvidenced, b.requiredTotal) - coverage(a.requiredEvidenced, a.requiredTotal) ||
+    coverage(b.desiredEvidenced, b.desiredTotal) - coverage(a.desiredEvidenced, a.desiredTotal)
+  );
 }
 const fspVerified = (candidate: Candidate) =>
   candidate.sources.some((source) => source.provider === 'fsp' && source.verifiedParticipation);
@@ -502,7 +529,41 @@ function anonymous(s: State, candidate: Candidate, need: Need | null = null): Sc
     freshness: freshness(s, candidate),
     match: need ? match(candidate, need) : null,
     github: githubProjection(candidate),
+    fsp: fspProjection(candidate, need),
+    review: estimate?.review
+      ? {
+          specialization: estimate.review.specialization,
+          grade: estimate.review.grade,
+          agrees: estimate.review.agrees,
+          computedAt: estimate.computedAt,
+        }
+      : null,
     simulation: true,
+  };
+}
+function fspProjection(candidate: Candidate, need: Need | null): Schemas['EmployerFsp'] | null {
+  const source = candidate.sources.find((item) => item.provider === 'fsp');
+  if (!source) return null;
+  const published = (source.fspResults ?? []).filter((item) => item.status === 'published');
+  return {
+    verifiedParticipation: source.verifiedParticipation ?? false,
+    publishedResults: published.length,
+    podiumResults: published.filter((item) => item.place !== null && item.place >= 1 && item.place <= 3).length,
+    relevantResults: published.filter((result) =>
+      need?.requirements.some((requirement) => {
+        const policy = requirement.evidencePolicy;
+        return (
+          policy.acceptFsp &&
+          (policy.competitionSelection === 'system' || policy.competitionIds.includes(result.competitionId)) &&
+          COMPETITIONS.some(
+            (competition) =>
+              competition.id === result.competitionId && competition.skillIds.includes(requirement.skillId),
+          )
+        );
+      }),
+    ).length,
+    lastSyncedAt: source.lastSyncedAt,
+    synthetic: source.synthetic,
   };
 }
 function githubProjection(candidate: Candidate): Schemas['GitHubSignal'] | null {
@@ -1178,6 +1239,7 @@ type Handlers = { [R in Route as R['operationId']]: (ctx: Context<BodyOf<R>, Act
 
 const handlers: Handlers = {
   getHealth: () => ({ status: 'ok', service: 'fsp-mock-api', version: '0.1.0' }),
+  synthesizeInterviewSpeech: () => fail(503, 'speech_not_configured', 'В демо-режиме используется голос браузера'),
   getMeta: ({ s }) => ({
     contractVersion: '0.1.0',
     mode: 'mock',
@@ -1192,6 +1254,8 @@ const handlers: Handlers = {
       githubOAuth: false,
       githubInsights: false,
       graphInterviews: true,
+      neuralTts: false,
+      hiringAnalytics: true,
       fspFixture: true,
       matching: true,
       directInvitations: true,
@@ -1846,6 +1910,8 @@ const handlers: Handlers = {
         ? Number(b.match.gradeMatches) - Number(a.match.gradeMatches) ||
           b.match.requiredMet - a.match.requiredMet ||
           b.match.desiredMet - a.match.desiredMet ||
+          b.match.requiredEvidenced - a.match.requiredEvidenced ||
+          b.match.desiredEvidenced - a.match.desiredEvidenced ||
           strength(b) - strength(a) ||
           Number(b.fspVerified) - Number(a.fspVerified) ||
           a.id.localeCompare(b.id)
@@ -2035,8 +2101,13 @@ const handlers: Handlers = {
           (!workMode || need.workMode === workMode) &&
           (!skill || need.requirements.some((item) => item.skillId === skill)),
       )
-      .sort((a, b) => (b.publishedAt ?? '').localeCompare(a.publishedAt ?? '') || a.id.localeCompare(b.id))
-      .map((need) => vacancyDto(ctx.s, need, candidate));
+      .map((need) => vacancyDto(ctx.s, need, candidate))
+      .sort(
+        (a, b) =>
+          (a.match && b.match ? compareVacancyFit(a.match, b.match) : 0) ||
+          b.publishedAt.localeCompare(a.publishedAt) ||
+          a.id.localeCompare(b.id),
+      );
     const page = typeof ctx.query.page === 'number' ? ctx.query.page : 1;
     const pageSize = typeof ctx.query.pageSize === 'number' ? ctx.query.pageSize : 10;
     return {
@@ -2099,6 +2170,83 @@ const handlers: Handlers = {
         .filter((item) => item.company.id === ctx.actor.companyId && (!needId || item.vacancy.id === needId))
         .sort(newestFirst)
         .map((item) => applicationDto(ctx.s, item)),
+    };
+  },
+  getHiringFlowAnalytics: (ctx) => {
+    const items = [...ctx.s.applications.values()].filter((item) => item.company.id === ctx.actor.companyId);
+    const total = items.length;
+    const reviewed = items.filter((item) => item.viewedAt).length;
+    const decided = items.filter((item) => item.respondedAt).length;
+    const accepted = items.filter((item) => item.status === 'accepted').length;
+    const percent = (value: number, denominator: number) =>
+      denominator ? Math.min(100, Math.round((value * 100) / denominator)) : 0;
+    const awaitingReview = total - reviewed;
+    const bottleneck =
+      total === 0
+        ? {
+            kind: 'no_data',
+            severity: 'info' as const,
+            title: 'Пока нечего сравнивать',
+            evidence: 'По опубликованным вакансиям ещё нет откликов.',
+            recommendation: 'Проверьте видимость вакансий и вернитесь после первых откликов.',
+          }
+        : awaitingReview >= 3 && percent(awaitingReview, total) >= 25
+          ? {
+              kind: 'review_queue',
+              severity: 'high' as const,
+              title: 'Отклики накапливаются до просмотра',
+              evidence: `Не просмотрено ${awaitingReview} из ${total} откликов (${percent(awaitingReview, total)}%).`,
+              recommendation: 'Назначьте владельца первичного разбора и ежедневное окно для новых откликов.',
+            }
+          : {
+              kind: 'stable',
+              severity: 'info' as const,
+              title: 'Явного узкого места пока нет',
+              evidence: 'Ни один этап не пересёк порог операционного риска.',
+              recommendation: 'Следите за временем до просмотра и решения по мере роста потока.',
+            };
+    const groups = new Map<string, typeof items>();
+    for (const item of items) groups.set(item.vacancy.id, [...(groups.get(item.vacancy.id) ?? []), item]);
+    return {
+      generatedAt: ctx.s.clock,
+      total,
+      stages: [
+        { id: 'received' as const, label: 'Получены', count: total, sharePercent: percent(total, total) },
+        { id: 'reviewed' as const, label: 'Просмотрены', count: reviewed, sharePercent: percent(reviewed, total) },
+        { id: 'decided' as const, label: 'Получили решение', count: decided, sharePercent: percent(decided, total) },
+        { id: 'accepted' as const, label: 'Приняты', count: accepted, sharePercent: percent(accepted, total) },
+      ],
+      medianTimeToViewHours: null,
+      medianTimeToDecisionHours: null,
+      acceptanceRatePercent: percent(accepted, decided),
+      vacancies: [...groups.values()].flatMap((group) => {
+        const first = group[0];
+        if (!first) return [];
+        const requiredMet = group.reduce((sum, item) => sum + applicationDto(ctx.s, item).match.requiredMet, 0);
+        const requiredTotal = group.reduce((sum, item) => sum + applicationDto(ctx.s, item).match.requiredTotal, 0);
+        return [
+          {
+            vacancyId: first.vacancy.id,
+            title: first.vacancy.title,
+            total: group.length,
+            awaitingReview: group.filter((item) => !item.viewedAt).length,
+            awaitingDecision: group.filter((item) => item.viewedAt && !item.respondedAt).length,
+            accepted: group.filter((item) => item.status === 'accepted').length,
+            closed: group.filter((item) => terminalStatus.has(item.status)).length,
+            requiredCoveragePercent: percent(requiredMet, requiredTotal),
+            gradeMatchPercent: percent(
+              group.filter((item) => applicationDto(ctx.s, item).match.gradeMatches).length,
+              group.length,
+            ),
+          },
+        ];
+      }),
+      bottlenecks: [bottleneck],
+      assistant: {
+        mode: 'metrics' as const,
+        summary: `${bottleneck.title}: ${bottleneck.evidence}`,
+        actions: [bottleneck.recommendation],
+      },
     };
   },
   getApplication: (ctx) => applicationDto(ctx.s, applicationFor(ctx, param(ctx, 'applicationId'))),

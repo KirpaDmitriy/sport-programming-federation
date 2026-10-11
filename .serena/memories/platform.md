@@ -1,7 +1,6 @@
 # Platform behavior
 
-Rust/PostgreSQL implements the stand; the HTTP mock is a development behavior reference. OpenAPI contains
-79 application operations, health and four mock-only controls. Update every contract consumer together.
+Rust/PostgreSQL implements the stand; the HTTP mock is a development behavior reference. OpenAPI and its generated operation index define the application operations, health and mock-only controls. Update every contract consumer together.
 Commands and idempotency replay commit atomically. PostgreSQL serializes email budgets, profile/source/assessment,
 company/shortlist and disclosure changes. Viewed flags never replace terminal decisions. Nullable patches and
 bounded fields follow the contract. Candidate/company ownership and anonymous projections are server-enforced.
@@ -30,7 +29,7 @@ Failed provider sync preserves snapshots. GitHub connects by login/link through 
 (github-insights-v3 with the scope dimension, docs/github-insights.md): tokenless background analysis of public work (search, REST, blobless
 clones) polled through a running source_sync job; developer portrait, own organizations as own work, collaboration
 only outside them; ownership by bio code (OAuth optional, deferred), one proven login per candidate, evidence only
-from owned/led repos, anonymous rounded employer signal, no grade/order effect.
+from owned/led repos, anonymous rounded employer signal, no verified-grade effect.
 
 Competence graphs are deterministic catalog/evidence projections (service/graphs.rs), not LLM output.
 Graph interviews use private service 4040 and PostgreSQL optimistic revisions; start/answer require processing
@@ -45,3 +44,11 @@ large-bank capacity or production load claim. Current behavior/limits: docs/curr
 Verify release identity against upstream/main, /opt/fsp/current and deployed.json; #138 records final proof.
 
 Last commit: c93cf00 (queued review consent); local backend checks passed 129 tests. Live proof is in #153.
+
+Matching uses deterministic-rules-v2: accepted assessment evidence plus sufficient confirmed grade meets a
+requirement; GitHub/FSP observations provide accepted coverage without borrowing a disallowed assessment grade.
+Competition-specific policies require known provenance. Both role projections and vacancy ordering share the
+same policy-aware scorer before pagination. A private applicant profile is visible only to its recipient company
+until withdrawal. Employer AI context excludes free-form personal notes; full candidate notes remain private.
+Interactive/interview Grok effort defaults to low; profile review defaults to medium. Deadlines and deterministic
+grade authority remain unchanged. Synthetic timing/quality limits are in docs/ai-latency.md.

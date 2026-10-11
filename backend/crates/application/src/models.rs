@@ -31,6 +31,21 @@ pub struct InterviewAnswerInput {
     pub revision: u32,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct InterviewSpeechInput {
+    pub question_id: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SpeechAudioView {
+    pub audio_base64: String,
+    pub mime_type: String,
+    pub provider: String,
+    pub voice: String,
+}
+
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum InterviewResponseMode {
@@ -518,6 +533,80 @@ pub struct ApplicationsView {
     pub items: Vec<ApplicationView>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HiringFlowStageView {
+    pub id: &'static str,
+    pub label: &'static str,
+    pub count: usize,
+    pub share_percent: u8,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VacancyFlowView {
+    pub vacancy_id: String,
+    pub title: String,
+    pub total: usize,
+    pub awaiting_review: usize,
+    pub awaiting_decision: usize,
+    pub accepted: usize,
+    pub closed: usize,
+    pub required_coverage_percent: u8,
+    pub grade_match_percent: u8,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HiringBottleneckView {
+    pub kind: &'static str,
+    pub severity: &'static str,
+    pub title: String,
+    pub evidence: String,
+    pub recommendation: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HiringAssistantView {
+    pub mode: &'static str,
+    pub summary: String,
+    pub actions: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HiringFlowAnalyticsView {
+    pub generated_at: String,
+    pub total: usize,
+    pub stages: Vec<HiringFlowStageView>,
+    pub median_time_to_view_hours: Option<u32>,
+    pub median_time_to_decision_hours: Option<u32>,
+    pub acceptance_rate_percent: u8,
+    pub vacancies: Vec<VacancyFlowView>,
+    pub bottlenecks: Vec<HiringBottleneckView>,
+    pub assistant: HiringAssistantView,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HiringFlowFacts {
+    pub total: usize,
+    pub stages: Vec<HiringFlowStageView>,
+    pub median_time_to_view_hours: Option<u32>,
+    pub median_time_to_decision_hours: Option<u32>,
+    pub acceptance_rate_percent: u8,
+    pub vacancies: Vec<VacancyFlowView>,
+    pub bottlenecks: Vec<HiringBottleneckView>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HiringFlowNarrative {
+    pub summary: String,
+    pub actions: Vec<String>,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct TaskInput {
@@ -941,7 +1030,32 @@ pub struct AnonymousCandidateView {
     pub r#match: Option<CandidateMatchView>,
     /// Anonymous public-GitHub signal: no login, names, links or calendars.
     pub github: Option<fsp_domain::GitHubSignal>,
+    pub fsp: Option<EmployerFspView>,
+    pub review: Option<EmployerReviewView>,
     pub simulation: bool,
+}
+
+/// Aggregates only: no account, team, exact placement, protocol or external identifiers.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EmployerFspView {
+    pub verified_participation: bool,
+    pub published_results: usize,
+    pub podium_results: usize,
+    pub relevant_results: usize,
+    pub last_synced_at: Option<String>,
+    pub synthetic: bool,
+}
+
+/// Only validated model classifications cross the anonymous boundary. Free-form reasoning and
+/// recommendations may repeat user-authored personal details and remain in the owner's profile.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EmployerReviewView {
+    pub specialization: Specialization,
+    pub grade: Grade,
+    pub agrees: bool,
+    pub computed_at: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -967,6 +1081,8 @@ pub struct CandidateMatchView {
     pub required_total: usize,
     pub desired_met: usize,
     pub desired_total: usize,
+    pub required_evidenced: usize,
+    pub desired_evidenced: usize,
     pub requirements: Vec<MatchRequirementView>,
     pub explanation: String,
     pub algorithm_version: &'static str,
@@ -979,6 +1095,10 @@ pub struct MatchRequirementView {
     pub criticality: Criticality,
     pub status: &'static str,
     pub evidence_status: EvidenceStatus,
+    pub minimum_grade: Grade,
+    pub evidence_grade: Option<Grade>,
+    pub evidence_sources: Vec<EvidenceSource>,
+    pub accepted_sources: Vec<EvidenceSource>,
     pub reason: &'static str,
 }
 

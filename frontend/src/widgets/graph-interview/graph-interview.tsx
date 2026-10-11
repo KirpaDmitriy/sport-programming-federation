@@ -12,11 +12,13 @@ import {
   interviewsQuery,
   startInterview,
 } from '@/entities/interview';
+import { useMeta } from '@/entities/meta';
 import { useScope } from '@/entities/session';
 import { describeError, isApiError } from '@/shared/api';
 import { Button, Callout, Card, cx, ErrorState, Icon, LoadingState, StatusChip, TextareaField } from '@/shared/ui';
 import styles from './graph-interview.module.css';
 import { speechErrorMessage, submittedResponseMode } from './speech';
+import { useQuestionSpeech } from './use-question-speech';
 
 const stateLabel: Record<InterviewNode['state'], string> = {
   unknown: 'Не проверено',
@@ -212,6 +214,7 @@ function Avatar({ state }: { state: 'idle' | 'speaking' | 'listening' | 'thinkin
 
 export function InterviewWorkspace({ interview }: { interview: Interview }) {
   const scope = useScope();
+  const meta = useMeta();
   const queryClient = useQueryClient();
   const recognition = useRef<Recognition | null>(null);
   const draftQuestion = useRef<string | null>(null);
@@ -220,7 +223,6 @@ export function InterviewWorkspace({ interview }: { interview: Interview }) {
   const [inputMode, setInputMode] = useState<'voice' | 'text'>('text');
   const [voiceCaptured, setVoiceCaptured] = useState(false);
   const [listening, setListening] = useState(false);
-  const [speaking, setSpeaking] = useState(false);
   const [speechError, setSpeechError] = useState<string | null>(null);
   const question = interview.currentQuestion;
   const speechText = question?.delivery.speechText;
@@ -236,16 +238,12 @@ export function InterviewWorkspace({ interview }: { interview: Interview }) {
     }
   }, []);
 
-  const sayQuestion = useCallback(() => {
-    if (!speechText || !('speechSynthesis' in window)) return;
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(speechText);
-    utterance.lang = 'ru-RU';
-    utterance.onstart = () => setSpeaking(true);
-    utterance.onend = () => setSpeaking(false);
-    utterance.onerror = () => setSpeaking(false);
-    window.speechSynthesis.speak(utterance);
-  }, [speechText]);
+  const { speaking, stopSpeech, sayQuestion } = useQuestionSpeech(
+    interview.id,
+    question?.id,
+    speechText,
+    meta.capabilities.neuralTts,
+  );
 
   useEffect(() => {
     if (draftQuestion.current !== (question?.id ?? null)) {
@@ -260,15 +258,6 @@ export function InterviewWorkspace({ interview }: { interview: Interview }) {
     return releaseMicrophone;
   }, [question?.id, question?.recommendedResponseMode, releaseMicrophone]);
 
-  useEffect(() => {
-    if (!question?.id) return undefined;
-    const timer = window.setTimeout(sayQuestion, 250);
-    return () => {
-      window.clearTimeout(timer);
-      window.speechSynthesis?.cancel();
-    };
-  }, [question?.id, sayQuestion]);
-
   const toggleListening = () => {
     if (listening) {
       recognition.current?.stop();
@@ -281,7 +270,7 @@ export function InterviewWorkspace({ interview }: { interview: Interview }) {
       return;
     }
     releaseMicrophone();
-    window.speechSynthesis?.cancel();
+    stopSpeech();
     const instance = new Constructor();
     instance.lang = 'ru-RU';
     instance.continuous = false;
@@ -331,6 +320,7 @@ export function InterviewWorkspace({ interview }: { interview: Interview }) {
   const mutation = useMutation({
     mutationFn: async () => {
       if (!question) throw new Error('Интервью уже завершено');
+      stopSpeech();
       releaseMicrophone();
       setListening(false);
       setInterim('');
