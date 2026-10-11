@@ -1,16 +1,45 @@
 #!/usr/bin/env python3
 
+import io
 import json
 import os
 import subprocess
 import tempfile
 import threading
+import wave
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 
 MAX_AUDIO_BYTES = 4 * 1024 * 1024
+MAX_RECORDING_SECONDS = 25
+SAMPLE_RATE = 16_000
 SUFFIXES = {"audio/webm": ".webm", "audio/mp4": ".mp4", "audio/ogg": ".ogg"}
+
+
+def decode_recording(source: str) -> tuple[bytes, float]:
+    # Streaming browser containers may omit duration. Count decoded samples instead.
+    pcm = subprocess.run(
+        [
+            "ffmpeg", "-nostdin", "-v", "error", "-protocol_whitelist", "file,pipe",
+            "-i", source, "-map", "0:a:0", "-vn",
+            "-t", str(MAX_RECORDING_SECONDS + 1),
+            "-ac", "1", "-ar", str(SAMPLE_RATE), "-f", "s16le", "pipe:1",
+        ],
+        capture_output=True,
+        check=True,
+        timeout=10,
+    ).stdout
+    duration = len(pcm) / (SAMPLE_RATE * 2)
+    if not pcm or len(pcm) % 2 or duration > MAX_RECORDING_SECONDS:
+        raise ValueError("recording must be between 0 and 25 seconds")
+    output = io.BytesIO()
+    with wave.open(output, "wb") as recording:
+        recording.setnchannels(1)
+        recording.setsampwidth(2)
+        recording.setframerate(SAMPLE_RATE)
+        recording.writeframes(pcm)
+    return output.getvalue(), duration
 
 
 class GigaAmRuntime:
@@ -29,28 +58,12 @@ class GigaAmRuntime:
         with tempfile.NamedTemporaryFile(suffix=suffix) as source:
             source.write(audio)
             source.flush()
-            duration = float(
-                subprocess.run(
-                    [
-                        "ffprobe",
-                        "-v",
-                        "error",
-                        "-show_entries",
-                        "format=duration",
-                        "-of",
-                        "default=noprint_wrappers=1:nokey=1",
-                        source.name,
-                    ],
-                    capture_output=True,
-                    check=True,
-                    text=True,
-                    timeout=10,
-                ).stdout.strip()
-            )
-            if duration <= 0 or duration > 25:
-                raise ValueError("recording must be between 0 and 25 seconds")
+            wav, duration = decode_recording(source.name)
+        with tempfile.NamedTemporaryFile(suffix=".wav") as normalized:
+            normalized.write(wav)
+            normalized.flush()
             with self._lock:
-                result = self._model.transcribe(source.name)
+                result = self._model.transcribe(normalized.name)
         text = result.text.strip()
         if not text:
             raise ValueError("speech was not recognized")
@@ -85,12 +98,16 @@ def handler(runtime: GigaAmRuntime):
             self._respond(200, body)
 
         def _respond(self, status: int, body: bytes) -> None:
-            self.send_response(status)
-            self.send_header("Content-Type", "application/json; charset=utf-8")
-            self.send_header("Content-Length", str(len(body)))
-            self.send_header("Cache-Control", "no-store")
-            self.end_headers()
-            self.wfile.write(body)
+            try:
+                self.send_response(status)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Content-Length", str(len(body)))
+                self.send_header("Cache-Control", "no-store")
+                self.end_headers()
+                self.wfile.write(body)
+            except (BrokenPipeError, ConnectionResetError):
+                self.close_connection = True
+                self.log_message("client disconnected before response completed")
 
         def log_message(self, format: str, *args) -> None:
             print(format % args, flush=True)
