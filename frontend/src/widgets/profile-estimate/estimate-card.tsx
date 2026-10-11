@@ -211,7 +211,7 @@ export function ProfileEstimateCard({ profile, canEstimate, title = 'Автом�
           </Callout>
         )}
         <GrowthPlan estimate={estimate} />
-        {profile.category.source !== 'assessment' && <RefineEstimateForm key={profile.revision} profile={profile} />}
+        {profile.category.source !== 'assessment' && <RefineEstimateForm profile={profile} />}
         {estimate.specializations.length > 0 && (
           <section className="stack" aria-label="Направления">
             <h3 className={styles.heading}>Направления</h3>

@@ -4176,21 +4176,30 @@ fn apply_profile_patch(
         claim_field(profile, "teamRole", profile.team_role != value);
         profile.team_role = value;
     }
-    if let Some(since) = patch.experience_since {
-        // A start year is the candidate's statement; the months follow from it.
-        let months = since.map(|year| fsp_domain::experience_since_months(year, current_year()));
-        claim_field(profile, "experienceMonths", true);
-        profile.experience_since = since;
-        profile.experience_months = months;
-    } else if let Some(value) = patch.experience_months {
-        claim_field(
-            profile,
-            "experienceMonths",
-            profile.experience_months != value,
-        );
-        // Months typed or imported replace a start year.
-        profile.experience_since = None;
-        profile.experience_months = value;
+    // A start year is the candidate's statement and the months follow from it; without a year,
+    // explicit months (typed or from a résumé) count; clearing the year clears the experience.
+    match (patch.experience_since, patch.experience_months) {
+        (Some(Some(year)), _) => {
+            claim_field(profile, "experienceMonths", true);
+            profile.experience_since = Some(year);
+            profile.experience_months =
+                Some(fsp_domain::experience_since_months(year, current_year()));
+        }
+        (_, Some(value)) => {
+            claim_field(
+                profile,
+                "experienceMonths",
+                profile.experience_months != value || profile.experience_since.is_some(),
+            );
+            profile.experience_since = None;
+            profile.experience_months = value;
+        }
+        (Some(None), None) => {
+            claim_field(profile, "experienceMonths", true);
+            profile.experience_since = None;
+            profile.experience_months = None;
+        }
+        (None, None) => {}
     }
     if let Some(value) = patch.experience {
         claim_field(profile, "experience", profile.experience != value);
