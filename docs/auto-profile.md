@@ -168,5 +168,8 @@ existing junior–senior structure for Rust, PostgreSQL, TypeScript and React.
 5. Estimate v4 (`feat/growth-plan`): the growth plan, focus skills and review advice with deep reasoning, automatic
    refresh of outdated estimates, FSP re-sync on recalculation, the short refine form, one-click rebuild and the
    deterministic competence graph.
+6. Estimates v5–v6 (#125, #128, #131, #132): Russian spellings of leading roles, experience from the year the
+   candidate started in IT (never from public tenure), the start year from a résumé through Grok with whole-catalog
+   grounding of résumé values, refine answers kept during background updates, and wrapped graph columns.
 
 Each phase goes through the usual gates and deployment; business rules, traceability and screenshots change with it.
