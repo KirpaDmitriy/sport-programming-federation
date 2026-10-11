@@ -8,7 +8,7 @@ reset production data, create backups/snapshots or synchronize the retired GitHu
 
 PR #172 consolidates atomic feature histories for #159/#160 (asset errors), #162/#163 (graceful shutdown),
 #167/#169 (matching and access), #168/#170 (Grok budgets), #166/#171 (private observability and masked replay),
-and Dima's current main. Use normal feature -> danil -> dev -> main PRs, four actual fsp/* gates, unchanged-tree
+#173/#177 (speech cancellation and bounded provider streams), and Dima's current main. Use normal feature -> danil -> dev -> main PRs, four actual fsp/* gates, unchanged-tree
 merge guards and real public/mail acceptance. Close issues only after live verification.
 
 The old CI runner was externally deleted. Amsterdam now has the reviewed FSP CI user/tooling. A bounded
@@ -35,6 +35,7 @@ again or claim unattended Ubuntu CI restored. #161 records the distinction and p
 - OpenObserve 1.0.4/Vector 0.59.0 are private native support services. The dashboard has nine verified queries.
   Browser replay masks all text/inputs and excludes sensitive or unsafe URLs. Logs exclude bodies/prompts/secrets.
   Run infra/observability/verify.py and verify_intake.py; public acceptance must prove RUM on the shipped release, separately from support-service health.
+- Speech playback cancels delayed autoplay, network reads and obsolete callbacks; all neural providers bound streamed response sizes. Silero is local CPU synthesis; text remains usable without browser speech APIs.
 - GitHub OAuth is intentionally deferred; ownership uses a bio code. FSP is a labelled fictional provider.
   Knowledge tests are not calibrated practical qualifications. No OCR, durable job queue, measured load capacity,
   high availability, external alert delivery or OTLP span export is claimed.
