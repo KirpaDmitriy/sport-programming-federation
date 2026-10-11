@@ -35,6 +35,8 @@ It evaluates described actions and trade-offs; it does not infer personality, em
 When `BIFROST_CHAT_URL` is configured, Bifrost generates surface variants and evaluates answers against the supplied
 rubric. Output is schema-checked, evidence must quote the answer exactly, and the model cannot choose the next node
 or assign a platform grade. `INTERVIEW_BIFROST_MODEL` selects the model independently from the main API.
+Grok uses low reasoning by default, configurable with `INTERVIEW_REASONING_EFFORT`; other models retain their
+provider default unless explicitly configured. See [latency measurements and limits](ai-latency.md).
 Evaluation and generation of the next question share one 45-second model budget; persistence happens only after
 both succeed. A timeout leaves the revision, question and evidence unchanged, so the same answer can be retried.
 The internal gateway allows 50 seconds, the platform 55 and nginx 60. A provider failure is never an offline fallback.

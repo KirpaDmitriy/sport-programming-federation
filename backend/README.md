@@ -96,12 +96,14 @@ deterministic; repository-to-competition matching is an adapter port without a p
 `GET /api/v1/meta` reports configuration, not proof of a provider's availability or assessment validity.
 
 Request budgets are nested: a call to the GitHub insights service takes at most 10 seconds (the analysis itself runs in the background) and a Bifrost completion inside a request has a 45-second ceiling (the background estimate review reasons with
-`BIFROST_REASONING_EFFORT`, default `high`, for up to 330 seconds under Bifrost's 360-second provider timeout, one
+`BIFROST_REASONING_EFFORT`, default `medium`, for up to 330 seconds under Bifrost's 360-second provider timeout, one
 review per candidate at a time);
 interview evaluation and next-question generation share 45 seconds before persistence, inside a 50-second gateway deadline;
 the HTTP handler has 55 seconds, inside both nginx proxies' 60-second read deadline. This leaves room
 for storage and the contract error envelope. A provider timeout remains a visible integration failure;
 no request falls back to synthetic data. HTTP timeout regressions use Tokio virtual time.
+Interactive Grok calls explicitly request low reasoning; profile reviews default to medium. Configuration,
+measured synthetic timings and their accuracy limits are in [AI latency](../docs/ai-latency.md).
 
 Five idempotent commands live in `application/src/service/commands.rs`. The key, domain effects and serialized
 response share one transaction; failed work rolls back. Same-key callers serialize in PostgreSQL and replay the

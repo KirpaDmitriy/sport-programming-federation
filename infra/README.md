@@ -171,7 +171,7 @@ Host-side secrets (never committed):
 | `/etc/fsp/cliproxy.yaml` | CLIProxyAPI config; template: [`llm/cliproxy.yaml.example`](llm/cliproxy.yaml.example) |
 | `/var/lib/fsp/cliproxy-auth/xai-*.json` | xAI OAuth token file (writable — CLIProxyAPI refreshes it) |
 | `/var/lib/fsp/bifrost/config.json` | Bifrost config; reference: [`llm/bifrost-config.json`](llm/bifrost-config.json). The provider timeout is 360 s: a deep-reasoning estimate review takes one to four minutes; restart `fsp-bifrost` after changing it |
-| `/etc/fsp/llm.env` | `NDDEV_CLIPROXY_KEY` (CLIProxyAPI api-key), `NDDEV_BIFROST_KEY` (Bifrost virtual key) and the backend-side `BIFROST_CHAT_URL`, `BIFROST_API_KEY` (= the virtual key), `BIFROST_MODEL=grok-build/grok-4.7`, optional `BIFROST_REASONING_EFFORT` (default `high`, `none` disables it for the background estimate review) — `fsp-api.service` loads the same file, so provisioning never rewrites it |
+| `/etc/fsp/llm.env` | `NDDEV_CLIPROXY_KEY` (CLIProxyAPI api-key), `NDDEV_BIFROST_KEY` (Bifrost virtual key) and the backend-side `BIFROST_CHAT_URL`, `BIFROST_API_KEY` (= the virtual key), `BIFROST_MODEL=grok-build/grok-4.7`, optional `BIFROST_REASONING_EFFORT` (background review: default `medium`, `none` omits the setting), `BIFROST_INTERACTIVE_REASONING_EFFORT` and `INTERVIEW_REASONING_EFFORT` (interactive Grok: default `low`) — `fsp-api.service` loads the same file, so provisioning never rewrites it |
 
 Without configured Bifrost the backend reports `meta.capabilities.realLlm: false` and builds a deterministic
 graph from stored skills. An error from a configured provider remains an error; it never silently falls back. The xAI OAuth token is shared with the local `nddev-runtime` setup; refresh-token rotation
