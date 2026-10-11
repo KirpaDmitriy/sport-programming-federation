@@ -515,6 +515,11 @@ test('graph interview follows prerequisites and rejects a stale answer', async (
     body: { questionId: started.currentQuestion.id },
     status: 503,
   });
+  await request('POST', `/api/v1/me/interviews/${started.id}/transcription`, {
+    actor: candidate,
+    body: { questionId: started.currentQuestion.id, audioBase64: 'YXVkaW8=', mimeType: 'audio/webm' },
+    status: 503,
+  });
 
   const answered = (
     await request('POST', `/api/v1/me/interviews/${started.id}/answers`, {

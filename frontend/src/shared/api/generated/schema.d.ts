@@ -573,6 +573,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/me/interviews/{interviewId}/transcription": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * transcribeInterviewSpeech
+         * @description Contract operation; implemented by the reference mock and by the Rust backend (coverage in docs/backend-implementation-checklist.md).
+         */
+        post: operations["transcribeInterviewSpeech"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/jobs/{jobId}": {
         parameters: {
             query?: never;
@@ -2798,6 +2818,17 @@ export interface components {
             mimeType: string;
             provider: string;
             voice: string;
+        };
+        InterviewTranscriptionInput: {
+            questionId: string;
+            audioBase64: string;
+            /** @enum {string} */
+            mimeType: "audio/webm" | "audio/mp4" | "audio/ogg";
+        };
+        SpeechTranscript: {
+            text: string;
+            provider: string;
+            durationSeconds: number;
         };
         InterviewDelivery: {
             speechText: string;
@@ -6886,6 +6917,140 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SpeechAudio"];
+                };
+            };
+            /** @description Malformed request or schema validation error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Missing or expired mock session */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Role, consent, or origin restriction */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unknown resource or resource outside this actor/company */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description State, idempotency, or cooldown conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Request body exceeds limit */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unsupported media type */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Valid shape but invalid domain values */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Verification, email delivery, or proxy request limit */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Response conformance or unexpected server failure */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Verification provider failed to accept delivery */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Deterministic upstream error scenario */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    transcribeInterviewSpeech: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                interviewId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InterviewTranscriptionInput"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SpeechTranscript"];
                 };
             };
             /** @description Malformed request or schema validation error */

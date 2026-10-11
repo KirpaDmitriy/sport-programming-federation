@@ -984,6 +984,12 @@ export const schemas = {
   }),
   InterviewSpeechInput: obj({ questionId: id }),
   SpeechAudio: obj({ audioBase64: str(), mimeType: str(), provider: str(), voice: str() }),
+  InterviewTranscriptionInput: obj({
+    questionId: id,
+    audioBase64: str({ minLength: 1, maxLength: 4_000_000 }),
+    mimeType: en('audio/webm', 'audio/mp4', 'audio/ogg'),
+  }),
+  SpeechTranscript: obj({ text: str({ minLength: 1 }), provider: str(), durationSeconds: num({ minimum: 0 }) }),
   InterviewDelivery: obj({ speechText: str(), avatarCue: en('speaking') }),
   InterviewQuestion: obj({
     id,
@@ -1212,6 +1218,10 @@ export const routes = [
   route('post', '/api/v1/me/interviews/{interviewId}/speech', 'synthesizeInterviewSpeech', 'SpeechAudio', {
     auth: 'candidate',
     body: 'InterviewSpeechInput',
+  }),
+  route('post', '/api/v1/me/interviews/{interviewId}/transcription', 'transcribeInterviewSpeech', 'SpeechTranscript', {
+    auth: 'candidate',
+    body: 'InterviewTranscriptionInput',
   }),
   route('get', '/api/v1/jobs/{jobId}', 'getJob', 'Job', { auth: 'any' }),
   route('get', '/api/v1/me/tasks', 'getMyTasks', 'MyTasks', { auth: 'candidate' }),
