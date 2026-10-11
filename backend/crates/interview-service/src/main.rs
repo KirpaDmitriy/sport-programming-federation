@@ -25,6 +25,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     .or_else(|| optional_env("BIFROST_MODEL"))
                     .unwrap_or_else(|| "openai/gpt-5-mini".into()),
             )
+            .and_then(|model| {
+                model.with_reasoning_effort(optional_env("INTERVIEW_REASONING_EFFORT"))
+            })
             .map_err(|_| "invalid Bifrost interview configuration")?,
         )
     } else {
