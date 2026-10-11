@@ -5,8 +5,8 @@ external CI migration in #40. Both deliveries are complete; #50 checked consiste
 Private stand/Resend state is in the original checkout's ignored .fsp-infra/; never print credentials.
 User explicitly authorized existing CI servers after canonical Actions billing failed and runner registration
 was denied. Both former runner hosts are now gone: runner-2 was retired earlier, and an external DigitalOcean
-action deleted runner-1 on 2026-10-11 at 08:16 UTC. CI is unavailable; #161 awaits the owner's replacement-host
-choice. Other projects/hosts are not automatically authorized. Do not connect to the retired IPs.
+action deleted runner-1 on 2026-10-11 at 08:16 UTC. Operator-assisted CI recovery now uses the existing private Amsterdam workspace host. Ubuntu SSH troubleshooting
+was stopped at the owner's request; unattended authentication remains unresolved in #161. Other projects/hosts are not automatically authorized. Do not connect to the retired IPs.
 
 Canonical upstream KirpaDmitriy/sport-programming-federation; the additional GitHub mirror is retired. Feature -> danil/dima
 -> dev -> main uses PRs. infra/ci controller reports four fsp/* statuses, preserves independent security checks,
@@ -36,13 +36,14 @@ invalidate old sessions/codes without deleting accounts. SMTP delivery and actua
 
 Owner standard: no backups, snapshots, off-host backup copies or redundant repository mirroring unless explicitly
 requested later. FSP backup units are masked; provisioning/CI must not recreate archives. Existing project backup
-archives were deleted. Sync local branches with canonical upstream only. No OpenObserve: inspect systemd/nginx logs.
+archives were deleted. Sync local branches with canonical upstream only. OpenObserve 1.0.4 and Vector 0.59.0 are active on the stand; see infra/observability/README.md.
 GitHub OAuth remains deferred. No production DB reset, unrelated-host changes or unrequested credential rotation.
 
-Latest review #138; compare upstream/main and /opt/fsp/current. The deleted runner's deployed.json is unavailable;
-recreate CI evidence only through full gates and public acceptance. Accepted 405fecc remains live; original gates
-and public acceptance (2 tests, 49.3 s) passed. The later controller recheck lost its host after platform passed;
-backend/compose/release-safety are infrastructure errors. Independent application verification was LIVE-OK.
+Compare upstream/main, /opt/fsp/current and /var/lib/fsp-ci/deployed.json on Amsterdam. Historical 405fecc
+receipts are not current proof. The one-off recovery bridge calls the installed controller through the owner's
+existing GitHub CLI session; no GitHub token is copied into jobs. The timer is disabled. Four real gate statuses
+and public/mail acceptance are still mandatory. Source integration is PR #172; feature issues remain open until
+actual live verification. The operator bridge is private operational tooling, not an unattended CI restoration.
 Credential follow-up #139 installed a separate classic PAT for rldyourmnd with exactly repo scope on October 11;
 expires November 10, 2026 at 06:31:54 UTC. Its active secret copy was on the deleted host. Recovery must establish
 whether an authorized migration preserved it; otherwise replace it and revoke the orphan dedicated token.
@@ -67,3 +68,8 @@ timeout preserved state and retry succeeded. This fix awaits restored CI and rel
 Shutdown follow-up b56bcff registers signals synchronously and propagates setup errors through all four main
 functions, preventing a detached shutdown-task failure from looking like a successful service exit. Independent
 code review passed. Issues #153/#154 are independently live-verified and closed; #152/#155 await CI restoration.
+
+Observability: private UI on 127.0.0.1:5080, ingest-only Vector credential, fixed same-origin browser intake,
+14-day retention, bounded CPU/memory/queues and vendor telemetry disabled. Nine-panel dashboard queries and
+stored RUM/replay privacy canaries were checked on the actual stand. No external alert delivery or OTLP exporter.
+Application activation is through verified main; support-service installation does not prove browser rollout.

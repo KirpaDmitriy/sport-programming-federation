@@ -6,11 +6,18 @@ The October 8 migration was explicitly authorized after canonical repository bil
 repository-level runner registration was denied to the collaborator. Historical failed Actions runs remain
 visible; they are superseded by the new `fsp/*` policy, never rewritten as successes.
 
-**Current interruption:** on October 11, 2026 at 08:16 UTC an external operation deleted `gha-runner-1`.
-CI is unavailable; [#161](https://github.com/KirpaDmitriy/sport-programming-federation/issues/161) tracks replacement-host
-selection and recovery. The last accepted application remains live. The instructions below describe the intended
-controller, not a currently running installation. Do not reuse the deleted host's IP or claim its local receipts
-still exist. `server-gha-runner-2` was retired earlier and is not a fallback.
+**Recovery mode:** an external operation deleted `gha-runner-1` on October 11, 2026 at 08:16 UTC;
+`server-gha-runner-2` was retired earlier. Their private receipts and dedicated token are unavailable. Do not use
+those retired hosts. [#161](https://github.com/KirpaDmitriy/sport-programming-federation/issues/161) tracks recovery.
+
+The existing Amsterdam workspace host now has a separately installed FSP CI user and the reviewed gate scripts.
+An operator-assisted one-off bridge uses the owner's existing GitHub CLI session for API operations and canonical
+fetches, then calls the installed controller's gate, lane-merge and deployment functions. It preserves four gate
+statuses, exact-tree evidence, the controller lock, independent security checks and actual public/mail acceptance.
+The bridge does not copy the GitHub token or inject credentials into test jobs. The timer remains disabled until
+unattended authentication is configured. Ubuntu SSH troubleshooting was stopped at the owner's request; do not
+claim that runner or a new dedicated PAT has been restored. Private logs/evidence and accepted-release receipts
+use `/var/lib/fsp-ci` on Amsterdam. A release is accepted only when its actual receipt and commit status agree.
 
 ## Gates and trust
 
