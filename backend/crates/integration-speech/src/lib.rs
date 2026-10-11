@@ -77,6 +77,52 @@ pub struct YandexSpeech {
     model: Option<String>,
 }
 
+pub struct SileroSpeech {
+    client: Client,
+    endpoint: Url,
+    voice: String,
+}
+
+impl SileroSpeech {
+    pub fn new(endpoint: &str, voice: String) -> Result<Self, IntegrationError> {
+        Ok(Self {
+            client: client()?,
+            endpoint: endpoint.parse().map_err(invalid_configuration)?,
+            voice,
+        })
+    }
+}
+
+#[async_trait]
+impl SpeechSynthesisGateway for SileroSpeech {
+    async fn synthesize(&self, text: &str) -> Result<SpeechAudioView, IntegrationError> {
+        validate_text(text)?;
+        let response = self
+            .client
+            .post(self.endpoint.clone())
+            .json(&json!({
+                "text": text,
+                "voice": self.voice,
+                "sample_rate": 24_000
+            }))
+            .send()
+            .await
+            .map_err(unavailable)?
+            .error_for_status()
+            .map_err(unavailable)?;
+        let bytes = response.bytes().await.map_err(unavailable)?;
+        if !valid_wav(&bytes) || bytes.len() > MAX_AUDIO_BYTES {
+            return Err(invalid_response());
+        }
+        Ok(SpeechAudioView {
+            audio_base64: base64::engine::general_purpose::STANDARD.encode(bytes),
+            mime_type: "audio/wav".into(),
+            provider: "silero_v5_5".into(),
+            voice: self.voice.clone(),
+        })
+    }
+}
+
 impl YandexSpeech {
     pub fn new(
         endpoint: &str,
@@ -179,6 +225,10 @@ fn validate_text(text: &str) -> Result<(), IntegrationError> {
     Ok(())
 }
 
+fn valid_wav(bytes: &[u8]) -> bool {
+    bytes.len() >= 44 && &bytes[..4] == b"RIFF" && &bytes[8..12] == b"WAVE"
+}
+
 fn invalid_input() -> IntegrationError {
     IntegrationError {
         code: "speech_input_invalid",
@@ -239,5 +289,15 @@ mod tests {
                 .code,
             "speech_input_invalid"
         );
+    }
+
+    #[test]
+    fn validates_wav_container_boundaries() {
+        assert!(!valid_wav(&[]));
+        assert!(!valid_wav(&[0; 44]));
+        let mut wav = [0; 44];
+        wav[..4].copy_from_slice(b"RIFF");
+        wav[8..12].copy_from_slice(b"WAVE");
+        assert!(valid_wav(&wav));
     }
 }

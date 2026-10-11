@@ -11,7 +11,7 @@ use fsp_integration_email::{DemoDelivery, HybridDelivery, ResendDelivery};
 use fsp_integration_fsp_synthetic::HttpFsp;
 use fsp_integration_github::{GitHubApi, HttpInsights};
 use fsp_integration_interview::HttpInterviewGateway;
-use fsp_integration_speech::{XaiSpeech, YandexSpeech};
+use fsp_integration_speech::{SileroSpeech, XaiSpeech, YandexSpeech};
 use fsp_storage_postgres::PostgresRepository;
 use tokio::net::TcpListener;
 use tokio::signal;
@@ -153,7 +153,17 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 )
                 .map_err(|error| format!("Yandex speech adapter: {}", error.message))?,
             )),
-            Some(_) => return Err("FSP_TTS_PROVIDER must be browser, xai or yandex".into()),
+            Some("silero") => Some(Arc::new(
+                SileroSpeech::new(
+                    &env::var("SILERO_TTS_URL")
+                        .unwrap_or_else(|_| "http://127.0.0.1:4050/synthesize".into()),
+                    env::var("SILERO_TTS_VOICE").unwrap_or_else(|_| "eugene".into()),
+                )
+                .map_err(|error| format!("Silero speech adapter: {}", error.message))?,
+            )),
+            Some(_) => {
+                return Err("FSP_TTS_PROVIDER must be browser, silero, xai or yandex".into());
+            }
         };
     let listener = TcpListener::bind((host.as_str(), port)).await?;
     let repository = Arc::new(
