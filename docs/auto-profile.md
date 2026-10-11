@@ -38,7 +38,7 @@ the mock; the frontend receives labels through the generated types and `/meta`.
 - GitHub detection maps its technologies and languages (including `.bsl`/`.os` 1C sources and 1C configuration
   dumps) to catalog skills, so evidence covers the whole catalog.
 
-## Estimate (`estimate-v5`)
+## Estimate (`estimate-v6`)
 
 A pure domain function turns the GitHub report, FSP results and the stated experience into an estimate:
 
@@ -76,7 +76,7 @@ A pure domain function turns the GitHub report, FSP results and the stated exper
 - **Confidence** follows the amount and coverage of evidence; with too little public data the estimate says so and
   gives no category until a test or more evidence. An outdated GitHub report lowers it one level.
 - **Profile answers:** industry IT, specialization, target grade = estimated grade, stack (top evidenced catalog
-  skills), experience text and duration (the longer of public and stated), team role from ownership and
+  skills), experience text, team role from ownership and
   collaboration, soft skills with public evidence behind them (documentation, descriptive commits, led projects,
   several related projects, reviews, accepted outside contributions, issues, team competitions), and the name from
   the public GitHub profile when the candidate has none.
@@ -106,12 +106,18 @@ category, and confirmed candidates rank first.
 
 ### Answers the candidate owns
 
-The questionnaire takes experience as years and months, and the estimate card asks only the two answers evidence
-cannot give — total experience and role — in «Уточните два ответа». Editing the stated experience or team role
-recomputes the estimate at once. Opening the profile refreshes an estimate of earlier rules (or a missing one with
-finished sources); «Пересчитать» also re-syncs FSP sources. «Заполнить анкету по источникам» (`POST /me/profile/estimate?answers=replace`) hands every answer but an
-edited name back to the evidence; stated experience then no longer counts until it is typed again. «Пересчитать»
-also re-analyzes a GitHub report from an earlier analysis version; the job applies the new estimate when it ends.
+Experience is the candidate's own answer, never filled from evidence (`estimate-v6`): public GitHub activity shows a
+lower bound of tenure, not how long someone has studied and worked, so it stays evidence for the caps and the notes
+(«публично видно 1 год 9 мес.»). The questionnaire asks «В IT с какого года» (`experienceSince`): study, own projects
+and work, private repositories included. Experience counts whole years from that year up to the current one, so it
+stays correct as time passes; months typed or imported from a résumé (`experienceMonths`) still work and are replaced
+by a start year. Earlier estimates that wrote public tenure into the answer are cleared on the next estimate. The
+estimate card asks only the two answers evidence cannot give — the start year and the role — in «Уточните два
+ответа». Editing either recomputes the estimate at once. Opening the profile refreshes an estimate of earlier rules
+(or a missing one with finished sources); «Пересчитать» also re-syncs FSP sources and re-analyzes a GitHub report from
+an earlier analysis version (the job applies the new estimate when it ends). «Заполнить анкету по источникам»
+(`POST /me/profile/estimate?answers=replace`) hands every evidence-based answer but an edited name back to the
+evidence; the stated experience stays.
 
 ### LLM assistance
 

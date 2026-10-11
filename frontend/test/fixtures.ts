@@ -34,6 +34,7 @@ export function profile(overrides: Partial<S['Profile']> = {}): S['Profile'] {
     stack: ['rust', 'postgresql'],
     teamRole: 'Разработчик',
     experienceMonths: 18,
+    experienceSince: null,
     experience: 'API',
     softSkills: [],
     consents: { processing: true, publication: true },

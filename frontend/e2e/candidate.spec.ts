@@ -34,7 +34,7 @@ test('UI-02 UI-07 a new candidate fills the questionnaire by hand and confirms a
   await page.getByLabel('Грейд для проверки').selectOption('junior');
   await page.getByRole('combobox', { name: 'Стек' }).fill('Rust');
   await page.getByRole('option', { name: /^Rust/ }).click();
-  await page.getByLabel('Общий стаж, лет').fill('0');
+  await page.getByLabel('В IT с какого года').fill(String(new Date().getFullYear()));
   await page.getByRole('textbox', { name: 'Опыт', exact: true }).fill('Учебные проекты на Rust.');
   await page.getByLabel('Роль в команде').fill('Разработчик');
   await page.getByRole('button', { name: 'Сохранить анкету' }).click();
@@ -206,8 +206,12 @@ test('UI-06 a new candidate connects GitHub and gets the questionnaire and a cat
   await expect(page.getByText('Проверить и поправить анкету')).toBeVisible();
   await expect(page.getByLabel('Имя и фамилия')).toHaveValue('Иван Петров');
   await expect(page.getByLabel('Грейд для проверки')).toHaveValue('middle');
-  await expect(page.locator('#profile-years')).toHaveValue('3');
-  await expect(page.locator('#profile-months')).toHaveValue('9');
+  // Public tenure is not written in as the candidate's experience; the start year is asked instead.
+  await expect(page.locator('#profile-since')).toHaveValue('');
+  await page.locator('#refine-since').fill('2016');
+  await page.getByRole('button', { name: 'Пересчитать с уточнениями' }).click();
+  await expect(page.getByText('Оценка пересчитана')).toBeVisible();
+  await expect(page.locator('#profile-since')).toHaveValue('2016');
   await expect(page.getByText('Заполнено автоматически.').first()).toBeVisible();
 
   await page.goto('/candidate/overview');

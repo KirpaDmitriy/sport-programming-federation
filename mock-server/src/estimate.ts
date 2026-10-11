@@ -13,7 +13,7 @@ export type Category = {
 };
 
 /**
- * Behavior fixture for the development API; the Rust backend computes estimates with `estimate-v3`.
+ * Behavior fixture for the development API; the Rust backend computes estimates with `estimate-v6`.
  *
  * The mock's evidence is fixed: one GitHub fixture report and one fictional published FSP result.
  * The Rust rules wrote their estimates to `contracts/fixtures/profile-estimates.json`, so the mock
@@ -48,7 +48,6 @@ export const AUTO_FIELDS: readonly AutoField[] = [
   'specialization',
   'selectedGrade',
   'stack',
-  'experienceMonths',
   'experience',
   'teamRole',
   'softSkills',
@@ -94,9 +93,10 @@ export function applyEstimate(candidate: Candidate, estimate: Estimate): AutoFie
     candidate.stack = [...answers.stack];
     filled.push('stack');
   }
-  if (answers.experienceMonths !== null && (auto('experienceMonths') || candidate.experienceMonths === null)) {
-    candidate.experienceMonths = Math.min(answers.experienceMonths, 1200);
-    filled.push('experienceMonths');
+  // Earlier estimates wrote public tenure into the answer; it was never the candidate's.
+  if (auto('experienceMonths')) {
+    candidate.experienceMonths = null;
+    candidate.autoFields = candidate.autoFields.filter((field) => field !== 'experienceMonths');
   }
   if (answers.experience.trim() && (auto('experience') || !candidate.experience.trim())) {
     candidate.experience = answers.experience.slice(0, 4000);

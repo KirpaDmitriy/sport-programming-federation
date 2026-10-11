@@ -38,6 +38,7 @@ export interface Candidate {
   stack: SkillId[];
   teamRole: string;
   experienceMonths: number | null;
+  experienceSince: number | null;
   experience: string;
   softSkills: string[];
   consents: S['Profile']['consents'];
@@ -385,6 +386,7 @@ export function makeCandidate(
     stack: fresh ? [] : frontend ? ['react'] : ['rust', 'postgresql', 'docker'],
     teamRole: fresh ? '' : 'Разработчик',
     experienceMonths: fresh ? null : 18,
+    experienceSince: null,
     experience: fresh ? '' : 'Разработка API и командная работа над учебными и открытыми проектами.',
     softSkills: fresh ? [] : ['Командная работа', 'Объяснение решений'],
     consents: { processing: !fresh, publication: !fresh },

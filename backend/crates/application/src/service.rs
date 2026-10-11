@@ -6,7 +6,7 @@ pub use commands::Commands;
 
 use std::sync::Arc;
 
-use chrono::{Duration, Utc};
+use chrono::{Datelike, Duration, Utc};
 use fsp_domain::{
     Account, CandidateIndexRecord, CandidateProfile, Company, Consents, EvidenceStatus, Grade,
     HiringNeedRecord, InteractionStatus, Requirement, Role, Specialization, rank_candidates, score,
@@ -539,7 +539,7 @@ impl PlatformService {
                 .map_err(ApplicationError::storage)?
                 .ok_or_else(|| ApplicationError::new(404, "not_found", "Профиль не найден"))?;
             let stated = (
-                profile.stated_experience_months(),
+                profile.stated_experience_months(current_year()),
                 profile.stated_team_role().map(str::to_owned),
             );
             apply_profile_patch(&mut profile, patch.clone())?;
@@ -548,7 +548,7 @@ impl PlatformService {
             if profile.estimate.is_some()
                 && profile.consents.processing
                 && (
-                    profile.stated_experience_months(),
+                    profile.stated_experience_months(current_year()),
                     profile.stated_team_role().map(str::to_owned),
                 ) != stated
                 && let Some(estimate) = self.answer_estimate(&profile).await?
@@ -3438,6 +3438,7 @@ impl PlatformService {
                 stack: Vec::new(),
                 team_role: String::new(),
                 experience_months: None,
+                experience_since: None,
                 experience: String::new(),
                 soft_skills: Vec::new(),
                 consents: Consents {
@@ -4074,7 +4075,12 @@ fn profile_view(
         selected_grade: profile.selected_grade,
         stack: profile.stack,
         team_role: profile.team_role,
-        experience_months: profile.experience_months,
+        // A start year counts up to the current year whenever the profile is read.
+        experience_months: profile
+            .experience_since
+            .map(|since| fsp_domain::experience_since_months(since, current_year()))
+            .or(profile.experience_months),
+        experience_since: profile.experience_since,
         experience: profile.experience,
         soft_skills: profile.soft_skills,
         consents: profile.consents,
@@ -4125,6 +4131,11 @@ fn now() -> String {
     Utc::now().to_rfc3339()
 }
 
+/// The current calendar year: experience stated as a start year counts up to it.
+fn current_year() -> i32 {
+    Utc::now().year()
+}
+
 fn unique(values: Vec<String>) -> Vec<String> {
     let mut result = Vec::new();
     for value in values {
@@ -4165,12 +4176,20 @@ fn apply_profile_patch(
         claim_field(profile, "teamRole", profile.team_role != value);
         profile.team_role = value;
     }
-    if let Some(value) = patch.experience_months {
+    if let Some(since) = patch.experience_since {
+        // A start year is the candidate's statement; the months follow from it.
+        let months = since.map(|year| fsp_domain::experience_since_months(year, current_year()));
+        claim_field(profile, "experienceMonths", true);
+        profile.experience_since = since;
+        profile.experience_months = months;
+    } else if let Some(value) = patch.experience_months {
         claim_field(
             profile,
             "experienceMonths",
             profile.experience_months != value,
         );
+        // Months typed or imported replace a start year.
+        profile.experience_since = None;
         profile.experience_months = value;
     }
     if let Some(value) = patch.experience {
@@ -4209,6 +4228,7 @@ fn validate_profile_patch(patch: &ProfilePatch) -> Result<(), ApplicationError> 
         || patch.stack.is_some()
         || patch.team_role.is_some()
         || patch.experience_months.is_some()
+        || patch.experience_since.is_some()
         || patch.experience.is_some()
         || patch.soft_skills.is_some()
         || patch.consents.is_some();
@@ -4230,6 +4250,11 @@ fn validate_profile_patch(patch: &ProfilePatch) -> Result<(), ApplicationError> 
         .is_some_and(|value| value.is_some_and(|months| months > 1200))
     {
         return Err(validation("Опыт не может превышать 1200 месяцев"));
+    }
+    if patch.experience_since.is_some_and(|value| {
+        value.is_some_and(|year| !(1950..=current_year()).contains(&i32::from(year)))
+    }) {
+        return Err(validation("Год начала в IT — от 1950 до текущего года"));
     }
     if patch
         .team_role
