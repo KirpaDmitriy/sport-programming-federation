@@ -121,6 +121,19 @@ The lifecycle follows [React effect cleanup](https://react.dev/reference/react/u
 [media playback](https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/play); provider reads use
 [reqwest chunks](https://docs.rs/reqwest/0.12.28/reqwest/struct.Response.html#method.chunk).
 
+### Local recording validation
+
+With `FSP_STT_PROVIDER=gigaam`, the platform sends a bounded browser recording to the private GigaAM worker.
+WebM, MP4 and Ogg inputs are decoded into mono 16 kHz PCM, then normalized to WAV for recognition. Duration is
+calculated from decoded samples: browser streams can omit container duration metadata. The worker rejects
+empty, malformed and over-25-second audio. Decoding has a 10-second deadline and a 26-second output ceiling,
+so an excessive recording is rejected rather than silently transcribed only in part. Temporary audio is removed
+after processing. See [FFmpeg duration limits](https://ffmpeg.org/ffmpeg.html#Main-options).
+
+Both local speech workers handle a disconnected response socket as a cancelled delivery without an uncaught
+traceback; other processing errors remain visible. `infra/tests/gigaam-runtime.sh` checks both seekable and
+streaming WebM against the actual speech services.
+
 ## Voice and avatar decision
 
 The implemented experience uses a code-rendered interactive avatar and optional browser voice, not generated
