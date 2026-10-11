@@ -2,6 +2,8 @@
 
 One DigitalOcean droplet (`fsp-career-demo`, Ubuntu 24.04, 8 vCPU / 16 GiB) serves the platform at
 <https://nddev.link> through Cloudflare Full (strict), with a Let's Encrypt origin certificate.
+
+Before releasing or recovering deployment access, read the [production deployment runbook](../docs/DEPLOYMENT_RUNBOOK.md). It records the actually used private-controller path and the current CI-host recovery state.
 The original IP `188.166.88.183` retains its short-lived certificate for a canonical HTTPS redirect. Access material (SSH
 key, host key, droplet metadata) lives in the git-ignored `.fsp-infra/` at the repository root.
 
