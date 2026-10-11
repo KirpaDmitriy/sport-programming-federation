@@ -40,9 +40,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let listener = tokio::net::TcpListener::bind((host.as_str(), port)).await?;
     tracing::info!(address = %listener.local_addr()?, "fsp-interview-service listening");
     axum::serve(listener, http::router(service, api_token))
-        .with_graceful_shutdown(async {
-            let _ = tokio::signal::ctrl_c().await;
-        })
+        .with_graceful_shutdown(shutdown()?)
         .await?;
     Ok(())
 }
@@ -72,4 +70,25 @@ fn optional_env(name: &str) -> Option<String> {
 
 fn required_env(name: &str) -> Result<String, Box<dyn Error>> {
     optional_env(name).ok_or_else(|| format!("{name} is required").into())
+}
+
+// Register before axum spawns its shutdown task, so setup failures exit main with an error.
+fn shutdown() -> std::io::Result<impl std::future::Future<Output = ()>> {
+    #[cfg(unix)]
+    let mut interrupt = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt())?;
+    #[cfg(windows)]
+    let mut interrupt = tokio::signal::windows::ctrl_c()?;
+    #[cfg(unix)]
+    let mut terminate = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
+    Ok(async move {
+        #[cfg(unix)]
+        tokio::select! {
+            _ = interrupt.recv() => {}
+            _ = terminate.recv() => {}
+        }
+        #[cfg(windows)]
+        {
+            interrupt.recv().await;
+        }
+    })
 }

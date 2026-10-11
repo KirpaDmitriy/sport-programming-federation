@@ -17,6 +17,8 @@ StateDirectory=fsp
 ExecStart=/opt/fsp/current/bin/fsp-career-api
 Restart=on-failure
 RestartSec=2
+# Request deadlines are at most 55 seconds; retain time to finish the response.
+TimeoutStopSec=60s
 NoNewPrivileges=yes
 ProtectSystem=strict
 ProtectHome=yes

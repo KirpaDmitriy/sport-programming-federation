@@ -27,6 +27,12 @@ depends on no other crate of the project and no framework; the application depen
 the port traits; adapters depend inward; only `server` knows the concrete adapters. Cargo dependencies enforce the
 direction.
 
+All four HTTP binaries drain active requests on SIGINT and SIGTERM. Supervisor stop grace for the API/interview
+path is 60 seconds; forced termination cannot guarantee completion. Background analysis/review tasks remain
+process-local, and sequential deployment can reject new connections during a restart. The interview process
+regression uses a local controlled model and isolated PostgreSQL to prove a pending answer persists once before
+clean exit on either signal; it does not call a real provider.
+
 ## Toolchain
 
 Rust 1.99.0 (`rust-toolchain.toml`), edition 2024, resolver 3. Workspace `Cargo.toml` declares dependency
