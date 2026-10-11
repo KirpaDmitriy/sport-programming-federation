@@ -114,6 +114,7 @@ class CredentialInstallation(unittest.TestCase):
             with patch("sys.stdin", io.StringIO(TOKEN)), patch("sys.stderr", output), \
                  patch.object(installer.urllib.request.OpenerDirector, "open", side_effect=error):
                 self.assertEqual(installer.main([]), 1)
+            self.assertTrue(error.closed)
             self.assertNotIn(TOKEN, output.getvalue())
             self.assertIn(str(code), output.getvalue())
             self.assert_preserved()
