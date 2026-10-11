@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { type Profile, profileKey, updateProfile, yearsInIt } from '@/entities/profile';
 import { useScope } from '@/entities/session';
 import { describeError } from '@/shared/api';
@@ -14,9 +14,18 @@ export function RefineEstimateForm({ profile }: { profile: Profile }) {
   const scope = useScope();
   const queryClient = useQueryClient();
   const toast = useToast();
-  const [since, setSince] = useState(profile.experienceSince === null ? '' : String(profile.experienceSince));
+  const savedSince = profile.experienceSince === null ? '' : String(profile.experienceSince);
   const typedRole = profile.autoFields.includes('teamRole') ? '' : profile.teamRole;
+  const [since, setSince] = useState(savedSince);
   const [role, setRole] = useState(typedRole);
+  const [edited, setEdited] = useState(false);
+  // Background updates (a review, a re-analysis) never wipe what the candidate is typing; an
+  // untouched form follows the saved answers.
+  useEffect(() => {
+    if (edited) return;
+    setSince(savedSince);
+    setRole(typedRole);
+  }, [edited, savedSince, typedRole]);
   const year = since.length === 4 ? Number(since) : null;
   const thisYear = new Date().getFullYear();
   const validYear = year !== null && year >= 1950 && year <= thisYear;
@@ -30,6 +39,7 @@ export function RefineEstimateForm({ profile }: { profile: Profile }) {
       }),
     onSuccess: (updated) => {
       queryClient.setQueryData(profileKey(scope), updated);
+      setEdited(false);
       toast('Оценка пересчитана');
     },
   });
@@ -56,7 +66,10 @@ export function RefineEstimateForm({ profile }: { profile: Profile }) {
           hint={validYear ? `${yearsInIt(year)} лет в IT` : undefined}
           error={since.length === 4 && !validYear ? `Год от 1950 до ${thisYear}` : undefined}
           value={since}
-          onChange={(event) => setSince(event.target.value.replace(/\D/g, '').slice(0, 4))}
+          onChange={(event) => {
+            setEdited(true);
+            setSince(event.target.value.replace(/\D/g, '').slice(0, 4));
+          }}
         />
         <div className={styles.role}>
           <TextField
@@ -66,7 +79,10 @@ export function RefineEstimateForm({ profile }: { profile: Profile }) {
             placeholder="Например: тимлид"
             list="refine-role-suggestions"
             value={role}
-            onChange={(event) => setRole(event.target.value)}
+            onChange={(event) => {
+              setEdited(true);
+              setRole(event.target.value);
+            }}
           />
         </div>
         <datalist id="refine-role-suggestions">
