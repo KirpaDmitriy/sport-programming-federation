@@ -154,7 +154,8 @@ Backup creation is disabled by owner policy; both historical backup units remain
 
 ## LLM chain
 
-The Rust backend can call a real model for competence-graph extraction. The chain on the stand is
+The Rust backend calls a real model for the background estimate review (deep reasoning, growth advice), résumé
+fields with page excerpts and the assessment assistant; the competence graph is deterministic. The chain on the stand is
 `fsp-api` → Bifrost (`127.0.0.1:4000`) → CLIProxyAPI (`127.0.0.1:18317`) → xAI OAuth → Grok.
 
 Services `fsp-cliproxy.service` and `fsp-bifrost.service` run as `fsp`, bound to loopback. Binaries live in
