@@ -22,6 +22,7 @@ import { Route as CandidateSkillsRouteImport } from './routes/candidate/skills'
 import { Route as CandidateSourcesRouteImport } from './routes/candidate/sources'
 import { Route as CandidateTasksRouteImport } from './routes/candidate/tasks'
 import { Route as EmployerIndexRouteImport } from './routes/employer/index'
+import { Route as EmployerAnalyticsRouteImport } from './routes/employer/analytics'
 import { Route as EmployerCompanyRouteImport } from './routes/employer/company'
 import { Route as EmployerInvitationsRouteImport } from './routes/employer/invitations'
 import { Route as EmployerSettingsRouteImport } from './routes/employer/settings'
@@ -109,6 +110,11 @@ const CandidateTasksRoute = CandidateTasksRouteImport.update({
 const EmployerIndexRoute = EmployerIndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => EmployerRouteRoute,
+} as any)
+const EmployerAnalyticsRoute = EmployerAnalyticsRouteImport.update({
+  id: '/analytics',
+  path: '/analytics',
   getParentRoute: () => EmployerRouteRoute,
 } as any)
 const EmployerCompanyRoute = EmployerCompanyRouteImport.update({
@@ -252,6 +258,7 @@ export interface FileRoutesByFullPath {
   '/candidate/skills': typeof CandidateSkillsRoute
   '/candidate/sources': typeof CandidateSourcesRoute
   '/candidate/tasks': typeof CandidateTasksRoute
+  '/employer/analytics': typeof EmployerAnalyticsRoute
   '/employer/company': typeof EmployerCompanyRoute
   '/employer/invitations': typeof EmployerInvitationsRoute
   '/employer/settings': typeof EmployerSettingsRoute
@@ -288,6 +295,7 @@ export interface FileRoutesByTo {
   '/candidate/skills': typeof CandidateSkillsRoute
   '/candidate/sources': typeof CandidateSourcesRoute
   '/candidate/tasks': typeof CandidateTasksRoute
+  '/employer/analytics': typeof EmployerAnalyticsRoute
   '/employer/company': typeof EmployerCompanyRoute
   '/employer/invitations': typeof EmployerInvitationsRoute
   '/employer/settings': typeof EmployerSettingsRoute
@@ -327,6 +335,7 @@ export interface FileRoutesById {
   '/candidate/skills': typeof CandidateSkillsRoute
   '/candidate/sources': typeof CandidateSourcesRoute
   '/candidate/tasks': typeof CandidateTasksRoute
+  '/employer/analytics': typeof EmployerAnalyticsRoute
   '/employer/company': typeof EmployerCompanyRoute
   '/employer/invitations': typeof EmployerInvitationsRoute
   '/employer/settings': typeof EmployerSettingsRoute
@@ -367,6 +376,7 @@ export interface FileRouteTypes {
     | '/candidate/skills'
     | '/candidate/sources'
     | '/candidate/tasks'
+    | '/employer/analytics'
     | '/employer/company'
     | '/employer/invitations'
     | '/employer/settings'
@@ -403,6 +413,7 @@ export interface FileRouteTypes {
     | '/candidate/skills'
     | '/candidate/sources'
     | '/candidate/tasks'
+    | '/employer/analytics'
     | '/employer/company'
     | '/employer/invitations'
     | '/employer/settings'
@@ -441,6 +452,7 @@ export interface FileRouteTypes {
     | '/candidate/skills'
     | '/candidate/sources'
     | '/candidate/tasks'
+    | '/employer/analytics'
     | '/employer/company'
     | '/employer/invitations'
     | '/employer/settings'
@@ -566,6 +578,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/employer/'
       preLoaderRoute: typeof EmployerIndexRouteImport
+      parentRoute: typeof EmployerRouteRoute
+    }
+    '/employer/analytics': {
+      id: '/employer/analytics'
+      path: '/analytics'
+      fullPath: '/employer/analytics'
+      preLoaderRoute: typeof EmployerAnalyticsRouteImport
       parentRoute: typeof EmployerRouteRoute
     }
     '/employer/company': {
@@ -782,6 +801,7 @@ const CandidateRouteRouteWithChildren = CandidateRouteRoute._addFileChildren(
 )
 
 interface EmployerRouteRouteChildren {
+  EmployerAnalyticsRoute: typeof EmployerAnalyticsRoute
   EmployerCompanyRoute: typeof EmployerCompanyRoute
   EmployerInvitationsRoute: typeof EmployerInvitationsRoute
   EmployerSettingsRoute: typeof EmployerSettingsRoute
@@ -799,6 +819,7 @@ interface EmployerRouteRouteChildren {
 }
 
 const EmployerRouteRouteChildren: EmployerRouteRouteChildren = {
+  EmployerAnalyticsRoute: EmployerAnalyticsRoute,
   EmployerCompanyRoute: EmployerCompanyRoute,
   EmployerInvitationsRoute: EmployerInvitationsRoute,
   EmployerSettingsRoute: EmployerSettingsRoute,

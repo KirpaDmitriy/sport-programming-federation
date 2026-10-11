@@ -1178,6 +1178,7 @@ type Handlers = { [R in Route as R['operationId']]: (ctx: Context<BodyOf<R>, Act
 
 const handlers: Handlers = {
   getHealth: () => ({ status: 'ok', service: 'fsp-mock-api', version: '0.1.0' }),
+  synthesizeInterviewSpeech: () => fail(503, 'speech_not_configured', 'В демо-режиме используется голос браузера'),
   getMeta: ({ s }) => ({
     contractVersion: '0.1.0',
     mode: 'mock',
@@ -1192,6 +1193,8 @@ const handlers: Handlers = {
       githubOAuth: false,
       githubInsights: false,
       graphInterviews: true,
+      neuralTts: false,
+      hiringAnalytics: true,
       fspFixture: true,
       matching: true,
       directInvitations: true,
@@ -2099,6 +2102,83 @@ const handlers: Handlers = {
         .filter((item) => item.company.id === ctx.actor.companyId && (!needId || item.vacancy.id === needId))
         .sort(newestFirst)
         .map((item) => applicationDto(ctx.s, item)),
+    };
+  },
+  getHiringFlowAnalytics: (ctx) => {
+    const items = [...ctx.s.applications.values()].filter((item) => item.company.id === ctx.actor.companyId);
+    const total = items.length;
+    const reviewed = items.filter((item) => item.viewedAt).length;
+    const decided = items.filter((item) => item.respondedAt).length;
+    const accepted = items.filter((item) => item.status === 'accepted').length;
+    const percent = (value: number, denominator: number) =>
+      denominator ? Math.min(100, Math.round((value * 100) / denominator)) : 0;
+    const awaitingReview = total - reviewed;
+    const bottleneck =
+      total === 0
+        ? {
+            kind: 'no_data',
+            severity: 'info' as const,
+            title: 'Пока нечего сравнивать',
+            evidence: 'По опубликованным вакансиям ещё нет откликов.',
+            recommendation: 'Проверьте видимость вакансий и вернитесь после первых откликов.',
+          }
+        : awaitingReview >= 3 && percent(awaitingReview, total) >= 25
+          ? {
+              kind: 'review_queue',
+              severity: 'high' as const,
+              title: 'Отклики накапливаются до просмотра',
+              evidence: `Не просмотрено ${awaitingReview} из ${total} откликов (${percent(awaitingReview, total)}%).`,
+              recommendation: 'Назначьте владельца первичного разбора и ежедневное окно для новых откликов.',
+            }
+          : {
+              kind: 'stable',
+              severity: 'info' as const,
+              title: 'Явного узкого места пока нет',
+              evidence: 'Ни один этап не пересёк порог операционного риска.',
+              recommendation: 'Следите за временем до просмотра и решения по мере роста потока.',
+            };
+    const groups = new Map<string, typeof items>();
+    for (const item of items) groups.set(item.vacancy.id, [...(groups.get(item.vacancy.id) ?? []), item]);
+    return {
+      generatedAt: ctx.s.clock,
+      total,
+      stages: [
+        { id: 'received' as const, label: 'Получены', count: total, sharePercent: percent(total, total) },
+        { id: 'reviewed' as const, label: 'Просмотрены', count: reviewed, sharePercent: percent(reviewed, total) },
+        { id: 'decided' as const, label: 'Получили решение', count: decided, sharePercent: percent(decided, total) },
+        { id: 'accepted' as const, label: 'Приняты', count: accepted, sharePercent: percent(accepted, total) },
+      ],
+      medianTimeToViewHours: null,
+      medianTimeToDecisionHours: null,
+      acceptanceRatePercent: percent(accepted, decided),
+      vacancies: [...groups.values()].flatMap((group) => {
+        const first = group[0];
+        if (!first) return [];
+        const requiredMet = group.reduce((sum, item) => sum + applicationDto(ctx.s, item).match.requiredMet, 0);
+        const requiredTotal = group.reduce((sum, item) => sum + applicationDto(ctx.s, item).match.requiredTotal, 0);
+        return [
+          {
+            vacancyId: first.vacancy.id,
+            title: first.vacancy.title,
+            total: group.length,
+            awaitingReview: group.filter((item) => !item.viewedAt).length,
+            awaitingDecision: group.filter((item) => item.viewedAt && !item.respondedAt).length,
+            accepted: group.filter((item) => item.status === 'accepted').length,
+            closed: group.filter((item) => terminalStatus.has(item.status)).length,
+            requiredCoveragePercent: percent(requiredMet, requiredTotal),
+            gradeMatchPercent: percent(
+              group.filter((item) => applicationDto(ctx.s, item).match.gradeMatches).length,
+              group.length,
+            ),
+          },
+        ];
+      }),
+      bottlenecks: [bottleneck],
+      assistant: {
+        mode: 'metrics' as const,
+        summary: `${bottleneck.title}: ${bottleneck.evidence}`,
+        actions: [bottleneck.recommendation],
+      },
     };
   },
   getApplication: (ctx) => applicationDto(ctx.s, applicationFor(ctx, param(ctx, 'applicationId'))),

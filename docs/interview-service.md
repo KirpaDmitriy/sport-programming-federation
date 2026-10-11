@@ -91,9 +91,14 @@ Answer payload uses optimistic concurrency:
 
 The returned question contains identical `prompt` and `delivery.speechText` fields plus an `avatarCue`. Starting or
 resuming an interview opens `/candidate/interviews/{id}` instead of expanding the assessments page. The workspace
-shows the question as text, voices it with the browser's Russian speech synthesizer and can transcribe a microphone
+shows the question as text, voices it with configured neural speech or a Russian browser voice and can transcribe a microphone
 answer with the browser speech-recognition API. The candidate can switch to text at any moment and edit the transcript
 before sending it. Only the confirmed transcript reaches the interview service; raw audio is not stored.
+
+The platform accepts speech requests only for the candidate's current question and synthesizes the server-owned
+`delivery.speechText`; the endpoint cannot be used as a general text-to-speech proxy. `FSP_TTS_PROVIDER=xai` uses xAI
+voice synthesis. `FSP_TTS_PROVIDER=yandex` uses Yandex SpeechKit as the domestic provider. If neither is configured,
+or a request fails, the client keeps the offline-capable browser synthesis path.
 
 ## Voice and avatar decision
 

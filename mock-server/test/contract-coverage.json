@@ -1,7 +1,7 @@
 {
   "contractVersion": "0.1.0",
-  "routeCount": 84,
-  "coveredOperationCount": 84,
+  "routeCount": 86,
+  "coveredOperationCount": 86,
   "operations": [
     {
       "operationId": "getHealth",
@@ -263,6 +263,14 @@
       "observedStatuses": [
         200,
         409
+      ]
+    },
+    {
+      "operationId": "synthesizeInterviewSpeech",
+      "method": "POST",
+      "path": "/api/v1/me/interviews/{interviewId}/speech",
+      "observedStatuses": [
+        503
       ]
     },
     {
@@ -667,6 +675,14 @@
       "operationId": "listApplications",
       "method": "GET",
       "path": "/api/v1/applications",
+      "observedStatuses": [
+        200
+      ]
+    },
+    {
+      "operationId": "getHiringFlowAnalytics",
+      "method": "GET",
+      "path": "/api/v1/analytics/hiring-flow",
       "observedStatuses": [
         200
       ]

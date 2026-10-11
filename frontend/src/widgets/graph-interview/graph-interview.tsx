@@ -11,7 +11,9 @@ import {
   interviewsKey,
   interviewsQuery,
   startInterview,
+  synthesizeInterviewSpeech,
 } from '@/entities/interview';
+import { useMeta } from '@/entities/meta';
 import { useScope } from '@/entities/session';
 import { describeError, isApiError } from '@/shared/api';
 import { Button, Callout, Card, cx, ErrorState, Icon, LoadingState, StatusChip, TextareaField } from '@/shared/ui';
@@ -212,8 +214,11 @@ function Avatar({ state }: { state: 'idle' | 'speaking' | 'listening' | 'thinkin
 
 export function InterviewWorkspace({ interview }: { interview: Interview }) {
   const scope = useScope();
+  const meta = useMeta();
   const queryClient = useQueryClient();
   const recognition = useRef<Recognition | null>(null);
+  const speechAudio = useRef<HTMLAudioElement | null>(null);
+  const speechAudioUrl = useRef<string | null>(null);
   const draftQuestion = useRef<string | null>(null);
   const [answer, setAnswer] = useState('');
   const [interim, setInterim] = useState('');
@@ -236,16 +241,57 @@ export function InterviewWorkspace({ interview }: { interview: Interview }) {
     }
   }, []);
 
-  const sayQuestion = useCallback(() => {
-    if (!speechText || !('speechSynthesis' in window)) return;
+  const stopSpeech = useCallback(() => {
     window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(speechText);
+    speechAudio.current?.pause();
+    speechAudio.current = null;
+    if (speechAudioUrl.current) URL.revokeObjectURL(speechAudioUrl.current);
+    speechAudioUrl.current = null;
+    setSpeaking(false);
+  }, []);
+
+  const sayWithBrowser = useCallback((text: string) => {
+    if (!('speechSynthesis' in window)) return;
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = 'ru-RU';
+    utterance.voice =
+      window.speechSynthesis
+        .getVoices()
+        .filter((voice) => voice.lang.toLowerCase().startsWith('ru'))
+        .sort((left, right) => Number(right.localService) - Number(left.localService))[0] ?? null;
     utterance.onstart = () => setSpeaking(true);
     utterance.onend = () => setSpeaking(false);
     utterance.onerror = () => setSpeaking(false);
     window.speechSynthesis.speak(utterance);
-  }, [speechText]);
+  }, []);
+
+  const sayQuestion = useCallback(async () => {
+    if (!speechText || !question) return;
+    stopSpeech();
+    if (!meta.capabilities.neuralTts) {
+      sayWithBrowser(speechText);
+      return;
+    }
+    try {
+      const synthesized = await synthesizeInterviewSpeech(interview.id, question.id);
+      const bytes = Uint8Array.from(atob(synthesized.audioBase64), (character) => character.charCodeAt(0));
+      const url = URL.createObjectURL(new Blob([bytes], { type: synthesized.mimeType }));
+      const audio = new Audio(url);
+      speechAudio.current = audio;
+      speechAudioUrl.current = url;
+      audio.onplay = () => setSpeaking(true);
+      audio.onended = stopSpeech;
+      audio.onerror = () => {
+        stopSpeech();
+        sayWithBrowser(speechText);
+      };
+      await audio.play();
+    } catch {
+      stopSpeech();
+      sayWithBrowser(speechText);
+    }
+  }, [interview.id, meta.capabilities.neuralTts, question, sayWithBrowser, speechText, stopSpeech]);
 
   useEffect(() => {
     if (draftQuestion.current !== (question?.id ?? null)) {
@@ -265,9 +311,9 @@ export function InterviewWorkspace({ interview }: { interview: Interview }) {
     const timer = window.setTimeout(sayQuestion, 250);
     return () => {
       window.clearTimeout(timer);
-      window.speechSynthesis?.cancel();
+      stopSpeech();
     };
-  }, [question?.id, sayQuestion]);
+  }, [question?.id, sayQuestion, stopSpeech]);
 
   const toggleListening = () => {
     if (listening) {
@@ -281,7 +327,7 @@ export function InterviewWorkspace({ interview }: { interview: Interview }) {
       return;
     }
     releaseMicrophone();
-    window.speechSynthesis?.cancel();
+    stopSpeech();
     const instance = new Constructor();
     instance.lang = 'ru-RU';
     instance.continuous = false;
