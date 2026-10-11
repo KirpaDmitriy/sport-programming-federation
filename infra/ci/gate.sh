@@ -60,6 +60,8 @@ case "${1:?gate required}" in
       "$interview/v1/interviews")"
     interview_id="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])' <<<"$started")"
     docker compose restart interview
+    # Restart can reallocate a dynamically published port.
+    interview="http://$(docker compose port interview 4040)"
     for _ in {1..30}; do curl -fsS "$interview/health" >/dev/null 2>&1 && break; sleep 1; done
     curl -fsS -H 'Authorization: Bearer demo-interview-token' \
       "$interview/v1/interviews/$interview_id" >/dev/null
