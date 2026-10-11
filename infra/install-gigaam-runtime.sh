@@ -12,7 +12,9 @@ MODEL_URL=https://cdn.chatwm.opensmodel.sberdevices.ru/GigaAM/v3_ctc.ckpt
 MODEL_MD5=73413e7be9c6a5935827bfab5c0dd678
 
 [[ -x "$VENV/bin/python" ]] || { echo 'Install the Silero voice runtime first' >&2; exit 1; }
-"$VENV/bin/pip" install numpy==2.2.6 hydra-core==1.3.2 omegaconf==2.3.0 tqdm==4.67.1
+command -v ffmpeg >/dev/null || { echo 'ffmpeg is required' >&2; exit 1; }
+command -v ffprobe >/dev/null || { echo 'ffprobe is required' >&2; exit 1; }
+"$VENV/bin/pip" install numpy==2.2.6 hydra-core==1.3.2 omegaconf==2.3.0 tqdm==4.67.1 soundfile==0.13.1 sentencepiece==0.2.1
 "$VENV/bin/pip" install --index-url https://download.pytorch.org/whl/cpu torchaudio==2.5.1+cpu
 
 archive="$(mktemp "$ROOT/gigaam-source.XXXXXXXX.tar.gz")"

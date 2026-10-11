@@ -9,12 +9,15 @@
     "artifact": "backend/experiments/gigaam-v3-ctc-cpu-stt.json"
   },
   "observed": {
-    "status": "pending_production_smoke",
+    "status": "passed",
     "checkpointMd5": "73413e7be9c6a5935827bfab5c0dd678",
-    "offlineCpuPath": true
+    "offlineCpuPath": true,
+    "controlTranscript": "проверяем распознавание русской речи",
+    "controlChainSeconds": 1.22,
+    "workerMemoryPeakBytes": 1546887168
   },
   "measurementClaims": {
     "accuracy": "not_established_on_product_audio",
-    "latency": "not_established_until_production_runtime_smoke"
+    "latency": "1.22 seconds for the production Silero-to-WebM-to-GigaAM control chain"
   }
 }
