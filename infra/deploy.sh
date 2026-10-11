@@ -15,11 +15,12 @@ REMOTE_ARCHIVE="/tmp/fsp-$SHA-${ARCHIVE##*/}"
 trap 'rm -f "$ARCHIVE"; rmdir "$TEMP_DIR"' EXIT
 
 paths=(frontend mock-server backend infra)
-# Keep the route source available to the observability installer on the stand.
-# Historical releases may predate the contract and still need compatibility checks.
-if git cat-file -e "$SHA:contracts/openapi.json" 2>/dev/null; then
-  paths+=(contracts/openapi.json)
-fi
+# Historical releases may predate these optional runtime sources.
+for path in contracts/openapi.json voice-runtime; do
+  if git cat-file -e "$SHA:$path" 2>/dev/null; then
+    paths+=("$path")
+  fi
+done
 git archive --format=tar.gz -o "$ARCHIVE" "$SHA" "${paths[@]}"
 scp -q -F "$SSH_CONFIG" "$ARCHIVE" "$DEPLOY_HOST:$REMOTE_ARCHIVE"
 ssh -F "$SSH_CONFIG" "$DEPLOY_HOST" bash -s -- "$SHA" "$REMOTE_ARCHIVE" <<'REMOTE'
