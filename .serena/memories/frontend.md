@@ -41,3 +41,8 @@ The bundled OpenObserve SDK is opt-in at build time. RUM sanitizes URLs/errors/a
 inputs and excludes authentication/settings/onboarding/assessment/interview routes and unsafe URLs. Do not set
 personal user identities or put ingest credentials in VITE variables. The separate enabled-RUM browser test
 inspects actual events and decompressed replay, including stored records on the private collector.
+
+Interview playback is owned by the widget's useQuestionSpeech hook. Cancellation invalidates delayed autoplay,
+fetches, audio/browser handlers and play promises on question change, microphone activation, answer submission and
+unmount. Keep the text flow usable when browser speech APIs are absent. Provider responses are bounded during
+streaming; Silero runs on the stand's CPU, while recognition can still use a browser vendor service.

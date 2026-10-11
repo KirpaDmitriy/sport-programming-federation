@@ -105,9 +105,21 @@ answer with the browser speech-recognition API. The candidate can switch to text
 before sending it. Only the confirmed transcript reaches the interview service; raw audio is not stored.
 
 The platform accepts speech requests only for the candidate's current question and synthesizes the server-owned
-`delivery.speechText`; the endpoint cannot be used as a general text-to-speech proxy. `FSP_TTS_PROVIDER=xai` uses xAI
-voice synthesis. `FSP_TTS_PROVIDER=yandex` uses Yandex SpeechKit as the domestic provider. If neither is configured,
-or a request fails, the client keeps the offline-capable browser synthesis path.
+`delivery.speechText`; the endpoint cannot be used as a general text-to-speech proxy. `FSP_TTS_PROVIDER=silero`
+uses the local Russian Silero v5.5 CPU runtime on loopback. The optional `xai` and `yandex` values select xAI or
+Yandex SpeechKit. Without neural configuration, or on a current playback failure, the client uses browser synthesis
+when available; text remains usable without any speech API.
+
+Stopping playback, starting the microphone, submitting an answer, changing a question or leaving the page cancels
+pending synthesis and delayed autoplay. A generation guard rejects late network results, media callbacks and
+rejected `play()` promises, so they cannot restart an old question or alter a new player's state. Object URLs and
+handlers are released on stop. All providers bound response reads while streaming: 4 MiB for audio, with bounded
+base64/JSON overhead for SpeechKit and a separate decoded-audio check. A missing Content-Length cannot bypass the
+limit. The existing 20-second request deadline remains in force.
+
+The lifecycle follows [React effect cleanup](https://react.dev/reference/react/useEffect) and asynchronous
+[media playback](https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/play); provider reads use
+[reqwest chunks](https://docs.rs/reqwest/0.12.28/reqwest/struct.Response.html#method.chunk).
 
 ## Voice and avatar decision
 
