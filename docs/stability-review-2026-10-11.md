@@ -135,3 +135,64 @@ Local regressions and release fault checks must pass before merging; all four pr
 acceptance, reviewed installation of changed controller/helper files and independent read-only verification are
 required before closing these issues. Final SHA, test counts, installed hashes and acceptance receipts belong in
 the issue completion comments so this audit does not advertise an obsolete release as current.
+
+
+### Asset cache follow-up
+
+The post-release public header probe found one more concrete defect, tracked in
+[#159](https://github.com/KirpaDmitriy/sport-programming-federation/issues/159): missing `/assets/` files received
+404 plus the one-year immutable success policy. Both nginx configurations now choose the cache header from the
+final response status: 200/206/304 retain immutable caching; every other asset response is `no-store`.
+The actual nginx probe checks a real asset's complete, byte-range and conditional responses as well as a missing
+asset. This preserves normal caching while preventing durable negative responses. Final acceptance probes use a
+fresh missing URL to distinguish new origin policy from any previously cached response.
+The known `/assets/missing-header-probe.js` response was subsequently confirmed as a Cloudflare cache HIT.
+After deployment, purge that exact URL and any other confirmed stale negative entries, then verify them again;
+a fresh probe alone does not remove existing responses. Use [single-file purge](https://developers.cloudflare.com/cache/how-to/purge-cache/purge-by-single-file/),
+not a whole-zone purge. PR #160 remains unshipped while the CI incident below is unresolved.
+
+Research: [Cloudflare default cache behavior](https://developers.cloudflare.com/cache/concepts/default-cache-behavior/)
+explicitly respects positive origin max-age and also caches 404 by default without restrictive headers;
+[nginx map](https://nginx.org/en/docs/http/ngx_http_map_module.html) provides a response-status map without new
+services or runtime dependencies. The feature must pass the same four gates and independent live verification.
+
+### External CI host deletion
+
+DigitalOcean action `3463766117` destroyed `gha-runner-1` (droplet `601238643`) between 08:15:45 and 08:16:03 UTC
+on October 11. This was external to this audit. The droplet API returns 404 and the existing SSH route has no
+destination. [#161](https://github.com/KirpaDmitriy/sport-programming-federation/issues/161) records the recovery work.
+
+Before deletion, main `405fecc7a93a524db9913781993e2d28c84c8429` passed the four original gates and real public
+acceptance (2 tests, 49.3 seconds). The reviewed controller/helper update was separately installed and its 20 tests
+passed. The resulting mandatory recheck passed the platform gate but lost its host before the remaining gates
+finished; those statuses are infrastructure errors. The successful deployment status describes the accepted
+application and is retained. Independent read-only verification confirmed that release, all eight managed
+services, eight successful migrations, no published acceptance actors/needs, working TLS/HSTS and no orphan 4011.
+
+Recovery sequence: obtain the replacement destination, inventory its capacity without touching unrelated
+projects, install reviewed CI and private configuration, replace any lost dedicated credentials, run every gate
+and public acceptance, then reconcile receipts/statuses and complete #159 through the ordinary PR lane. Do not
+fabricate a replacement `deployed.json`. The original broad CLI credential remains unchanged. Local stand SSH and
+dedicated acceptance-mail configuration remain available with mode 600; the one-time CI PAT handoff is absent.
+
+[DigitalOcean's deletion documentation](https://docs.digitalocean.com/products/droplets/how-to/destroy/) confirms
+that destroying a droplet is irreversible. The owner's no-backup policy remains in force. This research was
+checked on October 11; it is not represented as an archived September 26 documentation snapshot.
+
+### Active interview interruption during deployment
+
+Independent review correlated the 08:07:42 interview 503 with the service restart. The interview, simulator and
+GitHub-insights binaries handled SIGINT only, whereas their supervisors send SIGTERM. The second 503 at 08:08:43
+was different: model evaluation plus generation exhausted the intended 45-second budget, and the next retry
+succeeded. Aggregate revision/evidence counts matched successful answers; failed requests added no evidence.
+Historical nginx logs lack request durations, so the timing reconstruction uses service lifecycle and upstream
+metadata rather than preserved response bodies or user text.
+
+[#162](https://github.com/KirpaDmitriy/sport-programming-federation/issues/162) and
+[PR #163](https://github.com/KirpaDmitriy/sport-programming-federation/pull/163) contain the separate correction:
+SIGINT/SIGTERM draining, synchronous registration with errors propagated from all four composition roots, and
+60-second supervisor grace for the interview/API/proxy path. A real process regression failed on the old binary;
+with the correction both signals finish a controlled answer, persist one revision/evidence item and exit cleanly.
+Local fmt/clippy, 131 Rust tests, release fault checks and auxiliary service signal probes passed. Independent code
+review found no remaining blocker. This is not live evidence: the change awaits #161 and normal release gates.
+Sequential restarts can still reject new requests, and background work remains process-local.

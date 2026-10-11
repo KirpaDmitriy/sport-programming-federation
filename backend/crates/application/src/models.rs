@@ -1046,7 +1046,32 @@ pub struct AnonymousCandidateView {
     pub r#match: Option<CandidateMatchView>,
     /// Anonymous public-GitHub signal: no login, names, links or calendars.
     pub github: Option<fsp_domain::GitHubSignal>,
+    pub fsp: Option<EmployerFspView>,
+    pub review: Option<EmployerReviewView>,
     pub simulation: bool,
+}
+
+/// Aggregates only: no account, team, exact placement, protocol or external identifiers.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EmployerFspView {
+    pub verified_participation: bool,
+    pub published_results: usize,
+    pub podium_results: usize,
+    pub relevant_results: usize,
+    pub last_synced_at: Option<String>,
+    pub synthetic: bool,
+}
+
+/// Only validated model classifications cross the anonymous boundary. Free-form reasoning and
+/// recommendations may repeat user-authored personal details and remain in the owner's profile.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EmployerReviewView {
+    pub specialization: Specialization,
+    pub grade: Grade,
+    pub agrees: bool,
+    pub computed_at: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1072,6 +1097,8 @@ pub struct CandidateMatchView {
     pub required_total: usize,
     pub desired_met: usize,
     pub desired_total: usize,
+    pub required_evidenced: usize,
+    pub desired_evidenced: usize,
     pub requirements: Vec<MatchRequirementView>,
     pub explanation: String,
     pub algorithm_version: &'static str,
@@ -1084,6 +1111,10 @@ pub struct MatchRequirementView {
     pub criticality: Criticality,
     pub status: &'static str,
     pub evidence_status: EvidenceStatus,
+    pub minimum_grade: Grade,
+    pub evidence_grade: Option<Grade>,
+    pub evidence_sources: Vec<EvidenceSource>,
+    pub accepted_sources: Vec<EvidenceSource>,
     pub reason: &'static str,
 }
 

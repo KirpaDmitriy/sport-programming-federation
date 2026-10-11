@@ -1,62 +1,46 @@
 # Project handoff
 
-Read AGENTS.md, docs/current-state.md and domain memories. Source and live evidence override old transcripts.
-Backend coordination with Dima, real domain/mail and existing private CI hosts are already authorized.
-English engineering text, Russian UI. Never expose secrets, reset production data or rewrite shared history.
+Read AGENTS.md, docs/current-state.md and the domain memories. Code and current release receipts override
+historical transcripts. Engineering text is English; UI is Russian. Never expose secrets, rewrite shared history,
+reset production data, create backups/snapshots or synchronize the retired GitHub mirror.
 
-## Current behavior
+## Active release
 
-nddev.link serves Rust/PostgreSQL behind Cloudflare Full (strict), with real Resend OTPs and secure sessions.
-The original IP redirects to the domain. Applied SQLx migrations must match the source history. Runtime secrets stay on hosts
-and in the original ignored .fsp-infra/. FSP is a deliberately fictional private HTTP provider; knowledge tests
-replace arbitrary code execution. Digital-PDF extraction and Bifrost assistance are real. GitHub OAuth is deferred.
-GitHub connection is real: fsp-github-insights (loopback 4030) analyzes public work without a token in the background
-(search, REST, blobless clones); the API enables it with FSP_GITHUB_INSIGHTS_URL in rust-api.env. Method and limits:
-docs/github-insights.md. Calibrate rule changes on public accounts only and never toward a desired score.
+PR #172 consolidates atomic feature histories for #159/#160 (asset errors), #162/#163 (graceful shutdown),
+#167/#169 (matching and access), #168/#170 (Grok budgets), #166/#171 (private observability and masked replay),
+#173/#177 (speech cancellation and bounded provider streams), and Dima's current main. Use normal feature -> danil -> dev -> main PRs, four actual fsp/* gates, unchanged-tree
+merge guards and real public/mail acceptance. Close issues only after live verification.
 
-Automatic profile (owner decision 2026-10-10, docs/auto-profile.md): connecting GitHub and/or FSP answers the
-questionnaire and gives an estimated category (estimate-v6: level-framework factors with scope and complexity,
-senior 24 and lead 48 months, experience counted from «В IT с какого года» and never filled from public tenure,
-lead needs collaboration ≥ 50 or a stated leading role in Russian or English, notes, a growth plan with points and
-focus skills; outdated estimates refresh on profile open; «Заполнить анкету по источникам» rebuilds evidence-based
-answers; a résumé lets Grok fill the start year with a quote). Edited answers leave autoFields and are never
-overwritten. Categories state their source; tests rank first. The Grok review runs in the background with high
-reasoning (Bifrost timeout 360 s on the stand), one per candidate, gives growth advice, may pick between close
-specializations and lowers high confidence to medium at most. Public acceptance uses failure-safe actor teardown (unpublish candidates, delete fresh-company needs, close contexts). Catalog v2: 25 specializations, 5 grades, 255 skills incl. 1C; every specialization
-and grade has a knowledge test (topic banks knowledge-v3-*.json, 1,230 questions, length-balanced distractors).
-Live evidence: .fsp-infra/real-features/auto-profile/.
+The old CI runner was externally deleted. Amsterdam now has the reviewed FSP CI user/tooling. A bounded
+operator bridge uses existing GitHub CLI authentication without copying a token into test jobs; the timer remains
+disabled. Ubuntu SSH troubleshooting was stopped at the owner's request. Do not ask for the same host/key commands
+again or claim unattended Ubuntu CI restored. #161 records the distinction and private evidence locations.
 
-## Completed work and current evidence
+## Verify the current state
 
-Earlier completed deliveries: #16 (stability), #23/#27 (browser), #31 (knowledge/PDF/FSP), #38/#40 (domain/mail/CI),
-#50 (consistency). Their backup/restore receipts are historical and do not authorize new archives.
-Documentation screenshots use fictional data; public acceptance reads actual mail. Three disclosed synthetic
-accounts intentionally keep fixed codes in Resend mode; all other addresses require real mail.
+1. Fetch canonical upstream; compare each permanent local branch to its corresponding remote, preserving history.
+2. Compare upstream/main, /opt/fsp/current on nddev.link's origin, /var/lib/fsp-ci/deployed.json on Amsterdam and
+   the four build statuses plus fsp/deployment. Never synthesize an accepted receipt from a historical SHA.
+3. Check API/interview/simulator/insights/LLM/nginx/PostgreSQL and OpenObserve/Vector units, public health and logs.
+4. Run actual public browser/mail acceptance and a read-only independent verification of changed surfaces.
+5. After the asset policy release, purge only /assets/missing-header-probe.js in Cloudflare and prove both that URL
+   and a fresh missing asset return no-store. Keep backup units masked.
 
-## Delivery and recovery
+## Implementation pointers and limits
 
-CI: server-gha-runner-1 (moved 2026-10-11 after runner-2 was retired), /opt/fsp-ci, root-private /etc/fsp-ci, fsp-ci.timer. Four fsp/* gates plus independent
-security checks protect personal -> dev -> main PRs. Installed controller updates are reviewed separately and
-invalidate cached proof. Trusted private maintainers only; Docker is root-equivalent. No GitHub Actions dependency.
-Current main must match /opt/fsp/current and accepted /var/lib/fsp-ci/deployed.json; fsp/deployment succeeds only
-after real public browser acceptance. Compare local/canonical permanent branches individually; never reset them to a common SHA.
-The additional GitHub mirror is retired and must not be synchronized. Preserve compatible Rust rollback targets; never revert public auth to mock/demo.
+- Matching is deterministic-rules-v2, with confirmed requirements separate from accepted source observations.
+  Both roles use the same score before pagination; private applicants remain company-scoped until withdrawal.
+- Grok interactive/interview effort defaults to low, background profile review to medium. See docs/ai-latency.md
+  for synthetic timing and quality differences; no p95 or accuracy-equivalence claim. LLM output never certifies grades.
+- OpenObserve 1.0.4/Vector 0.59.0 are private native support services. The dashboard has nine verified queries.
+  Browser replay masks all text/inputs and excludes sensitive or unsafe URLs. Logs exclude bodies/prompts/secrets.
+  Run infra/observability/verify.py and verify_intake.py; public acceptance must prove RUM on the shipped release, separately from support-service health.
+- Speech playback cancels delayed autoplay, network reads and obsolete callbacks; all neural providers bound streamed response sizes. Silero is local CPU synthesis; text remains usable without browser speech APIs.
+- GitHub OAuth is intentionally deferred; ownership uses a bio code. FSP is a labelled fictional provider.
+  Knowledge tests are not calibrated practical qualifications. No OCR, durable job queue, measured load capacity,
+  high availability, external alert delivery or OTLP span export is claimed.
+- The lost dedicated CI PAT is not available merely because its historical expiry is in the future. Do not rotate
+  or revoke the shared CLI credential. Restore unattended authentication separately if work resumes on #161.
 
-Owner standard (#54): no backups, snapshots or redundant copies unless explicitly requested later.
-FSP backup units are stopped/masked; provisioning and CI must not recreate archives. Existing server/local
-backup archives were deleted. Older backup/restore receipts above are historical, not a standing task.
-No OpenObserve or external alerting exists: inspect systemd/nginx and CI logs. Other explicit limits are in
-current-state.md: no calibrated/leak-resistant exam, OCR, durable source queue, high availability or load claim.
-October 11 review #138: consent parity on interview answers, one model budget per turn, same-origin microphone
-policy, race-safe speech lifecycle and failure-safe acceptance teardown. Detailed plan and evidence scope:
-docs/stability-review-2026-10-11.md. Documentation and project-specific Claude/Serena memories were reconciled.
-Follow-up #139 installed a separate repo-only classic CI PAT after owner-authorized browser issuance. The original
-shared CLI credential is unchanged. Renew before November 10, 2026 at 06:31:54 UTC via infra/ci/README.md.
-Installer 23aad65 shipped through #143/#144/#145; #139 records token and PR-cycle proof. Follow-up #152/#153/#154/#155
-adds status reconciliation (e078301), error-response cleanup (b3f80bf), queued-review consent (c93cf00) and HTTPS headers
-(63bb5eb); local checks: 129 Rust, 20 CI tests, release faults and real nginx. Read issue receipts for live/install proof.
-
-Memory index: platform.md (auth/data/assessment), frontend.md (UI/proofs), operations.md (deployment/mail/CI/recovery).
-Release identity: compare upstream/main, /opt/fsp/current and deployed.json instead of trusting a SHA written here.
-Receipts: #54 (no-backup policy), #67 (GitHub insights delivery and live check), #73 (catalog v2),
-#76/#79 (automatic profile, background review), #82 (question banks, estimate-v2), estimate-v3 #89, estimate-v4 #95, estimate-v5 #125 (Russian leading-role spellings), estimate-v6 (experience from the start year in IT).
+Private operational data remains in the original ignored .fsp-infra and root-owned host configuration.
+Domain memories: platform.md, frontend.md, operations.md. Runbooks and source are the current truth.
