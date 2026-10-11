@@ -35,7 +35,9 @@ Browser intake uses only POST `/observe/rum` and `/observe/replay`, an exact sam
 and a 10 request/s per-client budget with a bounded burst. nginx discards all incoming headers except content type
 and injects the RUM credential from its private config. Query parameters and other `/observe/*` paths are rejected.
 No cookie, authorization header, referrer, original client IP or reusable ingestion secret is forwarded from the
-browser. The administrator API/UI remains on loopback. The browser has no OpenObserve credentials.
+browser. The administrator API/UI listens on loopback; its owner-authorized HTTPS endpoint is
+`https://observe.nddev.link`, protected by native account authentication. The FSP application browser has no
+OpenObserve credentials.
 
 ## Installation
 
@@ -64,14 +66,44 @@ Credentials stay in `/etc/fsp/observability.env` (root, 0600), `/etc/fsp/vector-
 and `/etc/nginx/fsp-observability/locations.conf` (root, 0600). Never put them in Git, browser configuration,
 screenshots, chat or logs. The collector credential cannot read streams; `verify.py` checks that boundary.
 
-Open the private UI through a pinned SSH connection:
+## Public account access
+
+On October 12, 2026 the owner explicitly authorized public access at **https://observe.nddev.link** (#191).
+The existing administrator login is `observe-admin@nddev.link`. Its password remains in the root-only environment;
+the owner-requested delivery file is `~/Desktop/FSP-OpenObserve-access.txt` on the Amsterdam workspace host (0600).
+The UI never bypasses account authentication or injects administrator credentials into nginx requests.
+
+The dedicated nginx site handles HTTP-to-HTTPS redirects, TLS, WebSocket upgrades, login rate limiting and
+no-store responses. Public `/metrics` is blocked. OpenObserve ports 5080/5081 and its outbound network policy
+remain loopback-only. This site is independent of application releases and does not change browser intake.
+
+To reproduce the publication on the authorized stand, create the `observe.nddev.link` A record for the existing
+origin, issue the certificate through the existing ACME webroot, then run the reviewed publisher:
+
+```sh
+certbot certonly --webroot -w /var/www/acme -d observe.nddev.link \
+  --cert-name observe.nddev.link --non-interactive --agree-tos --deploy-hook 'systemctl reload nginx'
+python3 infra/observability/publish.py
+```
+
+The publisher sets `ZO_WEB_URL`, adds the exact public CORS origin, installs `nginx-public.conf`, validates nginx
+and activates the two affected services. Reinstalling observability preserves the configured public URL/origins
+and existing credentials. Certbot renews the certificate automatically. No backups or new infrastructure are created.
+
+The optional private UI remains accessible through a pinned SSH connection:
 
 ```sh
 ssh -F .fsp-infra/ssh/config -NT -L 127.0.0.1:5080:127.0.0.1:5080 fsp-demo
 ```
 
 Visit `http://127.0.0.1:5080` in the browser on the machine running the tunnel. The administrator login is
-`observe-admin@nddev.link`; the password is available only in the root-owned environment on the stand.
+`observe-admin@nddev.link`. The Amsterdam workspace also has an enabled user service `fsp-observe-tunnel.service`
+at `http://127.0.0.1:50800`; public access does not require that tunnel.
+
+Playwriter verified account login, populated dashboard/audit data, actual public RUM/replay ingestion and masked
+persisted playback on October 12. Upstream viewer limitations remain tracked in #189: a cold SPA transition can
+race the player import (a page refresh succeeds), and the optional `_rumlog` request returns 400 because raw browser
+console collection is deliberately disabled. Do not describe those upstream defects as fixed.
 
 ## Verification and operation
 

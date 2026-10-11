@@ -98,6 +98,10 @@ def main() -> None:
         env_path = Path("/etc/fsp/observability.env")
         existing = read_env(env_path) if env_path.exists() else {}
         values = read_env(HERE / "openobserve.env.example")
+        # Preserve the operator-authorized public UI endpoint across reinstallations.
+        for key in ("ZO_WEB_URL", "ZO_CORS_ALLOWED_ORIGINS"):
+            if key in existing:
+                values[key] = existing[key]
         values["ZO_ROOT_USER_EMAIL"] = existing.get("ZO_ROOT_USER_EMAIL", "observe-admin@nddev.link")
         values["ZO_ROOT_USER_PASSWORD"] = existing.get("ZO_ROOT_USER_PASSWORD", secrets.token_urlsafe(36))
         values["FSP_OBSERVE_AUTH"] = "Basic " + base64.b64encode(
@@ -159,7 +163,7 @@ def main() -> None:
             state = subprocess.check_output(["systemctl", "is-active", service], text=True).strip()
             if state != "active":
                 raise SystemExit(f"{service} is {state}")
-        print("FSP observability installed; UI is loopback-only; credentials remain in /etc/fsp/observability.env")
+        print("FSP observability installed; listeners remain loopback-only; credentials remain in /etc/fsp/observability.env")
 
 
 if __name__ == "__main__":
