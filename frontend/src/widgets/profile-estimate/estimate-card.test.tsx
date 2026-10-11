@@ -1,4 +1,5 @@
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { useQuery } from '@tanstack/react-query';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import { HttpResponse, http } from 'msw';
 import { describe, expect, it } from 'vitest';
 import { metaQueryOptions } from '@/entities/meta';
@@ -35,6 +36,17 @@ const estimated = (overrides: Partial<Profile> = {}): Profile =>
     ...overrides,
   });
 
+/** Renders the card from the cached profile, as the pages do, so cache updates reach it. */
+function FromCache({ initial }: { initial: Profile }) {
+  const { data } = useQuery({
+    queryKey: profileKey(scopeOf(candidateSession)),
+    queryFn: () => initial,
+    initialData: initial,
+    staleTime: Number.POSITIVE_INFINITY,
+  });
+  return <ProfileEstimateCard profile={data} canEstimate />;
+}
+
 describe('profile estimate card', () => {
   it('explains the estimated category with every factor and the second opinion', async () => {
     await renderWithProviders(<ProfileEstimateCard profile={estimated()} canEstimate />, {
@@ -63,11 +75,19 @@ describe('profile estimate card', () => {
         return HttpResponse.json(estimated());
       }),
     );
-    await renderWithProviders(<ProfileEstimateCard profile={estimated({ experienceMonths: null })} canEstimate />, {
+    const { queryClient } = await renderWithProviders(<FromCache initial={estimated({ experienceMonths: null })} />, {
       session: candidateSession,
       prefill,
     });
     fireEvent.change(screen.getByLabelText('В IT с какого года'), { target: { value: '2016' } });
+    // A background update of the profile (for example the AI review) keeps what was typed.
+    act(() => {
+      queryClient.setQueryData(
+        profileKey(scopeOf(candidateSession)),
+        estimated({ experienceMonths: null, revision: 99 }),
+      );
+    });
+    expect(screen.getByLabelText('В IT с какого года')).toHaveProperty('value', '2016');
     fireEvent.change(screen.getByLabelText('Роль в команде'), { target: { value: 'Тимлид' } });
     fireEvent.click(screen.getByRole('button', { name: 'Пересчитать с уточнениями' }));
     await waitFor(() => expect(patch).toEqual({ experienceSince: 2016, teamRole: 'Тимлид' }));
