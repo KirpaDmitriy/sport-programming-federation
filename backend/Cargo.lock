@@ -573,11 +573,14 @@ name = "fsp-integration-bifrost"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "axum",
  "fsp-application",
  "fsp-domain",
  "reqwest",
  "serde",
  "serde_json",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]

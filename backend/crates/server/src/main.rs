@@ -115,10 +115,15 @@ async fn main() -> Result<(), Box<dyn Error>> {
             chat_url,
             nonempty_env("BIFROST_API_KEY"),
             nonempty_env("BIFROST_MODEL").unwrap_or_else(|| "openai/gpt-5-mini".into()),
-            // Background reviews reason deeply unless the operator sets `none`.
-            Some(nonempty_env("BIFROST_REASONING_EFFORT").unwrap_or_else(|| "high".into()))
+            // Advisory profile reviews use medium effort; `none` keeps the provider default.
+            Some(nonempty_env("BIFROST_REASONING_EFFORT").unwrap_or_else(|| "medium".into()))
                 .filter(|effort| effort != "none"),
         )
+        .and_then(|gateway| {
+            gateway.with_interactive_reasoning_effort(nonempty_env(
+                "BIFROST_INTERACTIVE_REASONING_EFFORT",
+            ))
+        })
         .map_err(|error| format!("Bifrost adapter: {}", error.message))?;
         llm_adapter = Some(Arc::new(bifrost));
     }
