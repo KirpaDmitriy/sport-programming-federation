@@ -181,12 +181,16 @@ def handler(runtime: SileroRuntime):
             self._respond(200, audio, "audio/wav")
 
         def _respond(self, status: int, body: bytes, content_type: str) -> None:
-            self.send_response(status)
-            self.send_header("Content-Type", content_type)
-            self.send_header("Content-Length", str(len(body)))
-            self.send_header("Cache-Control", "no-store")
-            self.end_headers()
-            self.wfile.write(body)
+            try:
+                self.send_response(status)
+                self.send_header("Content-Type", content_type)
+                self.send_header("Content-Length", str(len(body)))
+                self.send_header("Cache-Control", "no-store")
+                self.end_headers()
+                self.wfile.write(body)
+            except (BrokenPipeError, ConnectionResetError):
+                self.close_connection = True
+                self.log_message("client disconnected before response completed")
 
         def log_message(self, format: str, *args) -> None:
             print(format % args, flush=True)
