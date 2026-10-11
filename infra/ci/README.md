@@ -6,6 +6,12 @@ The October 8 migration was explicitly authorized after canonical repository bil
 repository-level runner registration was denied to the collaborator. Historical failed Actions runs remain
 visible; they are superseded by the new `fsp/*` policy, never rewritten as successes.
 
+**Current interruption:** on October 11, 2026 at 08:16 UTC an external operation deleted `gha-runner-1`.
+CI is unavailable; [#161](https://github.com/KirpaDmitriy/sport-programming-federation/issues/161) tracks replacement-host
+selection and recovery. The last accepted application remains live. The instructions below describe the intended
+controller, not a currently running installation. Do not reuse the deleted host's IP or claim its local receipts
+still exist. `server-gha-runner-2` was retired earlier and is not a fallback.
+
 ## Gates and trust
 
 `gate.sh` preserves platform types/lint/contracts/components/build/browser acceptance, Rust fmt/clippy/tests
@@ -46,8 +52,10 @@ Configure mode-600 files in mode-700 `/etc/fsp-ci`:
 ### Dedicated GitHub credential
 
 On October 11, 2026, [#139](https://github.com/KirpaDmitriy/sport-programming-federation/issues/139) replaced the CI
-copy of the shared credential with a separate classic PAT for `rldyourmnd`, with only `repo` scope. The current
-credential expires **November 10, 2026 at 06:31:54 UTC**; renew it before that time using the procedure below.
+copy of the shared credential with a separate classic PAT for `rldyourmnd`, with only `repo` scope. That
+credential expires **November 10, 2026 at 06:31:54 UTC**, but its only active secret copy was on the subsequently
+deleted CI host. Recovery must establish whether an authorized migration preserved it; otherwise replace the
+dedicated token and revoke its orphaned predecessor. Do not confuse its future expiry with available access.
 The original shared credential remains unchanged in its owner-managed tooling. Installation validation and
 subsequent CI/release receipts are recorded in the issue.
 
@@ -66,10 +74,10 @@ python3 infra/ci/install_token.py < .fsp-infra/ci-github-token
 Install from the accepted `main` checkout on the authorized CI host (the input redirection is local):
 
 ```sh
-ssh server-gha-runner-1 'python3 /var/lib/fsp-ci/deploy/infra/ci/install_token.py --install' < .fsp-infra/ci-github-token
+ssh "$FSP_CI_HOST" 'python3 /var/lib/fsp-ci/deploy/infra/ci/install_token.py --install' < .fsp-infra/ci-github-token
 ```
 
-The installer checks the canonical repository, push access, an admitted maintainer, exactly `repo` scope and a
+Set `FSP_CI_HOST` to the explicitly authorized replacement host after #161 is resolved. The installer checks the canonical repository, push access, an admitted maintainer, exactly `repo` scope and a
 future expiration through bounded GitHub requests. Redirects are rejected. It holds the same file lock as the
 controller, so a running or newly starting cycle cannot race the change. A busy controller or failed validation
 leaves the active token untouched; retry after the cycle finishes. The replacement is atomic and root-only, with
@@ -97,6 +105,13 @@ the actual HTTPS browser journey; failure produces a failed deployment status, n
 availability or delivery failures leave checks failed. The controller never resets the production database.
 
 ## Operation and recovery
+
+For a lost host, rebuild the reviewed controller from canonical source on the authorized destination. Restore
+the FSP-only private configuration from available owner-managed credentials, or issue replacements where the
+only copy was lost. Verify pinned stand SSH identity, file permissions, toolchains, free disk and resource limits
+before enabling the timer. Run all four gates and actual public acceptance to generate new evidence and
+`deployed.json`; historical GitHub statuses are evidence of past runs, not substitutes for these checks.
+Do not create backups, snapshots, redundant mirrors or a paid replacement without the owner's instruction.
 
 Inspect `journalctl -u fsp-ci.service` and private `/var/lib/fsp-ci/logs/<sha>/*.log`; evidence lives in
 `/var/lib/fsp-ci/evidence/`. A failed revision is retried by removing only its matching evidence JSON and requesting a

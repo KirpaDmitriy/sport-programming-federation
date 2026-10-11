@@ -4,7 +4,9 @@ Public site https://nddev.link; existing origin 188.166.88.183. Domain/email cut
 external CI migration in #40. Both deliveries are complete; #50 checked consistency; #54 disables backups and redundant copies. See docs/current-state.md for current limits.
 Private stand/Resend state is in the original checkout's ignored .fsp-infra/; never print credentials.
 User explicitly authorized existing CI servers after canonical Actions billing failed and runner registration
-was denied. Project CI lives on server-gha-runner-1 (moved 2026-10-11; server-gha-runner-2 was retired); other projects/runner slots are not part of this task.
+was denied. Both former runner hosts are now gone: runner-2 was retired earlier, and an external DigitalOcean
+action deleted runner-1 on 2026-10-11 at 08:16 UTC. CI is unavailable; #161 awaits the owner's replacement-host
+choice. Other projects/hosts are not automatically authorized. Do not connect to the retired IPs.
 
 Canonical upstream KirpaDmitriy/sport-programming-federation; the additional GitHub mirror is retired. Feature -> danil/dima
 -> dev -> main uses PRs. infra/ci controller reports four fsp/* statuses, preserves independent security checks,
@@ -25,6 +27,8 @@ No /proc mount or global namespace relaxation. Failed activation restores config
 
 Cloudflare Full (strict), origin Let's Encrypt cert, canonical IP redirect, trusted CF IP ranges, API no-store.
 Host-only HSTS is one week on HTTPS (including errors), absent on plain HTTP; nosniff/cache headers are unique.
+Pending PR #160 makes assets immutable only on 200/206/304 and errors no-store (#159); it is not live yet.
+Probe a fresh URL and purge the confirmed cached /assets/missing-header-probe.js response after deployment.
 The renewal unit is snap.certbot.renew.timer. Historical smoke API on 4011 was terminated after identity checks (#154).
 Resend auth.nddev.link sends as login@auth.nddev.link with DKIM/SPF/DMARC, tracking off and enforced TLS.
 Runtime key is sending-only/domain-restricted; private acceptance key reads real CI inboxes. HMAC key changes
@@ -35,14 +39,31 @@ requested later. FSP backup units are masked; provisioning/CI must not recreate 
 archives were deleted. Sync local branches with canonical upstream only. No OpenObserve: inspect systemd/nginx logs.
 GitHub OAuth remains deferred. No production DB reset, unrelated-host changes or unrequested credential rotation.
 
-Latest review #138; compare upstream/main, /opt/fsp/current and deployed.json for the accepted release.
-Credential follow-up #139: CI now uses a separate classic PAT for rldyourmnd with exactly repo scope, installed
-October 11; expires November 10, 2026 at 06:31:54 UTC. Renew before expiry using infra/ci/README.md.
+Latest review #138; compare upstream/main and /opt/fsp/current. The deleted runner's deployed.json is unavailable;
+recreate CI evidence only through full gates and public acceptance. Accepted 405fecc remains live; original gates
+and public acceptance (2 tests, 49.3 s) passed. The later controller recheck lost its host after platform passed;
+backend/compose/release-safety are infrastructure errors. Independent application verification was LIVE-OK.
+Credential follow-up #139 installed a separate classic PAT for rldyourmnd with exactly repo scope on October 11;
+expires November 10, 2026 at 06:31:54 UTC. Its active secret copy was on the deleted host. Recovery must establish
+whether an authorized migration preserved it; otherwise replace it and revoke the orphan dedicated token.
 The original broad credential stays unchanged in the owner's CLI; never reduce/revoke it for this project.
 The reviewed `infra/ci/install_token.py` reads stdin, validates exact repo scope, expiration, identity and access,
 then replaces root-only credentials under the controller lock. Run from accepted main; see infra/ci/README.md.
-Only /etc/fsp-ci/github-token holds the active CI copy; the one-time local handoff was removed. Issue #139 holds
-the operational verification receipts. A classic repo-scoped PAT is not restricted to a single repository.
+The one-time local PAT handoff was removed. Stand SSH and dedicated acceptance-mail files remain privately
+available in .fsp-infra. Issue #139 holds historical verification receipts; #161 controls current recovery.
+A classic repo-scoped PAT is not restricted to a single repository.
 Follow-ups #152/#154/#155 cover status recovery, edge/process cleanup and explicit HTTPError response closure.
 Last commits: e078301 (status recovery), b3f80bf (credential response cleanup), 63bb5eb (headers); 20 CI tests.
 Read issue receipts and compare live refs for current accepted release and installed controller/helper hashes.
+
+Last asset-cache change: f6d2f70; real nginx probes include 200, 206, 304 and missing-file responses.
+
+Pending shutdown fix #162 / PR #163 in a separate feature worktree: SIGINT/SIGTERM HTTP draining for interview/simulator/
+GitHub-insights, with 60-second API/interview supervisor grace (including nginx Compose stop). Implementation
+0f5070a; 131 local Rust tests passed, including real process signals with a controlled model and PostgreSQL.
+Original deployment interrupted an active interview because only SIGINT was handled; the later 45-second model
+timeout preserved state and retry succeeded. This fix awaits restored CI and release; do not claim it is live.
+
+Shutdown follow-up b56bcff registers signals synchronously and propagates setup errors through all four main
+functions, preventing a detached shutdown-task failure from looking like a successful service exit. Independent
+code review passed. Issues #153/#154 are independently live-verified and closed; #152/#155 await CI restoration.

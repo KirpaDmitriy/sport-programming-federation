@@ -6,6 +6,13 @@ policy; PR [#67](https://github.com/KirpaDmitriy/sport-programming-federation/pu
 delivery and its live check; #50 is the earlier consistency review. The [October 11 review](stability-review-2026-10-11.md) tracks the subsequent interview and acceptance fixes. This page describes behavior; verify the current
 release identity as described below instead of treating a SHA in documentation as the latest release.
 
+**Delivery incident, October 11 at 08:16 UTC:** an external DigitalOcean operation deleted `gha-runner-1`.
+The accepted application remains healthy, but CI is unavailable. [#161](https://github.com/KirpaDmitriy/sport-programming-federation/issues/161)
+tracks the pending replacement-host decision and restoration. The host's private configuration and evidence
+are no longer accessible. Do not treat historical successful gates as a completed post-incident recheck.
+The asset-cache correction in [PR #160](https://github.com/KirpaDmitriy/sport-programming-federation/pull/160)
+is locally verified and awaits CI and deployment.
+
 ## Implemented and verified
 
 | Area | Current behavior | Source / proof |
@@ -20,7 +27,7 @@ release identity as described below instead of treating a SHA in documentation a
 | GitHub insights | Connect by login or link; a separate loopback Rust service analyzes public work in the background without a token (search, REST, blobless clones) into a developer portrait, an explainable index over seven dimensions, rhythm, own projects and organizations, collaboration and integrity flags; ownership by bio code; employers get an anonymous rounded projection | [GitHub insights](github-insights.md), unit, golden, fake-GitHub service and PostgreSQL job-flow tests, live tokenless calibration on public accounts |
 | PDF and assistance | Actual bounded isolated text extraction and cited Bifrost import; contextual assistant calls Bifrost; competence graphs are deterministic projections of stored evidence | [Backend runtime](../backend/README.md#pdf-import-runtime), exact-systemd PDF probe, earlier live feature evidence in #31 |
 | FSP | Separate private HTTP simulator with explicit fictional provenance and preserved snapshots on outage | [FSP simulator](fsp-simulator.md), HTTP and browser evidence |
-| Delivery | Four private-server CI gates, checked personal → dev → main PRs, exact-main deployment and actual Resend browser acceptance | [CI runbook](../infra/ci/README.md); no GitHub Actions dependency |
+| Delivery | Four private-server CI gates, checked personal → dev → main PRs, exact-main deployment and actual Resend browser acceptance; currently interrupted by host deletion (#161) | [CI runbook](../infra/ci/README.md); no GitHub Actions dependency |
 | Recovery | Locked immutable releases, schema/runtime compatibility guards and tested activation rollback; backups disabled by owner policy | [Operations policy](../infra/README.md#backups-and-recovery), activation fault tests |
 
 Capability flags report configuration, not external-provider health. The development HTTP mock and its
@@ -55,9 +62,11 @@ product requirements need their own concrete acceptance criteria before changing
 1. Fetch canonical `upstream` and compare each permanent local branch with its corresponding canonical remote.
    The old GitHub mirror is retired and must not be updated.
    Preserve their distinct merge history; never reset all branches to a common SHA.
-2. Compare `upstream/main`, `/opt/fsp/current` on the stand and
-   `/var/lib/fsp-ci/deployed.json` on server-gha-runner-1 (the CI host since 2026-10-11; server-gha-runner-2 was retired). The accepted-release marker is written only after
-   deployment and the real public browser journey pass; check `fsp/deployment` as well as the four build gates.
+2. Compare `upstream/main` and `/opt/fsp/current` on the stand. After CI recovery (#161), also compare
+   `/var/lib/fsp-ci/deployed.json` on the newly authorized CI host. The deleted runner's receipt is unavailable;
+   regenerate it through real gates and public acceptance, never by copying a historical SHA into a new marker.
+   The accepted-release marker is written only after deployment and the real public browser journey pass;
+   check `fsp/deployment` as well as the four build gates.
 3. Inspect active API/interview/simulator/GitHub insights/LLM/nginx/PostgreSQL units (`curl 127.0.0.1:4030/health` on the stand), recent service/nginx errors, disk space, certificate
    renewal and confirm both `fsp-backup` units are masked/inactive. No public capability flag substitutes for a real integration check.
 4. Use [TESTING.md](../frontend/docs/TESTING.md) for suites and private real-mail acceptance configuration.
